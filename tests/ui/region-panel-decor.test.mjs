@@ -55,7 +55,7 @@ test('the brush bar offers each place its own kinds and remembers what is ticked
   assert.equal(c.scale, 1);
   assert.match(bar, /slider\('Decoration size', BRUSH_SCALE, 'scale', 0\.1\)/);
   const main = read('scripts/main.mjs');
-  assert.match(main, /density: c\.thick, scale: c\.scale \* \(s\?\.scale \?\? 1\) \}/);
+  assert.match(main, /density: c\.thick, scale: c\.scale \* \(s\?\.scale \?\? 1\), turn: c\.turn \}/);
 });
 
 test('the Decorations tool sits in Animater\'s controls and can be hidden', () => {
@@ -89,11 +89,12 @@ test('Ctrl+Z takes back a brush stroke and Ctrl+Shift+Z or Ctrl+Y puts it back, 
 test('the wheel still zooms; Ctrl+wheel sets the brush size and Shift+wheel its density', () => {
   const main = read('scripts/main.mjs'), bar = read('scripts/ui/decor-brush-bar.mjs');
   assert.match(main, /if \(e\.target !== view \|\| !\(e\.ctrlKey \|\| e\.metaKey \|\| e\.shiftKey \|\| e\.altKey\)\) return;/);
-  assert.match(main, /if \(e\.shiftKey && !\(e\.ctrlKey \|\| e\.metaKey\)\) \{ state\.bar\?\.setThick\(brushChoices\(\)\.thick \+ \(up \? 0\.1 : -0\.1\)\); \}/);
+  assert.match(main, /else if \(e\.shiftKey && !\(e\.ctrlKey \|\| e\.metaKey\)\) state\.bar\?\.turnBy\(up \? -1 : 1\);/);
+  assert.match(main, /else if \(e\.shiftKey\) state\.bar\?\.setThick\(brushChoices\(\)\.thick \+ \(up \? 0\.1 : -0\.1\)\);/);
   assert.match(main, /window\.addEventListener\("wheel", wheel, \{ capture: true, passive: false \}\)/);
   assert.match(main, /window\.removeEventListener\("wheel", wheel, \{ capture: true \}\)/);
   assert.match(bar, /setThick: \(v\) =>/);
-  assert.match(bar, /Ctrl\+wheel: size · Shift\+wheel: density/);
+  assert.match(bar, /Ctrl\+wheel: size · Shift\+wheel: rotate/);
   // Alt+wheel: the decorations' own size.
   assert.match(main, /if \(e\.altKey && !\(e\.ctrlKey \|\| e\.metaKey \|\| e\.shiftKey\)\) state\.bar\?\.setScale\(brushChoices\(\)\.scale \+ \(up \? 0\.1 : -0\.1\)\);/);
   assert.match(bar, /setScale: \(v\) =>/);
@@ -140,4 +141,27 @@ test('the brush bar has a search over its kinds', async () => {
   assert.match(bar, /if \(e\.key === 'Enter'\) \{ e\.preventDefault\(\); const first = \[\.\.\.chips\.children\]\.find\(\(c\) => !c\.hidden\); if \(first\) pick\(first\.dataset\.kind\); \}/);
   // While typing in it the brush's own keys ([, ], Esc, Ctrl+Z) stay out of the way.
   assert.match(read('scripts/main.mjs'), /if \(e\.target\?\.closest\?\.\("input, textarea"\)\) return;/);
+});
+
+test('the brush bar has three places: outdoors keeps to the wild, town has the built things, underground the caves and dungeons', async () => {
+  const { brushKindsFor, BRUSH_PLACES } = await import('../../scripts/ui/decor-brush-bar.mjs');
+  assert.deepEqual(BRUSH_PLACES.map(([k]) => k), ['surface', 'town', 'cave']);
+  const wild = brushKindsFor('surface'), town = brushKindsFor('town'), cave = brushKindsFor('cave');
+  assert.ok(town.includes('well') && town.includes('haystack') && town.includes('tombstone') && !town.includes('oak'));
+  assert.ok(wild.includes('oak') && !wild.includes('well') && !wild.includes('sarcophagus') && !wild.includes('treasure'));
+  assert.ok(cave.includes('sarcophagus') && cave.includes('treasure') && !cave.includes('well'));
+});
+
+test('Shift+wheel turns what the brush lays; a turned stamp keeps its whole turn, whatever its kind', async () => {
+  const { stampDecor } = await import('../../scripts/engines/motion/decor-paint.mjs');
+  const { turnOf } = await import('../../scripts/engines/motion/decorations.mjs');
+  const d = stampDecor({ x: 0, y: 0, radius: 50, grid: 100, kinds: ['crate'], seed: 3, turn: 1.2 });
+  assert.equal(d.turn, 1.2); assert.equal(d.fixed, true); assert.equal(turnOf(d), 1.2);
+  const free = stampDecor({ x: 0, y: 0, radius: 50, grid: 100, kinds: ['crate'], seed: 3 });
+  assert.equal(free.fixed, undefined); assert.equal(turnOf(free), free.turn * 0.4);
+  // Same seed, same place: turning only turns it, the layout stays.
+  assert.deepEqual([d.x, d.y, d.size], [free.x, free.y, free.size]);
+  const bar = read('scripts/ui/decor-brush-bar.mjs');
+  assert.match(bar, /Shift\+wheel: rotate · Ctrl\+Shift\+wheel: density/);
+  assert.match(bar, /turnBy: \(dir\) =>/);
 });

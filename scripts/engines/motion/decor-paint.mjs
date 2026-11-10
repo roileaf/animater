@@ -961,17 +961,654 @@ const KINDS = {
     return [beam];
   } },
 };
+// --- Drafts ---------------------------------------------------------------------------------------------------------------------------
+// Kinds still being looked at in the mock: painted by paintDecor, but offered nowhere (not in DECOR_KINDS, the bar, the panel or the
+// scatter) until they are taken in. Drawn as the world's maps draw such things: straight from above, flat muted fills, a soft
+// darker band on the side away from the light, fine hatching (grain, straw, weave) and a heavy dark outline with thin lines inside.
+const INKD = 'rgba(22,14,6,0.95)';
+// A soft round glow (a lamp's warmth on what is round it), inside the picture.
+const glowAt = (g, x, y, r, color, a = 0.5) => { const gg = g.createRadialGradient(x, y, 0, x, y, r); gg.addColorStop(0, `rgba(${color},${a})`); gg.addColorStop(1, `rgba(${color},0)`); g.fillStyle = gg; g.fillRect(x - r, y - r, r * 2, r * 2); };
+const pathOf = (g, pts, sharp) => (sharp ? poly(g, pts) : trace(g, pts));
+// The maps' finish on a shape: flat base, shade band, faint lit edge, hatching along `grain` (radians), heavy outline.
+function inked(g, rng, pts, base, o, { sharp = false, grain = null, lines = 0, hatch = 0.22, band = 0.42, lit = 0.05, ink = 1.5, cross = false } = {}) {
+  pathOf(g, pts, sharp); g.fillStyle = base; g.fill();
+  const c = centre(pts), r = reach(pts, c);
+  g.save(); pathOf(g, pts, sharp); g.clip();
+  if (grain !== null && lines > 0) for (const a of cross ? [grain, grain + 1.57] : [grain]) for (let i = 0; i < lines; i++) {
+    const off = (rng() - 0.5) * r * 2.1, ca = Math.cos(a), sa = Math.sin(a), sx = c[0] - sa * off - ca * r * 1.2, sy = c[1] + ca * off - sa * r * 1.2;
+    const p = []; for (let k = 0; k <= 6; k++) { const t = k / 6; p.push([sx + ca * r * 2.4 * t + (rng() - 0.5) * r * 0.03, sy + sa * r * 2.4 * t + (rng() - 0.5) * r * 0.03]); }
+    if (rng() < 0.35) p.length = 2 + Math.floor(rng() * 4);
+    line(g, p, `rgba(20,12,4,${hatch * (0.6 + rng() * 0.6)})`, Math.max(0.5, o.ink * (0.3 + rng() * 0.3)));
+  }
+  g.filter = `blur(${Math.max(1, r * 0.1)}px)`;
+  g.save(); g.translate(r * 0.13, r * 0.16); pathOf(g, pts, sharp); g.lineWidth = r * 0.42; g.strokeStyle = `rgba(14,8,2,${band})`; g.stroke(); g.restore();
+  g.save(); g.translate(-r * 0.1, -r * 0.12); pathOf(g, pts, sharp); g.lineWidth = r * 0.16; g.strokeStyle = `rgba(255,240,210,${lit})`; g.stroke(); g.restore();
+  g.filter = 'none'; g.restore();
+  pathOf(g, pts, sharp); g.strokeStyle = INKD; g.lineWidth = o.ink * ink; g.lineJoin = 'round'; g.stroke();
+}
+// A box (half sizes w by h about cx, cy, turned) as corner points.
+const boxAt = (cx, cy, w, h, turn) => { const c = Math.cos(turn), s = Math.sin(turn); return [[-w, -h], [w, -h], [w, h], [-w, h]].map(([u, v]) => [cx + c * u - s * v, cy + s * u + c * v]); };
+const softShadow = (g, pts, o, a = 0.4) => { const c = centre(pts), r = reach(pts, c); g.save(); g.filter = `blur(${Math.max(1, r * 0.12)}px)`; g.translate(r * 0.06, r * 0.08); trace(g, pts); g.fillStyle = `rgba(10,6,2,${a})`; g.fill(); g.restore(); };
+const ember = (g, rng, cx, cy, r, n, o) => { for (let i = 0; i < n; i++) { const a = rng() * 6.28, d = Math.sqrt(rng()) * r, hot = rng(); g.fillStyle = hot > 0.75 ? '#ffd27a' : hot > 0.4 ? '#f07a22' : '#8a2a0c'; g.fillRect(cx + Math.cos(a) * d, cy + Math.sin(a) * d, Math.max(1, o.unit * 0.008), Math.max(1, o.unit * 0.008)); } };
+const tuft = (g, rng, x, y, r, o, colors = ['#4e5a1c', '#6e7a2a', '#8a9030']) => { for (let i = 0; i < 7; i++) { const a = rng() * 6.28; blade(g, x, y, a, r * (0.6 + rng() * 0.5), r * 0.12, (rng() - 0.5) * 0.4, colors[0], pick(rng, colors.slice(1)), o.ink * 0.4); } };
+const DRAFTS = {
+  // --- Town and village --------------------------------------------------------------------------------------------------------------
+  lampPost: { label: 'Street lamps', size: 1.0, height: 2.4, light: { dim: 5, bright: 2, color: '#ffc878', animation: { type: 'torch', speed: 2, intensity: 2 } }, paint(g, s, rng, o) {
+    // A street lamp from above: the iron post's round foot, a curled bracket reaching out from it, and on the end the lantern, a
+    // four-sided iron cage round warm glass under a pyramid cap, inked as the maps ink their iron.
+    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], post = at(-s * 0.45, 0), head = at(s * 0.25, 0), L = s * 0.22;
+    if (o.night || o.cave) glowAt(g, ...head, s * 0.75, '255,190,100', 0.55);
+    const foot = blob(rng, ...post, s * 0.13, s * 0.13, 12, 0.02); softShadow(g, foot, o, 0.4); inked(g, rng, foot, '#2a2824', o, { band: 0.3, ink: 1.6 });
+    g.beginPath(); g.arc(...post, s * 0.06, 0, 6.283); g.fillStyle = '#4a4640'; g.fill();
+    const arm = [post, at(-s * 0.2, -s * 0.08), at(0, -s * 0.05), head]; for (const [col, w] of [[INKD, o.unit * 0.04 + o.ink * 1.6], ['#3a3632', o.unit * 0.04]]) { g.beginPath(); g.moveTo(...arm[0]); g.bezierCurveTo(...arm[1], ...arm[2], ...arm[3]); g.strokeStyle = col; g.lineWidth = w; g.lineCap = 'round'; g.stroke(); }
+    const curl = at(-s * 0.12, -s * 0.12); g.beginPath(); g.arc(...curl, s * 0.06, 0, 5.5); g.strokeStyle = INKD; g.lineWidth = o.ink * 2.4; g.stroke(); g.strokeStyle = '#3a3632'; g.lineWidth = o.ink * 1.1; g.stroke();
+    const glass = boxAt(...head, L, L, a + Math.PI / 4); inked(g, rng, glass, o.night || o.cave ? '#ffd890' : '#c8b47a', o, { sharp: true, band: 0.25, lit: 0.2, ink: 1.2 });
+    const cap = boxAt(...head, L * 0.82, L * 0.82, a + Math.PI / 4); inked(g, rng, cap, '#2a2824', o, { sharp: true, grain: a, lines: 6, hatch: 0.3, ink: 1.6 });
+    for (const p of cap) line(g, [p, head], 'rgba(150,140,120,0.5)', o.ink * 0.6);
+    for (const p of glass) { g.beginPath(); g.arc(...p, Math.max(1, s * 0.025), 0, 6.283); g.fillStyle = '#1a1814'; g.fill(); }
+    g.beginPath(); g.arc(...head, L * 0.18, 0, 6.283); g.fillStyle = '#1a1814'; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink; g.stroke();
+    return [foot, glass];
+  } },
+  brazier: { label: 'Braziers', size: 0.8, height: 0.9, light: { dim: 4.5, bright: 2, color: '#ff9a48', animation: { type: 'torch', speed: 4, intensity: 4 } }, paint(g, s, rng, o) {
+    // As Irovetti's palace draws one: a black iron basket of slats round a bed of embers speckled orange.
+    const R = s * 0.68, rim = blob(rng, 0, 0, R, R, 28, 0.02);
+    softShadow(g, rim, o);
+    inked(g, rng, rim, '#1e1a16', o, { ink: 1.8, band: 0.3 });
+    g.save(); trace(g, moved(rim, 0, 0, 0.78)); g.clip(); g.fillStyle = '#1a0a04'; g.fillRect(-R, -R, R * 2, R * 2); ember(g, rng, 0, 0, R * 0.8, 380, o); g.filter = `blur(${Math.max(1, R * 0.15)}px)`; g.fillStyle = 'rgba(255,120,30,0.35)'; g.beginPath(); g.arc(0, 0, R * 0.45, 0, 6.283); g.fill(); g.restore();
+    for (let i = 0; i < 16; i++) { const a = (i / 16) * 6.283, p = [[Math.cos(a) * R * 0.78, Math.sin(a) * R * 0.78], [Math.cos(a) * R * 1.04, Math.sin(a) * R * 1.04]]; line(g, p, INKD, o.ink * 3); line(g, p, '#4a4640', o.ink * 1.4); }
+    g.beginPath(); g.arc(0, 0, R * 0.78, 0, 6.283); g.strokeStyle = INKD; g.lineWidth = o.ink * 1.4; g.stroke();
+    return [rim];
+  } },
+  candles: { label: 'Candles', size: 0.6, height: 0.25, light: { dim: 2, bright: 0.7, color: '#ffd090', animation: { type: 'torch', speed: 3, intensity: 3 } }, paint(g, s, rng, o) {
+    // A round wooden dish with a carved rim, as the tournament grounds' fire bowl: candles stood in it, wax run over, small flames.
+    const R = s * 0.82, dish = blob(rng, 0, 0, R, R, 30, 0.01); softShadow(g, dish, o);
+    inked(g, rng, dish, '#6a5236', o, { grain: rng() * 3, lines: 22, hatch: 0.3 });
+    g.beginPath(); g.arc(0, 0, R * 0.8, 0, 6.283); g.strokeStyle = 'rgba(22,14,6,0.7)'; g.lineWidth = o.ink * 0.8; g.stroke();
+    for (let k = 0; k < 18; k++) { const a = (k / 18) * 6.283; line(g, [[Math.cos(a) * R * 0.82, Math.sin(a) * R * 0.82], [Math.cos(a + 0.12) * R * 0.95, Math.sin(a + 0.12) * R * 0.95]], 'rgba(22,14,6,0.45)', Math.max(0.5, o.ink * 0.5)); }
+    const n = 1 + Math.floor(rng() * 3), out = [dish];
+    for (let i = 0; i < n; i++) { const a = (i / n) * 6.283 + rng(), d = n > 1 ? R * 0.32 : 0, x = Math.cos(a) * d, y = Math.sin(a) * d, r = R * (0.2 + rng() * 0.06);
+      const wax = blob(rng, x, y, r * 1.35, r * 1.3, 12, 0.25); trace(g, wax); g.fillStyle = '#d8d2c0'; g.fill(); g.strokeStyle = 'rgba(60,50,30,0.6)'; g.lineWidth = o.ink * 0.5; g.stroke();
+      const top = blob(rng, x, y, r, r, 14, 0.04); inked(g, rng, top, '#ece6d6', o, { band: 0.25, ink: 1.1 });
+      g.beginPath(); g.arc(x, y, r * 0.45, 0, 6.283); g.fillStyle = '#ffe9a8'; g.fill(); g.beginPath(); g.arc(x, y, r * 0.22, 0, 6.283); g.fillStyle = '#fff8e0'; g.fill(); }
+    return out;
+  } },
+  well: { label: 'Wells', size: 1.4, height: 0.8, paint(g, s, rng, o) {
+    // As Whiterose Abbey's: a ring of grey fieldstones, dark mortar between, moss in the joints, the shaft falling away to black.
+    const R = s * 0.82, outer = blob(rng, 0, 0, R, R, 40, 0.02); softShadow(g, outer, o);
+    trace(g, outer); g.fillStyle = '#2a2a24'; g.fill();
+    for (let ring = 0; ring < 2; ring++) { const r0 = R * (ring ? 0.62 : 0.78), r1 = R * (ring ? 0.78 : 0.99), n = ring ? 12 : 16, off = rng();
+      for (let i = 0; i < n; i++) { const a0 = ((i + off) / n) * 6.283 + 0.03, a1 = ((i + 1 + off) / n) * 6.283 - 0.03, pts = []; for (let k = 0; k <= 5; k++) { const a = a0 + (a1 - a0) * (k / 5); pts.push([Math.cos(a) * (r1 - (rng() * 0.03 * R)), Math.sin(a) * (r1 - rng() * 0.03 * R)]); } for (let k = 5; k >= 0; k--) { const a = a0 + (a1 - a0) * (k / 5); pts.push([Math.cos(a) * r0, Math.sin(a) * r0]); }
+        inked(g, rng, pts, shade(pick(rng, ['#5e5e54', '#56584e', '#646258']), (rng() - 0.5) * 0.2), o, { grain: rng() * 3, lines: 10, hatch: 0.4, band: 0.5, ink: 1.3 }); } }
+    const shaft = blob(rng, 0, 0, R * 0.62, R * 0.62, 28, 0.03); trace(g, shaft); const sg = g.createRadialGradient(0, 0, 0, 0, 0, R * 0.62); sg.addColorStop(0, '#000'); sg.addColorStop(0.65, '#050403'); sg.addColorStop(1, '#2a2620'); g.fillStyle = sg; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink * 1.4; g.stroke();
+    if (o.season !== 'winter' && !o.cave) for (let i = 0; i < 9; i++) { const a = rng() * 6.28, d = R * (0.6 + rng() * 0.4); speckle(g, rng, Math.cos(a) * d, Math.sin(a) * d, R * 0.08, R * 0.05, 14, MOSS[o.season] ?? MOSS.summer, o.unit * 0.008); }
+    return [outer];
+  } },
+  haystack: { label: 'Hay bales', size: 1.2, height: 0.7, paint(g, s, rng, o) {
+    // Square bales as the village barn draws them: pale straw hatched in strands, two cords round each, the shaded side darker.
+    const out = [], n = 1 + Math.floor(rng() * 3), turn = (rng() - 0.5) * 0.8;
+    for (let i = 0; i < n; i++) { const w = s * 0.62, h = s * 0.34, cx = Math.cos(turn + 1.57) * (i - (n - 1) / 2) * h * 2.05, cy = Math.sin(turn + 1.57) * (i - (n - 1) / 2) * h * 2.05, b = boxAt(cx + (rng() - 0.5) * s * 0.06, cy, w, h, turn + (rng() - 0.5) * 0.12);
+      softShadow(g, b, o);
+      inked(g, rng, b, pick(rng, ['#8a7444', '#7e6a3e', '#96804c']), o, { sharp: true, grain: turn + (rng() - 0.5) * 0.4, lines: 220, hatch: 0.7, band: 0.55, ink: 1.6 });
+      g.save(); poly(g, b); g.clip(); for (let k = 0; k < 90; k++) { const [x, y] = [cx + (rng() - 0.5) * w * 2, cy + (rng() - 0.5) * h * 2], a = turn + (rng() - 0.5) * 0.6, l = w * (0.1 + rng() * 0.2); line(g, [[x, y], [x + Math.cos(a) * l, y + Math.sin(a) * l]], 'rgba(220,196,130,0.45)', Math.max(0.5, o.ink * 0.4)); } g.restore();
+      for (const k of [-0.45, 0.45]) { const c = Math.cos(turn), sn = Math.sin(turn); line(g, [[cx + c * w * k - sn * h, cy + sn * w * k + c * h], [cx + c * w * k + sn * h, cy + sn * w * k - c * h]], '#3a2a14', o.ink * 1.4); }
+      out.push(b); }
+    for (let i = 0; i < 24; i++) { const a = rng() * 6.28, d = s * (0.7 + rng() * 0.25), b = rng() * 6.28, l = s * 0.06; line(g, [[Math.cos(a) * d, Math.sin(a) * d], [Math.cos(a) * d + Math.cos(b) * l, Math.sin(a) * d + Math.sin(b) * l]], 'rgba(200,180,110,0.8)', Math.max(0.5, o.ink * 0.4)); }
+    if (o.snow > 0) for (const b of out) { g.save(); poly(g, b); g.clip(); snowPatch(g, rng, ...centre(b), s * 0.5, s * 0.25, o); g.restore(); }
+    return out;
+  } },
+  firewood: { label: 'Firewood stacks', size: 1.2, height: 0.7, paint(g, s, rng, o) {
+    // As the homestead's hearth pile: split logs laid side by side in one or two stacks, each a long piece of red-brown bark split
+    // by black cracks along it, its ridges catching the light, a little askew on the one below.
+    const turn = (rng() - 0.5) * 0.5, c = Math.cos(turn), sn = Math.sin(turn), at = (u, v) => [c * u - sn * v, sn * u + c * v], stacks = rng() < 0.6 ? 2 : 1, W = s * 0.82, H = s * 0.7, out = [];
+    softShadow(g, boxAt(0, 0, W, H, turn), o, 0.55);
+    for (let st = 0; st < stacks; st++) { const cu = stacks === 2 ? (st ? W * 0.5 : -W * 0.5) : 0, half = stacks === 2 ? W * 0.47 : W * 0.95, rows = 8;
+      for (let r = 0; r < rows; r++) { const v = -H + (r + 0.5) * (H * 2 / rows), [x, y] = at(cu + (rng() - 0.5) * s * 0.05, v), a = turn + 1.57 * 0 + (rng() - 0.5) * 0.12, len = half * (0.85 + rng() * 0.15), th = H / rows * (1.05 + rng() * 0.25);
+        const log = []; for (let k = 0; k <= 6; k++) log.push([x + Math.cos(a) * (-len + (k / 6) * len * 2) - Math.sin(a) * (-th + (rng() - 0.5) * th * 0.15), y + Math.sin(a) * (-len + (k / 6) * len * 2) + Math.cos(a) * (-th + (rng() - 0.5) * th * 0.15)]); for (let k = 6; k >= 0; k--) log.push([x + Math.cos(a) * (-len + (k / 6) * len * 2) - Math.sin(a) * (th + (rng() - 0.5) * th * 0.15), y + Math.sin(a) * (-len + (k / 6) * len * 2) + Math.cos(a) * (th + (rng() - 0.5) * th * 0.15)]);
+        inked(g, rng, log, pick(rng, ['#5a2e1c', '#6a3822', '#4e2818', '#73402a']), o, { sharp: true, band: 0.5, ink: 1.4 });
+        g.save(); poly(g, log); g.clip();
+        for (let k = 0; k < 9; k++) { const u0 = -len + rng() * len * 2, w0 = (rng() - 0.5) * th * 1.6, l0 = len * (0.15 + rng() * 0.35); line(g, [[x + Math.cos(a) * u0 - Math.sin(a) * w0, y + Math.sin(a) * u0 + Math.cos(a) * w0], [x + Math.cos(a) * (u0 + l0) - Math.sin(a) * (w0 + (rng() - 0.5) * th * 0.3), y + Math.sin(a) * (u0 + l0) + Math.cos(a) * (w0 + (rng() - 0.5) * th * 0.3)]], 'rgba(8,3,1,0.85)', Math.max(0.7, o.ink * (0.6 + rng() * 0.6))); }
+        for (let k = 0; k < 7; k++) { const u0 = -len + rng() * len * 2, w0 = -th * (0.2 + rng() * 0.6), l0 = len * (0.08 + rng() * 0.2); line(g, [[x + Math.cos(a) * u0 - Math.sin(a) * w0, y + Math.sin(a) * u0 + Math.cos(a) * w0], [x + Math.cos(a) * (u0 + l0) - Math.sin(a) * w0, y + Math.sin(a) * (u0 + l0) + Math.cos(a) * w0]], pick(rng, ['rgba(190,110,70,0.55)', 'rgba(150,80,50,0.6)']), Math.max(0.6, o.ink * 0.7)); }
+        g.restore(); out.push(log); } }
+    return out;
+  } },
+  choppingBlock: { label: 'Chopping blocks', size: 1.2, height: 0.45, paint(g, s, rng, o) {
+    // As Thorn River Camp's: a broad round of trunk with roots still spreading from it, its cut face pale and drawn with many fine
+    // wobbling rings to the heart, split by a crack or two, a notched band of bark round it, an axe bitten into it.
+    const R = s * 0.5;
+    const roots = 6 + Math.floor(rng() * 3), spots = Array.from({ length: roots }, (_, i) => ({ a: ((i + (rng() - 0.5) * 0.6) / roots) * 6.283, len: 0.35 + rng() * 0.65, wide: 0.5 + rng() * 0.6 })), outer = [];
+    for (let i = 0; i < 96; i++) { const q = (i / 96) * 6.283; let flare = 0; for (const r of spots) { let d = Math.abs(((q - r.a + Math.PI * 3) % 6.283) - Math.PI); d /= (0.42 * r.wide); flare = Math.max(flare, r.len * Math.max(0, 1 - d * d) ** 1.6); } const rr = R * (1.02 + 0.95 * flare) * (1 + (noise(q * 4, 3) - 0.5) * 0.1); outer.push([Math.cos(q) * rr, Math.sin(q) * rr]); }
+    softShadow(g, outer, o, 0.45);
+    inked(g, rng, outer, '#6a5640', o, { sharp: true, band: 0.5, ink: 1.6 });
+    g.save(); poly(g, outer); g.clip(); for (const r of spots) for (let k = 0; k < 8; k++) { const q = r.a + (rng() - 0.5) * 0.5 * r.wide, d0 = R * 0.9, d1 = R * (1.02 + 0.95 * r.len) * (0.7 + rng() * 0.3); grainAlong(g, rng, Math.cos(q) * d0, Math.sin(q) * d0, Math.cos(q) * d1, Math.sin(q) * d1, R * 0.18, 3, o); for (let k = 0; k < 5; k++) { const q = r.a + (rng() - 0.5) * 0.6 * r.wide, d0 = R * (0.95 + rng() * 0.2), d1 = d0 + R * (0.2 + rng() * 0.5) * r.len; line(g, [[Math.cos(q) * d0, Math.sin(q) * d0], [Math.cos(q + (rng() - 0.5) * 0.1) * d1, Math.sin(q + (rng() - 0.5) * 0.1) * d1]], 'rgba(14,8,2,0.7)', Math.max(0.6, o.ink * (0.5 + rng() * 0.5))); } } g.restore();
+    const bark = blob(rng, 0, 0, R, R * 0.96, 26, 0.07); softShadow(g, bark, o);
+    inked(g, rng, bark, '#3e3020', o, { band: 0.3, ink: 1.8 });
+    for (let i = 0; i < 60; i++) { const a = rng() * 6.28; line(g, [[Math.cos(a) * R * 0.86, Math.sin(a) * R * 0.86], [Math.cos(a) * R * (0.97 + rng() * 0.05), Math.sin(a) * R * (0.97 + rng() * 0.05)]], 'rgba(8,4,1,0.7)', Math.max(0.5, o.ink * 0.6)); }
+    const face = blob(rng, 0, 0, R * 0.84, R * 0.8, 26, 0.06); inked(g, rng, face, '#a88a5c', o, { band: 0.3, ink: 1.3 });
+    const k0 = rng() * 50; for (let k = 1; k < 13; k++) { const f = k / 13.5, ring = face.map(([x, y], j) => { const wob = 1 + (noise(j * 0.7 + k0, k * 0.9) - 0.5) * 0.12; return [x * f * wob, y * f * wob]; }); trace(g, ring); g.strokeStyle = `rgba(70,46,20,${0.35 + (k % 3 === 0 ? 0.2 : 0)})`; g.lineWidth = Math.max(0.5, o.ink * (k % 3 === 0 ? 0.7 : 0.45)); g.stroke(); }
+    for (let i = 0; i < 2; i++) { const a = rng() * 6.28; line(g, wander(rng, Math.cos(a) * R * 0.05, Math.sin(a) * R * 0.05, a, 4, R * 0.2, 0.4), 'rgba(30,16,6,0.75)', Math.max(0.6, o.ink * 0.8)); }
+    const a = rng() * 6.28, hx = Math.cos(a) * R * 0.1, hy = Math.sin(a) * R * 0.1;
+    inked(g, rng, boxAt(hx + Math.cos(a) * R * 0.85, hy + Math.sin(a) * R * 0.85, R * 0.8, R * 0.07, a), '#7a5a34', o, { sharp: true, grain: a, lines: 5, hatch: 0.4, ink: 1.4 });
+    inked(g, rng, [[hx - Math.sin(a) * R * 0.32, hy + Math.cos(a) * R * 0.32], [hx + Math.sin(a) * R * 0.26, hy - Math.cos(a) * R * 0.26], [hx + Math.cos(a) * R * 0.14 + Math.sin(a) * R * 0.12, hy + Math.sin(a) * R * 0.14 - Math.cos(a) * R * 0.12], [hx + Math.cos(a) * R * 0.14 - Math.sin(a) * R * 0.12, hy + Math.sin(a) * R * 0.14 + Math.cos(a) * R * 0.12]], '#6e6c66', o, { sharp: true, band: 0.35, ink: 1.5 });
+    return [bark];
+  } },
+  cart: { label: 'Carts', size: 2.6, height: 1.0, paint(g, s, rng, o) {
+    // As Oleg's wagon: a grey-brown plank bed in a frame, iron bands bolted at its corners, the wheels' rims either side, two shafts.
+    const turn = rng() * 6.28, c = Math.cos(turn), sn = Math.sin(turn), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.62, W = s * 0.4;
+    for (const k of [-1, 1]) { const shaft = boxAt(...at(L * 1.2, k * W * 0.55), L * 0.32, W * 0.06, turn - k * 0.08); inked(g, rng, shaft, '#6a5a44', o, { sharp: true, grain: turn, lines: 3, ink: 1.2 }); }
+    for (const k of [-1, 1]) for (const j of [-0.15]) { const wheel = boxAt(...at(L * j, k * W * 1.1), L * 0.42, W * 0.1, turn); inked(g, rng, wheel, '#3a3028', o, { sharp: true, band: 0.3, ink: 1.4 }); for (let i = -2; i <= 2; i++) { g.beginPath(); g.arc(...at(L * j + i * L * 0.18, k * W * 1.1), Math.max(1, W * 0.035), 0, 6.283); g.fillStyle = '#8a8478'; g.fill(); } }
+    const bed = boxAt(0, 0, L, W, turn); softShadow(g, bed, o, 0.5); inked(g, rng, bed, '#857660', o, { sharp: true, grain: turn, lines: 40, hatch: 0.45, ink: 1.7 });
+    for (let i = 1; i < 6; i++) line(g, [at(-L, -W + (i / 6) * W * 2), at(L, -W + (i / 6) * W * 2)], 'rgba(20,12,4,0.7)', o.ink * 0.8);
+    for (const k of [-1, 1]) { const rail = boxAt(...at(0, k * W * 0.93), L, W * 0.08, turn); inked(g, rng, rail, '#5a4e3e', o, { sharp: true, grain: turn, lines: 3, ink: 1.2 }); }
+    for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { const band = boxAt(...at(u * L * 0.9, v * W * 0.9), L * 0.1, W * 0.12, turn); inked(g, rng, band, '#3e3c38', o, { sharp: true, band: 0.2, ink: 1 }); g.beginPath(); g.arc(...at(u * L * 0.9, v * W * 0.9), Math.max(1, W * 0.04), 0, 6.283); g.fillStyle = '#9a948a'; g.fill(); }
+    return [bed];
+  } },
+  sacks: { label: 'Sacks', size: 1.4, height: 0.5, paint(g, s, rng, o) {
+    // As the village alley's: burlap sacks fat at the bottom and gathered at the neck, slumped against each other, the weave hatched
+    // fine both ways, folds running down from the neck, a grey shade band, and the neck tied off with cord in a loose knot.
+    const out = [], n = 2 + Math.floor(rng() * 2), base = rng() * 6.28;
+    for (let i = 0; i < n; i++) { const off = (i - (n - 1) / 2) * s * 0.42, x = -Math.sin(base) * off + (rng() - 0.5) * s * 0.12, y = Math.cos(base) * off + (rng() - 0.5) * s * 0.12, r = s * (0.33 + rng() * 0.06), turn = base + (rng() - 0.5) * 0.6, c = Math.cos(turn), sn = Math.sin(turn), at = (u, v) => [x + c * u - sn * v, y + sn * u + c * v];
+      // Pear-shaped: wide at its bottom (u < 0), drawn in toward the neck (u > 0).
+      const sack = []; for (let k = 0; k < 24; k++) { const q = (k / 24) * 6.283, u = Math.cos(q) * r, wide = u < 0 ? 1 : 1 - (u / r) * 0.32; sack.push(at(u, Math.sin(q) * r * 0.82 * wide * (1 + (rng() - 0.5) * 0.06))); }
+      softShadow(g, sack, o, 0.45); inked(g, rng, sack, pick(rng, ['#b8ae94', '#aca288', '#c2b89e']), o, { grain: turn + 0.785, lines: 180, hatch: 0.1, cross: true, band: 0.6, ink: 1.8 });
+      for (let k = 0; k < 4; k++) { const v0 = (rng() - 0.5) * r * 0.25, p = [at(r * 0.95, v0), at(r * 0.4, v0 * 2.2 + (rng() - 0.5) * r * 0.2), at(-r * (0.1 + rng() * 0.4), v0 * 3 + (rng() - 0.5) * r * 0.3)]; g.beginPath(); g.moveTo(...p[0]); g.quadraticCurveTo(...p[1], ...p[2]); g.strokeStyle = 'rgba(40,32,20,0.45)'; g.lineWidth = Math.max(0.6, o.ink * 0.7); g.stroke(); }
+      const neck = []; for (let k = 0; k < 14; k++) { const q = (k / 14) * 6.283; neck.push(at(r * 1.12 + Math.cos(q) * r * 0.26, Math.sin(q) * r * 0.36 * (k % 2 ? 0.72 : 1))); } inked(g, rng, neck, '#a89e84', o, { sharp: true, band: 0.45, ink: 1.5, grain: turn, lines: 10, hatch: 0.3 }); for (let k = 0; k < 5; k++) { const v = (k - 2) * r * 0.08; line(g, [at(r * 0.95, v * 0.6), at(r * 1.3, v * 1.3)], 'rgba(40,32,20,0.55)', Math.max(0.6, o.ink * 0.6)); }
+      for (const k of [-1, 1]) { const [lx, ly] = at(r * 0.9, k * r * 0.16); g.beginPath(); g.ellipse(lx, ly, r * 0.12, r * 0.07, turn + k * 0.9, 0, 6.283); g.strokeStyle = INKD; g.lineWidth = o.ink * 1.8; g.stroke(); g.strokeStyle = '#6a5a3e'; g.lineWidth = o.ink * 0.8; g.stroke(); }
+      line(g, [at(r * 0.92, -r * 0.2), at(r * 0.92, r * 0.2)], INKD, o.ink * 1.8);
+      out.push(sack); }
+    return out;
+  } },
+  fence: { label: 'Fences', size: 2.0, height: 0.8, paint(g, s, rng, o) {
+    // As the village barn's: one squared brown rail, grain along it, square posts at either end and between with a ring on their tops.
+    const turn = (rng() - 0.5) * 0.3, out = [], rail = boxAt(0, 0, s * 0.96, s * 0.045, turn); softShadow(g, rail, o, 0.35);
+    inked(g, rng, rail, '#6a5236', o, { sharp: true, grain: turn, lines: 8, hatch: 0.45, ink: 1.4 }); out.push(rail);
+    for (let i = 0; i < 3; i++) { const u = -s * 0.9 + i * s * 0.9, x = Math.cos(turn) * u, y = Math.sin(turn) * u, post = boxAt(x, y, s * 0.085, s * 0.085, turn + (rng() - 0.5) * 0.2);
+      inked(g, rng, post, '#5e4a32', o, { sharp: true, grain: rng() * 3, lines: 4, hatch: 0.35, ink: 1.5 });
+      for (let k = 1; k <= 2; k++) { g.beginPath(); g.arc(x, y, s * 0.028 * k, 0, 6.283); g.strokeStyle = 'rgba(30,18,8,0.55)'; g.lineWidth = Math.max(0.5, o.ink * 0.5); g.stroke(); } out.push(post); }
+    return out;
+  } },
+  signpost: { label: 'Signposts', size: 0.8, height: 1.8, paint(g, s, rng, o) {
+    // From above: the post's squared top and boards pointing two or three ways, grain along them, their letters cut as dark notches.
+    const out = [], n = 2 + Math.floor(rng() * 2);
+    for (let i = 0; i < n; i++) { const a = rng() * 6.28, l = s * (0.72 + rng() * 0.15), w = s * 0.1, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], board = [at(-s * 0.05, -w), at(l - w, -w), at(l, 0), at(l - w, w), at(-s * 0.05, w)];
+      softShadow(g, board, o, 0.3); inked(g, rng, board, '#7a6040', o, { sharp: true, grain: a, lines: 6, hatch: 0.4, ink: 1.3 });
+      for (let k = 0; k < 5; k++) { const u = s * 0.18 + k * l * 0.13; line(g, [at(u, -w * 0.35), at(u, w * 0.35)], 'rgba(20,12,4,0.55)', Math.max(0.6, o.ink * 0.6)); } out.push(board); }
+    const top = boxAt(0, 0, s * 0.11, s * 0.11, rng()); inked(g, rng, top, '#5a4430', o, { sharp: true, grain: 0, lines: 3, ink: 1.4 }); out.push(top);
+    return out;
+  } },
+  rubbish: { label: 'Rubbish heaps', size: 1.6, height: 0.3, paint(g, s, rng, o) {
+    // As Whiterose Abbey's midden: big terracotta pots lying on their sides, mouths dark, holed and cracked, splintered planks
+    // thrown across, straw and scraps between.
+    speckle(g, rng, 0, 0, s * 0.8, s * 0.65, 120, ['#3a2c1a', '#5a4a2a', '#8a7a50'], o.unit * 0.008);
+    for (let i = 0; i < 26; i++) { const a = rng() * 6.28, d = rng() * s * 0.8, b = rng() * 6.28, l = s * 0.07; line(g, [[Math.cos(a) * d, Math.sin(a) * d], [Math.cos(a) * d + Math.cos(b) * l, Math.sin(a) * d + Math.sin(b) * l]], 'rgba(190,170,110,0.7)', Math.max(0.5, o.ink * 0.45)); }
+    const out = [], n = 2 + Math.floor(rng() * 2), base = rng() * 6.28;
+    for (let i = 0; i < n; i++) { const a = base + (i / n) * 6.283, d = s * 0.42, x = Math.cos(a) * d, y = Math.sin(a) * d, r = s * (0.24 + rng() * 0.05), turn = rng() * 6.28, c = Math.cos(turn), sn = Math.sin(turn), at = (u, v) => [x + c * u - sn * v, y + sn * u + c * v];
+      // On its side: a fat belly narrowing to a neck, the mouth an open dark ring at the narrow end.
+      const pot = []; for (let k = 0; k < 24; k++) { const q = (k / 24) * 6.283, u = Math.cos(q) * r, wide = u > r * 0.4 ? 0.62 + 0.38 * (1 - (u - r * 0.4) / (r * 0.6)) : 1; pot.push(at(u, Math.sin(q) * r * 0.8 * wide)); }
+      softShadow(g, pot, o, 0.5); inked(g, rng, pot, pick(rng, ['#9a5232', '#8a4a2c', '#a85e38']), o, { grain: turn + 1.57, lines: 14, hatch: 0.2, band: 0.55, lit: 0.08, ink: 1.7 });
+      const mouth = []; for (let k = 0; k < 16; k++) { const q = (k / 16) * 6.283; mouth.push(at(r * 1.0 + Math.cos(q) * r * 0.12, Math.sin(q) * r * 0.5)); } inked(g, rng, mouth, '#7a3e22', o, { band: 0.3, ink: 1.4 }); trace(g, moved(mouth, ...at(r, 0), 0.6)); g.fillStyle = '#1a0a04'; g.fill();
+      if (rng() < 0.7) { const h0 = rng() * 6.28, hc = at(-r * 0.2, (rng() - 0.5) * r * 0.6), hole = []; for (let k = 0; k < 7; k++) { const q = h0 + (k / 7) * 6.283; hole.push([hc[0] + Math.cos(q) * r * (0.16 + rng() * 0.1), hc[1] + Math.sin(q) * r * (0.16 + rng() * 0.1)]); } poly(g, hole); g.fillStyle = '#1e0e06'; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink * 1.2; g.stroke(); }
+      line(g, wander(rng, ...at(-r * 0.7, -r * 0.3), turn + 0.6, 4, r * 0.2, 1.3), INKD, Math.max(0.7, o.ink * 0.9)); out.push(pot); }
+    for (let i = 0; i < 2; i++) { const a = base + 0.8 + i * 2.2, plank = boxAt((rng() - 0.5) * s * 0.3, (rng() - 0.5) * s * 0.3, s * (0.62 + rng() * 0.15), s * 0.075, a); inked(g, rng, plank, '#7a5e3c', o, { sharp: true, grain: a, lines: 8, hatch: 0.45, ink: 1.4 }); const [x, y] = plank[1]; for (let k = 0; k < 4; k++) { const b = a + (rng() - 0.5) * 0.6, l = s * (0.06 + rng() * 0.1); poly(g, [[x, y - s * 0.02], [x + Math.cos(b) * l, y + Math.sin(b) * l], [x, y + s * 0.02]]); g.fillStyle = '#8a6c46'; g.fill(); g.strokeStyle = INKD; g.lineWidth = Math.max(0.6, o.ink * 0.7); g.stroke(); } }
+    return out;
+  } },
+  cobbles: { label: 'Paving', size: 1.4, height: 0, flat: true, paint(g, s, rng, o) {
+    // Cut setts as the Pitaxian avenue lays them: sandstone squares rounded at their corners, warm and slightly worn, set in dark
+    // brown grout in rough curved rows, the patch breaking up at its edges.
+    const cell = o.unit * 0.17, turn = (rng() - 0.5) * 0.4, c = Math.cos(turn), sn = Math.sin(turn), bend = (rng() - 0.5) * 0.4;
+    const setts = [];
+    for (let v = -s; v < s; v += cell) for (let u = -s + (Math.round(v / cell) % 2 ? cell / 2 : 0); u < s; u += cell) { const vv = v + bend * (u * u) / s, x = c * u - sn * vv, y = sn * u + c * vv, d = Math.hypot(x, y) / (s * 0.85); if (d > 1 || rng() < (d - 0.6) * 1.8) continue; setts.push([x, y]); }
+    g.save(); for (const [x, y] of setts) { g.beginPath(); g.arc(x, y, cell * 0.56, 0, 6.283); g.fillStyle = '#6e5028'; g.fill(); } g.restore();
+    for (const [x, y] of setts) { const w = cell * (0.45 + rng() * 0.03), h = cell * (0.43 + rng() * 0.04), tt = turn + (rng() - 0.5) * 0.18, pts = []; for (let k = 0; k < 16; k++) { const q = (k / 16) * 6.283, ex = Math.sign(Math.cos(q)) * Math.pow(Math.abs(Math.cos(q)), 0.5) * w, ey = Math.sign(Math.sin(q)) * Math.pow(Math.abs(Math.sin(q)), 0.5) * h; pts.push([x + Math.cos(tt) * ex - Math.sin(tt) * ey + (rng() - 0.5) * cell * 0.05, y + Math.sin(tt) * ex + Math.cos(tt) * ey + (rng() - 0.5) * cell * 0.05]); }
+      inked(g, rng, pts, shade(pick(rng, ['#c8ac74', '#bca068', '#d4b880']), (rng() - 0.5) * 0.14), o, { band: 0.45, lit: 0.08, ink: 0.9, grain: rng() * 3, lines: 4, hatch: 0.2 }); }
+    return null;
+  } },
+  tombstone: { label: 'Gravestones', size: 1.0, height: 0.3, paint(g, s, rng, o) {
+    // As Whiterose Abbey's: a grey slab lying flat (or tipped back), its edges worn round, two lines of an inscription cut in it, ferns
+    // and grass crowding round its foot.
+    const turn = (rng() - 0.5) * 0.4, slab = blob(rng, 0, 0, s * 0.42, s * 0.62, 12, 0.03, turn + 1.57 * 0), w = s * 0.5, h = s * 0.58, c = Math.cos(turn), sn = Math.sin(turn), at = (u, v) => [c * u - sn * v, sn * u + c * v];
+    const pts = []; for (let i = 0; i < 24; i++) { const t = (i / 24) * 6.283, ex = Math.sign(Math.cos(t)) * Math.pow(Math.abs(Math.cos(t)), 0.3) * w, ey = Math.sign(Math.sin(t)) * Math.pow(Math.abs(Math.sin(t)), 0.3) * h; pts.push(at(ex + (rng() - 0.5) * s * 0.02, ey + (rng() - 0.5) * s * 0.02)); }
+    void slab; softShadow(g, pts, o, 0.5);
+    inked(g, rng, pts, pick(rng, ['#8a8a80', '#7e7e74', '#94928a']), o, { grain: turn, lines: 10, hatch: 0.15, band: 0.4, ink: 1.6 });
+    for (let k = 0; k < 2 + Math.floor(rng() * 2); k++) line(g, [at(-w * 0.55, -h * 0.25 + k * h * 0.22), at(-w * 0.1, -h * 0.25 + k * h * 0.22 + s * 0.01), at(w * 0.5, -h * 0.25 + k * h * 0.22)], 'rgba(20,16,10,0.65)', o.ink * 0.9);
+    if (o.season !== 'winter') for (let i = 0; i < 3; i++) tuft(g, rng, ...at((rng() - 0.5) * w * 2.2, h * (0.8 + rng() * 0.3)), s * 0.35, o);
+    if (o.snow > 0) { g.save(); trace(g, pts); g.clip(); snowPatch(g, rng, 0, 0, w, h, o); g.restore(); }
+    return [pts];
+  } },
+  // --- Wildlife ------------------------------------------------------------------------------------------------------------------------
+  nest: { label: 'Bird nests', size: 0.6, height: 0.2, paint(g, s, rng, o) {
+    // A woven ring of twigs and straw, each strand inked, the cup inside lined pale, eggs in it (or empty).
+    const R = s * 0.78, out = blob(rng, 0, 0, R, R * 0.92, 16, 0.08); softShadow(g, out, o);
+    trace(g, out); g.fillStyle = '#4a3a24'; g.fill();
+    for (let i = 0; i < 120; i++) { const a = rng() * 6.28, d = R * (0.5 + rng() * 0.48), b = a + 1.57 + (rng() - 0.5) * 0.7, l = R * (0.2 + rng() * 0.3), p = [[Math.cos(a) * d - Math.cos(b) * l / 2, Math.sin(a) * d - Math.sin(b) * l / 2], [Math.cos(a) * d + Math.cos(b) * l / 2, Math.sin(a) * d + Math.sin(b) * l / 2]]; line(g, p, INKD, Math.max(0.8, o.ink * 0.9)); line(g, p, pick(rng, ['#8a7048', '#a8905a', '#6a5232', '#c8b07a']), Math.max(0.5, o.ink * 0.45)); }
+    const cup = blob(rng, 0, 0, R * 0.5, R * 0.46, 14, 0.1); trace(g, cup); g.fillStyle = '#5a4a32'; g.fill(); g.save(); trace(g, cup); g.clip(); for (let i = 0; i < 40; i++) { const a = rng() * 6.28, d = rng() * R * 0.5, b = rng() * 6.28, l = R * 0.15; line(g, [[Math.cos(a) * d, Math.sin(a) * d], [Math.cos(a) * d + Math.cos(b) * l, Math.sin(a) * d + Math.sin(b) * l]], 'rgba(200,180,130,0.6)', Math.max(0.5, o.ink * 0.4)); } g.restore(); trace(g, cup); g.strokeStyle = INKD; g.lineWidth = o.ink; g.stroke();
+    if (rng() < 0.75) for (let i = 0; i < 2 + Math.floor(rng() * 2); i++) { const a = rng() * 6.28, x = Math.cos(a) * R * 0.17, y = Math.sin(a) * R * 0.17, egg = blob(rng, x, y, R * 0.15, R * 0.11, 12, 0.02, a); inked(g, rng, egg, pick(rng, ['#d4d8c8', '#c8d0d0', '#d8d0bc']), o, { band: 0.3, ink: 1.1 }); speckle(g, rng, x, y, R * 0.1, R * 0.07, 7, ['#5a4a3a'], R * 0.012); }
+    return [out];
+  } },
+  beehive: { label: 'Beehives', size: 0.7, height: 0.8, paint(g, s, rng, o) {
+    // A straw skep: hatched in coils round to its crown, darker where it turns from the light, its door at the foot, a few bees.
+    const R = s * 0.68, dome = blob(rng, 0, 0, R, R, 24, 0.02); softShadow(g, dome, o);
+    inked(g, rng, dome, '#8e7438', o, { band: 0.55, ink: 1.7 });
+    g.save(); trace(g, dome); g.clip(); for (let r = R * 0.95; r > R * 0.1; r -= R * 0.09) { g.beginPath(); g.arc(-(1 - r / R) * R * 0.12, -(1 - r / R) * R * 0.14, r, 0, 6.283); g.strokeStyle = 'rgba(30,18,4,0.3)'; g.lineWidth = Math.max(0.5, o.ink * 0.5); g.stroke(); for (let k = 0; k < 44; k++) { const a = (k / 30) * 6.283 + r; line(g, [[Math.cos(a) * r * 0.98, Math.sin(a) * r * 0.98], [Math.cos(a + 0.08) * (r - R * 0.1), Math.sin(a + 0.08) * (r - R * 0.1)]], 'rgba(30,18,4,0.5)', Math.max(0.5, o.ink * 0.4)); } } g.restore();
+    const a = 1.2 + rng(); g.beginPath(); g.ellipse(Math.cos(a) * R * 0.9, Math.sin(a) * R * 0.9, R * 0.13, R * 0.07, a + 1.57, 0, 6.283); g.fillStyle = '#0e0802'; g.fill();
+    for (let i = 0; i < 7; i++) { const b = rng() * 6.28, d = R * (1.05 + rng() * 0.4); g.beginPath(); g.ellipse(Math.cos(b) * d, Math.sin(b) * d, o.unit * 0.011, o.unit * 0.007, rng() * 3, 0, 6.283); g.fillStyle = '#c89a20'; g.fill(); g.strokeStyle = INKD; g.lineWidth = Math.max(0.5, o.ink * 0.5); g.stroke(); }
+    return [dome];
+  } },
+  burrow: { label: 'Burrows', size: 0.9, height: 0, flat: true, paint(g, s, rng, o) {
+    // A hole dug into the ground, black inside, its lip of earth inked, the spoil thrown out in a fan of loose clods.
+    const a = rng() * 6.28;
+    for (let i = 0; i < 26; i++) { const b = a + (rng() - 0.5) * 1.6, d = s * (0.35 + rng() * 0.5), r = s * (0.03 + rng() * 0.05), clod = blob(rng, Math.cos(b) * d, Math.sin(b) * d, r, r * 0.8, 6, 0.3); inked(g, rng, clod, pick(rng, ['#6a4e30', '#7a5a38', '#5a4028']), o, { band: 0.3, ink: 0.9 }); }
+    const lip = blob(rng, 0, 0, s * 0.38, s * 0.3, 14, 0.15); inked(g, rng, lip, '#5a4228', o, { band: 0.4, ink: 1.5 });
+    const hole = moved(lip, 0, 0, 0.72, s * 0.02, s * 0.02); trace(g, hole); const hg = g.createRadialGradient(0, 0, 0, 0, 0, s * 0.3); hg.addColorStop(0, '#000'); hg.addColorStop(0.8, '#0a0604'); hg.addColorStop(1, '#2a1a0c'); g.fillStyle = hg; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink * 1.2; g.stroke();
+    return null;
+  } },
+  anthill: { label: 'Anthills', size: 0.8, height: 0.25, paint(g, s, rng, o) {
+    // A heap of grit and pine needles hatched over, built up to a dark hole, ants trailing off over the ground.
+    const R = s * 0.72, hull = blob(rng, 0, 0, R, R * 0.88, 18, 0.14); softShadow(g, hull, o);
+    inked(g, rng, hull, '#5e4a30', o, { band: 0.55, ink: 1.5 });
+    g.save(); trace(g, hull); g.clip(); speckle(g, rng, 0, 0, R, R, 420, ['#8a6e46', '#4a3620', '#2a1c10', '#a88c60'], o.unit * 0.006); for (let i = 0; i < 50; i++) { const b = rng() * 6.28, d = rng() * R, c = rng() * 6.28, l = R * 0.12; line(g, [[Math.cos(b) * d, Math.sin(b) * d], [Math.cos(b) * d + Math.cos(c) * l, Math.sin(b) * d + Math.sin(c) * l]], 'rgba(30,20,8,0.55)', Math.max(0.5, o.ink * 0.4)); } g.restore();
+    g.beginPath(); g.arc(-R * 0.08, -R * 0.1, R * 0.09, 0, 6.283); g.fillStyle = '#0a0602'; g.fill();
+    for (const [x, y] of wander(rng, R * 0.85, 0, rng() * 6.28, 9, R * 0.13, 0.8)) { g.fillStyle = '#0e0804'; g.beginPath(); g.arc(x, y, Math.max(0.8, o.unit * 0.004), 0, 6.283); g.fill(); }
+    return [hull];
+  } },
+  carcass: { label: 'Carcasses', size: 1.5, height: 0.35, paint(g, s, rng, o) {
+    // As Hilltop Grave's bones: yellow-ochre bone, heavily inked, a spine and ribs, a skull with antlers, moss creeping on them,
+    // dark stains soaked into the ground round them.
+    const turn = rng() * 6.28, c = Math.cos(turn), sn = Math.sin(turn), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.58, out = [], bone = ['#b8a670', '#8e7e50'];
+    g.save(); g.filter = `blur(${Math.max(1, s * 0.06)}px)`; trace(g, blob(rng, 0, 0, s * 0.7, s * 0.4, 12, 0.35, turn)); g.fillStyle = 'rgba(40,22,10,0.45)'; g.fill(); g.restore();
+    for (let k = 0; k < 8; k++) { const u = -L * 0.5 + (k / 7) * L; for (const side of [-1, 1]) { if (rng() < 0.12) continue; const p = []; for (let t = 0; t <= 5; t++) { const f = t / 5; p.push(at(u - f * f * L * 0.15, side * f * L * 0.5 * (k > 5 ? 0.6 : 1))); } line(g, p, INKD, o.unit * 0.05 + o.ink * 1.8); line(g, p, bone[1], o.unit * 0.05); line(g, p.map(([x, y]) => [x - 0.8, y - 0.8]), bone[0], o.unit * 0.02); out.push(p); } }
+    for (let k = 0; k < 11; k++) { const [x, y] = at(-L * 0.75 + k * L * 0.15, 0), v = blob(rng, x, y, o.unit * 0.06, o.unit * 0.045, 8, 0.15, turn); inked(g, rng, v, bone[0], o, { band: 0.4, ink: 1.3 }); out.push(v); }
+    const skull = blob(rng, ...at(L * 0.98, s * 0.04), s * 0.15, s * 0.09, 12, 0.08, turn); inked(g, rng, skull, bone[0], o, { band: 0.45, ink: 1.5 }); out.push(skull);
+    for (const k of [-1, 1]) { g.beginPath(); g.ellipse(...at(L * 0.98, s * 0.04 + k * s * 0.04), s * 0.025, s * 0.02, turn, 0, 6.283); g.fillStyle = '#1a1006'; g.fill(); }
+    for (const side of [-1, 1]) { let a = turn + side * 2.3, [x, y] = at(L * 0.9, s * 0.04 + side * s * 0.05); const p = [[x, y]]; for (let k = 0; k < 4; k++) { x += Math.cos(a) * s * 0.09; y += Math.sin(a) * s * 0.09; p.push([x, y]); if (k === 1 || k === 2) { const q = [[x, y], [x + Math.cos(a + side * 0.9) * s * 0.08, y + Math.sin(a + side * 0.9) * s * 0.08]]; line(g, q, INKD, o.unit * 0.018 + o.ink * 1.2); line(g, q, bone[1], o.unit * 0.018); } a -= side * 0.35; } line(g, p, INKD, o.unit * 0.022 + o.ink * 1.2); line(g, p, bone[1], o.unit * 0.022); }
+    if (o.season !== 'winter') for (let i = 0; i < 4; i++) speckle(g, rng, ...at((rng() - 0.5) * L * 1.4, (rng() - 0.5) * L * 0.4), s * 0.08, s * 0.05, 14, MOSS[o.season] ?? MOSS.summer, o.unit * 0.008);
+    return out;
+  } },
+  feathers: { label: 'Feathers', size: 0.6, height: 0, flat: true, paint(g, s, rng, o) {
+    // Feathers strewn where something was caught: inked vanes with fine barbs hatched, a dark quill down each.
+    const colors = pick(rng, [['#d8d2c4', '#8a8478'], ['#6a5440', '#2a2018'], ['#5a6068', '#c8ccd0']]);
+    for (let i = 0; i < 7; i++) { const a = rng() * 6.28, d = Math.sqrt(rng()) * s * 0.7, x = Math.cos(a) * d, y = Math.sin(a) * d, b = rng() * 6.28, l = s * (0.2 + rng() * 0.14), cb = Math.cos(b), sb = Math.sin(b);
+      const vane = [[x, y]]; for (let k = 1; k <= 8; k++) { const t = k / 8, w = l * 0.16 * Math.sin(t * Math.PI) * (t < 0.9 ? 1 : 0.5); vane.push([x + cb * l * t - sb * w, y + sb * l * t + cb * w]); } for (let k = 8; k >= 1; k--) { const t = k / 8, w = l * 0.13 * Math.sin(t * Math.PI); vane.push([x + cb * l * t + sb * w, y + sb * l * t - cb * w]); }
+      inked(g, rng, vane, colors[0], o, { grain: b + 1.1, lines: 10, hatch: 0.35, band: 0.3, ink: 0.9 });
+      line(g, [[x - cb * l * 0.12, y - sb * l * 0.12], [x + cb * l * 0.95, y + sb * l * 0.95]], colors[1], Math.max(0.6, o.ink * 0.7)); }
+    return null;
+  } },
+  tracks: { label: 'Tracks', size: 1.4, height: 0, flat: true, paint(g, s, rng, o) {
+    // A line of prints pressed into soft ground, each a darker hollow with its rim lit: a deer's split hooves or a wolf's pad and toes.
+    const wolf = rng() < 0.5, a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], deep = o.snow > 0 ? '90,110,130' : '26,16,6', rim = o.snow > 0 ? '255,255,255' : '220,200,160', step = o.unit * 0.24;
+    const press = (x, y, rx, ry, turn) => { g.beginPath(); g.ellipse(x, y, rx, ry, turn, 0, 6.283); g.fillStyle = `rgba(${deep},0.5)`; g.fill(); g.beginPath(); g.ellipse(x - rx * 0.15, y - ry * 0.2, rx, ry, turn, Math.PI * 0.9, Math.PI * 1.9); g.strokeStyle = `rgba(${rim},0.25)`; g.lineWidth = Math.max(0.5, o.ink * 0.5); g.stroke(); };
+    for (let i = 0, u = -s * 0.9; u < s * 0.9; i++, u += step) { const [x, y] = at(u, (i % 2 ? 1 : -1) * o.unit * 0.06);
+      if (wolf) { press(x, y, o.unit * 0.028, o.unit * 0.024, a); for (let k = 0; k < 4; k++) { const t = a + (k - 1.5) * 0.42; press(x + Math.cos(t) * o.unit * 0.048, y + Math.sin(t) * o.unit * 0.048, o.unit * 0.011, o.unit * 0.013, t); } }
+      else for (const k of [-1, 1]) press(x - sn * k * o.unit * 0.013, y + c * k * o.unit * 0.013, o.unit * 0.03, o.unit * 0.011, a); }
+    return null;
+  } },
+  // --- Underground and dungeons ---------------------------------------------------------------------------------------------------------
+  rails: { label: 'Mine rails', size: 2.0, height: 0, flat: true, paint(g, s, rng, o) {
+    // As the collapsed mine's track: pale timber sleepers with ink grain and nail heads, some split, two dark iron rails over them.
+    const turn = (rng() - 0.5) * 0.3, c = Math.cos(turn), sn = Math.sin(turn), at = (u, v) => [c * u - sn * v, sn * u + c * v], gauge = s * 0.24;
+    for (let u = -s * 0.92; u < s * 0.95; u += s * (0.2 + rng() * 0.06)) { const w = s * (0.06 + rng() * 0.025), sl = boxAt(...at(u + (rng() - 0.5) * s * 0.03, 0), w, gauge * 1.55 * (rng() < 0.15 ? 0.6 : 1), turn + 1.57 * 0 + (rng() - 0.5) * 0.08);
+      inked(g, rng, sl.map(([x, y]) => [x, y]), shade('#a88a5a', (rng() - 0.5) * 0.2), o, { sharp: true, grain: turn + 1.57, lines: 5, hatch: 0.45, ink: 1.3 });
+      for (const v of [-gauge, gauge]) { g.beginPath(); g.arc(...at(u, v), Math.max(1, s * 0.012), 0, 6.283); g.fillStyle = '#2a2622'; g.fill(); } }
+    for (const v of [-gauge, gauge]) { const p = [at(-s * 0.97, v), at(s * 0.97, v)]; line(g, p, INKD, o.unit * 0.045 + o.ink * 1.6); line(g, p, '#2e2a26', o.unit * 0.045); line(g, p.map(([x, y]) => [x, y - o.ink * 0.6]), '#7a746a', o.ink * 0.7); }
+    return null;
+  } },
+  mineCart: { label: 'Mine carts', size: 1.0, height: 0.7, paint(g, s, rng, o) {
+    // A plank ore truck in an iron-shod frame, its wheels' rims at the sides, heaped with rounded tan rock as Giant's Cave's crates are.
+    const turn = (rng() - 0.5) * 0.5, c = Math.cos(turn), sn = Math.sin(turn), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.72, W = s * 0.5;
+    for (const k of [-1, 1]) for (const j of [-1, 1]) inked(g, rng, boxAt(...at(j * L * 0.6, k * W * 1.08), s * 0.13, s * 0.05, turn), '#2a2826', o, { sharp: true, ink: 1.2 });
+    const tub = boxAt(0, 0, L, W, turn); softShadow(g, tub, o, 0.5); inked(g, rng, tub, '#7a5a38', o, { sharp: true, grain: turn, lines: 30, hatch: 0.5, ink: 1.8 }); for (let k = 1; k < 4; k++) line(g, [at(-L, -W + k * W / 2), at(L, -W + k * W / 2)], 'rgba(20,12,4,0.7)', o.ink * 0.9);
+    const inner = boxAt(0, 0, L * 0.84, W * 0.76, turn); poly(g, inner); g.fillStyle = '#2a1e12'; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink; g.stroke();
+    g.save(); poly(g, inner); g.clip(); for (let i = 0; i < 26; i++) { const [x, y] = at((rng() - 0.5) * L * 1.6, (rng() - 0.5) * W * 1.4), r = s * (0.08 + rng() * 0.05); inked(g, rng, blob(rng, x, y, r, r * 0.72, 9, 0.18, rng() * 3), pick(rng, ['#9a8058', '#8a7050', '#a88c62']), o, { band: 0.55, lit: 0.1, ink: 1.2, grain: rng() * 3, lines: 3, hatch: 0.3 }); } g.restore();
+    for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { inked(g, rng, boxAt(...at(u * L * 0.9, v * W * 0.88), L * 0.12, W * 0.12, turn), '#3a3834', o, { sharp: true, band: 0.2, ink: 1 }); g.beginPath(); g.arc(...at(u * L * 0.9, v * W * 0.88), Math.max(1, s * 0.022), 0, 6.283); g.fillStyle = '#8a847a'; g.fill(); }
+    return [tub];
+  } },
+  oreVein: { label: 'Ore veins', size: 1.2, height: 0, flat: true, paint(g, s, rng, o) {
+    // A seam of ore in the floor's rock: a dark crack, its walls inked, metal showing in it in dull flakes, a glint here and there.
+    const [main, dark] = pick(rng, [['#b89038', '#5a400e'], ['#a8643a', '#4a2410'], ['#7a8a96', '#30383e'], ['#4a9078', '#183e30']]);
+    const veins = [wander(rng, -s * 0.85, (rng() - 0.5) * s * 0.4, (rng() - 0.5) * 0.6, 9, s * 0.2, 0.7)]; for (let i = 0; i < 3; i++) { const p = pick(rng, veins[0]); veins.push(wander(rng, p[0], p[1], rng() * 6.28, 4, s * 0.12, 0.8)); }
+    for (const v of veins) { line(g, v, INKD, o.unit * 0.05); line(g, v, '#1a1612', o.unit * 0.036); }
+    for (const v of veins) for (let k = 1; k < v.length; k++) for (let j = 0; j < 4; j++) { const t = rng(), x = v[k - 1][0] + (v[k][0] - v[k - 1][0]) * t + (rng() - 0.5) * o.unit * 0.02, y = v[k - 1][1] + (v[k][1] - v[k - 1][1]) * t + (rng() - 0.5) * o.unit * 0.02, f = blob(rng, x, y, o.unit * 0.014, o.unit * 0.009, 5, 0.3); inked(g, rng, f, mix(main, dark, rng() * 0.5), o, { band: 0.2, lit: 0.3, ink: 0.6 }); }
+    for (const v of veins) for (const [x, y] of v) if (rng() < 0.15) { g.beginPath(); g.arc(x, y, o.unit * 0.005, 0, 6.283); g.fillStyle = 'rgba(255,244,210,0.8)'; g.fill(); }
+    return null;
+  } },
+  pickaxe: { label: 'Dropped tools', size: 0.7, height: 0.05, paint(g, s, rng, o) {
+    // A tool left lying: a pick or a shovel, its haft grained and worn, its iron grey and heavily inked as the map's hammers are.
+    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], out = [];
+    const haft = boxAt(...at(-s * 0.15, 0), s * 0.7, s * 0.045, a); softShadow(g, haft, o, 0.3); inked(g, rng, haft, '#8a6a42', o, { sharp: true, grain: a, lines: 5, hatch: 0.4, ink: 1.3 }); out.push(haft);
+    if (rng() < 0.5) { const head = [at(s * 0.48, -s * 0.52), at(s * 0.64, -s * 0.06), at(s * 0.64, s * 0.06), at(s * 0.48, s * 0.52), at(s * 0.55, 0)]; inked(g, rng, head, '#6a6660', o, { grain: a + 1.57, lines: 4, hatch: 0.3, band: 0.4, ink: 1.5 }); out.push(head); }
+    else { const blade = [at(s * 0.5, -s * 0.17), at(s * 0.86, -s * 0.19), at(s * 0.96, 0), at(s * 0.86, s * 0.19), at(s * 0.5, s * 0.17)]; inked(g, rng, blade, '#6e665c', o, { band: 0.45, ink: 1.5 }); speckle(g, rng, ...at(s * 0.74, 0), s * 0.12, s * 0.1, 16, ['#7a3a1a', '#5a2a10'], o.unit * 0.007); out.push(blade); }
+    return out;
+  } },
+  chains: { label: 'Chains', size: 0.9, height: 0.05, paint(g, s, rng, o) {
+    // A chain dropped in a tangled heap as the village barn's lies: its links follow the chain's own path round and over itself,
+    // each one inked, grey iron with some rust, a shackle open at its end.
+    let x = (rng() - 0.5) * s * 0.2, y = (rng() - 0.5) * s * 0.2, a = rng() * 6.28; const path = [[x, y, a]], step = o.unit * 0.042, R = s * 0.6;
+    for (let i = 0; i < 140; i++) { a += (rng() - 0.5) * 0.9; const d = Math.hypot(x, y); if (d > R * 0.55) { const home = Math.atan2(-y, -x), diff = Math.atan2(Math.sin(home - a), Math.cos(home - a)); a += diff * 0.18 * (d / R); } x += Math.cos(a) * step; y += Math.sin(a) * step; path.push([x, y, a]); }
+    g.save(); g.filter = `blur(${Math.max(1, s * 0.04)}px)`; for (const [px, py] of path) { g.beginPath(); g.arc(px + s * 0.02, py + s * 0.03, step * 0.8, 0, 6.283); g.fillStyle = 'rgba(10,6,2,0.12)'; g.fill(); } g.restore();
+    path.forEach(([px, py, pa], i) => { g.beginPath(); g.ellipse(px, py, step * 0.75, i % 2 ? step * 0.42 : step * 0.16, pa, 0, 6.283); g.strokeStyle = INKD; g.lineWidth = o.ink * 1.7; g.stroke(); g.strokeStyle = pick(rng, ['#86827a', '#76726a', '#7e6a56']); g.lineWidth = o.ink * 0.75; g.stroke(); });
+    const [ex, ey, ea] = path[path.length - 1]; g.beginPath(); g.arc(ex + Math.cos(ea) * step * 1.5, ey + Math.sin(ea) * step * 1.5, step * 1.6, ea + 0.6, ea + 5.7); g.strokeStyle = INKD; g.lineWidth = o.ink * 3.4; g.stroke(); g.strokeStyle = '#6a665e'; g.lineWidth = o.ink * 1.8; g.stroke();
+    return [path.map(([px, py]) => [px, py])];
+  } },
+  cage: { label: 'Cages', size: 1.1, height: 1.4, paint(g, s, rng, o) {
+    // A grate of lashed poles as Sootscale Caverns' pit cover: poles laid across each other, cord bound at every crossing, dark beneath.
+    const R = s * 0.75, box = boxAt(0, 0, R, R, (rng() - 0.5) * 0.2), turn = Math.atan2(box[1][1] - box[0][1], box[1][0] - box[0][0]), c = Math.cos(turn), sn = Math.sin(turn), at = (u, v) => [c * u - sn * v, sn * u + c * v];
+    poly(g, box); g.fillStyle = 'rgba(8,6,4,0.75)'; g.fill();
+    const n = 5, pole = (p0, p1) => { const mid = [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2], l = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) / 2, t = Math.atan2(p1[1] - p0[1], p1[0] - p0[0]); inked(g, rng, boxAt(...mid, l, s * 0.04, t), pick(rng, ['#7a5a36', '#6a4e30', '#8a6840']), o, { sharp: true, grain: t, lines: 4, hatch: 0.4, ink: 1.2 }); };
+    for (let i = 0; i < n; i++) { const t = -R * 0.9 + (i / (n - 1)) * R * 1.8; pole(at(t, -R * 1.02), at(t, R * 1.02)); }
+    for (let i = 0; i < n; i++) { const t = -R * 0.9 + (i / (n - 1)) * R * 1.8; pole(at(-R * 1.02, t), at(R * 1.02, t)); }
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const [x, y] = at(-R * 0.9 + (i / (n - 1)) * R * 1.8, -R * 0.9 + (j / (n - 1)) * R * 1.8); for (const k of [-1, 1]) { const p = [[x - s * 0.04, y - s * 0.04 * k], [x + s * 0.04, y + s * 0.04 * k]]; line(g, p, INKD, Math.max(1, o.ink * 1.6)); line(g, p, '#8a7a5a', Math.max(0.6, o.ink * 0.7)); } }
+    return [box];
+  } },
+  coffin: { label: 'Coffins', size: 1.5, height: 0.5, paint(g, s, rng, o) {
+    // A plain plank coffin, wide at the shoulders, its lid shoved half off and cracked, the dark inside showing.
+    const turn = rng() * 6.28, c = Math.cos(turn), sn = Math.sin(turn), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.85, W = s * 0.3;
+    const shape = (dx, dy, k) => [at(-L * k, -W * 0.62 * k), at(L * 0.42 * k, -W * k), at(L * k, -W * 0.5 * k), at(L * k, W * 0.5 * k), at(L * 0.42 * k, W * k), at(-L * k, W * 0.62 * k)].map(([x, y]) => [x + dx, y + dy]);
+    const body = shape(0, 0, 1); softShadow(g, body, o, 0.5); inked(g, rng, body, '#4e3a26', o, { sharp: true, grain: turn, lines: 10, hatch: 0.4, ink: 1.7 });
+    poly(g, shape(0, 0, 0.84)); g.fillStyle = '#0c0805'; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink; g.stroke();
+    const off = [s * 0.1 * c - s * 0.17 * sn, s * 0.1 * sn + s * 0.17 * c], lid = shape(off[0], off[1], 0.97); softShadow(g, lid, o, 0.4);
+    inked(g, rng, lid, '#7a5e3e', o, { sharp: true, grain: turn, lines: 18, hatch: 0.4, ink: 1.6 });
+    for (let k = -1; k <= 1; k++) line(g, [at(-L * 0.95, k * W * 0.32), at(L * 0.95, k * W * 0.3)].map(([x, y]) => [x + off[0], y + off[1]]), 'rgba(20,12,4,0.7)', o.ink * 0.8);
+    line(g, wander(rng, ...[at(L * 0.2, -W * 0.4)].map(([x, y]) => [x + off[0], y + off[1]])[0], turn + 1.3, 4, W * 0.2, 1), INKD, o.ink * 0.9);
+    return [body, lid];
+  } },
+  sarcophagus: { label: 'Sarcophagi', size: 1.7, height: 0.9, paint(g, s, rng, o) {
+    // As the tomb's: a stone box with a carved border, its dark hollow inside, the heavy lid shoved aside and cracked across.
+    const turn = rng() * 6.28, c = Math.cos(turn), sn = Math.sin(turn), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.82, W = s * 0.42, base = pick(rng, ['#8e8a7e', '#827e72', '#96928a']);
+    const box = boxAt(0, 0, L, W, turn); softShadow(g, box, o, 0.55); inked(g, rng, box, base, o, { sharp: true, grain: turn + 0.6, lines: 10, hatch: 0.15, ink: 1.8 });
+    poly(g, boxAt(0, 0, L * 0.9, W * 0.82, turn)); g.strokeStyle = 'rgba(20,16,10,0.55)'; g.lineWidth = o.ink * 0.8; g.stroke();
+    const hollow = boxAt(0, 0, L * 0.78, W * 0.6, turn); poly(g, hollow); g.fillStyle = '#16120c'; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink * 1.2; g.stroke();
+    const lid = boxAt(...at(L * 0.35, W * 0.55), L * 0.62, W * 0.95, turn + 0.25); softShadow(g, lid, o, 0.5); inked(g, rng, lid, shade(base, 0.06), o, { sharp: true, grain: turn, lines: 8, hatch: 0.15, ink: 1.7 });
+    for (let i = 0; i < 2; i++) line(g, wander(rng, ...centre(lid), turn + 1.57 + (rng() - 0.5), 5, W * 0.25, 1), INKD, o.ink * 1.1);
+    return [box];
+  } },
+  brokenPillar: { label: 'Broken pillars', size: 1.2, height: 1.2, paint(g, s, rng, o) {
+    // As Whiterose Abbey's: an octagonal base with a carved band, the round column on it broken off short, rubble in its stump.
+    const base = pick(rng, ['#9a968a', '#8e8a80', '#a29e92']), R = s * 0.85, turn = rng() * 0.4, oct = []; for (let i = 0; i < 8; i++) { const a = turn + (i / 8) * 6.283 + Math.PI / 8; oct.push([Math.cos(a) * R, Math.sin(a) * R]); }
+    softShadow(g, oct, o, 0.5); inked(g, rng, oct, base, o, { sharp: true, grain: 0.4, lines: 12, hatch: 0.12, ink: 1.8 });
+    const inner = oct.map(([x, y]) => [x * 0.82, y * 0.82]); poly(g, inner); g.strokeStyle = 'rgba(20,16,10,0.6)'; g.lineWidth = o.ink; g.stroke();
+    for (let i = 0; i < 32; i++) { const a = (i / 32) * 6.283, p = [[Math.cos(a) * R * 0.84, Math.sin(a) * R * 0.84], [Math.cos(a + 0.1) * R * 0.9, Math.sin(a + 0.1) * R * 0.9]]; line(g, p, 'rgba(20,16,10,0.4)', Math.max(0.5, o.ink * 0.5)); }
+    const col = blob(rng, 0, 0, R * 0.62, R * 0.62, 26, 0.02); inked(g, rng, col, shade(base, 0.08), o, { band: 0.4, ink: 1.6 });
+    g.save(); trace(g, moved(col, 0, 0, 0.86)); g.clip(); g.fillStyle = shade(base, -0.35); g.fillRect(-R, -R, R * 2, R * 2); for (let i = 0; i < 14; i++) { const a = rng() * 6.28, d = rng() * R * 0.42, r = R * (0.08 + rng() * 0.08), x = Math.cos(a) * d, y = Math.sin(a) * d, pts = []; for (let k = 0; k < 5; k++) { const q = (k / 5) * 6.283 + rng() * 0.6; pts.push([x + Math.cos(q) * r * (0.6 + rng() * 0.5), y + Math.sin(q) * r * (0.6 + rng() * 0.5)]); } inked(g, rng, pts, shade(base, (rng() - 0.6) * 0.3), o, { sharp: true, band: 0.5, ink: 1.1 }); } g.restore();
+    trace(g, moved(col, 0, 0, 0.86)); g.strokeStyle = INKD; g.lineWidth = o.ink * 1.2; g.stroke();
+    return [oct];
+  } },
+  treasure: { label: 'Treasure', size: 1.3, height: 0.2, paint(g, s, rng, o) {
+    // As Armag's hoard: orange gold coins heaped thick, grey silver among them, a blue gem or two, each disc inked.
+    const R = s * 0.78, hull = blob(rng, 0, 0, R, R * 0.8, 18, 0.25);
+    g.save(); g.filter = `blur(${Math.max(1, s * 0.04)}px)`; trace(g, hull); g.fillStyle = 'rgba(70,40,10,0.45)'; g.fill(); g.restore();
+    for (let i = 0; i < 220; i++) { const a = rng() * 6.28, d = Math.pow(rng(), 0.75) * R, x = Math.cos(a) * d, y = Math.sin(a) * d * 0.85, r = o.unit * (0.018 + rng() * 0.006), silver = rng() < 0.22;
+      g.beginPath(); g.ellipse(x, y, r, r * 0.85, 0, 0, 6.283); g.fillStyle = silver ? pick(rng, ['#b8b8b0', '#9a9a94']) : pick(rng, ['#d8862a', '#e8a038', '#c87420']); g.fill(); g.strokeStyle = 'rgba(40,20,4,0.85)'; g.lineWidth = Math.max(0.5, o.ink * 0.5); g.stroke(); g.beginPath(); g.arc(x - r * 0.25, y - r * 0.25, r * 0.3, 0, 6.283); g.fillStyle = 'rgba(255,240,190,0.55)'; g.fill(); }
+    for (let i = 0; i < 2; i++) { const a = rng() * 6.28, d = rng() * R * 0.5, x = Math.cos(a) * d, y = Math.sin(a) * d, r = o.unit * 0.04; inked(g, rng, [[x, y - r], [x + r, y], [x, y + r], [x - r, y]], pick(rng, ['#2a6ab8', '#3a7ad0']), o, { sharp: true, band: 0.3, lit: 0.4, ink: 1.1 }); }
+    return [hull];
+  } },
+  papers: { label: 'Scattered papers', size: 1.1, height: 0, flat: true, paint(g, s, rng, o) {
+    // As the village alley's: white sheets, a thin ink border, grey scribbled lines of writing, a corner curled.
+    for (let i = 0; i < 5; i++) { const a = rng() * 6.28, d = Math.sqrt(rng()) * s * 0.5, x = Math.cos(a) * d, y = Math.sin(a) * d, t = rng() * 6.28, c = Math.cos(t), sn = Math.sin(t), w = s * 0.2, h = s * 0.27, at = (u, v) => [x + c * u - sn * v, y + sn * u + c * v];
+      const page = [at(-w, -h), at(w, -h), at(w, h * 0.75), at(w * 0.75, h), at(-w, h)]; softShadow(g, page, o, 0.3);
+      inked(g, rng, page, pick(rng, ['#ece8dc', '#e0dccc', '#f0ece2']), o, { sharp: true, band: 0.18, ink: 1 });
+      for (let k = 0; k < 7; k++) { const v = -h * 0.75 + k * h * 0.22, p = [at(-w * 0.75, v)]; for (let j = 1; j <= 6; j++) p.push(at(-w * 0.75 + j * w * 0.22 * (0.7 + rng() * 0.3), v + (rng() - 0.5) * h * 0.04)); line(g, p.slice(0, 3 + Math.floor(rng() * 4)), 'rgba(60,56,50,0.55)', Math.max(0.5, o.ink * 0.45)); }
+      poly(g, [at(w, h * 0.75), at(w * 0.75, h), at(w * 0.78, h * 0.78)]); g.fillStyle = '#c8c4b4'; g.fill(); g.strokeStyle = INKD; g.lineWidth = Math.max(0.5, o.ink * 0.6); g.stroke(); }
+    return null;
+  } },
+  hangingRoots: { label: 'Hanging roots', size: 1.8, height: 0.1, paint(g, s, rng, o) {
+    // As Armag's tomb: thick dark roots in a tangle, each heavily inked, forking and thinning, knotted where they cross.
+    const strands = [];
+    for (let i = 0; i < 8; i++) { const a = rng() * 6.28, p = wander(rng, Math.cos(a) * s * 0.85, Math.sin(a) * s * 0.85, a + Math.PI + (rng() - 0.5) * 0.8, 9, s * 0.17, 0.7); strands.push(p); for (let k = 2; k < p.length - 2; k += 3) if (rng() < 0.6) strands.push(wander(rng, ...p[k], rng() * 6.28, 4, s * 0.1, 1)); }
+    for (const p of strands) for (let k = 1; k < p.length; k++) { const w = o.unit * 0.05 * (1 - k / p.length) + o.unit * 0.006; line(g, [p[k - 1], p[k]], INKD, w + o.ink * 1.6); }
+    for (const p of strands) for (let k = 1; k < p.length; k++) { const w = o.unit * 0.05 * (1 - k / p.length) + o.unit * 0.006; line(g, [p[k - 1], p[k]], '#3a2c1e', w); line(g, [p[k - 1], p[k]].map(([x, y]) => [x - w * 0.2, y - w * 0.25]), 'rgba(140,120,90,0.25)', w * 0.25); }
+    return null;
+  } },
+  dripSpot: { label: 'Drip spots', size: 0.6, height: 0, flat: true, paint(g, s, rng, o) {
+    // Where water drips from the roof: a wet dark stain, a small rimmed basin of pale flowstone round it, inked, a ripple in it.
+    g.save(); g.filter = `blur(${Math.max(1, s * 0.08)}px)`; trace(g, blob(rng, 0, 0, s * 0.8, s * 0.65, 12, 0.3)); g.fillStyle = 'rgba(10,14,16,0.5)'; g.fill(); g.restore();
+    const rim = blob(rng, 0, 0, s * 0.42, s * 0.36, 16, 0.12); inked(g, rng, rim, '#6e6858', o, { band: 0.4, ink: 1.3, grain: rng() * 3, lines: 4, hatch: 0.3 });
+    const pool = moved(rim, 0, 0, 0.72); trace(g, pool); g.fillStyle = '#0c1416'; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink; g.stroke();
+    g.beginPath(); g.ellipse(s * 0.03, s * 0.02, s * 0.12, s * 0.09, 0, 0, 6.283); g.strokeStyle = 'rgba(170,200,210,0.4)'; g.lineWidth = Math.max(0.5, o.ink * 0.5); g.stroke();
+    return null;
+  } },
+  bloodstain: { label: 'Old bloodstains', size: 1.2, height: 0, flat: true, paint(g, s, rng, o) {
+    // As the Stag Lord's fort: dried blood soaked into the ground, dark red-brown and blotchy, softer at its edges, drops spattered round.
+    g.save(); g.filter = `blur(${Math.max(1, o.unit * 0.008)}px)`;
+    for (let i = 0; i < 7; i++) { const a = rng() * 6.28, d = rng() * s * 0.35, r = s * (0.15 + rng() * 0.2); trace(g, blob(rng, Math.cos(a) * d, Math.sin(a) * d, r, r * 0.75, 12, 0.4)); g.fillStyle = `rgba(${pick(rng, ['42,12,6', '34,10,4', '54,18,8'])},${0.6 + rng() * 0.25})`; g.fill(); }
+    g.restore();
+    for (let i = 0; i < 22; i++) { const b = rng() * 6.28, d = s * (0.4 + rng() * 0.5), r = o.unit * (0.006 + rng() * 0.014); g.beginPath(); g.arc(Math.cos(b) * d, Math.sin(b) * d, r, 0, 6.283); g.fillStyle = 'rgba(34,10,4,0.85)'; g.fill(); }
+    return null;
+  } },
+  // --- More town, dungeon and camp kinds ---------------------------------------------------------------------------------------------
+  anvil: { label: 'Anvils', size: 0.9, height: 0.6, paint(g, s, rng, o) {
+    // As Oleg's: a dark grey anvil, its horn tapering to a point one way, the square heel the other, a lit edge along its face, on
+    // a squat block of wood.
+    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v];
+    const block = blob(rng, 0, 0, s * 0.42, s * 0.42, 16, 0.08); if (rng() < 0.4) { softShadow(g, block, o, 0.5); inked(g, rng, block, '#4a3824', o, { grain: a + 1.57, lines: 10, hatch: 0.4, ink: 1.4 }); }
+    for (const [u, v] of [[-0.38, -1], [-0.38, 1], [0.08, -1], [0.08, 1]]) { const foot = [at(s * u - s * 0.1, v * s * 0.12), at(s * u + s * 0.1, v * s * 0.12), at(s * u + s * 0.14, v * s * 0.36), at(s * u - s * 0.14, v * s * 0.36)]; inked(g, rng, foot, '#4a4844', o, { sharp: true, band: 0.4, ink: 1.4 }); }
+    const body = [at(-s * 0.55, -s * 0.2), at(s * 0.15, -s * 0.2), at(s * 0.3, -s * 0.12), at(s * 0.68, 0), at(s * 0.3, s * 0.12), at(s * 0.15, s * 0.2), at(-s * 0.55, s * 0.2), at(-s * 0.6, s * 0.1), at(-s * 0.6, -s * 0.1)];
+    softShadow(g, body, o, 0.55); inked(g, rng, body, '#7a7872', o, { sharp: true, grain: a, lines: 8, hatch: 0.25, band: 0.5, lit: 0.12, ink: 1.8 });
+    line(g, [at(-s * 0.5, -s * 0.12), at(s * 0.2, -s * 0.12), at(s * 0.7, -s * 0.02)], 'rgba(220,220,210,0.45)', Math.max(0.8, o.ink * 0.9));
+    g.beginPath(); g.arc(...at(-s * 0.35, 0), s * 0.05, 0, 6.283); g.fillStyle = '#1a1816'; g.fill();
+    return [block, body];
+  } },
+  urns: { label: 'Urns', size: 1.6, height: 0.5, paint(g, s, rng, o) {
+    // As Vordakai's tomb: a cluster of urns seen from above, pale glazed or dark, their open mouths black, a ring or band of
+    // pattern round each shoulder; one or two knocked over.
+    const out = [], n = 5 + Math.floor(rng() * 4), spots = [];
+    for (let i = 0; i < n; i++) { let x = 0, y = 0, r = s * (0.13 + rng() * 0.06); for (let k = 0; k < 12; k++) { const a = rng() * 6.28, d = Math.sqrt(rng()) * s * 0.62; x = Math.cos(a) * d; y = Math.sin(a) * d; if (spots.every(([px, py, pr]) => Math.hypot(px - x, py - y) > (pr + r) * 0.95)) break; } spots.push([x, y, r]); const pale = rng() < 0.55, base = pale ? pick(rng, ['#c8c4b8', '#b8b4aa', '#d4d0c4']) : pick(rng, ['#3a3632', '#4a4038', '#2e2a26']);
+      if (rng() < 0.25) { const t = rng() * 6.28, c = Math.cos(t), sn = Math.sin(t), at = (u, v) => [x + c * u - sn * v, y + sn * u + c * v], side = []; for (let k = 0; k < 20; k++) { const q = (k / 20) * 6.283, u = Math.cos(q) * r * 1.2, w = u > r * 0.5 ? 0.5 + 0.5 * (1 - (u - r * 0.5) / (r * 0.7)) : 1; side.push(at(u, Math.sin(q) * r * 0.85 * w)); } softShadow(g, side, o, 0.45); inked(g, rng, side, base, o, { band: 0.55, lit: 0.12, ink: 1.6 }); g.beginPath(); g.ellipse(...at(r * 1.18, 0), r * 0.1, r * 0.4, t, 0, 6.283); g.fillStyle = '#0c0a08'; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink; g.stroke(); out.push(side); continue; }
+      const pot = blob(rng, x, y, r, r, 20, 0.02); softShadow(g, pot, o, 0.5); inked(g, rng, pot, base, o, { band: 0.55, lit: 0.14, ink: 1.6 });
+      g.beginPath(); g.arc(x, y, r * 0.72, 0, 6.283); g.strokeStyle = pale ? 'rgba(30,26,20,0.7)' : 'rgba(200,190,170,0.4)'; g.lineWidth = Math.max(0.8, o.ink * 0.9); g.stroke();
+      if (rng() < 0.6) for (let k = 0; k < 10; k++) { const q = (k / 10) * 6.283; g.beginPath(); g.arc(x + Math.cos(q) * r * 0.86, y + Math.sin(q) * r * 0.86, r * 0.06, 0, 6.283); g.fillStyle = pale ? '#2a2620' : '#9a9080'; g.fill(); }
+      g.beginPath(); g.arc(x, y, r * 0.45, 0, 6.283); g.fillStyle = shade(base, -0.2); g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink; g.stroke(); g.beginPath(); g.arc(x, y, r * 0.32, 0, 6.283); g.fillStyle = '#0a0806'; g.fill();
+      out.push(pot); }
+    return out;
+  } },
+  timbers: { label: 'Collapsed timbers', size: 2.0, height: 0.6, paint(g, s, rng, o) {
+    // As the collapsed mine: heavy squared beams fallen across each other, splintered where they broke, planks among them, dark gaps
+    // and broken earth beneath.
+    g.save(); g.filter = `blur(${Math.max(1, s * 0.06)}px)`; trace(g, blob(rng, 0, 0, s * 0.85, s * 0.6, 14, 0.3)); g.fillStyle = 'rgba(14,8,4,0.55)'; g.fill(); g.restore();
+    speckle(g, rng, 0, 0, s * 0.75, s * 0.5, 80, ['#3a2a18', '#5a4428', '#2a1e10'], o.unit * 0.01);
+    const out = [];
+    for (let i = 0; i < 6; i++) { const a = rng() * 3.14, big = i < 3, len = s * (big ? 0.75 + rng() * 0.2 : 0.45 + rng() * 0.2), wid = s * (big ? 0.11 : 0.06), cx = (rng() - 0.5) * s * 0.5, cy = (rng() - 0.5) * s * 0.4, beam = boxAt(cx, cy, len, wid, a);
+      softShadow(g, beam, o, 0.5); inked(g, rng, beam, pick(rng, ['#7a5e3a', '#6a5032', '#8a6c44']), o, { sharp: true, grain: a, lines: big ? 14 : 7, hatch: 0.5, band: 0.45, ink: 1.6 });
+      const c = Math.cos(a), sn = Math.sin(a), end = [cx + c * len, cy + sn * len]; for (let k = 0; k < 5; k++) { const v = (k / 4 - 0.5) * wid * 1.8, l = s * (0.04 + rng() * 0.09); poly(g, [[end[0] - sn * (v - wid * 0.2), end[1] + c * (v - wid * 0.2)], [end[0] + c * l - sn * v, end[1] + sn * l + c * v], [end[0] - sn * (v + wid * 0.2), end[1] + c * (v + wid * 0.2)]]); g.fillStyle = '#9a7a50'; g.fill(); g.strokeStyle = INKD; g.lineWidth = Math.max(0.6, o.ink * 0.7); g.stroke(); }
+      out.push(beam); }
+    return out;
+  } },
+  stakeFence: { label: 'Stake fences', size: 2.0, height: 0.7, paint(g, s, rng, o) {
+    // As Sootscale's: sharpened stakes driven in a row, their round tops banded, a rope looped from one to the next and sagging between.
+    const a = (rng() - 0.5) * 0.4, c = Math.cos(a), sn = Math.sin(a), n = 4, tops = [], out = [];
+    for (let i = 0; i < n; i++) { const u = -s * 0.85 + (i / (n - 1)) * s * 1.7, v = (rng() - 0.5) * s * 0.06; tops.push([c * u - sn * v, sn * u + c * v]); }
+    for (let i = 1; i < n; i++) { const [x0, y0] = tops[i - 1], [x1, y1] = tops[i], mx = (x0 + x1) / 2 - sn * s * 0.08, my = (y0 + y1) / 2 + c * s * 0.08; for (const [col, w] of [[INKD, o.ink * 3], ['#a08a5a', o.ink * 1.6]]) { g.beginPath(); g.moveTo(x0, y0); g.quadraticCurveTo(mx, my, x1, y1); g.strokeStyle = col; g.lineWidth = w; g.stroke(); } for (let k = 1; k < 8; k++) { const t = k / 8, px = (1 - t) ** 2 * x0 + 2 * (1 - t) * t * mx + t * t * x1, py = (1 - t) ** 2 * y0 + 2 * (1 - t) * t * my + t * t * y1; line(g, [[px - c * o.ink, py - sn * o.ink], [px + c * o.ink * 0.5 + sn * o.ink, py + sn * o.ink * 0.5 - c * o.ink]], 'rgba(30,20,8,0.7)', Math.max(0.5, o.ink * 0.6)); } }
+    for (const [x, y] of tops) { const top = blob(rng, x, y, s * 0.1, s * 0.1, 12, 0.06); softShadow(g, top, o, 0.45); inked(g, rng, top, '#8a5428', o, { band: 0.45, lit: 0.08, ink: 1.7 }); for (let k = 1; k <= 2; k++) { g.beginPath(); g.arc(x, y, s * 0.033 * k, 0, 6.283); g.strokeStyle = 'rgba(40,20,6,0.6)'; g.lineWidth = Math.max(0.5, o.ink * 0.5); g.stroke(); } g.beginPath(); g.arc(x, y, s * 0.1, 0, 6.283); g.strokeStyle = 'rgba(200,150,90,0.6)'; g.lineWidth = o.ink * 0.7; g.stroke(); out.push(top); }
+    return out;
+  } },
+  strawBed: { label: 'Straw beds', size: 1.6, height: 0, flat: true, paint(g, s, rng, o) {
+    // As Giant's Cave's: a sleeping place of pale loose straw strewn thick in an oval, each strand inked fine, thinning at its edges.
+    const R = s * 0.85, k = 0.62;
+    g.save(); g.filter = `blur(${Math.max(1, s * 0.05)}px)`; g.beginPath(); g.ellipse(0, 0, R * 0.85, R * k * 0.85, 0, 0, 6.283); g.fillStyle = 'rgba(140,120,70,0.45)'; g.fill(); g.restore();
+    for (let i = 0; i < 900; i++) { const a = rng() * 6.28, d = Math.sqrt(rng()) * (rng() < 0.85 ? 0.9 : 1.1), x = Math.cos(a) * d * R, y = Math.sin(a) * d * R * k, b = rng() * 6.28, l = o.unit * (0.06 + rng() * 0.08); const p = [[x, y], [x + Math.cos(b) * l, y + Math.sin(b) * l]]; line(g, p, 'rgba(40,30,12,0.55)', Math.max(0.7, o.ink * 0.75)); line(g, p, pick(rng, ['#d8c890', '#c8b478', '#e4d6a0', '#b8a468']), Math.max(0.5, o.ink * 0.4)); }
+    return null;
+  } },
+  boneRubble: { label: 'Bones in rubble', size: 1.8, height: 0.35, paint(g, s, rng, o) {
+    // A heap of broken stone, pale and angular as the tomb's rubble, with old bones lying in it and a skull half buried.
+    const out = [];
+    g.save(); g.filter = `blur(${Math.max(1, s * 0.05)}px)`; trace(g, blob(rng, 0, 0, s * 0.8, s * 0.65, 12, 0.3)); g.fillStyle = 'rgba(20,14,8,0.5)'; g.fill(); g.restore();
+    const rocks = []; for (let i = 0; i < 18; i++) { const a = rng() * 6.28, d = Math.sqrt(rng()) * s * 0.65; rocks.push([Math.cos(a) * d, Math.sin(a) * d, s * (0.1 + rng() * 0.14)]); } rocks.sort((p, q) => Math.hypot(q[0], q[1]) - Math.hypot(p[0], p[1]));
+    for (const [x, y, r] of rocks) { const pts = []; for (let k = 0; k < 5 + Math.floor(rng() * 2); k++) { const q = (k / 6) * 6.283 + rng() * 0.7; pts.push([x + Math.cos(q) * r * (0.6 + rng() * 0.5), y + Math.sin(q) * r * (0.6 + rng() * 0.5)]); } inked(g, rng, pts, shade(pick(rng, o.cave ? ['#8a8680', '#7a7670', '#949088'] : ['#9a948a', '#8a847a', '#a49e92']), (rng() - 0.5) * 0.2), o, { sharp: true, band: 0.5, lit: 0.1, ink: 1.4, grain: rng() * 3, lines: 3, hatch: 0.2 }); out.push(pts); }
+    const bone = ['#d8ccb0', '#a89a7a'];
+    for (let i = 0; i < 3; i++) { const a = rng() * 6.28, x = (rng() - 0.5) * s * 0.7, y = (rng() - 0.5) * s * 0.6, l = s * (0.18 + rng() * 0.12), p = [[x - Math.cos(a) * l, y - Math.sin(a) * l], [x + Math.cos(a) * l, y + Math.sin(a) * l]]; line(g, p, INKD, o.unit * 0.04 + o.ink * 1.6); line(g, p, bone[1], o.unit * 0.04); line(g, p.map(([px, py]) => [px - 0.6, py - 0.6]), bone[0], o.unit * 0.015); for (const [ex, ey] of p) { g.beginPath(); g.arc(ex, ey, o.unit * 0.032, 0, 6.283); g.fillStyle = bone[0]; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink * 1.2; g.stroke(); } }
+    const [kx, ky] = [(rng() - 0.5) * s * 0.4, (rng() - 0.5) * s * 0.4], skull = blob(rng, kx, ky, s * 0.13, s * 0.15, 12, 0.04); inked(g, rng, skull, bone[0], o, { band: 0.5, lit: 0.1, ink: 1.5 });
+    for (const k of [-1, 1]) { g.beginPath(); g.ellipse(kx + k * s * 0.05, ky + s * 0.02, s * 0.035, s * 0.04, 0, 0, 6.283); g.fillStyle = '#140c06'; g.fill(); } out.push(skull);
+    return out;
+  } },
+  produce: { label: 'Produce crates', size: 1.0, height: 0.45, paint(g, s, rng, o) {
+    // An open crate of produce as the homestead's cart carries them: a frame of planks, and heaped inside potatoes, apples, cabbages
+    // or turnips, each one inked.
+    const turn = (rng() - 0.5) * 0.8, W = s * 0.7, H = s * 0.52, box = boxAt(0, 0, W, H, turn), [base, small, n] = pick(rng, [['#9a7a48', 0.085, 90], ['#9a3420', 0.08, 95], ['#6e7e34', 0.13, 30], ['#c0ae90', 0.09, 70]]);
+    softShadow(g, box, o, 0.5); inked(g, rng, box, '#6e5232', o, { sharp: true, grain: turn, lines: 12, hatch: 0.45, ink: 1.8 });
+    const inner = boxAt(0, 0, W * 0.84, H * 0.78, turn); poly(g, inner); g.fillStyle = '#3a2814'; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink; g.stroke();
+    g.save(); poly(g, inner); g.clip(); const c = Math.cos(turn), sn = Math.sin(turn);
+    for (let i = 0; i < n; i++) { const u = (rng() - 0.5) * W * 1.7, v = (rng() - 0.5) * H * 1.6, x = c * u - sn * v, y = sn * u + c * v, r = s * small * (0.85 + rng() * 0.3), item = blob(rng, x, y, r, r * (0.8 + rng() * 0.2), 10, 0.1); inked(g, rng, item, shade(base, (rng() - 0.5) * 0.25), o, { band: 0.55, lit: 0.12, ink: 1.1, grain: rng() * 3, lines: base === '#7a8a3a' ? 6 : 1, hatch: 0.3 }); if (base === '#a83a24') { g.beginPath(); g.arc(x, y - r * 0.2, r * 0.12, 0, 6.283); g.fillStyle = '#3a2410'; g.fill(); } }
+    g.restore();
+    for (const k of [-1, 1]) line(g, [...[[-W, k * H * 0.92], [W, k * H * 0.92]].map(([u, v]) => [c * u - sn * v, sn * u + c * v])], 'rgba(20,12,4,0.6)', o.ink * 0.8);
+    return [box];
+  } },
+  bench: { label: 'Benches', size: 1.6, height: 0.45, paint(g, s, rng, o) {
+    // A plank bench: two or three boards side by side, grain along them, nail heads at the ends where the legs are, worn pale on top.
+    const a = rng() * 6.28, L = s * 0.85, W = s * 0.2, seat = boxAt(0, 0, L, W, a), c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v];
+    softShadow(g, seat, o, 0.5); inked(g, rng, seat, '#7a5e3c', o, { sharp: true, grain: a, lines: 14, hatch: 0.45, ink: 1.6 });
+    line(g, [at(-L, 0), at(L, 0)], 'rgba(20,12,4,0.75)', o.ink * 0.9);
+    for (const u of [-L * 0.82, L * 0.82]) for (const v of [-W * 0.5, W * 0.5]) { g.beginPath(); g.arc(...at(u, v), Math.max(1, s * 0.018), 0, 6.283); g.fillStyle = '#2a2622'; g.fill(); }
+    return [seat];
+  } },
+  tableStools: { label: 'Tables', size: 1.8, height: 0.8, paint(g, s, rng, o) {
+    // As the trading post's and the tavern's: a plank table, square or round, with chairs drawn up to it (each a seat and a slatted
+    // back), and on it plates, cups and a loaf or two.
+    const a = (rng() - 0.5) * 0.6, round = rng() < 0.45, out = [], n = round ? 4 : 4 + Math.floor(rng() * 3);
+    for (let i = 0; i < n; i++) { const q = round ? a + (i / n) * 6.283 + Math.PI / 4 : a + (i < n / 2 ? -Math.PI / 2 : Math.PI / 2), along = round ? 0 : ((i % Math.ceil(n / 2)) - (Math.ceil(n / 2) - 1) / 2) * s * 0.32, d = round ? s * 0.6 : s * 0.48, cx = Math.cos(q) * d + Math.cos(a) * along, cy = Math.sin(q) * d + Math.sin(a) * along;
+      const seat = boxAt(cx, cy, s * 0.13, s * 0.13, q); softShadow(g, seat, o, 0.4); inked(g, rng, seat, '#6a4e30', o, { sharp: true, grain: q + 1.57, lines: 5, hatch: 0.4, ink: 1.4 });
+      const back = boxAt(cx + Math.cos(q) * s * 0.16, cy + Math.sin(q) * s * 0.16, s * 0.04, s * 0.15, q); inked(g, rng, back, '#5a4228', o, { sharp: true, band: 0.3, ink: 1.3 }); out.push(seat); }
+    const top = round ? blob(rng, 0, 0, s * 0.45, s * 0.45, 28, 0.01) : boxAt(0, 0, s * 0.62, s * 0.3, a); softShadow(g, top, o, 0.55);
+    inked(g, rng, top, '#7e623e', o, { sharp: !round, grain: a, lines: 24, hatch: 0.45, ink: 1.8 });
+    for (let k = -2; k <= 2; k++) { const off = k * (round ? s * 0.17 : s * 0.12); g.save(); pathOf(g, top, !round); g.clip(); line(g, [[-Math.sin(a) * off - Math.cos(a) * s, Math.cos(a) * off - Math.sin(a) * s], [-Math.sin(a) * off + Math.cos(a) * s, Math.cos(a) * off + Math.sin(a) * s]], 'rgba(20,12,4,0.7)', o.ink * 0.8); g.restore(); }
+    for (let i = 0; i < 2 + Math.floor(rng() * 4); i++) { const q = rng() * 6.28, d = rng() * s * (round ? 0.28 : 0.22), x = Math.cos(q) * d, y = Math.sin(q) * d * (round ? 1 : 0.6), what = rng();
+      if (what < 0.4) { const plate = blob(rng, x, y, s * 0.08, s * 0.08, 14, 0.01); inked(g, rng, plate, '#c8c0aa', o, { band: 0.25, ink: 1 }); g.beginPath(); g.arc(x, y, s * 0.05, 0, 6.283); g.strokeStyle = 'rgba(60,50,30,0.5)'; g.lineWidth = Math.max(0.5, o.ink * 0.5); g.stroke(); }
+      else if (what < 0.75) { const cup = blob(rng, x, y, s * 0.045, s * 0.045, 10, 0.01); inked(g, rng, cup, pick(rng, ['#7a7468', '#6a4a2a']), o, { band: 0.3, ink: 1 }); g.beginPath(); g.arc(x, y, s * 0.028, 0, 6.283); g.fillStyle = '#2a1a0c'; g.fill(); }
+      else { const loaf = blob(rng, x, y, s * 0.09, s * 0.055, 12, 0.08, q); inked(g, rng, loaf, '#b8843e', o, { band: 0.45, lit: 0.12, ink: 1.1 }); for (let k = -1; k <= 1; k++) line(g, [[x + Math.cos(q) * k * s * 0.04 - Math.sin(q) * s * 0.03, y + Math.sin(q) * k * s * 0.04 + Math.cos(q) * s * 0.03], [x + Math.cos(q) * k * s * 0.04 + Math.sin(q) * s * 0.03, y + Math.sin(q) * k * s * 0.04 - Math.cos(q) * s * 0.03]], 'rgba(60,30,8,0.6)', Math.max(0.5, o.ink * 0.5)); } }
+    out.push(top); return out;
+  } },
+  trough: { label: 'Water troughs', size: 1.8, height: 0.5, paint(g, s, rng, o) {
+    // As the village barn's: a long box of thick planks, blue-grey water standing in it with pale ripple lines, iron bands at its ends.
+    const a = rng() * 6.28, L = s * 0.85, W = s * 0.25, box = boxAt(0, 0, L, W, a), inner = boxAt(0, 0, L * 0.9, W * 0.66, a), c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v];
+    softShadow(g, box, o, 0.55); inked(g, rng, box, '#6e5434', o, { sharp: true, grain: a, lines: 14, hatch: 0.5, ink: 1.9 });
+    poly(g, inner); const wg = g.createLinearGradient(...at(0, -W), ...at(0, W)); wg.addColorStop(0, '#5a6e78'); wg.addColorStop(1, '#2e3c44'); g.fillStyle = wg; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink * 1.3; g.stroke();
+    for (let k = 0; k < 6; k++) { const u = (rng() - 0.5) * L * 1.5, v = (rng() - 0.5) * W * 0.9, l = L * (0.08 + rng() * 0.12); line(g, [at(u, v), at(u + l, v + (rng() - 0.5) * W * 0.1)], 'rgba(200,220,228,0.45)', Math.max(0.5, o.ink * 0.6)); }
+    for (const k of [-0.92, 0.92]) inked(g, rng, boxAt(...at(L * k, 0), s * 0.035, W * 1.06, a), '#3e3c38', o, { sharp: true, band: 0.2, ink: 1.2 });
+    return [box];
+  } },
+  hitchingPost: { label: 'Hitching posts', size: 1.4, height: 0.9, paint(g, s, rng, o) {
+    // A rail on two posts to tie horses to: the rail's grain along it, the posts' square tops, a rope tied round it here and there.
+    const a = rng() * 6.28, L = s * 0.82, rail = boxAt(0, 0, L, s * 0.05, a), out = [rail];
+    softShadow(g, rail, o, 0.4); inked(g, rng, rail, '#6e5434', o, { sharp: true, grain: a, lines: 6, hatch: 0.45, ink: 1.5 });
+    for (const k of [-0.85, 0.85]) { const post = boxAt(Math.cos(a) * L * k, Math.sin(a) * L * k, s * 0.09, s * 0.09, a); inked(g, rng, post, '#5a4430', o, { sharp: true, grain: a + 1.57, lines: 4, hatch: 0.4, ink: 1.6 }); out.push(post); }
+    if (rng() < 0.7) { const u = (rng() - 0.5) * L, x = Math.cos(a) * u, y = Math.sin(a) * u, p = wander(rng, x, y, a + 1.57, 5, s * 0.08, 0.6); line(g, p, INKD, o.ink * 2.6); line(g, p, '#a8905a', o.ink * 1.3); }
+    return out;
+  } },
+  planter: { label: 'Planters', size: 1.3, height: 0.5, paint(g, s, rng, o) {
+    // As the Pitaxian avenue's: a wooden box packed with broad dark-green leaves, veined and inked, a few blooms among them.
+    const a = rng() * 6.28, L = s * 0.78, W = s * 0.3, box = boxAt(0, 0, L, W, a), inner = boxAt(0, 0, L * 0.9, W * 0.74, a), c = Math.cos(a), sn = Math.sin(a);
+    softShadow(g, box, o, 0.5); inked(g, rng, box, '#6e5234', o, { sharp: true, grain: a, lines: 12, hatch: 0.45, ink: 1.7 });
+    poly(g, inner); g.fillStyle = '#1e1608'; g.fill(); g.save(); poly(g, boxAt(0, 0, L * 0.98, W * 1.15, a)); g.clip();
+    const green = o.season === 'winter' ? ['#3a4426', '#525a34', '#6a6e44'] : ['#2e4a16', '#46661e', '#62802a', '#7e9a34'], bloom = o.season === 'winter' ? null : pick(rng, [null, '#c8506a', '#e0c050', '#e8e2d2']);
+    for (let i = 0; i < 26; i++) { const u = (rng() - 0.5) * L * 1.7, v = (rng() - 0.5) * W * 1.3, x = c * u - sn * v, y = sn * u + c * v, len = o.unit * (0.12 + rng() * 0.06), q = rng() * 6.28; leaf(g, x, y, len, q, pick(rng, green), o.ink * 0.7, 0.55); line(g, [[x, y], [x + Math.cos(q) * len * 0.8, y + Math.sin(q) * len * 0.8]], 'rgba(10,20,4,0.5)', Math.max(0.5, o.ink * 0.4)); }
+    if (bloom) for (let i = 0; i < 5; i++) { const u = (rng() - 0.5) * L * 1.4, v = (rng() - 0.5) * W, x = c * u - sn * v, y = sn * u + c * v; leaf(g, x, y, o.unit * 0.07, rng() * 6.28, bloom, o.ink * 0.5, 0.6, 'flower'); }
+    g.restore(); return [box];
+  } },
+  washingLine: { label: 'Washing lines', size: 2.2, height: 1.4, paint(g, s, rng, o) {
+    // A line strung between two poles with washing pegged along it, shirts and sheets in faded colours, sagging a little.
+    const a = (rng() - 0.5) * 0.6, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], p0 = at(-s * 0.88, 0), p1 = at(s * 0.88, 0), mid = at(0, s * 0.06), out = [];
+    for (let i = 0; i < 4 + Math.floor(rng() * 3); i++) { const t = 0.12 + (i / 6) * 0.78 + (rng() - 0.5) * 0.05, x = (1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * mid[0] + t * t * p1[0], y = (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * mid[1] + t * t * p1[1], w = s * (0.08 + rng() * 0.07), h = s * (0.14 + rng() * 0.1), cloth = [[x - c * w, y - sn * w], [x + c * w, y + sn * w], [x + c * w * 0.9 - sn * h, y + sn * w * 0.9 + c * h], [x - c * w * 0.9 - sn * h, y - sn * w * 0.9 + c * h]];
+      softShadow(g, cloth, o, 0.35); inked(g, rng, cloth, pick(rng, ['#d8d2c0', '#9aa8b8', '#b88a6a', '#a8b090', '#c8b8a0']), o, { sharp: true, grain: a + 1.57, lines: 6, hatch: 0.25, band: 0.4, ink: 1.1 }); out.push(cloth); }
+    for (const [col, w] of [[INKD, o.ink * 2], ['#c8b890', o.ink * 0.9]]) { g.beginPath(); g.moveTo(...p0); g.quadraticCurveTo(...mid, ...p1); g.strokeStyle = col; g.lineWidth = w; g.stroke(); }
+    for (const p of [p0, p1]) { const pole = blob(rng, ...p, s * 0.06, s * 0.06, 10, 0.05); inked(g, rng, pole, '#5a4430', o, { ink: 1.4 }); out.push(pole); }
+    return out;
+  } },
+  pump: { label: 'Water pumps', size: 0.9, height: 1.1, paint(g, s, rng, o) {
+    // A cast-iron pump on a stone slab: its round body, the handle out one side, the spout the other over a worn wet patch.
+    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v];
+    const slab = boxAt(0, 0, s * 0.62, s * 0.5, a + 0.1); softShadow(g, slab, o, 0.5); inked(g, rng, slab, '#7a766c', o, { sharp: true, grain: a, lines: 6, hatch: 0.2, ink: 1.5 });
+    g.save(); g.filter = `blur(${Math.max(1, s * 0.05)}px)`; g.beginPath(); g.ellipse(...at(s * 0.35, 0), s * 0.18, s * 0.14, a, 0, 6.283); g.fillStyle = 'rgba(20,30,34,0.5)'; g.fill(); g.restore();
+    inked(g, rng, boxAt(...at(s * 0.2, 0), s * 0.18, s * 0.05, a), '#3a3834', o, { sharp: true, band: 0.3, ink: 1.3 });
+    const handle = [at(-s * 0.1, 0), at(-s * 0.7, -s * 0.08)]; line(g, handle, INKD, o.ink * 3.6); line(g, handle, '#4a4640', o.ink * 2);
+    const body = blob(rng, 0, 0, s * 0.17, s * 0.17, 14, 0.02); inked(g, rng, body, '#3e3c38', o, { band: 0.4, lit: 0.15, ink: 1.7 }); g.beginPath(); g.arc(0, 0, s * 0.07, 0, 6.283); g.fillStyle = '#5a5650'; g.fill();
+    return [slab, body];
+  } },
+  washtub: { label: 'Washtubs', size: 1.0, height: 0.45, paint(g, s, rng, o) {
+    // As the village alley's: an oval tub of staves bound with iron, dark water standing in it with a pale edge, a slatted
+    // washboard leaning in over its rim, a stool beside.
+    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], RX = s * 0.72, RY = s * 0.55, tub = []; for (let k = 0; k < 32; k++) { const q = (k / 32) * 6.283; tub.push(at(Math.cos(q) * RX, Math.sin(q) * RY)); }
+    if (rng() < 0.6) { const stool = blob(rng, ...at(RX * 1.05, RY * 0.9), s * 0.18, s * 0.18, 12, 0.03); softShadow(g, stool, o, 0.4); inked(g, rng, stool, '#6e5234', o, { grain: a, lines: 6, hatch: 0.4, ink: 1.4 }); }
+    softShadow(g, tub, o, 0.5); inked(g, rng, tub, '#5e4630', o, { band: 0.4, ink: 1.8 });
+    for (let k = 0; k < 22; k++) { const q = (k / 22) * 6.283; line(g, [at(Math.cos(q) * RX * 0.82, Math.sin(q) * RY * 0.8), at(Math.cos(q) * RX, Math.sin(q) * RY)], 'rgba(20,12,4,0.6)', Math.max(0.6, o.ink * 0.6)); }
+    const water = tub.map(([x, y]) => [x * 0.8, y * 0.8]); trace(g, water); const wg = g.createLinearGradient(...at(-RX, -RY), ...at(RX, RY)); wg.addColorStop(0, '#3a4448'); wg.addColorStop(1, '#1a2024'); g.fillStyle = wg; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink * 1.3; g.stroke();
+    trace(g, tub.map(([x, y]) => [x * 0.74, y * 0.74])); g.strokeStyle = 'rgba(170,190,200,0.35)'; g.lineWidth = o.ink * 0.9; g.stroke();
+    for (let k = 0; k < 5; k++) { const v = -RY * 0.45 + k * RY * 0.22; line(g, [at(-RX * 0.6, v), at(-RX * 0.62 + (rng() - 0.5) * RX * 0.1, v + RY * 0.06)], 'rgba(160,185,195,0.25)', Math.max(0.5, o.ink * 0.5)); }
+    if (rng() < 0.7) { const board = boxAt(...at(RX * 0.15, -RY * 0.1), RX * 0.42, RY * 0.32, a + 0.4); inked(g, rng, board, '#8a7a5a', o, { sharp: true, band: 0.35, ink: 1.4 }); const bc = centre(board); for (let k = -3; k <= 3; k++) { const q = a + 0.4, off = k * RY * 0.08; line(g, [[bc[0] - Math.cos(q) * RX * 0.34 - Math.sin(q) * off, bc[1] - Math.sin(q) * RX * 0.34 + Math.cos(q) * off], [bc[0] + Math.cos(q) * RX * 0.34 - Math.sin(q) * off, bc[1] + Math.sin(q) * RX * 0.34 + Math.cos(q) * off]], 'rgba(30,24,14,0.65)', Math.max(0.6, o.ink * 0.7)); } }
+    return [tub];
+  } },
+  kennel: { label: 'Kennels', size: 1.0, height: 0.8, paint(g, s, rng, o) {
+    // A dog's kennel from above: a pitched roof of boards with its ridge down the middle, the doorway's dark mouth at one end, a bowl.
+    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.55, W = s * 0.42;
+    const roof = boxAt(0, 0, L, W, a); softShadow(g, roof, o, 0.55);
+    for (const k of [-1, 1]) { const half = [at(-L, 0), at(L, 0), at(L, k * W), at(-L, k * W)]; inked(g, rng, half, k < 0 ? '#7a5c38' : '#5e4630', o, { sharp: true, grain: a + 1.57, lines: 10, hatch: 0.45, band: 0.3, ink: 1.5 }); for (let j = 1; j < 5; j++) line(g, [at(-L + j * L * 0.4, 0), at(-L + j * L * 0.4, k * W)], 'rgba(20,12,4,0.55)', o.ink * 0.7); }
+    line(g, [at(-L * 1.04, 0), at(L * 1.04, 0)], INKD, o.ink * 2.4); line(g, [at(-L, 0), at(L, 0)], '#9a7a50', o.ink);
+    poly(g, [at(L, -W * 0.45), at(L * 1.12, -W * 0.38), at(L * 1.12, W * 0.38), at(L, W * 0.45)]); g.fillStyle = '#100a04'; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink; g.stroke();
+    const bowl = blob(rng, ...at(L * 1.4, W * 0.5), s * 0.09, s * 0.09, 10, 0.01); inked(g, rng, bowl, '#6a6660', o, { band: 0.3, ink: 1.1 }); g.beginPath(); g.arc(...at(L * 1.4, W * 0.5), s * 0.05, 0, 6.283); g.fillStyle = '#4a3a24'; g.fill();
+    return [roof];
+  } },
+  weaponRack: { label: 'Weapon racks', size: 1.4, height: 1.2, paint(g, s, rng, o) {
+    // A wooden rack with spears, swords and axes stood in it: from above, its rail and uprights, the hafts and blades fanned along it.
+    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.8, rail = boxAt(0, 0, L, s * 0.07, a), out = [rail];
+    for (let i = 0; i < 5; i++) { const u = -L * 0.75 + (i / 4) * L * 1.5, b = a + 1.57 + (rng() - 0.5) * 0.25, len = s * (0.35 + rng() * 0.25), x = c * u, y = sn * u, tip = [x + Math.cos(b) * len, y + Math.sin(b) * len], back = [x - Math.cos(b) * len * 0.35, y - Math.sin(b) * len * 0.35];
+      line(g, [back, tip], INKD, o.ink * 3); line(g, [back, tip], '#7a5a36', o.ink * 1.6);
+      const kind = i % 3, cb = Math.cos(b), sb = Math.sin(b); const blade = kind === 0 ? [[tip[0] - sb * s * 0.04, tip[1] + cb * s * 0.04], [tip[0] + cb * s * 0.14, tip[1] + sb * s * 0.14], [tip[0] + sb * s * 0.04, tip[1] - cb * s * 0.04]] : kind === 1 ? [[tip[0] - sb * s * 0.025 - cb * s * 0.2, tip[1] + cb * s * 0.025 - sb * s * 0.2], [tip[0] + cb * s * 0.08, tip[1] + sb * s * 0.08], [tip[0] + sb * s * 0.025 - cb * s * 0.2, tip[1] - cb * s * 0.025 - sb * s * 0.2]] : [[tip[0], tip[1]], [tip[0] - sb * s * 0.12 - cb * s * 0.04, tip[1] + cb * s * 0.12 - sb * s * 0.04], [tip[0] - sb * s * 0.12 - cb * s * 0.14, tip[1] + cb * s * 0.12 - sb * s * 0.14], [tip[0] - cb * s * 0.1, tip[1] - sb * s * 0.1]];
+      inked(g, rng, blade, '#8a8880', o, { sharp: true, band: 0.35, lit: 0.15, ink: 1.2 }); }
+    softShadow(g, rail, o, 0.4); inked(g, rng, rail, '#6a4e30', o, { sharp: true, grain: a, lines: 6, hatch: 0.45, ink: 1.6 });
+    for (const k of [-1, 1]) { const post = boxAt(c * L * k, sn * L * k, s * 0.08, s * 0.08, a); inked(g, rng, post, '#5a4228', o, { sharp: true, ink: 1.5 }); out.push(post); }
+    return out;
+  } },
+  bedroll: { label: 'Bedrolls', size: 1.3, height: 0.15, paint(g, s, rng, o) {
+    // A traveller's bedroll laid out by the fire: a blanket of coarse wool, folded back at the top, a rolled pack for a pillow.
+    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.8, W = s * 0.3, col = pick(rng, ['#7a4a34', '#5a6a48', '#6a5a7a', '#8a6a40']);
+    const blanket = [at(-L, -W), at(L * 0.7, -W * 1.05), at(L * 0.72, W * 1.05), at(-L, W)]; softShadow(g, blanket, o, 0.4); inked(g, rng, blanket, col, o, { sharp: true, grain: a, lines: 30, hatch: 0.25, cross: true, band: 0.45, ink: 1.4 });
+    for (let k = 0; k < 3; k++) line(g, [at(-L * 0.9 + k * L * 0.12, -W), at(-L * 0.9 + k * L * 0.12, W)], 'rgba(230,220,190,0.35)', o.ink * 0.8);
+    const fold = [at(L * 0.35, -W * 1.05), at(L * 0.72, -W * 1.05), at(L * 0.74, W * 1.05), at(L * 0.35, W * 1.05)]; inked(g, rng, fold, shade(col, 0.15), o, { sharp: true, band: 0.35, ink: 1.3 });
+    const pack = []; for (let k = 0; k < 16; k++) { const q = (k / 16) * 6.283; pack.push(at(L * 0.88 + Math.cos(q) * s * 0.12, Math.sin(q) * W * 0.95)); } inked(g, rng, pack, '#8a7450', o, { grain: a + 1.57, lines: 6, hatch: 0.35, band: 0.45, ink: 1.4 });
+    for (const k of [-0.5, 0.5]) line(g, [at(L * 0.8, k * W * 0.9), at(L * 0.96, k * W * 0.9)], '#3a2a14', o.ink * 1.4);
+    return [blanket, pack];
+  } },
+  tent: { label: 'Tents', size: 2.4, height: 1.6, paint(g, s, rng, o) {
+    // As the Tiger Lord camp's: a round hide tent of eight panels sewn to a knot at its peak, each panel bellying out between the
+    // seams to a scalloped hem, ochre or pale canvas, the side away from the light in shade, pegs at its points.
+    const R = s * 0.82, n = 8, turn = rng() * 6.28, col = pick(rng, ['#b8783a', '#c8a870', '#a8986e', '#8a6a44']), pts = [];
+    for (let i = 0; i < n * 6; i++) { const t = i / (n * 6), q = turn + t * 6.283, k = (i % 6) / 6, rr = R * (0.88 + 0.12 * Math.cos((k - 0.5) * Math.PI) ** 0.5 * (1 - Math.abs(k - 0.5) * 2) + (k === 0 ? 0.12 : 0)); pts.push([Math.cos(q) * rr, Math.sin(q) * rr]); }
+    softShadow(g, pts, o, 0.55);
+    for (let i = 0; i < n; i++) { const q0 = turn + (i / n) * 6.283, q1 = turn + ((i + 1) / n) * 6.283, panel = [[0, 0]]; for (let k = 0; k <= 6; k++) { const q = q0 + (q1 - q0) * (k / 6), bulge = Math.sin((k / 6) * Math.PI) * 0.1; panel.push([Math.cos(q) * R * (0.9 + bulge), Math.sin(q) * R * (0.9 + bulge)]); }
+      const mid = (q0 + q1) / 2, lit = towardLight(Math.cos(mid), Math.sin(mid), 1); inked(g, rng, panel, shade(col, lit * 0.18 - 0.05), o, { sharp: true, grain: mid, lines: 8, hatch: 0.2, band: 0.3, lit: 0.06, ink: 1.4 }); }
+    for (let i = 0; i < n; i++) { const q = turn + (i / n) * 6.283, p = [[0, 0], [Math.cos(q) * R * 0.92, Math.sin(q) * R * 0.92]]; line(g, p, INKD, o.ink * 1.8); line(g, p, shade(col, 0.25), o.ink * 0.6); const peg = [Math.cos(q) * R * 1.08, Math.sin(q) * R * 1.08]; line(g, [[Math.cos(q) * R * 0.92, Math.sin(q) * R * 0.92], peg], 'rgba(40,30,16,0.8)', Math.max(0.7, o.ink * 0.7)); g.beginPath(); g.arc(...peg, Math.max(1.5, s * 0.02), 0, 6.283); g.fillStyle = '#3a2814'; g.fill(); }
+    const knot = blob(rng, 0, 0, s * 0.06, s * 0.06, 10, 0.2); inked(g, rng, knot, '#3a2814', o, { ink: 1.4 }); for (let i = 0; i < 8; i++) { const q = rng() * 6.28; line(g, [[0, 0], [Math.cos(q) * s * 0.1, Math.sin(q) * s * 0.1]], INKD, o.ink); }
+    if (o.snow > 0) { g.save(); trace(g, pts); g.clip(); snowPatch(g, rng, 0, 0, R * 0.8, R * 0.8, o); g.restore(); }
+    return [pts];
+  } },
+  marketStall: { label: 'Market stalls', size: 2.8, height: 1.4, paint(g, s, rng, o) {
+    // As the Pitaxian avenue's stalls: a plank counter of goods under a cream cloth awning stretched on a frame, the cloth creased and
+    // sagging between its poles, a fold standing up along its ridge, crates of wares at its side.
+    const a = (rng() - 0.5) * 0.5, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.7, W = s * 0.48, out = [];
+    // Goods crates peeking out at the front, under the awning's edge.
+    for (let i = 0; i < 3; i++) { const u = -L * 0.6 + i * L * 0.6, crate = boxAt(...at(u, W * 1.12), s * 0.15, s * 0.12, a + (rng() - 0.5) * 0.2); softShadow(g, crate, o, 0.45); inked(g, rng, crate, '#6a4e30', o, { sharp: true, grain: a, lines: 5, hatch: 0.45, ink: 1.5 }); const cc = centre(crate), col = pick(rng, ['#b8402a', '#c89a3a', '#7a8a3a', '#a07a4a']); g.save(); poly(g, boxAt(...cc, s * 0.12, s * 0.09, a)); g.clip(); for (let k = 0; k < 10; k++) { const p = blob(rng, cc[0] + (rng() - 0.5) * s * 0.22, cc[1] + (rng() - 0.5) * s * 0.16, s * 0.035, s * 0.035, 8, 0.1); inked(g, rng, p, shade(col, (rng() - 0.5) * 0.2), o, { band: 0.4, ink: 0.9 }); } g.restore(); }
+    // The awning: a pale cloth over the frame, the far edge drawn tight, the near edge sagging in scallops between the poles.
+    const cloth = [at(-L, -W)]; for (let k = 0; k <= 8; k++) cloth.push(at(-L + (k / 8) * L * 2, -W - Math.sin((k / 8) * Math.PI * 2) * s * 0.02)); cloth.push(at(L, W)); for (let k = 8; k >= 0; k--) { const u = -L + (k / 8) * L * 2, sag = Math.sin((k % 4) / 4 * Math.PI) * s * 0.06; cloth.push(at(u, W + sag)); }
+    softShadow(g, cloth, o, 0.55); inked(g, rng, cloth, pick(rng, ['#d8ccb0', '#ccc0a2', '#e0d6be']), o, { sharp: true, grain: a + 1.57, lines: 12, hatch: 0.12, band: 0.45, ink: 1.6 });
+    for (let k = 0; k < 6; k++) { const u = (rng() - 0.5) * L * 1.8; g.beginPath(); g.moveTo(...at(u, -W)); g.quadraticCurveTo(...at(u + (rng() - 0.5) * L * 0.2, 0), ...at(u + (rng() - 0.5) * L * 0.2, W)); g.strokeStyle = 'rgba(80,66,40,0.35)'; g.lineWidth = Math.max(0.6, o.ink * 0.7); g.stroke(); }
+    const fold = [at(-L * 0.95, -W * 0.08), at(L * 0.95, -W * 0.08), at(L * 0.95, W * 0.08), at(-L * 0.95, W * 0.08)]; inked(g, rng, fold, '#efe6d0', o, { sharp: true, band: 0.25, lit: 0.15, ink: 1.1 });
+    for (const [u, v] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const pole = blob(rng, ...at(u * L, v * W), s * 0.045, s * 0.045, 8, 0.05); inked(g, rng, pole, '#5a4228', o, { ink: 1.4 }); }
+    out.push(cloth); return out;
+  } },
+};
+// Drafts taken in: drawn close enough to the maps' own to offer.
+for (const id of ["lampPost","brazier","well","haystack","fence","sacks","cobbles","tombstone","sarcophagus","coffin","rails","pickaxe","treasure","papers","cage","brokenPillar","anvil","urns","timbers","stakeFence","strawBed","boneRubble","produce","tent","washtub","trough","planter","tableStools","marketStall","bench","bedroll"]) { KINDS[id] = DRAFTS[id]; delete DRAFTS[id]; }
+/** The draft kinds, for the mock: id → { label, size, height, flat, light }. */
+export const DECOR_DRAFTS = Object.freeze(Object.fromEntries(Object.entries(DRAFTS).map(([id, k]) => [id, Object.freeze({ id, label: k.label, size: k.size, height: k.height, flat: !!k.flat, light: k.light ?? null })])));
+
 // Where each kind belongs: above ground, below it, or both (stone, bones, crates and the like). Unlisted: above ground.
-const SETS = { rock: 'both', boulder: 'both', pebbles: 'both', mushrooms: 'both', bones: 'both', crate: 'both', barrel: 'both', campfire: 'both', roots: 'both', crystals: 'both' };
+const SETS = { rock: 'both', boulder: 'both', pebbles: 'both', mushrooms: 'both', bones: 'both', crate: 'both', barrel: 'both', campfire: 'both', roots: 'both', crystals: 'both', brazier: 'both', sacks: 'both', sarcophagus: 'both', coffin: 'both', rails: 'both', pickaxe: 'both', treasure: 'both', papers: 'both', cage: 'both', brokenPillar: 'both', anvil: 'both', urns: 'both', timbers: 'both', stakeFence: 'both', strawBed: 'both', boneRubble: 'both', produce: 'both', bedroll: 'both' };
 const setOf = (id) => KINDS[id].set ?? SETS[id] ?? 'surface';
-export const DECOR_KINDS = Object.freeze(Object.fromEntries(Object.entries(KINDS).map(([id, k]) => [id, Object.freeze({ id, label: k.label, size: k.size, height: k.height, flat: !!k.flat, tree: !!k.tree, set: setOf(id), water: k.water ?? null, glow: k.glow ?? (id === 'crystals' ? { color: '#9ac8f0', radius: 1.2 } : null) })])));
+export const DECOR_KINDS = Object.freeze(Object.fromEntries(Object.entries(KINDS).map(([id, k]) => [id, Object.freeze({ id, label: k.label, size: k.size, height: k.height, flat: !!k.flat, tree: !!k.tree, set: setOf(id), water: k.water ?? null, light: k.light ?? null, glow: k.glow ?? (id === 'crystals' ? { color: '#9ac8f0', radius: 1.2 } : null) })])));
 export const DECOR_IDS = Object.freeze(Object.keys(KINDS));
+
 
 // Paints one decoration into a fresh canvas. px: the drawing's full width in pixels; look.unit: pixels per grid square, so leaves and
 // blades keep the map's own scale whatever the object's size. look: { season, snow 0..1, wet 0..1, frozen, night, unit }. Returns
 // { canvas, shadow, width, height }: shadow is its silhouette in white on clear (null for a flat kind), both centred on the object.
 export function paintDecor(kind, seed, px, look = {}, make = defaultCanvas) {
-  const k = KINDS[kind]; if (!k) return null;
+  const k = KINDS[kind] ?? DRAFTS[kind]; if (!k) return null;
   const size = Math.max(8, Math.ceil(px)), pad = Math.ceil(size * 0.12), w = size + pad * 2;
   const canvas = make(w, w), g = canvas.getContext('2d'), rng = seeded(seed);
   const unit = look.unit ?? size / k.size;
@@ -995,7 +1632,7 @@ const defaultCanvas = (w, h) => { if (typeof OffscreenCanvas !== 'undefined') re
 // Big kinds go down first so small ones fill round them; puddles draw reeds and moss to their edges; trees drop leaves and roots.
 // One decoration for a brush dab at (x, y): a kind picked from those chosen (by their amounts), somewhere within radius, kept off
 // standing things already there. Returns the placement, or null when there is no room.
-export function stampDecor({ x, y, radius, grid, kinds, seed, existing = [], scale = 1 }) {
+export function stampDecor({ x, y, radius, grid, kinds, seed, existing = [], scale = 1, turn = null }) {
   const rng = seeded(seed), list = (kinds ?? []).map((k) => (typeof k === 'string' ? { id: k } : k)).filter((k) => KINDS[k.id] && (k.amount ?? 1) > 0);
   if (!list.length) return null;
   const total = list.reduce((s, k) => s + (k.amount ?? 1), 0); let roll = rng() * total, pickK = list[0];
@@ -1004,7 +1641,7 @@ export function stampDecor({ x, y, radius, grid, kinds, seed, existing = [], sca
   for (let t = 0; t < 6; t++) {
     const a = rng() * 6.28, d = Math.sqrt(rng()) * radius, px = x + Math.cos(a) * d, py = y + Math.sin(a) * d;
     const free = k.flat || existing.every((e) => KINDS[e.kind]?.flat || (e.x - px) ** 2 + (e.y - py) ** 2 > ((e.size + size) * grid * 0.42) ** 2);
-    if (free) return { kind: pickK.id, x: Math.round(px), y: Math.round(py), size: +size.toFixed(3), turn: +(rng() * 6.283).toFixed(3), seed: (rng() * 2 ** 31) >>> 0, flip: rng() < 0.5 };
+    if (free) { const d = { kind: pickK.id, x: Math.round(px), y: Math.round(py), size: +size.toFixed(3), turn: +(rng() * 6.283).toFixed(3), seed: (rng() * 2 ** 31) >>> 0, flip: rng() < 0.5 }; if (Number.isFinite(turn)) { d.turn = +turn.toFixed(3); d.fixed = true; d.flip = false; } return d; }
   }
   return null;
 }

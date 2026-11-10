@@ -57,7 +57,7 @@ export function pictureOf(d, look = {}) {
 }
 // How a decoration turns: crowns, plants and round things any way; solid things only a little, so a crate stays near square to the map.
 const FREE_TURN = new Set(['bush', 'agave', 'fern', 'mushrooms', 'pebbles', 'grass', 'reeds', 'flowers', 'moss', 'leaves', 'lichen', 'rubble', 'glowShrooms', 'stalagmite']);
-export const turnOf = (d) => (DECOR_KINDS[d.kind]?.flat || DECOR_KINDS[d.kind]?.tree || FREE_TURN.has(d.kind) ? d.turn : d.turn * 0.4);
+export const turnOf = (d) => (d.fixed || DECOR_KINDS[d.kind]?.flat || DECOR_KINDS[d.kind]?.tree || FREE_TURN.has(d.kind) ? d.turn : d.turn * 0.4);
 /** How far a decoration's shadow reaches from it (pure): `height` in squares, `length` the sun's shadow length per unit of height. */
 export const shadowReach = (height, length, grid) => Math.max(0, height * length * grid * 0.5);
 // How high a light stands, in squares (a torch in a hand, a lantern on a post), for how long the shadows it throws are.
@@ -229,6 +229,13 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
     water() {
       const out = [];
       for (const [id, r] of regions) r.placements.forEach((d, i) => { if (!DECOR_KINDS[d.kind].water) return; const o = waterOutline(d, grid(), r.look ?? {}); if (o) out.push({ id: `decor:${id}:${i}`, areas: [o], deep: r.where === 'cave' }); });
+      return out;
+    },
+    // The lights the decorations carry (a lamp post's lantern, a brazier's fire, candles): where each stands and its light, scaled
+    // with the decoration's size, for real light sources on the map.
+    lights() {
+      const out = [];
+      for (const [id, r] of regions) r.placements.forEach((d, i) => { const l = DECOR_KINDS[d.kind]?.light; if (!l) return; const k = Math.sqrt(d.size / DECOR_KINDS[d.kind].size); out.push({ id: `decor:${id}:${i}:${d.seed}`, x: d.x, y: d.y, dim: l.dim * k, bright: l.bright * k, color: l.color, animation: l.animation ?? null }); });
       return out;
     },
     // What the cavern and the webs draw in place of their paintings, underground: a small round area each.
