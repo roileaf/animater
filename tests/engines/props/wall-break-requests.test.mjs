@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest, handEdited, handEditUpdate, slamSenderOk } from "../../../scripts/engines/props/wall-break-requests.mjs";
+import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest, handEdited, handEditUpdate, slamSenderOk, breaksSure } from "../../../scripts/engines/props/wall-break-requests.mjs";
 import { readWallNote, wallRepairUpdates } from "../../../scripts/engines/props/wall-break.mjs";
 import { PATH_SQUARES } from "../../../scripts/engines/props/prop-requests.mjs";
 
@@ -293,21 +293,20 @@ const miss = (outcome = "criticalFailure", damageType = "slashing", path = LINE)
 const missReq = (w, cause) => ({ cause, note: wallNoteFor({ wall: w, scene: scene(), cause, seed: 3, from: LINE.from }) });
 const missCtx = (w, x = {}) => ({ wall: w, walls: [w], scene: scene(), grid: 100, sender, attacker: ATT, target: TGT, roll: 1, ...x });
 
-test("a ranged miss through a window: crit always, plain miss by the GM's roll, line must cross it", () => {
+test("a ranged miss through a window: every miss breaks it, no chance roll (it flew through the glass); the line must cross it", () => {
   const w = win();
   const crit = validWallBreakRequest(missReq(w, miss()), missCtx(w));
   assert.equal(crit.ok, true);
   assert.equal(crit.note.kind, "window"); assert.equal(crit.note.material, "glass");
   assert.deepEqual([crit.update.sight, crit.update.light, crit.update.sound, "move" in crit.update, "door" in crit.update], [0, 0, 0, false, false]);
   assert.deepEqual(crit.update["flags.animater.breakWall.broken"].restore, { sight: 20, light: 20, sound: 20, windowKind: null });
-  // a plain miss: the default chance is 25 (roll 0.1 breaks, 0.9 does not)
+  // a plain miss through the glass breaks it whatever the GM's roll or the scene's chance
   assert.equal(validWallBreakRequest(missReq(w, miss("miss")), missCtx(w, { roll: 0.1 })).ok, true);
-  assert.equal(validWallBreakRequest(missReq(w, miss("miss")), missCtx(w, { roll: 0.9 })).why, "lucky");
-  // the scene's chance is the GM's own
+  assert.equal(validWallBreakRequest(missReq(w, miss("miss")), missCtx(w, { roll: 0.9 })).ok, true);
   const never = scene({ propMissChance: 0 }), always = scene({ propMissChance: 100 });
-  assert.equal(validWallBreakRequest(missReq(w, miss("miss")), missCtx(w, { scene: never, roll: 0 })).why, "lucky");
+  assert.equal(validWallBreakRequest(missReq(w, miss("miss")), missCtx(w, { scene: never, roll: 0.99 })).ok, true);
   assert.equal(validWallBreakRequest(missReq(w, miss("miss")), missCtx(w, { scene: always, roll: 0.99 })).ok, true);
-  // a crit failure ignores the chance; a hit or success is no miss
+  // a crit failure too; a hit or success is no miss (it breaks glass as "through")
   assert.equal(validWallBreakRequest(missReq(w, miss()), missCtx(w, { scene: never, roll: 0.99 })).ok, true);
   assert.equal(validWallBreakRequest(missReq(w, miss("success")), missCtx(w, { roll: 0 })).why, "lucky");
   // the line must start at the attacker and cross this window
@@ -332,6 +331,55 @@ test("a miss only breaks a window, and not twice or off the target's level", () 
   const up = win({ levels: ["ground"] });
   assert.equal(validWallBreakRequest(missReq(up, miss()), missCtx(up, { target: { ...TGT, level: "upstairs" } })).why, "far");
   assert.equal(validWallBreakRequest(missReq(up, miss()), missCtx(up, { target: { ...TGT, level: "ground" } })).ok, true);
+});
+// A strike that hit through glass: the attacker (centre 350, 100) and target (centre 350, 325) as above; the window at
+// y = 200 lies across their centre line.
+const through = (outcome = "success", damageType = "slashing") => ({ kind: "through", damageType, outcome, targetUuid: "t", attackerUuid: "a" });
+test("a strike through a window breaks it always, hit or miss, read from the GM's own centre line", () => {
+  const w = win();
+  for (const outcome of ["success", "criticalSuccess", "miss", "criticalFailure"]) {
+    const r = validWallBreakRequest(missReq(w, through(outcome)), missCtx(w, { roll: 0.99, scene: scene({ propMissChance: 0 }) }));
+    assert.equal(r.ok, true, outcome);
+    assert.equal(r.note.kind, "window"); assert.equal(r.update.sight, 0); assert.equal("door" in r.update, false);
+  }
+  // no strike outcome, no break
+  for (const outcome of [null, "failure", "hit"]) assert.equal(validWallBreakRequest(missReq(w, through(outcome)), missCtx(w, { roll: 0 })).why, "lucky", String(outcome));
+  // the GM's own line: an attacker or target elsewhere, or unknown (not the sender's token), is too far
+  assert.equal(validWallBreakRequest(missReq(w, through()), missCtx(w, { attacker: { x: 0, y: 300, w: 100, h: 100 } })).why, "far");
+  assert.equal(validWallBreakRequest(missReq(w, through()), missCtx(w, { attacker: undefined })).why, "far");
+  assert.equal(validWallBreakRequest(missReq(w, through()), missCtx(w, { target: undefined })).why, "far");
+  // a claimed line is never read
+  assert.equal(validWallBreakRequest(missReq(w, { ...through(), path: { from: { x: 0, y: 0 }, to: { x: 1, y: 1 } } }), missCtx(w)).ok, true);
+  // only the first window: a nearer one shields it
+  const near = win({ id: "n", c: [300, 160, 400, 160] });
+  assert.equal(validWallBreakRequest(missReq(w, through()), missCtx(w, { walls: [w, near] })).why, "far");
+  assert.equal(validWallBreakRequest(missReq(near, through()), missCtx(near, { walls: [w, near] })).ok, true);
+  // glass rules and Won't break
+  assert.equal(validWallBreakRequest(missReq(w, through("success", "poison")), missCtx(w)).why, "material");
+  const none = win({ flags: { animater: { breakWall: { window: true, material: "none" } } } });
+  assert.equal(validWallBreakRequest(missReq(none, through()), missCtx(none)).why, "material");
+  // only windows, on the target's level, once, with the scene's switches on, from a sender viewing the scene
+  const door = wall({ c: [300, 200, 400, 200] });
+  assert.equal(validWallBreakRequest(missReq(door, through()), missCtx(door)).why, "kind");
+  const up = win({ levels: ["ground"] });
+  assert.equal(validWallBreakRequest(missReq(up, through()), missCtx(up, { target: { ...TGT, level: "upstairs" } })).why, "far");
+  assert.equal(validWallBreakRequest(missReq(up, through()), missCtx(up, { target: { ...TGT, level: "ground" } })).ok, true);
+  assert.equal(validWallBreakRequest(missReq(w, through()), missCtx(win({ flags: { animater: { breakWall: { window: true, broken: { seed: 1 } } } } }))).why, "broken");
+  assert.equal(validWallBreakRequest(missReq(w, through()), missCtx(w, { scene: scene({ breakWalls: false }) })).why, "off");
+  assert.equal(validWallBreakRequest(missReq(w, through()), missCtx(w, { scene: { id: "s", flags: {} } })).why, "off");
+  assert.equal(validWallBreakRequest(missReq(w, through()), missCtx(w, { sender: null })).why, "sender");
+  assert.equal(validWallBreakRequest(missReq(w, through()), missCtx(w, { sender: { ...sender, viewedScene: "other" } })).why, "scene");
+});
+test("breaksSure: what the requester may show at once (no GM chance roll to wait for)", () => {
+  const w = win(), past = win({ id: "past", c: [300, 380, 400, 380] });
+  assert.equal(breaksSure(through("success"), w, ATT, TGT), true);
+  assert.equal(breaksSure(through("miss"), w, ATT, TGT), true);
+  assert.equal(breaksSure(miss("miss"), w, ATT, TGT), true); // a ranged miss line through the glass
+  assert.equal(breaksSure(miss("miss", "bludgeoning", null), w, ATT, TGT), true); // the swing goes through it
+  assert.equal(breaksSure(miss("miss", "bludgeoning", null), past, ATT, TGT), false); // beside the target: the GM's roll
+  assert.equal(breaksSure(miss("criticalFailure", "bludgeoning", null), past, ATT, TGT), true);
+  assert.equal(breaksSure(miss("miss", "bludgeoning", null), past, undefined, TGT), false);
+  assert.equal(breaksSure({ kind: "area" }, w), true);
 });
 test("cleanWallCause keeps the attacker a miss names", () => {
   assert.equal(cleanWallCause({ kind: "miss", attackerUuid: "Scene.s.Token.a", outcome: "miss" }).attackerUuid, "Scene.s.Token.a");
@@ -443,6 +491,8 @@ test("6b: a melee miss breaks a window beside its target, never on the attacker'
   const swing = (outcome = "criticalFailure") => miss(outcome, "bludgeoning", null);
   assert.equal(validWallBreakRequest(missReq(past, swing()), missCtx(past)).ok, true);
   assert.equal(validWallBreakRequest(missReq(through, swing()), missCtx(through)).ok, true); // the swing goes through it
+  // a plain miss through the glass breaks it always; the chance is only for a window beside the target
+  assert.equal(validWallBreakRequest(missReq(through, swing("miss")), missCtx(through, { roll: 0.99, scene: scene({ propMissChance: 0 }) })).ok, true);
   assert.equal(validWallBreakRequest(missReq(mine, swing()), missCtx(mine)).why, "far"); // the attacker's side, off the swing's line
   const away = win({ id: "away", c: [700, 380, 800, 380] });
   assert.equal(validWallBreakRequest(missReq(away, swing()), missCtx(away)).why, "far"); // more than a square from it

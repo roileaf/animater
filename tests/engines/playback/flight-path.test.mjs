@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { departureOf, footprintPoints, clearPoint, missLine, planFlight, withFlightPaths, wallHit, arrivalOf, wallArrivalOf, missFlightsOf, MISS_ANGLE, MISS_OVERSHOOT } from '../../../scripts/engines/playback/flight-path.mjs';
+import { departureOf, footprintPoints, clearPoint, missLine, planFlight, withFlightPaths, wallHit, arrivalOf, wallArrivalOf, missFlightsOf, hitFlightsOf, MISS_ANGLE, MISS_OVERSHOOT } from '../../../scripts/engines/playback/flight-path.mjs';
 import { sideOf } from '../../../scripts/systems/outcome.mjs';
 import { MEDIA_LANDINGS, RANGE_UNMEASURED } from '../../../data/media-landings.mjs';
 
@@ -411,4 +411,26 @@ test('missFlightsOf: each planned miss shot, its path as drawn, its free end and
   // a hit is no miss flight; a preview's flights are not planned with walls
   assert.deepEqual(missFlightsOf(withFlightPaths([flight()], opts()).plan), []);
   assert.deepEqual(missFlightsOf([{ kind: 'travel' }, { kind: 'sound' }]), []);
+});
+
+test('hitFlightsOf: each planned hit shot at a token, its path as drawn and when it reaches its end', () => {
+  const { plan } = withFlightPaths([flight({ delay: 150 })], opts({ collides: () => null }));
+  const shots = hitFlightsOf(plan);
+  assert.equal(shots.length, 1);
+  const [shot] = shots;
+  assert.equal(shot.targetId, 't1');
+  assert.deepEqual(shot.from, { x: 0, y: 0 });
+  assert.deepEqual(shot.to, { x: 1000, y: 0 });
+  assert.equal(shot.outcome, 'target');
+  assert.equal(shot.start, 150);
+  assert.equal(shot.arrive, 150 + arrivalOf(plan[0]));
+  // a hit stopped at a wall short of the target ends there
+  const [walled] = hitFlightsOf(withFlightPaths([flight()], opts()).plan);
+  assert.deepEqual([walled.to.x, walled.outcome], [500, 'wall']);
+  // a miss is no hit flight; neither is a flight that is no attack's, nor a preview's, nor one planned without walls
+  assert.deepEqual(hitFlightsOf(withFlightPaths([flight()], opts({ context: ctx({ outcome: 'failure' }) })).plan), []);
+  assert.deepEqual(hitFlightsOf(withFlightPaths([flight()], opts({ context: ctx({ type: 'damage' }) })).plan), []);
+  assert.deepEqual(hitFlightsOf(withFlightPaths([flight()], opts({ preview: true })).plan), []);
+  assert.deepEqual(hitFlightsOf(withFlightPaths([flight()], opts({ walls: false })).plan), []);
+  assert.deepEqual(hitFlightsOf([{ kind: 'travel' }, { kind: 'sound' }]), []);
 });

@@ -87,7 +87,7 @@ export function wallBreakFieldsHTML({ door, own = {}, sceneOn = false, system, w
     </div>
     <div data-group="window"${isDoor ? " hidden" : ""}>
       <div class="form-group"><label>Window</label><div class="form-fields"><select name="flags.${ID}.breakWall.window"${off(isDoor)}>${options([["", `Automatic (${GLASS_PANES.includes(windowKind) ? "yes: a glass window" : "no"})`], ["yes", "Yes"], ["no", "No"]], own.window === true ? "yes" : own.window === false ? "no" : ["yes", "no"].includes(own.window) ? own.window : "")}</select></div><p class="hint">${sceneOn ? "This scene has Breakable props on." : "Needs Breakable props on in the scene."} Whether this wall is a window that can break. Automatic: yes when its Animater window (below) is glass, leaded, mosaic, rose or frosted. When it breaks it opens: a glass window becomes an open one, shutters stand open. Repair puts it back.</p></div>
-      <div class="form-group"><label>Material</label><div class="form-fields"><select name="flags.${ID}.breakWall.windowMaterial"${off(isDoor)}>${options(panes, pane)}</select></div><p class="hint">Glass breaks to most blows, cold, fire and any shove, and a shot that misses can shatter it. Won't break keeps it whole. A broken window lets sight, light and sound through but still blocks movement.</p></div>
+      <div class="form-group"><label>Material</label><div class="form-fields"><select name="flags.${ID}.breakWall.windowMaterial"${off(isDoor)}>${options(panes, pane)}</select></div><p class="hint">Glass breaks to most blows, cold, fire and any shove, and a strike made through it, hit or miss, always shatters it. Won't break keeps it whole. A broken window lets sight, light and sound through but still blocks movement.</p></div>
     </div>
   </fieldset>`;
 }

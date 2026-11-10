@@ -74,6 +74,12 @@ export function windowOnLine(a, b, walls, scene, levels) {
 // them (a sword swung through the glass at a creature behind it).
 const targetMid = (t) => ({ x: t.x + t.w / 2, y: t.y + t.h / 2 });
 const inSwing = (wall, attacker, target) => crossesWall(attacker, targetMid(target), wall);
+// Whether a missed swing goes through this window (pure): the line from the attacker's centre to the target's middle
+// crosses it. Such a window breaks always, no chance roll; one beside the target only by the scene's miss chance.
+export function windowInSwing(wall, attacker, target) {
+  if (!finite(attacker) || ![target?.x, target?.y, target?.w, target?.h].every(Number.isFinite) || !Array.isArray(wall?.c)) return false;
+  return inSwing(wall, attacker, target);
+}
 export function windowBesideMiss(wall, attacker, target, grid = 100) {
   if (!finite(attacker) || ![target?.x, target?.y, target?.w, target?.h].every(Number.isFinite) || !Array.isArray(wall?.c)) return false;
   if (inSwing(wall, attacker, target)) return true;

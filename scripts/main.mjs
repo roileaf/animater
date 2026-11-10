@@ -26,11 +26,12 @@ import { propMaterial } from "./engines/props/prop-material.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls, blockingWalls, wallStop } from "./engines/props/prop-walls.mjs";
-import { wallMid, readWallNote, wallRepairUpdates, wallTraits, wallBreakFormMerge, wallFormDoor } from "./engines/props/wall-break.mjs";
+import { wallMid, readWallNote, wallRepairUpdates, wallTraits, wallBreakFormMerge, wallFormDoor, canBreakWall } from "./engines/props/wall-break.mjs";
 import { firePatchAt } from "./engines/props/prop-wreck-layout.mjs";
-import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest, handEdited, handEditUpdate, slamSenderOk } from "./engines/props/wall-break-requests.mjs";
+import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest, handEdited, handEditUpdate, slamSenderOk, breaksSure } from "./engines/props/wall-break-requests.mjs";
 import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, smashFrom, nextToMiss } from "./engines/props/wall-triggers.mjs";
 import { windowOnFlight, createMissFlights, missFlies } from "./engines/props/window-miss.mjs";
+import { hitOutcome, windowThrough, throughAt } from "./engines/props/window-through.mjs";
 import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt, forceOpenWording, showForceDC } from "./engines/props/force-open.mjs";
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
@@ -7754,7 +7755,7 @@ const propTileView = (doc) => {
 // Where the missed target and the slammed mover stand (tokens of the same scene only).
 async function propPlace(cause, scene, grid) {
   const token = async (uuid) => { if (!uuid) return null; const d = await fromUuid(uuid).catch(() => null); return d?.documentName === "Token" && d.parent === scene ? d : null; };
-  const t = cause.kind === "miss" ? await token(cause.targetUuid) : null, m = cause.kind === "path" ? await token(cause.moverUuid) : null;
+  const t = cause.kind === "miss" || cause.kind === "through" ? await token(cause.targetUuid) : null, m = cause.kind === "path" ? await token(cause.moverUuid) : null;
   return { target: t ? { x: t.x, y: t.y, w: t.width * grid, h: t.height * grid, level: t.level } : undefined,
     mover: m ? { x: m.x + (m.width * grid) / 2, y: m.y + (m.height * grid) / 2, size: Math.max(m.width, m.height), level: m.level } : undefined };
 }
@@ -8262,8 +8263,8 @@ function settleWallHere(id, refused) {
 // a player may claim a slam of a creature they shove from beside it).
 async function wallPlace(cause, scene, grid, user) {
   const place = await propPlace(cause, scene, grid);
-  if (cause.kind === "miss") {
-    // a miss: the attacker's footprint (a token the sender owns, or any for the GM) and the scene's walls (window-miss.mjs)
+  if (cause.kind === "miss" || cause.kind === "through") {
+    // a miss, or a strike through glass: the attacker's footprint (a token the sender owns, or any for the GM) and the scene's walls (window-miss.mjs)
     const a = cause.attackerUuid ? await fromUuid(cause.attackerUuid).catch(() => null) : null;
     const owns = (d) => { try { return user?.isGM || d?.testUserPermission?.(user, "OWNER") === true; } catch { return false; } };
     const attacker = a?.documentName === "Token" && a.parent === scene && owns(a) ? { x: a.x, y: a.y, w: a.width * grid, h: a.height * grid } : undefined;
@@ -8301,10 +8302,12 @@ async function requestWallBreak(wall, cause, { from } = {}) {
   const clean = cleanWallCause(cause), grid = propGrid(scene), view = wallView(doc);
   const note = wallNoteFor({ wall: view, scene, cause: clean, seed: Math.floor(Math.random() * 0x7fffffff), from: from ?? clean.at ?? clean.path?.from });
   if (gm.isSelf) return applyWallBreak(scene, doc, clean, note, game.user);
-  // Checked here first, then again by the GM. A plain miss waits for the GM's roll (roll: 0 here); anything else shows at once.
-  const here = validWallBreakRequest({ cause: clean, note }, { wall: view, scene, grid, sender: game.user, roll: 0, ...await wallPlace(clean, scene, grid, game.user), ...areaPlace(clean, game.user) });
+  // Checked here first, then again by the GM. A plain miss at a window beside its target waits for the GM's roll (roll: 0
+  // here); anything else shows at once (glass a strike goes through breaks always, breaksSure).
+  const place = await wallPlace(clean, scene, grid, game.user);
+  const here = validWallBreakRequest({ cause: clean, note }, { wall: view, scene, grid, sender: game.user, roll: 0, ...place, ...areaPlace(clean, game.user) });
   if (!here.ok) return false;
-  if (scene === canvas?.scene && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakWallHere(doc, here.note);
+  if (scene === canvas?.scene && breaksSure(clean, view, place.attacker, place.target)) breakWallHere(doc, here.note);
   game.socket.emit(`module.${ID}`, { type: WALL_BREAK_MESSAGE, sender: clientId, sceneId: scene.id, wallId: doc.id, cause: clean, note });
   return true;
 }
@@ -8589,6 +8592,9 @@ function shotCollides(a, b, type, source) {
 // The planned miss shots of the plays this client runs (the runtime's host missFlown), by the roll's message, for the
 // window a ranged miss flies into (window-miss.mjs).
 const missFlights = createMissFlights();
+// The planned hit shots of the plays this client runs (the runtime's host hitFlown), by the roll's message, for when a
+// flying weapon that hit reaches the window it goes through (window-through.mjs).
+const hitFlights = createMissFlights();
 const MISS_FLIGHT_WAIT = 1500; // ms after the dice land for this client's play of the roll to plan its shot
 // A ranged miss's shot as the animation flies it: the play's own planned miss shot at this target (its path, free end and
 // timing), or when no play of it reports one in time (animations off, played elsewhere), the same seeded miss line
@@ -8609,6 +8615,7 @@ async function missShotOf(event, attacker, target, grid) {
 // break it. Ranged or thrown: the first breakable window the shot's miss path flies into, as it gets there. The GM rolls
 // a plain miss's chance.
 async function breakPropOnMiss(event) {
+  if (hitOutcome(event?.outcome)) return breakWindowOnHit(event);
   const outcome = missOutcome(event?.outcome), ranged = missFlies(event?.weaponMode);
   if (!outcome || event.type !== "attack" || ranged === null) return;
   const scene = (event.sceneId ? game.scenes.get(event.sceneId) : null) ?? canvas?.scene;
@@ -8639,6 +8646,32 @@ async function breakPropOnMiss(event) {
   if (pick.type === "wall") await askWall(scene, pick.wall.id, cause, from);
   else if (pick.tile.decor) await askDecor(scene, pick.tile, { kind: "miss", damageType, outcome, targetUuid: target.uuid }, from);
   else await askProp(scene, pick.tile.id, { kind: "miss", damageType, outcome, targetUuid: target.uuid }, from);
+}
+// A strike of this client's that hit (or critically hit) its one target, melee, ranged or thrown: the first breakable
+// window on the line from the attacker's centre to the target's centre breaks, always, if the weapon's own damage type
+// can break it. Melee at once after the dice; a flying weapon as the play's own hit shot reaches the glass (at once when
+// no play of it reports one in time). The GM reads the line again from the tokens (window-through.mjs).
+async function breakWindowOnHit(event) {
+  const outcome = hitOutcome(event?.outcome), ranged = missFlies(event?.weaponMode);
+  if (!outcome || event.type !== "attack" || ranged === null) return;
+  const scene = (event.sceneId ? game.scenes.get(event.sceneId) : null) ?? canvas?.scene;
+  if (!propsOn(scene) || scene.flags[ID].breakWalls === false) return;
+  const targetUuid = event.targetUuid ?? (event.targetUuids?.length === 1 ? event.targetUuids[0] : null);
+  const target = typeof targetUuid === "string" ? await fromUuid(targetUuid).catch(() => null) : null;
+  const attacker = scene.tokens.get(event.tokenId ?? "") ?? event.source?.document;
+  const damageType = weaponDamageType(event.item);
+  if (target?.documentName !== "Token" || target.parent !== scene || attacker?.parent !== scene || !damageType) return;
+  const grid = propGrid(scene), foot = (t) => ({ x: t.x, y: t.y, w: t.width * grid, h: t.height * grid });
+  const wall = windowThrough(foot(attacker), foot(target), (scene.walls?.contents ?? []).map(wallView), scene, target.level);
+  if (!wall || !canBreakWall(wallTraits(wall, scene), { damageType })) return;
+  const from = { x: attacker.x + (attacker.width * grid) / 2, y: attacker.y + (attacker.height * grid) / 2 };
+  const ask = () => askWall(scene, wall.id, { kind: "through", damageType, outcome, targetUuid: target.uuid, attackerUuid: attacker.uuid }, from);
+  await afterDice(event);
+  if (!ranged) return void await ask();
+  const told = await hitFlights.wait(event.messageId ?? event.id, MISS_FLIGHT_WAIT);
+  const shot = told?.flights?.find((f) => f.targetId === target.id);
+  const wait = shot ? Math.min(5000, Math.max(0, throughAt(shot, wall) - told.age)) : 0;
+  if (wait > 0) setTimeout(() => void ask(), wait); else await ask();
 }
 const propMiss = (event) => { void propSafe("miss", () => breakPropOnMiss(event))?.catch?.((e) => runtime?.trace("props", `miss: ${e?.message ?? e}`)); };
 // A forced move's breakable props: those a mover of its size crosses from a to b (centres, the planned path) that
@@ -11663,6 +11696,8 @@ Hooks.once("ready", () => {
     shotsLanded: shareShots,
     // A play's planned miss shots, for the window a ranged miss of this client's flies into (breakPropOnMiss).
     missFlown: (flights, context) => missFlights.flown(context?.messageId ?? context?.id, flights),
+    // A play's planned hit shots, for when a flying weapon of this client's reaches the window it goes through.
+    hitFlown: (flights, context) => hitFlights.flown(context?.messageId ?? context?.id, flights),
     // Harmful plays leave ground marks (world setting).
     groundMarks: () => hotSetting("groundMarks") !== false,
     // Fast motions leave afterimage trails (world setting; off sends every motion as Never).

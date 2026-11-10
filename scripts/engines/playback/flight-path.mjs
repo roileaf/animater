@@ -96,6 +96,19 @@ export function missFlightsOf(plan = []) {
   }
   return out;
 }
+// The planned hit shots of a plan (pure), as the animation draws them, for a window the weapon flies through on its way
+// to the target (main.mjs, engines/props/window-through.mjs): its target's id, its path from -> to (the target, or the
+// wall that stopped it), and when it sets off and reaches its end (ms into the play).
+export function hitFlightsOf(plan = []) {
+  const out = [];
+  for (const s of plan) {
+    if (!FLIGHTS.includes(s.kind) || s.flightHit !== true || !s.flightFrom || !s.flightTo) continue;
+    const start = Math.max(0, Number(s.delay) || 0);
+    out.push({ targetId: tokenId(s.endpoint) ?? null, from: point(s.flightFrom), to: point(s.flightTo), outcome: s.flightOutcome,
+      start, arrive: start + Math.max(0, Number(arrivalOf(s)) || 0) });
+  }
+  return out;
+}
 const isToken = (t) => !!tokenId(t);
 // A token's footprint in scene pixels, around its centre.
 function footprintOf(token, gridPx) {
@@ -195,7 +208,7 @@ export function withFlightPaths(plan, { context = {}, gridPx = 100, collides = n
     }
     const path = planFlight({ from, targetRect: footprintOf(s.endpoint, gridPx), to: aim, role, seed, gridPx, collides, shieldBlock: s.shieldBlock });
     const next = { ...s, flightFrom: path.from, flightTo: path.to, flightOutcome: path.outcome, ...(path.wallDoor ? { wallDoor: true } : {}),
-      ...(role === 'attack-miss' ? { flightMiss: true, ...(path.end ? { flightEnd: path.end } : {}) } : {}) };
+      ...(role === 'attack-miss' ? { flightMiss: true, ...(path.end ? { flightEnd: path.end } : {}) } : {}), ...(role === 'attack-hit' ? { flightHit: true } : {}) };
     if (path.outcome === 'wall') arriving(s, next, wallArrivalOf(next, { gridPx }));
     if (path.outcome === 'target') arriving(s, next, targetArrivalOf(next, distance(path.from, path.to), { gridPx }));
     departing(next, departureOf(next, distance(path.from, path.to), { gridPx }));

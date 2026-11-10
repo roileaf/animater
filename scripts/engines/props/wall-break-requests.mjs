@@ -3,21 +3,24 @@
 import { wallTraits, canBreakWall, wallMid, crossesWall, wallNote, wallBreakUpdate } from "./wall-break.mjs";
 import { cleanCause, sizeOf, PATH_SQUARES } from "./prop-requests.mjs";
 import { onLevel } from "./prop-pick.mjs";
-import { forceOpenOf, windowBesideMiss } from "./wall-triggers.mjs";
+import { forceOpenOf, windowBesideMiss, windowInSwing } from "./wall-triggers.mjs";
 import { missPathOk, windowOnMissPath } from "./window-miss.mjs";
+import { strikeOutcome, throughOk } from "./window-through.mjs";
 import { closestForcedDoor, forceOpenResult } from "./force-open.mjs";
 import { missBreaks } from "./prop-break.mjs";
 import { blastFrom, inBurst } from "./prop-blast.mjs";
 import { areaCauseRefusal } from "./prop-areas.mjs";
 
 export const WALL_BREAK_MESSAGE = "prop-wall-break";
-const KINDS = ["area", "path", "smash", "force-open", "miss", "blast"];
+const KINDS = ["area", "path", "smash", "force-open", "miss", "through", "blast"];
+const ATTACKS = new Set(["miss", "through"]); // a strike's: windows only, read from the attacker and target tokens
 const MISS_CHANCE = 25; // percent: a plain ranged miss breaks a window (the scene's propMissChance overrides)
 const OWN_RULE = new Set(["smash", "force-open"]); // R1: no damage type or slam; their own rule (Force Open: the door's DC)
 // Not c: Repair restores no position, so a moved broken door keeps its note (and its originals) as it was.
 const EDIT_KEYS = ["door", "move", "sight", "light", "sound"];
 const SHOVE_REACH = 2; // squares from the slam's start to a token of the sender's
 const finite = (p) => Number.isFinite(p?.x) && Number.isFinite(p?.y);
+const centreOf = (r) => (r ? { x: r.x + r.w / 2, y: r.y + r.h / 2 } : null);
 
 // A cause as sent over the socket: the prop cause's fields, plus the chat message and the source tile it names.
 export function cleanWallCause(c) {
@@ -61,6 +64,10 @@ function plausible(cause, wall, grid, mover, { scene, walls, attacker, target, s
     const b = blastFrom(source);
     return !!b && inBurst(mid, b.centre, b.burst, grid) && onLevel(wall.levels, levels ?? source.levels);
   }
+  if (cause.kind === "through") {
+    // a hit through glass: the GM's own attacker-target centre line meets this window first (window-through.mjs)
+    return onLevel(wall.levels, target?.level) && throughOk(wall, attacker, target, walls, scene, target?.level);
+  }
   if (cause.kind === "miss") {
     const box = (r) => [r?.x, r?.y, r?.w, r?.h].every(Number.isFinite);
     if (!box(attacker) || !box(target) || !onLevel(wall.levels, target.level)) return false;
@@ -90,6 +97,11 @@ function plausible(cause, wall, grid, mover, { scene, walls, attacker, target, s
 // miss line (cause.path {from, to}: the animation's seeded miss line, to its free end): it must start at the attacker,
 // pass near the target and be no longer than the distance plus 3 squares, and the window must be the first on it. A
 // melee miss names none: the window stands beside the target, never on the attacker's side. Else "far".
+// A ranged miss through glass, or a melee miss whose swing line crosses the window, breaks it always (no chance roll);
+// the scene's chance is only for a melee miss's window beside the target.
+// A strike through glass {kind: "through", outcome: "success"|"criticalSuccess"|"miss"|"criticalFailure"}: attacker and
+// target as for a miss, the line read here from their centres (never the sender's): this window is the first on it, on
+// the target's level. Else "far"; no strike outcome "lucky". It breaks always, hit or miss, no chance roll.
 // Force Open: message, the GM's own copy of the chat message the cause names; token, the roller's footprint
 // {x, y, w, h, level, authorOwns} on this scene (authorOwns: the message's author owns that token, and it is the speaker's
 // actor's); walls, the scene's walls; system, game.system.id; used, this GM already broke a door with that message.
@@ -108,7 +120,7 @@ export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mo
   if (wall.flags?.animater?.breakWall?.broken) return no("broken");
   const traits = wallTraits(wall, scene, system), cause = req?.cause ?? {};
   if (!traits.kind || !KINDS.includes(cause.kind)) return no("kind");
-  if (cause.kind === "miss" && traits.kind !== "window") return no("kind");
+  if (ATTACKS.has(cause.kind) && traits.kind !== "window") return no("kind");
   if (traits.kind === "window" && OWN_RULE.has(cause.kind)) return no("kind"); // smash and Force Open are for doors
   if (cause.kind === "smash" && sender.isGM !== true) return no("sender");
   if (cause.kind === "path" && !slamSenderOk({ sender, mover, from: cause.path?.from, senderTokens, grid })) return no("sender");
@@ -126,8 +138,12 @@ export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mo
   }
   if (levels !== undefined && !onLevel(wall.levels, levels)) return no("far");
   if (!plausible(cause, wall, grid, mover, { scene, walls, attacker, target, source, levels })) return no("far");
+  if (cause.kind === "through" && !strikeOutcome(cause.outcome)) return no("lucky");
   if (cause.kind === "miss") {
-    const chance = Number(scene.flags.animater.propMissChance ?? MISS_CHANCE); // a form may save it as text
+    // Through the glass (a ranged miss's flight, or a swing's line that crosses it) breaks always; the scene's chance is
+    // only for a window beside the target.
+    const crossed = !!cause.path || windowInSwing(wall, centreOf(attacker), target);
+    const chance = crossed ? 100 : Number(scene.flags.animater.propMissChance ?? MISS_CHANCE); // a form may save it as text
     if (!missBreaks(cause.outcome, Number.isFinite(chance) ? chance : MISS_CHANCE, roll)) return no("lucky");
   }
   // Only the seed, the cut and where the blow came from are the requester's; the rest is read here.
@@ -135,6 +151,14 @@ export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mo
   const note = wallNote({ seed: raw.seed, cutAngle: raw.cutAngle, from: raw.from, kind: traits.kind, material: traits.material, damageType: cause.kind === "blast" ? "fire" : cause.damageType });
   if (cause.kind === "force-open") note.messageId = message.id; // one break per message, kept on the wall
   return { ok: true, note, update: wallBreakUpdate(wall, note) };
+}
+
+// Whether a request breaks for sure once the GM finds it plausible (no chance roll to wait for), so the requester shows it
+// at once: anything but a plain melee miss at a window beside the target (not crossed by the swing's line). attacker and
+// target: footprints {x, y, w, h}.
+export function breaksSure(cause, wall, attacker, target) {
+  if (cause?.kind !== "miss" || cause.outcome === "criticalFailure" || cause.path) return true;
+  return !!attacker && windowInSwing(wall, centreOf(attacker), target);
 }
 
 // The GM's own reading of a Force Open roll, or why it is refused. The author sent it and owns the rolling token; that

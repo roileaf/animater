@@ -29,7 +29,7 @@ import { activityEntryMeta, cleanOrigin } from '../../ui/activity-actions.mjs';
 import { planLights, lightColor } from '../lighting/effect-lights.mjs';
 import { isHarmful, planMarks } from '../marks/ground-marks.mjs';
 import { isCritical, planDistortions } from '../distortion/scene-distortion.mjs';
-import { arrivalOf, missFlightsOf, stuckShotsOf, tokenId as tokenIdOf, withFlightPaths } from './flight-path.mjs';
+import { arrivalOf, hitFlightsOf, missFlightsOf, stuckShotsOf, tokenId as tokenIdOf, withFlightPaths } from './flight-path.mjs';
 import { addSurfaceSounds } from '../sound/surface-sounds.mjs';
 import { teleportPlan, withTeleportStage } from '../motion/teleport.mjs';
 import { createMomentum, applyMomentum, applyStrain } from './momentum.mjs';
@@ -406,6 +406,8 @@ export class AnimaterRuntime {
     if (!preview) { try { const stuck = stuckShotsOf(plan); if (stuck.length) this.host.shotsLanded?.(stuck, context); } catch { /* only for looks */ } }
     // A planned miss shot, for a breakable window it flies into (main.mjs): its path as drawn and when it gets there.
     if (!preview) { try { const misses = missFlightsOf(plan); if (misses.length) this.host.missFlown?.(misses, context); } catch { /* a window only */ } }
+    // A planned hit shot, for a breakable window it flies through on its way to the target (main.mjs).
+    if (!preview) { try { const hits = hitFlightsOf(plan); if (hits.length) this.host.hitFlown?.(hits, context); } catch { /* a window only */ } }
     if (
       !preview &&
       plan.some((s) => s.kind === "motion" || s.kind === "tokenfx" && !s.catalogFx && this.host.fxCatalog?.().tokenReady) &&
