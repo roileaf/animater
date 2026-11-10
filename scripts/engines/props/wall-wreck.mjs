@@ -1,0 +1,222 @@
+// Draws a smashed door (from wall-wreck-layout): a ragged dark gap with an ink edge over the painted door, splintered
+// stubs on the hinge and latch ends, planks thrown flat through to the far side, splinters, and the dust it raised.
+// One Container per wreck on the primary canvas, on the wall's level's floor, sorted above the tiles.
+import { doorWreckLayout, wallWreckTargets, wallLevelBase, DOOR_COLOUR } from "./wall-wreck-layout.mjs";
+import { flatMark } from "./prop-wreck-layout.mjs";
+import { paintMark } from "./prop-wreck.mjs";
+import { wallSound } from "./prop-sounds.mjs";
+import { wallMid } from "./wall-break.mjs";
+import { seededRandom } from "../fragments/fragments.mjs";
+
+const INK = 0x1a1410, FRESH = 0xd6b47c, K = 2; // planks are painted at twice their size, sharp when zoomed in
+const THROW_MS = 600, END_MS = 1000; // planks fly over the throw; dust settles by the end
+const ABOVE_TILES = 1e7; // a sort above any tile on the same floor (tokens draw in a later sort layer)
+const quiet = (fn) => { try { fn(); } catch { /* keep cleaning */ } };
+const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
+const lerp = (a, b, u) => a + (b - a) * u;
+const outCubic = (u) => 1 - (1 - u) ** 3, outQuart = (u) => 1 - (1 - u) ** 4;
+const span = (t, at, dur) => clamp01((t - at) / dur);
+const shade = (c, k) => (Math.min(255, Math.round(((c >> 16) & 255) * k)) << 16) | (Math.min(255, Math.round(((c >> 8) & 255) * k)) << 8) | Math.min(255, Math.round((c & 255) * k));
+const hex = (c) => `#${c.toString(16).padStart(6, "0")}`;
+const turnBy = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from)); // the short way round
+
+// A plank painted from above, its length along x about its centre: the door's boards with grain, a lit top edge, a
+// shaded lower edge, nails, perhaps the iron band, jagged snapped ends with a pale fresh edge, all inked.
+function plankCanvas(p, rand) {
+  const { len, wid } = p, c = document.createElement("canvas");
+  c.width = Math.ceil((len + 8) * K); c.height = Math.ceil((wid + 8) * K);
+  const g = c.getContext("2d"); g.scale(K, K); g.translate(4, 4);
+  const end = (x0, y0, x1, y1, amp) => {
+    const pts = [];
+    for (let i = 0; i <= 4; i++) pts.push(lerp(x0, x1, i / 4) + (i === 0 || i === 4 ? 0 : (rand() - 0.5) * 2 * amp), lerp(y0, y1, i / 4));
+    return pts;
+  };
+  const e0 = end(0, 0, 0, wid, 3.5), e1 = end(len, wid, len, 0, 4), pts = [...e0, ...e1];
+  const line = (list, close) => { g.beginPath(); g.moveTo(list[0], list[1]); for (let i = 2; i < list.length; i += 2) g.lineTo(list[i], list[i + 1]); if (close) g.closePath(); };
+  g.save(); line(pts, true); g.clip();
+  g.fillStyle = hex(p.tone); g.fillRect(-5, -5, len + 10, wid + 10);
+  g.fillStyle = hex(shade(p.tone, 1.18)); g.fillRect(-5, -5, len + 10, wid * 0.28);
+  g.fillStyle = hex(shade(p.tone, 0.78)); g.fillRect(-5, wid * 0.74, len + 10, wid * 0.4);
+  g.strokeStyle = hex(shade(p.tone, 0.6)); g.lineWidth = 0.8;
+  for (let i = 0; i < 4; i++) {
+    const yy = wid * (0.2 + i * 0.2) + (rand() - 0.5) * 2;
+    g.beginPath(); g.moveTo(-2, yy);
+    for (let x = 0; x <= len + 2; x += 8) g.lineTo(x, yy + Math.sin(x * 0.07 + i * 2) * 1.2);
+    g.stroke();
+  }
+  const bandX = len * 0.22, bw = 6 * (wid / 30);
+  if (p.band) { g.fillStyle = "#3b3733"; g.fillRect(bandX, -2, bw, wid + 4); g.fillStyle = "rgba(160,150,140,0.5)"; g.fillRect(bandX, -2, bw, 1.5); }
+  g.fillStyle = "#1e1a16";
+  for (const nx of [bandX + bw / 2, len * 0.72]) for (const ny of [wid * 0.3, wid * 0.7]) { g.beginPath(); g.arc(nx, ny, 1.1, 0, Math.PI * 2); g.fill(); }
+  g.restore();
+  g.strokeStyle = "rgba(214,180,124,0.95)"; g.lineWidth = 2.5; line(e1, false); g.stroke();
+  g.strokeStyle = "rgba(20,15,10,0.95)"; g.lineWidth = 1.5; line(pts, true); g.stroke();
+  return c;
+}
+
+// grid() and layer() as in prop-wreck.mjs (a number or object works too); playSound(file, at) plays a recording at a point.
+export function createWallWreckage({ PIXI, layer, grid, playSound = () => {} }) {
+  const wrecks = new Map(); // wall id -> { box, textures, stop, key }
+  const gridOf = () => (typeof grid === "function" ? grid() : grid) || 100;
+  const layerOf = () => (typeof layer === "function" ? layer() : layer);
+  const sortLayer = () => globalThis.canvas?.primary?.constructor?.SORT_LAYERS?.TILES ?? globalThis.foundry?.canvas?.groups?.PrimaryCanvasGroup?.SORT_LAYERS?.TILES;
+  const keyOf = (d, note) => `${note.seed}:${note.cutAngle}:${note.mark}:${(d.c ?? []).join(",")}`;
+
+  const release = (e) => {
+    e.stop?.();
+    quiet(() => e.box.destroy({ children: true }));
+    for (const t of e.textures) quiet(() => t.destroy(true));
+    e.textures.length = 0;
+  };
+  const hide = (id) => { const e = wrecks.get(id); if (e) { wrecks.delete(id); release(e); } };
+
+  // The gap, its inner shadow and the two stubs, painted once.
+  function drawGap(L, k) {
+    const g = new PIXI.Graphics();
+    g.lineStyle(1.4, INK, 0.9).beginFill(0x15110e, 0.94).drawPolygon(L.gap.poly).endFill();
+    g.lineStyle(0).beginFill(0x2e2620, 0.8).drawPolygon(L.gap.inner).endFill();
+    // Each stub in its own frame: x along its rot into the doorway, y across the wall (half the door's thickness).
+    const profile = [[0, -1], [12, -1], [7, -0.45], [15, 0], [6, 0.55], [10, 1], [0, 1]];
+    for (const s of L.stubs) {
+      const c = Math.cos(s.rot), sn = Math.sin(s.rot), h = L.doorHalf, f = s.len / 15;
+      const pts = profile.flatMap(([x, y]) => { const px = x * f, py = y * h; return [s.x + px * c - py * sn, s.y + px * sn + py * c]; });
+      g.lineStyle(1.3, INK, 1).beginFill(DOOR_COLOUR).drawPolygon(pts).endFill();
+      g.lineStyle(1.6, FRESH, 0.9).moveTo(pts[2], pts[3]);
+      for (let i = 4; i <= 10; i += 2) g.lineTo(pts[i], pts[i + 1]);
+    }
+    return g;
+  }
+
+  // Splinters from where the door stood to where they lie, a small hop and a shadow each; settled, drawn once.
+  function splinterDrawer(g, list, origin) {
+    const items = list.map((s, i) => {
+      let cx = 0, cy = 0;
+      for (let j = 0; j < 8; j += 2) { cx += s.pts[j] / 4; cy += s.pts[j + 1] / 4; }
+      return { s, cx, cy, dur: 600 * (0.7 + ((i * 7) % 10) * 0.06) };
+    });
+    return (ms) => {
+      g.clear();
+      for (const { s, cx, cy, dur } of items) {
+        const r = span(ms, 0, dur), u = outQuart(r), lift = Math.sin(Math.PI * r) * 10;
+        const ox = lerp(origin.x, cx, u) - cx, oy = lerp(origin.y, cy, u) - cy - lift;
+        const pts = s.pts.map((v, j) => v + (j % 2 ? oy : ox));
+        g.lineStyle(0).beginFill(0x000000, 0.25).drawPolygon(pts.map((v, j) => v + (j % 2 ? 2.5 + lift * 0.6 : 1.5))).endFill();
+        g.lineStyle(0.8, INK, 0.55).beginFill(s.tone, 1).drawPolygon(pts).endFill();
+      }
+    };
+  }
+
+  // Dust (or smoke, from a fire) billowing out of the far side of the doorway, gone by the end.
+  function puffDrawer(g, mid, n, k, mark, seed) {
+    const tones = mark === "scorch" ? [0x5a524a, 0x6d6660] : [0x9d8b6e, 0xb3a184];
+    const along = { x: -n.y, y: n.x };
+    const list = [0, 1, 2, 3].map((i) => ({
+      x: mid.x + along.x * (i - 1.5) * 22 * k + n.x * 12 * k, y: mid.y + along.y * (i - 1.5) * 22 * k + n.y * 12 * k,
+      vx: (along.x * (i - 1.5) * 12 + n.x * (50 + i * 6)) * k, vy: (along.y * (i - 1.5) * 12 + n.y * (50 + i * 6)) * k, at: i * 25, seed: (seed >>> 0) * 13 + 50 + i,
+    }));
+    return (ms) => {
+      g.clear();
+      for (const p of list) {
+        const r = span(ms, p.at, 900);
+        if (r <= 0 || r >= 1) continue;
+        const u = outCubic(r), rr = lerp(12, 34, u) * k, x = p.x + p.vx * u, y = p.y + p.vy * u, a = 0.4 * (r < 0.15 ? r / 0.15 : 1 - (r - 0.15) / 0.85);
+        const rnd = seededRandom(p.seed);
+        tones.forEach((c, i) => {
+          const s = 1 - i * 0.28;
+          for (let l = 0; l < 5; l++) {
+            const la = rnd() * Math.PI * 2, ld = rr * 0.35 * rnd(), pts = [];
+            for (let q = 0; q < 10; q++) { const qa = (q / 10) * Math.PI * 2, qr = rr * s * (0.55 + rnd() * 0.18); pts.push(x + Math.cos(la) * ld + Math.cos(qa) * qr, y + Math.sin(la) * ld + Math.sin(qa) * qr); }
+            g.lineStyle(i === 0 ? 1 : 0, INK, 0.08 * a).beginFill(c, a * 0.45).drawPolygon(pts).endFill();
+          }
+        });
+      }
+    };
+  }
+
+  function show(wallDoc, note, { animate = false } = {}) {
+    const d = wallDoc?.document ?? wallDoc, id = d?.id;
+    if (!id) return;
+    hide(id);
+    const entry = { box: null, textures: [], stop: null, key: keyOf(d, note) };
+    try { draw(d, note, entry, animate); wrecks.set(id, entry); }
+    catch (error) { release(entry); console.warn("Animater wall wreckage: could not draw", error); }
+  }
+
+  function draw(d, note, entry, animate) {
+    const grid = gridOf(), k = grid / 100, L = doorWreckLayout(note, d, grid), [x1, y1, x2, y2] = d.c, mid = wallMid(d);
+    const box = new PIXI.Container(); entry.box = box;
+    const scene = d.parent;
+    box.elevation = wallLevelBase(d.levels, scene?.levels?.contents ?? scene?.levels ?? [], scene?.initialLevel?.id ?? null);
+    box.sort = ABOVE_TILES;
+    const sl = sortLayer();
+    if (sl !== undefined) box.sortLayer = sl;
+
+    box.addChild(drawGap(L, k));
+    const mark = paintMark(PIXI, flatMark(L.mark.kind, { ...L.mark, squash: 0.6, angle: Math.atan2(y2 - y1, x2 - x1) }, seededRandom((note.seed >>> 0) * 31 + 9)), entry.textures);
+    box.addChild(mark);
+
+    const shadows = new PIXI.Container(), boards = new PIXI.Container();
+    box.addChild(shadows, boards);
+    const planks = L.planks.map((p, i) => {
+      const tex = PIXI.Texture.from(plankCanvas(p, seededRandom((note.seed >>> 0) * 53 + 7 + i)));
+      entry.textures.push(tex);
+      const body = new PIXI.Sprite(tex), sh = new PIXI.Sprite(tex);
+      for (const s of [body, sh]) s.anchor.set(0.5);
+      sh.tint = 0x000000; shadows.addChild(sh); boards.addChild(body);
+      return { p, body, sh, dur: THROW_MS + i * 60, spin: turnBy(p.home.rot, p.rot) };
+    });
+    const throwAt = (ms) => {
+      for (const { p, body, sh, dur, spin } of planks) {
+        const r = span(ms, 0, dur), u = outCubic(r), lift = Math.sin(Math.PI * r) * 0.5;
+        const x = lerp(p.home.x, p.x, u), y = lerp(p.home.y, p.y, u), sc = (1 + lift * 0.25) / K;
+        body.position.set(x, y - lift * 18 * k); body.rotation = p.home.rot + spin * u; body.scale.set(sc);
+        sh.position.set(x + (2.5 + lift * 10) * k, y + (4 + lift * 16) * k); sh.rotation = body.rotation; sh.scale.set(sc); sh.alpha = 0.4 * (1 - lift * 0.5);
+      }
+    };
+
+    const chips = new PIXI.Graphics(); box.addChild(chips);
+    const far = splinterDrawer(chips, L.splinters.far, mid), nearG = new PIXI.Graphics(); box.addChild(nearG);
+    const near = splinterDrawer(nearG, L.splinters.near, mid);
+    const frame = (ms) => { throwAt(ms); far(ms); near(ms); mark.alpha = span(ms, 0, 500); };
+
+    layerOf().addChild(box);
+    if (!animate) { frame(END_MS); return; }
+
+    const n = { x: (L.mark.x - mid.x) / (40 * k), y: (L.mark.y - mid.y) / (40 * k) }; // toward the far side
+    const dust = new PIXI.Graphics(); box.addChild(dust);
+    const puffs = puffDrawer(dust, mid, n, k, L.mark.kind, note.seed);
+    // Only a break seen happening is heard, mid-throw; the note's seed gives every screen the same recording.
+    let heard = false;
+    const hear = () => {
+      heard = true;
+      try { playSound(wallSound(note.kind, seededRandom(note.seed)).file, mid); }
+      catch (error) { console.warn("Animater wall wreckage: no sound", error); }
+    };
+    const t0 = performance.now(); let raf = 0;
+    entry.stop = () => { cancelAnimationFrame(raf); entry.stop = null; };
+    const tick = () => {
+      const ms = Math.min(END_MS, performance.now() - t0);
+      frame(ms); puffs(ms);
+      if (!heard && ms >= THROW_MS / 2) hear();
+      if (ms < END_MS) raf = requestAnimationFrame(tick);
+      else { entry.stop = null; quiet(() => dust.destroy()); }
+    };
+    frame(0); puffs(0); raf = requestAnimationFrame(tick);
+  }
+
+  // Draws every wall with a broken note and removes the rest; a wreck already drawn for the same note is left alone.
+  function sync(wallDocs) {
+    const want = wallWreckTargets(wallDocs), byId = new Map((wallDocs ?? []).map((w) => [(w.document ?? w).id, w.document ?? w]));
+    const ids = new Set(want.map((w) => w.id));
+    for (const id of [...wrecks.keys()]) if (!ids.has(id)) hide(id);
+    for (const { id, note } of want) {
+      const d = byId.get(id);
+      if (wrecks.get(id)?.key === keyOf(d, note)) continue;
+      show(d, note, { animate: false });
+    }
+  }
+
+  function clear() { for (const id of [...wrecks.keys()]) hide(id); }
+
+  return { show, hide, sync, clear };
+}

@@ -46,9 +46,17 @@ function groundMark(kind, c, r, rand) {
   return one(1.15, [[0x8d7c62, 0.3], [0x9d8b6e, 0.28]], 0x4a3f30); // dust
 }
 
+// A flattened dust or scorch mark, in world px: squash flattens it across, then it turns by angle. A broken door's
+// mark (wall-wreck.mjs) and a collapse's dust; drawn like any ground mark.
+const FLAT_MARKS = { dust: [[[0x8d7c62, 0.3], [0x9d8b6e, 0.28]], 0x4a3f30], scorch: [[[0x2a1d16, 0.5], [0x1a110c, 0.55], [0x0c0806, 0.5]], 0x1a1410] };
+export function flatMark(kind, { x, y, r, squash = 1, angle = 0 }, rand) {
+  const [steps, ink] = FLAT_MARKS[kind] ?? FLAT_MARKS.dust;
+  return { kind: Object.hasOwn(FLAT_MARKS, kind) ? kind : "dust", blobs: [blotch(x, y, r, steps, rand, ink, 7, squash, angle)], ticks: [] };
+}
+
 // The dust a collapse settles in, in world px: {x, y, r, squash, angle} from collapseLayout, turned with the tile.
 export function collapseDust({ x, y, r, squash = 1, angle = 0 }, seed) {
-  return { kind: "dust", blobs: [blotch(x, y, r, [[0x8d7c62, 0.3], [0x9d8b6e, 0.28]], seededRandom((seed >>> 0) * 31 + 5), 0x4a3f30, 7, squash, angle)], ticks: [] };
+  return flatMark("dust", { x, y, r, squash, angle }, seededRandom((seed >>> 0) * 31 + 5));
 }
 
 // How far either side of the hit a liquid runs (radians): the far side of the ground mark stays bare.

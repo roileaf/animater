@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { propSound, BREAK_SOUNDS, SPLASH_SOUNDS } from "../../../scripts/engines/props/prop-sounds.mjs";
+import { propSound, wallSound, BREAK_SOUNDS, SPLASH_SOUNDS } from "../../../scripts/engines/props/prop-sounds.mjs";
 
 test("a material's break sound is one of its own family, chosen by rand", () => {
   for (const m of Object.keys(BREAK_SOUNDS)) {
@@ -29,4 +29,10 @@ test("an unknown material breaks like wood", () => {
 });
 test("every named recording is bundled", () => {
   for (const f of [...Object.values(BREAK_SOUNDS).flat(), ...SPLASH_SOUNDS]) assert.ok(existsSync(f.replace("modules/animater/", "")), f);
+});
+test("a door sounds like wood until its own family ships", () => {
+  assert.ok(BREAK_SOUNDS.wood.includes(wallSound("door", () => 0.3).file));
+  assert.equal(wallSound("door", () => 0).file, BREAK_SOUNDS.wood[0]);
+  assert.deepEqual(wallSound("door", () => 0.6), wallSound("door", () => 0.6));
+  assert.ok(BREAK_SOUNDS.wood.includes(wallSound("unknown", () => 0.9).file), "an unknown kind falls back to the door's sound");
 });
