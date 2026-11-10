@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { windowOnFlight, missPathOk, windowOnMissPath, createMissFlights, MISS_NEAR, MISS_LONGER } from "../../../scripts/engines/props/window-miss.mjs";
+import { readFileSync } from "node:fs";
+import { windowOnFlight, missPathOk, windowOnMissPath, createMissFlights, missFlies, MISS_NEAR, MISS_LONGER } from "../../../scripts/engines/props/window-miss.mjs";
 import { windowNextToMiss, nextToMiss, windowBesideMiss } from "../../../scripts/engines/props/wall-triggers.mjs";
 import { planFlight, missLine } from "../../../scripts/engines/playback/flight-path.mjs";
 
@@ -146,4 +147,20 @@ test("the shot of a roll: told then asked, asked then told, or never told", asyn
   timers.shift().fn();
   assert.equal(await late, null);
   assert.equal(await m.wait(undefined, 10), null);
+});
+
+test("a thrown miss flies like a ranged one; a melee miss swings; anything else is not a strike", () => {
+  assert.equal(missFlies("ranged"), true);
+  assert.equal(missFlies("thrown"), true);
+  assert.equal(missFlies("melee"), false);
+  assert.equal(missFlies(undefined), null);
+  assert.equal(missFlies("spell"), null);
+});
+
+test("a missed strike reaches windows by its weapon mode, thrown included", () => {
+  const main = readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8");
+  const body = main.slice(main.indexOf("async function breakPropOnMiss"), main.indexOf("const propMiss ="));
+  assert.ok(body.includes("ranged = missFlies(event?.weaponMode)"));
+  assert.match(body, /ranged === null\) return/);
+  assert.doesNotMatch(body, /weaponMode !== "melee"/);
 });

@@ -30,7 +30,7 @@ import { wallMid, readWallNote, wallRepairUpdates, wallTraits, wallBreakFormMerg
 import { firePatchAt } from "./engines/props/prop-wreck-layout.mjs";
 import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest, handEdited, handEditUpdate, slamSenderOk } from "./engines/props/wall-break-requests.mjs";
 import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, smashFrom, nextToMiss } from "./engines/props/wall-triggers.mjs";
-import { windowOnFlight, createMissFlights } from "./engines/props/window-miss.mjs";
+import { windowOnFlight, createMissFlights, missFlies } from "./engines/props/window-miss.mjs";
 import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt, forceOpenWording, showForceDC } from "./engines/props/force-open.mjs";
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
@@ -8606,11 +8606,11 @@ async function missShotOf(event, attacker, target, grid) {
 }
 // A strike of this client's that missed (or critically failed) its one target. Melee: the prop or breakable window
 // beside the target nearest the line of the swing (never on the attacker's side), if the weapon's own damage type can
-// break it. Ranged: the first breakable window the shot's miss path flies into, as it gets there. The GM rolls a plain
-// miss's chance.
+// break it. Ranged or thrown: the first breakable window the shot's miss path flies into, as it gets there. The GM rolls
+// a plain miss's chance.
 async function breakPropOnMiss(event) {
-  const outcome = missOutcome(event?.outcome), ranged = event?.weaponMode === "ranged";
-  if (!outcome || event.type !== "attack" || (event.weaponMode !== "melee" && !ranged)) return;
+  const outcome = missOutcome(event?.outcome), ranged = missFlies(event?.weaponMode);
+  if (!outcome || event.type !== "attack" || ranged === null) return;
   const scene = (event.sceneId ? game.scenes.get(event.sceneId) : null) ?? canvas?.scene;
   if (!propsOn(scene)) return;
   const targetUuid = event.targetUuid ?? (event.targetUuids?.length === 1 ? event.targetUuids[0] : null);

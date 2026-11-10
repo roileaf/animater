@@ -24,6 +24,11 @@ function shareAlong(a, b, wall) {
   return den ? ((x1 - a.x) * sy - (y1 - a.y) * sx) / den : 0;
 }
 
+// How a missed strike reaches what it breaks (pure), by the attack's weapon mode: true when its weapon flies (ranged, or
+// thrown, which flies like a ranged shot: a thrown javelin or dagger crosses a window the same way an arrow does), false
+// for a melee swing, null for anything else (not a weapon strike).
+export const missFlies = (weaponMode) => weaponMode === "ranged" || weaponMode === "thrown" ? true : weaponMode === "melee" ? false : null;
+
 // The breakable window a planned miss shot flies into, and when: {wall, at} with at in ms into the play, or null.
 // flight: {from, to, start, arrive} (missFlightsOf, or planFlight's path with start/arrive 0): the first window on its
 // path as drawn (a window it stops at counts; one behind the wall that stopped it does not), reached in proportion to
