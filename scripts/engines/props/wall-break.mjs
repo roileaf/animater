@@ -2,6 +2,7 @@
 // Foundry v14 numbers, hard-coded to keep this module pure: door type NONE 0 / DOOR 1 / SECRET 2; the sense and movement
 // types are NONE 0 when the passage is open.
 import { canBreak } from "./prop-material.mjs";
+import { forceDCOf } from "./force-open.mjs"; // a cycle of function declarations only (force-open reads wallTraits)
 
 const KINDS = ["door", "window"];
 const MATERIALS = ["wood", "metal", "stone"];
@@ -14,13 +15,15 @@ const isNum = (n) => typeof n === "number" && Number.isFinite(n);
 
 // What this wall is for breaking: kind null when it cannot break (not a door and not a wall the GM marked Window, the
 // scene's switches off, or the GM said never). A window is opt-in (breakWall.window, never the light kind), glass unless
-// the GM chose Won't break ("none"), and Force Open never reaches it.
-export function wallTraits(wall, scene) {
+// the GM chose Won't break ("none"), and Force Open never reaches it. forceDC: the door's Force open DC in this game
+// system (system: game.system.id), its own breakWall.forceDC else by material; null for a window or a system without DCs.
+export function wallTraits(wall, scene, system) {
   const sf = scene?.flags?.animater ?? {}, own = wall?.flags?.animater?.breakWall ?? {};
   const on = sf.breakableProps === true && sf.breakWalls !== false;
   const door = on && (wall?.door === 1 || wall?.door === 2) && own.door !== "never";
-  if (!door && on && wall?.door === 0 && own.window === true) return { kind: "window", material: own.material === "none" ? "none" : "glass", forceOpen: false };
-  return { kind: door ? "door" : null, material: MATERIALS.includes(own.material) ? own.material : "wood", forceOpen: own.forceOpen !== false };
+  if (!door && on && wall?.door === 0 && own.window === true) return { kind: "window", material: own.material === "none" ? "none" : "glass", forceOpen: false, forceDC: null };
+  const material = MATERIALS.includes(own.material) ? own.material : "wood";
+  return { kind: door ? "door" : null, material, forceOpen: own.forceOpen !== false, forceDC: forceDCOf(own, material, system) };
 }
 
 // Whether this cause breaks a wall of these traits. A pure damage and slam rule: Force Open and smash have their own rule.

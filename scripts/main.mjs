@@ -28,7 +28,8 @@ import { propsInArea, propNextToMiss, propsOnPath, onLevel, tilesOnLevel } from 
 import { ownWalls } from "./engines/props/prop-walls.mjs";
 import { wallMid, readWallNote, wallRepairUpdates, wallTraits } from "./engines/props/wall-break.mjs";
 import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest, handEdited, handEditUpdate, slamSenderOk } from "./engines/props/wall-break-requests.mjs";
-import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, forceOpenDoor, smashFrom, windowOnLine } from "./engines/props/wall-triggers.mjs";
+import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, smashFrom, windowOnLine } from "./engines/props/wall-triggers.mjs";
+import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt, forceOpenWording } from "./engines/props/force-open.mjs";
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
@@ -7369,15 +7370,20 @@ async function wallPlace(cause, scene, grid, user) {
   const senderTokens = (scene.tokens?.contents ?? []).filter(owns).map((t) => ({ x: t.x, y: t.y, w: t.width * grid, h: t.height * grid }));
   return { ...place, mover, senderTokens };
 }
-// Force Open: this screen's own copy of the roll's message, its speaker's footprint on this scene, and the scene's walls
-// (the door the roll opens is the one forceOpenDoor picks from them).
+// Force Open: this screen's own copy of the roll's message; the rolling token's footprint on this scene (the one a door
+// roll names, else the speaker's), with whether the message's author owns it and it is the speaker's actor's; the scene's
+// walls; the game system; and whether this GM already broke a door with that message.
 function forceOpenPlace(cause, scene, grid) {
-  const message = cause.messageId ? game.messages?.get(cause.messageId) : null, speaker = message?.speaker ?? {};
-  const t = speaker.token && (!speaker.scene || speaker.scene === scene.id) ? scene.tokens?.get(speaker.token) : null;
-  return { message: message ?? undefined, token: t ? { x: t.x, y: t.y, w: t.width * grid, h: t.height * grid, level: t.level } : undefined,
-    walls: (scene.walls?.contents ?? []).map(wallView) };
+  const message = cause.messageId ? game.messages?.get(cause.messageId) : null, roll = forceOpenOf(message), author = message?.author ?? message?.user;
+  const t = roll && (!roll.sceneId || roll.sceneId === scene.id) ? scene.tokens?.get(roll.tokenId) : null, speakerActor = message?.speaker?.actor;
+  let authorOwns = false;
+  try { authorOwns = !!t && !!author && t.testUserPermission?.(author, "OWNER") === true && (!speakerActor || t.actorId === speakerActor); } catch { authorOwns = false; }
+  return { message: message ?? undefined, token: t ? { x: t.x, y: t.y, w: t.width * grid, h: t.height * grid, level: t.level, authorOwns } : undefined,
+    walls: (scene.walls?.contents ?? []).map(wallView), system: game.system.id, used: !!message && forceOpenUsed.has(message.id) };
 }
-const forceOpenUsed = new Set(); // messages whose Force Open already broke a door (GM): one roll, one door
+// Messages whose Force Open already broke a door (GM): one roll, one door. Also kept on the broken wall's note
+// (messageId) and as the message's own flags.animater.forceOpenUsed, so a reload or Repair does not let it break another.
+const forceOpenUsed = new Set();
 // Breaks a door for a cause {kind: "area"|"path"|"smash"|"force-open", damageType?, slam?, at?, path?, moverUuid?, ...}; from: where
 // the blow came from (the area's centre, the path's start). True once it is asked of (or written by) the GM.
 async function requestWallBreak(wall, cause, { from } = {}) {
@@ -7400,12 +7406,14 @@ async function applyWallBreak(scene, doc, cause, rawNote, user) {
   wallWriting.add(doc.id);
   try {
     const grid = propGrid(scene);
-    if (cause.kind === "force-open" && forceOpenUsed.has(cause.messageId)) { runtime?.trace("props", "door not broken: used"); return false; }
     const check = validWallBreakRequest({ cause, note: rawNote }, { wall: wallView(doc), scene, grid, sender: user, roll: Math.random(), ...await wallPlace(cause, scene, grid, user), ...blastPlace(cause, scene) });
     if (!check.ok) { runtime?.trace("props", `door not broken: ${check.why}`); return false; }
     const { _id, ...update } = check.update;
     await doc.update(update, { animater: { wallBreak: true }, sound: false });
-    if (cause.kind === "force-open") forceOpenUsed.add(cause.messageId);
+    if (cause.kind === "force-open") {
+      forceOpenUsed.add(cause.messageId);
+      void game.messages?.get(cause.messageId)?.setFlag(ID, "forceOpenUsed", true).catch((e) => runtime?.trace("props", `force open mark: ${e?.message ?? e}`));
+    }
     return true;
   } finally { wallWriting.delete(doc.id); }
 }
@@ -7513,19 +7521,102 @@ function breakAreaProps(message) {
   if (wait > 0) setTimeout(ask, wait); else ask();
 }
 Hooks.on("createChatMessage", (message) => propSafe("area damage", () => breakAreaProps(message)));
-// A PF2e Force Open of this client's that succeeded: the door beside its token that the roll breaks (forceOpenDoor),
-// asked of the GM, who reads the roll again from its own copy of the message.
+// A Force Open roll of this client's (engines/props/force-open.mjs): one rolled from a door names it (any supported
+// system); a PF2e or SF2e Force Open from the sheet means the closest closed breakable door beside its token. Asked of
+// the GM, who reads the roll again from its own copy of the message and judges it against the wall's own DC.
 async function breakDoorsOnForceOpen(message) {
-  if (game.system.id !== "pf2e" || (message?.author ?? message?.user)?.id !== game.user.id) return;
+  const sys = game.system.id;
+  if (!FORCE_OPEN_SYSTEMS.has(sys) || (message?.author ?? message?.user)?.id !== game.user.id) return;
   const roll = forceOpenOf(message);
   if (!roll) return;
   const scene = (roll.sceneId ? game.scenes.get(roll.sceneId) : null) ?? canvas?.scene, tok = scene?.tokens?.get(roll.tokenId);
   if (!propsOn(scene) || !tok) return;
   const grid = propGrid(scene), foot = { x: tok.x, y: tok.y, w: tok.width * grid, h: tok.height * grid, level: tok.level };
-  const door = forceOpenDoor(foot, (scene.walls?.contents ?? []).map(wallView), scene, grid, roll.outcome), doc = door ? scene.walls.get(door.id) : null;
+  const door = roll.wallId ? { id: roll.wallId } : closestForcedDoor(foot, (scene.walls?.contents ?? []).map(wallView), scene, grid);
+  const doc = door ? scene.walls?.get(door.id) : null;
   if (!doc) return;
   await afterDice({ type: "check", messageId: message.id });
   await requestWallBreak(doc, { kind: "force-open", messageId: message.id }, { from: { x: foot.x + foot.w / 2, y: foot.y + foot.h / 2 } });
+}
+// A roll from the door whose system takes no message data (PF2e/SF2e's Force Open action, Daggerheart's trait roll): the
+// next matching roll message this client creates for that actor carries flags.animater.forceOpen. Cleared once used, when
+// the roll call ends, or after FORCE_STAMP_MS (a roll dialog left open).
+const FORCE_STAMP_MS = 120000;
+let forceOpenStamp = null; // {actorId, flag, match(doc), until}
+Hooks.on("preCreateChatMessage", (doc, _data, _options, userId) => propSafe("force open stamp", () => {
+  const s = forceOpenStamp;
+  if (!s || userId !== game.user.id) return;
+  if (Date.now() > s.until) { forceOpenStamp = null; return; }
+  if (doc?.speaker?.actor !== s.actorId || !s.match(doc)) return;
+  doc.updateSource({ [`flags.${ID}.forceOpen`]: s.flag });
+  forceOpenStamp = null;
+}));
+const stampForceOpen = (actor, flag, match) => { forceOpenStamp = { actorId: actor.id, flag, match, until: Date.now() + FORCE_STAMP_MS }; };
+const clearForceOpenStamp = (flag) => { if (forceOpenStamp?.flag === flag) forceOpenStamp = null; };
+// The system's own check for forcing this door, its message flagged {wallId, dc, tokenId} (the GM ignores the dc and
+// reads the wall's). PF2e/SF2e: the Force Open action with the door's DC. D&D 5e: Strength (Athletics) with the DC as
+// target. Daggerheart: a Strength action roll against the difficulty. Draw Steel: a Might test (medium for wood, hard
+// for metal and stone, which is the tier rule).
+async function rollForceOpen(actor, tokenDoc, wallDoc, traits) {
+  const sys = game.system.id, flag = { wallId: wallDoc.id, dc: traits.forceDC, tokenId: tokenDoc.id }, data = { flags: { [ID]: { forceOpen: flag } } };
+  if (sys === "pf2e" || sys === "sf2e") {
+    const act = game.pf2e?.actions?.forceOpen;
+    if (typeof act !== "function") return false;
+    stampForceOpen(actor, flag, (doc) => {
+      const ctx = doc.flags?.[sys]?.context ?? doc.flags?.pf2e?.context;
+      return Array.isArray(ctx?.options) && ctx.options.includes("action:force-open") && Number(ctx?.dc?.value) === flag.dc;
+    });
+    act({ actors: [actor], difficultyClass: { value: flag.dc }, callback: () => clearForceOpenStamp(flag) });
+    return true;
+  }
+  if (sys === "dnd5e") {
+    if (typeof actor.rollSkill !== "function") return false;
+    await actor.rollSkill({ skill: "ath", target: flag.dc }, {}, { data });
+    return true;
+  }
+  if (sys === "daggerheart") {
+    if (typeof actor.rollTrait !== "function") return false;
+    stampForceOpen(actor, flag, (doc) => {
+      if (doc.type !== "dualityRoll" || !doc.rolls?.length) return false;
+      const trait = doc._source?.system?.roll?.trait ?? doc.system?.roll?.trait;
+      return !trait || trait === "strength";
+    });
+    try { await actor.rollTrait("strength", { roll: { type: "trait", trait: "strength", difficulty: flag.dc } }); } finally { clearForceOpenStamp(flag); }
+    return true;
+  }
+  if (sys === "draw-steel") {
+    if (typeof actor.system?.rollCharacteristic !== "function") return false;
+    await actor.system.rollCharacteristic("might", { difficulty: traits.material === "wood" ? "medium" : "hard" }, {}, { data });
+    return true;
+  }
+  return false;
+}
+const ROLLER_WHY = {
+  far: "Your token has to stand next to the door to force it open.",
+  many: "Select the token that forces the door open.",
+  none: "Select your token next to the door to force it open.",
+};
+// A right-click on a door control: a player's on a closed or locked breakable door that can be forced open, or the
+// GM's with Alt held, prompts "Force it open?" and rolls the system's check for the token beside it (forceOpenRoller).
+// False when it is not this module's (another system, the wrong door, the GM without Alt), so Foundry's own goes ahead.
+function forceOpenFromDoor(wall, event) {
+  const doc = wall?.document ?? wall, scene = doc?.parent, sys = game.system.id, w = forceOpenWording(sys);
+  if (doc?.documentName !== "Wall" || !scene || !propsOn(scene) || !w) return false;
+  if (game.user?.isGM && !(event?.altKey || game.keyboard?.isModifierActive?.("Alt"))) return false;
+  const view = wallView(doc), traits = wallTraits(view, scene, sys);
+  if (traits.kind !== "door" || !traits.forceOpen || doc.ds === 1 || view.flags?.[ID]?.breakWall?.broken) return false;
+  if (game.paused && !game.user.isGM) { ui.notifications?.warn("GAME.PausedWarning", { localize: true }); return true; }
+  const grid = propGrid(scene), foot = (t) => ({ id: t.id, x: t.x, y: t.y, w: t.width * grid, h: t.height * grid, level: t.level });
+  const controlled = (canvas?.tokens?.controlled ?? []).map((t) => t.document).filter((d) => d?.parent === scene && d.isOwner && d.actor);
+  const owned = game.user.isGM ? [] : (scene.tokens?.contents ?? []).filter((d) => d.isOwner && d.actor);
+  const pick = forceOpenRoller(view, { controlled: controlled.map(foot), owned: owned.map(foot) }, grid);
+  const tokenDoc = pick.token ? scene.tokens.get(pick.token.id) : null;
+  if (!tokenDoc?.actor) { ui.notifications?.info(ROLLER_WHY[pick.why] ?? ROLLER_WHY.none); return true; }
+  void (async () => {
+    const ok = await foundry.applications.api.DialogV2.confirm({ window: { title: `${w.label}: ${tokenDoc.name}` }, content: `<p>${forceOpenPrompt(sys, traits.material, traits.forceDC)}</p>`, rejectClose: false });
+    if (ok && !(await rollForceOpen(tokenDoc.actor, tokenDoc, doc, traits))) ui.notifications?.warn("This game system's roll for forcing a door is not available.");
+  })().catch((e) => runtime?.trace("props", `force open from door: ${e?.message ?? e}`));
+  return true;
 }
 Hooks.on("createChatMessage", (message) => { void propSafe("force open", () => breakDoorsOnForceOpen(message))?.catch?.((e) => runtime?.trace("props", `force open: ${e?.message ?? e}`)); });
 // The GM's Shift+right-click on a door control: the door smashes, from the GM's one controlled token, else half a square
@@ -7544,6 +7635,7 @@ Hooks.once("setup", () => {
     if (typeof own !== "function") return;
     proto._onRightDown = function (event, ...rest) {
       if (game.user?.isGM && event?.shiftKey && propSafe("smash", () => smashDoor(this.wall)) === true) { event.stopPropagation?.(); return; }
+      if (!event?.shiftKey && propSafe("force open", () => forceOpenFromDoor(this.wall, event)) === true) { event.stopPropagation?.(); return; }
       return own.call(this, event, ...rest);
     };
   } catch (e) { runtime?.trace("props", `door control: ${e?.message ?? e}`); }
@@ -9818,11 +9910,14 @@ Hooks.on("renderWallConfig", (app, html) => {
   if (!root || root.querySelector("[data-animater-break-wall]")) return;
   const doc = app.document ?? app.object, sceneOn = doc?.parent?.flags?.[ID]?.breakableProps === true;
   const set = document.createElement("fieldset");
-  set.innerHTML = wallBreakFieldsHTML({ door: doc?.door, own: doc?.flags?.[ID]?.breakWall, sceneOn });
+  set.innerHTML = wallBreakFieldsHTML({ door: doc?.door, own: doc?.flags?.[ID]?.breakWall, sceneOn, system: game.system.id });
   const fieldset = set.firstElementChild;
   appendWallSection(root, fieldset);
   const select = root.querySelector('select[name="door"]'), group = fieldset.querySelector('[data-group="door"]');
   const windowGroup = fieldset.querySelector('[data-group="window"]');
+  // The Force open DC's "Automatic (N)" follows the door's Material select.
+  const dcField = group.querySelector(`[name="flags.${ID}.breakWall.forceDC"]`), doorMaterial = group.querySelector(`select[name="flags.${ID}.breakWall.material"]`);
+  doorMaterial?.addEventListener("change", () => { const n = dcField?.dataset?.[`dc${String(doorMaterial.value).replace(/^./, (c) => c.toUpperCase())}`]; if (dcField && n) dcField.placeholder = `Automatic (${n})`; });
   // The group matching Door Type shows; the other's inputs are disabled, so Material submits from one select only.
   const sync = () => {
     const isDoor = ["1", "2"].includes(String(select?.value ?? doc?.door));

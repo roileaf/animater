@@ -1,8 +1,8 @@
-// What sets a door breaking: an area's damage over its middle, a mover forced (or charging) through it, a PF2e
-// Force Open, the GM's smash. Pure: no Foundry globals. Each picks only walls that are breakable, intact and on the
+// What sets a door breaking: an area's damage over its middle, a mover forced (or charging) through it, a Force
+// Open roll (force-open.mjs judges it), the GM's smash. Pure: no Foundry globals. Each picks only walls that are breakable, intact and on the
 // cause's own level; the GM checks each again (wall-break-requests.mjs).
 import { wallTraits, canBreakWall, wallMid, crossesWall } from "./wall-break.mjs";
-import { onLevel, segRectDist } from "./prop-pick.mjs";
+import { onLevel } from "./prop-pick.mjs";
 
 const intact = (w) => !w?.flags?.animater?.breakWall?.broken;
 const finite = (p) => Number.isFinite(p?.x) && Number.isFinite(p?.y);
@@ -67,31 +67,20 @@ export function windowOnLine(a, b, walls, scene, levels) {
   return best;
 }
 
-const FORCE_OPEN_OUTCOMES = ["success", "criticalSuccess"];
-// A PF2e Force Open check that succeeded: PF2e's macro and its force-open action both add the roll option. Null otherwise.
+// A Force Open roll, whatever its outcome (the GM compares it with the door's DC): one rolled from a door carries
+// flags.animater.forceOpen {wallId, dc, tokenId?} in any system; one from a PF2e or SF2e sheet has the action's roll
+// option. Null otherwise, or when no token is named. wallId is null for a sheet roll (the closest door is meant).
 export function forceOpenOf(message) {
-  const ctx = message?.flags?.pf2e?.context, options = ctx?.options;
-  if (!Array.isArray(options) || !options.includes("action:force-open") || !FORCE_OPEN_OUTCOMES.includes(ctx.outcome)) return null;
-  const tokenId = message.speaker?.token;
+  const flag = message?.flags?.animater?.forceOpen;
+  const wallId = flag && typeof flag === "object" && typeof flag.wallId === "string" && flag.wallId ? flag.wallId.slice(0, 64) : null;
+  const ctx = message?.flags?.pf2e?.context ?? message?.flags?.sf2e?.context, options = ctx?.options;
+  const action = Array.isArray(options) && options.includes("action:force-open");
+  if (!wallId && !action) return null;
+  const named = wallId && typeof flag.tokenId === "string" && flag.tokenId ? flag.tokenId.slice(0, 64) : null;
+  const tokenId = named ?? message.speaker?.token;
   if (typeof tokenId !== "string" || !tokenId) return null;
   const sceneId = typeof message.speaker?.scene === "string" ? message.speaker.scene : null;
-  return { outcome: ctx.outcome, tokenId, sceneId, authorId: (message.author ?? message.user)?.id ?? null };
-}
-
-// The door that Force Open breaks: the closest intact door, not open, that allows Force Open, within one square of the
-// token's footprint {x, y, w, h, level} and on its level. A critical success breaks any material; a success only wood.
-export function forceOpenDoor(token, walls, scene, grid = 100, outcome) {
-  if (!FORCE_OPEN_OUTCOMES.includes(outcome) || ![token?.x, token?.y, token?.w, token?.h].every(Number.isFinite)) return null;
-  const rect = { x: token.x, y: token.y, width: token.w, height: token.h };
-  let best = null, bestD = Infinity;
-  for (const w of walls ?? []) {
-    if (!reachable(w, scene, token.level) || w.ds === 1) continue;
-    const t = wallTraits(w, scene);
-    if (t.kind !== "door" || !t.forceOpen || (outcome !== "criticalSuccess" && t.material !== "wood")) continue;
-    const [x1, y1, x2, y2] = w.c, d = segRectDist({ x: x1, y: y1 }, { x: x2, y: y2 }, rect);
-    if (d <= grid && d < bestD) { best = w; bestD = d; }
-  }
-  return best;
+  return { wallId, tokenId, sceneId, authorId: (message.author ?? message.user)?.id ?? null, outcome: typeof ctx?.outcome === "string" ? ctx.outcome : null };
 }
 
 // Where a smash comes from: the GM's one controlled token's centre (footprint {x, y, w, h}), else half a square off the

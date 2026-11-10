@@ -56,6 +56,33 @@ test("door fieldset defaults: automatic, wood, Force Open on", () => {
   assert.doesNotMatch(wallBreakFieldsHTML({ door: 1, own: { forceOpen: false } }), /forceOpen"[^>]*checked/);
   assert.match(wallBreakFieldsHTML({ door: 1, own: { door: "never", material: "stone" } }), /<option value="never" selected>Never[\s\S]*<option value="stone" selected>Stone/);
 });
+test("door fieldset: Can be forced open, and a Force open DC that shows its automatic value", () => {
+  const html = wallBreakFieldsHTML({ door: 1, system: "pf2e" });
+  assert.match(html, /<label>Can be forced open<\/label>/);
+  assert.doesNotMatch(html, /Force Open breaks it/);
+  assert.match(html, /<input type="number" name="flags\.animater\.breakWall\.forceDC"[^>]*placeholder="Automatic \(15\)"/);
+  assert.match(html, /name="flags\.animater\.breakWall\.forceDC"[^>]*value=""/);
+  // the DC field sits in the door group, not the window group
+  assert.match(html, /data-group="door"[\s\S]*breakWall\.forceDC[\s\S]*data-group="window"/);
+  assert.equal((html.match(/breakWall\.forceDC/g) ?? []).length, 1);
+  // each material's automatic DC rides on the field, so the placeholder follows the Material select
+  assert.match(html, /data-dc-wood="15" data-dc-metal="20" data-dc-stone="25"/);
+  assert.match(wallBreakFieldsHTML({ door: 1, system: "pf2e", own: { material: "metal" } }), /placeholder="Automatic \(20\)"/);
+  assert.match(wallBreakFieldsHTML({ door: 1, system: "daggerheart", own: { material: "stone" } }), /placeholder="Automatic \(19\)"/);
+  assert.match(wallBreakFieldsHTML({ door: 1, system: "dnd5e", own: { forceDC: 18 } }), /forceDC"[^>]*value="18"/);
+  assert.match(wallBreakFieldsHTML({ door: 1, system: "dnd5e", own: { forceDC: "junk" } }), /forceDC"[^>]*value=""/);
+  // a window's form keeps the door group's inputs disabled, the DC too
+  assert.match(wallBreakFieldsHTML({ door: 0, system: "pf2e" }), /breakWall\.forceDC"[^>]*disabled/);
+});
+test("door fieldset: no DC field where the system has none", () => {
+  const ds = wallBreakFieldsHTML({ door: 1, system: "draw-steel" });
+  assert.doesNotMatch(ds, /breakWall\.forceDC/);
+  assert.match(ds, /tier 2 or 3/);
+  const other = wallBreakFieldsHTML({ door: 1, system: "crucible" });
+  assert.doesNotMatch(other, /breakWall\.forceDC/);
+  assert.match(other, /Shift\+right-click/);
+  assert.match(other, /<label>Can be forced open<\/label>/);
+});
 test("scene: Doors and windows break is on unless turned off", () => {
   assert.match(propSceneFieldsHTML({}), /name="flags\.animater\.breakWalls"[^>]*checked/);
   assert.match(propSceneFieldsHTML({}), /Doors and windows break/);

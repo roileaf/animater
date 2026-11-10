@@ -7,14 +7,24 @@ const wall = (extra = {}) => ({ id: "d1", c: [300, 200, 400, 200], door: 1, ds: 
 const own = (o) => ({ flags: { animater: { breakWall: o } } });
 
 test("any door on a breakable scene is a wood door unless the GM says otherwise", () => {
-  assert.deepEqual(wallTraits(wall(), scene()), { kind: "door", material: "wood", forceOpen: true });
+  assert.deepEqual(wallTraits(wall(), scene()), { kind: "door", material: "wood", forceOpen: true, forceDC: null });
   assert.equal(wallTraits(wall({ door: 2 }), scene()).kind, "door");
   assert.equal(wallTraits(wall({ door: 0 }), scene()).kind, null);
   assert.equal(wallTraits(wall(), { id: "s", flags: {} }).kind, null);
   assert.equal(wallTraits(wall(), scene({ breakWalls: false })).kind, null);
   assert.equal(wallTraits(wall(own({ door: "never" })), scene()).kind, null);
-  assert.deepEqual(wallTraits(wall(own({ material: "metal", forceOpen: false })), scene()), { kind: "door", material: "metal", forceOpen: false });
+  assert.deepEqual(wallTraits(wall(own({ material: "metal", forceOpen: false })), scene()), { kind: "door", material: "metal", forceOpen: false, forceDC: null });
   assert.equal(wallTraits(wall(own({ material: "lava" })), scene()).material, "wood");
+});
+
+test("a door's Force open DC: its own number, else by material and system; none for a window", () => {
+  assert.equal(wallTraits(wall(), scene(), "pf2e").forceDC, 15);
+  assert.equal(wallTraits(wall(own({ material: "metal" })), scene(), "dnd5e").forceDC, 20);
+  assert.equal(wallTraits(wall(own({ material: "stone" })), scene(), "daggerheart").forceDC, 19);
+  assert.equal(wallTraits(wall(own({ material: "stone", forceDC: 12 })), scene(), "pf2e").forceDC, 12);
+  assert.equal(wallTraits(wall(own({ forceDC: 12 })), scene(), "draw-steel").forceDC, null);
+  assert.equal(wallTraits(wall(), scene()).forceDC, null); // no system given
+  assert.equal(wallTraits(win({ flags: { animater: { breakWall: { window: true, forceDC: 12 } } } }), scene(), "pf2e").forceDC, null);
 });
 
 test("doors are sturdier than props", () => {
@@ -70,7 +80,7 @@ test("wallMid and crossesWall", () => {
 const win = (extra = {}) => wall({ id: "w1", door: 0, flags: { animater: { breakWall: { window: true } } }, ...extra });
 const noneWin = () => win({ flags: { animater: { breakWall: { window: true, material: "none" } } } });
 test("only a wall marked Window is a window; glass unless Won't break", () => {
-  assert.deepEqual(wallTraits(win(), scene()), { kind: "window", material: "glass", forceOpen: false });
+  assert.deepEqual(wallTraits(win(), scene()), { kind: "window", material: "glass", forceOpen: false, forceDC: null });
   assert.equal(wallTraits(wall({ door: 0 }), scene()).kind, null);
   assert.equal(wallTraits(wall({ door: 0, flags: { animater: { window: "glass" } } }), scene()).kind, null); // the light kind alone is not breakable
   assert.equal(wallTraits(win(), scene({ breakWalls: false })).kind, null);

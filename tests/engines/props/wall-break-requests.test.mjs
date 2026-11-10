@@ -37,7 +37,7 @@ test("refused, each with its own why", () => {
   const area = req({ kind: "area", damageType: "fire", at: { x: 350, y: 100 } });
   const ctx = (x = {}) => ({ wall: wall(), scene: scene(), grid: 100, sender, ...x });
   assert.equal(validWallBreakRequest(area, ctx({ scene: { id: "s", flags: {} } })).why, "off");
-  assert.equal(validWallBreakRequest(area, ctx({ scene: scene({ breakWalls: false }) })).why, "kind");
+  assert.equal(validWallBreakRequest(area, ctx({ scene: scene({ breakWalls: false }) })).why, "off");
   assert.equal(validWallBreakRequest(area, ctx({ wall: wall({ flags: { animater: { breakWall: { broken: area.note } } } }) })).why, "broken");
   assert.equal(validWallBreakRequest(area, ctx({ wall: wall({ door: 0 }) })).why, "kind");
   assert.equal(validWallBreakRequest(req({ kind: "area", damageType: "piercing", at: { x: 350, y: 100 } }), ctx()).why, "material");
@@ -197,38 +197,88 @@ test("Review fix: moving a broken door is not a hand edit; it keeps its note and
   assert.deepEqual(wallRepairUpdates([moved]), [{ _id: "d1", door: 1, ds: 2, move: 20, sight: 20, light: 20, sound: 20, "flags.animater.breakWall.-=broken": null }]);
 });
 
+// A Force Open roll message as the GM holds it: a door roll carries the flag; a PF2e sheet roll the action's option.
+const d20 = (total, natural = 10) => ({ total, dice: [{ faces: 20, total: natural }] });
+const sheetRoll = ({ author = "p", options = ["action:force-open"], outcome = null, dcValue = null, total = 16, rolls } = {}) =>
+  ({ id: "m1", author: { id: author }, speaker: { token: "t1", scene: "s" }, rolls: rolls ?? [d20(total)], flags: { pf2e: { context: { options, outcome, dc: dcValue === null ? null : { value: dcValue } } } } });
+const doorRoll = ({ author = "p", wallId = "d1", dc = 15, total = 16, rolls, extra = {} } = {}) =>
+  ({ id: "m2", author: { id: author }, speaker: { token: "t1", scene: "s" }, rolls: rolls ?? [d20(total)], flags: { animater: { forceOpen: { wallId, dc, tokenId: "t1" }, ...extra } } });
+const adjacent = { x: 300, y: 200, w: 100, h: 100, authorOwns: true };
+
 test("Review Focus 5: a forged Force Open is refused", () => {
-  const forceOpen = (author = "p", options = ["action:force-open"], outcome = "success") =>
-    ({ id: "m1", author: { id: author }, speaker: { token: "t1", scene: "s" }, flags: { pf2e: { context: { options, outcome } } } });
-  const adjacent = { x: 300, y: 200, w: 100, h: 100 }, farAway = { x: 300, y: 500, w: 100, h: 100 };
   const cause = { kind: "force-open", messageId: "m1" };
   const note = wallNoteFor({ wall: wall(), scene: scene(), cause, seed: 5, from: { x: 350, y: 250 } });
-  const ask = (x) => validWallBreakRequest({ cause, note }, { wall: wall(), scene: scene(), grid: 100, sender, message: forceOpen(), token: adjacent, walls: [wall()], ...x });
-  // the message is not a Force Open, failed, or is missing
-  assert.equal(ask({ message: forceOpen("p", ["action:grapple"]) }).why, "note");
-  assert.equal(ask({ message: forceOpen("p", ["action:force-open"], "failure") }).why, "note");
-  assert.equal(ask({ message: undefined }).why, "note");
-  // someone else's roll
-  assert.equal(ask({ message: forceOpen("other") }).why, "sender");
+  const ask = (x) => validWallBreakRequest({ cause, note }, { wall: wall(), scene: scene(), grid: 100, sender, system: "pf2e", message: sheetRoll(), token: adjacent, walls: [wall()], ...x });
+  // the message is not a Force Open, or is missing
+  assert.equal(ask({ message: sheetRoll({ options: ["action:grapple"] }) }).why, "roll");
+  assert.equal(ask({ message: undefined }).why, "roll");
+  // a failed roll against the door's DC (PF2e wood: 15)
+  assert.equal(ask({ message: sheetRoll({ outcome: "failure", dcValue: 15, total: 12 }) }).why, "outcome");
+  assert.equal(ask({ message: sheetRoll({ total: 14 }) }).why, "outcome");
+  // someone else's roll, or a token its author does not own
+  assert.equal(ask({ message: sheetRoll({ author: "other" }) }).why, "sender");
+  assert.equal(ask({ token: { ...adjacent, authorOwns: false } }).why, "sender");
   // the token stands 3 squares from the door
-  assert.equal(ask({ token: farAway }).why, "far");
+  assert.equal(ask({ token: { ...adjacent, y: 500 } }).why, "far");
   assert.equal(ask({ token: undefined }).why, "far");
   // another door is closer: this one is not the door that roll opens
-  const below = { x: 300, y: 250, w: 100, h: 100 };
+  const below = { ...adjacent, y: 250 };
   assert.equal(ask({ token: below, walls: [wall()] }).ok, true);
   assert.equal(ask({ token: below, walls: [wall(), wall({ id: "d2", c: [300, 300, 400, 300] })] }).why, "far");
-  // a success on a metal door does not open it; a critical success does (R1: Force Open's own material rule)
+  // a metal door needs DC 20 now: 16 does not open it, 21 does (the DC carries the material)
   const metal = wall({ flags: { animater: { breakWall: { material: "metal" } } } });
-  assert.equal(ask({ wall: metal, walls: [metal] }).why, "far");
-  assert.equal(ask({ wall: metal, walls: [metal], message: forceOpen("p", ["action:force-open"], "criticalSuccess") }).ok, true);
+  assert.equal(ask({ wall: metal, walls: [metal] }).why, "outcome");
+  assert.equal(ask({ wall: metal, walls: [metal], message: sheetRoll({ total: 21 }) }).ok, true);
+  // a door the GM set not to be forced open
+  const shut = wall({ flags: { animater: { breakWall: { forceOpen: false } } } });
+  assert.equal(ask({ wall: shut, walls: [shut], message: sheetRoll({ total: 30 }) }).why, "far");
   // "Doors and windows break" off
-  assert.equal(ask({ scene: scene({ breakWalls: false }) }).why, "kind");
-  // a good message and an adjacent token
+  assert.equal(ask({ scene: scene({ breakWalls: false }) }).why, "off");
+  // a good roll and an adjacent token: the note remembers the message
   const r = ask({});
   assert.equal(r.ok, true);
   assert.equal(r.update.door, 0);
   assert.equal(r.note.material, "wood");
   assert.equal(r.note.mark, "dust");
+  assert.equal(r.note.messageId, "m1");
+  assert.equal(r.update["flags.animater.breakWall.broken"].messageId, "m1");
+});
+
+test("a roll from the door: the GM's DC from the wall, never the flag's", () => {
+  const cause = { kind: "force-open", messageId: "m2" };
+  const note = wallNoteFor({ wall: wall(), scene: scene(), cause, seed: 5, from: { x: 350, y: 250 } });
+  const ask = (x) => validWallBreakRequest({ cause, note }, { wall: wall(), scene: scene(), grid: 100, sender, system: "dnd5e", message: doorRoll(), token: adjacent, walls: [wall()], ...x });
+  assert.equal(ask({}).ok, true);
+  // the flag claims DC 5; the wall's is 15
+  assert.equal(ask({ message: doorRoll({ dc: 5, total: 10 }) }).why, "outcome");
+  // the GM's own number on the wall wins over the default
+  const hard = wall({ flags: { animater: { breakWall: { forceDC: 18 } } } });
+  assert.equal(ask({ wall: hard, walls: [hard], message: doorRoll({ total: 17 }) }).why, "outcome");
+  assert.equal(ask({ wall: hard, walls: [hard], message: doorRoll({ total: 18 }) }).ok, true);
+  // the author does not own the token
+  assert.equal(ask({ token: { ...adjacent, authorOwns: false } }).why, "sender");
+  assert.equal(ask({ message: doorRoll({ author: "other" }) }).why, "sender");
+  // the token stands 2 squares away
+  assert.equal(ask({ token: { ...adjacent, y: 400 } }).why, "far");
+  // the flag names another door
+  assert.equal(ask({ message: doorRoll({ wallId: "d9" }) }).why, "far");
+  // a door roll may name a door that is not the closest: it is the one the player clicked
+  assert.equal(ask({ walls: [wall(), wall({ id: "d2", c: [300, 250, 400, 250] })] }).ok, true);
+  // the message carries no roll
+  assert.equal(ask({ message: doorRoll({ rolls: [] }) }).why, "roll");
+  // the same message twice: the GM's mark on it, a door already broken by it, or this session's memory
+  assert.equal(ask({ message: doorRoll({ extra: { forceOpenUsed: true } }) }).why, "used");
+  assert.equal(ask({ walls: [wall(), wall({ id: "d3", flags: { animater: { breakWall: { broken: { messageId: "m2" } } } } })] }).why, "used");
+  assert.equal(ask({ used: true }).why, "used");
+  // the scene's switches off
+  assert.equal(ask({ scene: scene({ breakWalls: false }) }).why, "off");
+  assert.equal(ask({ scene: { id: "s", flags: {} } }).why, "off");
+  // a system without a Force open roll here never breaks from a roll
+  assert.equal(ask({ system: "crucible" }).why, "roll");
+  // Draw Steel: the tier from the message
+  assert.equal(ask({ system: "draw-steel", message: doorRoll({ rolls: [{ total: 13, product: 2 }] }) }).ok, true);
+  const metal = wall({ flags: { animater: { breakWall: { material: "metal" } } } });
+  assert.equal(ask({ system: "draw-steel", wall: metal, walls: [metal], message: doorRoll({ rolls: [{ total: 13, product: 2 }] }) }).why, "outcome");
 });
 
 const win = (extra = {}) => wall({ id: "w1", c: [300, 200, 400, 200], door: 0, flags: { animater: { breakWall: { window: true } } }, ...extra });

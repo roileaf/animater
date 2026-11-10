@@ -3,14 +3,15 @@
 import { wallTraits, canBreakWall, wallMid, crossesWall, wallNote, wallBreakUpdate } from "./wall-break.mjs";
 import { cleanCause, sizeOf, PATH_SQUARES } from "./prop-requests.mjs";
 import { onLevel } from "./prop-pick.mjs";
-import { forceOpenOf, forceOpenDoor, windowOnLine } from "./wall-triggers.mjs";
+import { forceOpenOf, windowOnLine } from "./wall-triggers.mjs";
+import { closestForcedDoor, forceOpenResult } from "./force-open.mjs";
 import { missBreaks } from "./prop-break.mjs";
 import { blastFrom, inBurst } from "./prop-blast.mjs";
 
 export const WALL_BREAK_MESSAGE = "prop-wall-break";
 const KINDS = ["area", "path", "smash", "force-open", "miss", "blast"];
 const MISS_CHANCE = 25; // percent: a plain ranged miss breaks a window (the scene's propMissChance overrides)
-const OWN_RULE = new Set(["smash", "force-open"]); // R1: no damage type or slam; their own material rule
+const OWN_RULE = new Set(["smash", "force-open"]); // R1: no damage type or slam; their own rule (Force Open: the door's DC)
 const AREA_REACH = 30; // squares from the area's centre to the wall's middle
 // Not c: Repair restores no position, so a moved broken door keeps its note (and its originals) as it was.
 const EDIT_KEYS = ["door", "move", "sight", "light", "sound"];
@@ -53,7 +54,7 @@ const breakCause = (cause, mover) => (cause.kind === "path" ? { slam: { size: si
 // The cause has to fit where things stand on the GM's screen. A smash is the GM's own and fits anywhere.
 // A blast reaches the wall's middle from its source keg (blastFrom: one that exploded), on the blast's levels.
 function plausible(cause, wall, grid, mover, { scene, walls, attacker, target, source, levels } = {}) {
-  if (OWN_RULE.has(cause.kind)) return true; // a smash fits anywhere; Force Open was placed by forceOpenDoor
+  if (OWN_RULE.has(cause.kind)) return true; // a smash fits anywhere; Force Open was placed by forceOpenCheck
   const mid = wallMid(wall);
   if (cause.kind === "blast") {
     const b = blastFrom(source);
@@ -80,12 +81,13 @@ function plausible(cause, wall, grid, mover, { scene, walls, attacker, target, s
 // level and isOwner (the sender owns it); senderTokens: footprints of the sender's own tokens on the scene; levels: the cause's own levels when the GM knows them (a wall on none of them is too far).
 // A ranged miss: attacker {x, y} (the shooter's centre), target {x, y, w, h, level?} (the missed token's footprint), roll in
 // [0, 1) for a plain miss's chance, and walls (the scene's). The window must be the first one on the line (else "far").
-// Force Open: message, the GM's own copy of the chat message the cause names; token, its speaker's footprint
-// {x, y, w, h, level} on this scene; walls, the scene's walls (the door it opens is the one forceOpenDoor picks).
+// Force Open: message, the GM's own copy of the chat message the cause names; token, the roller's footprint
+// {x, y, w, h, level, authorOwns} on this scene (authorOwns: the message's author owns that token, and it is the speaker's
+// actor's); walls, the scene's walls; system, game.system.id; used, this GM already broke a door with that message.
 // A blast {kind: "blast", sourceId}: the GM's only (runBlast); source, the GM's view of the keg tile it names.
-export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mover, senderTokens, levels, message, token, walls, attacker, target, roll = 1, source } = {}) {
+export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mover, senderTokens, levels, message, token, walls, attacker, target, roll = 1, source, system, used = false } = {}) {
   const no = (why) => ({ ok: false, why });
-  if (scene?.flags?.animater?.breakableProps !== true) return no("off");
+  if (scene?.flags?.animater?.breakableProps !== true || scene.flags.animater.breakWalls === false) return no("off");
   if (!sender) return no("sender");
   const gmBlast = req?.cause?.kind === "blast" && sender.isGM === true;
   if (req?.cause?.kind === "blast" && !gmBlast) return no("sender");
@@ -93,19 +95,17 @@ export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mo
   if (!gmBlast && sender.viewedScene !== scene.id) return no("scene");
   if (!wall) return no("missing");
   if (wall.flags?.animater?.breakWall?.broken) return no("broken");
-  const traits = wallTraits(wall, scene), cause = req?.cause ?? {};
+  const traits = wallTraits(wall, scene, system), cause = req?.cause ?? {};
   if (!traits.kind || !KINDS.includes(cause.kind)) return no("kind");
   if (cause.kind === "miss" && traits.kind !== "window") return no("kind");
   if (traits.kind === "window" && OWN_RULE.has(cause.kind)) return no("kind"); // smash and Force Open are for doors
   if (cause.kind === "smash" && sender.isGM !== true) return no("sender");
   if (cause.kind === "path" && !slamSenderOk({ sender, mover, from: cause.path?.from, senderTokens, grid })) return no("sender");
-  // R1: a smash has no damage type or slam; its material rule is the GM's own (forceOpenDoor's, for Force Open)
+  // R1: a smash has no damage type or slam; Force Open has the door's DC
   if (!OWN_RULE.has(cause.kind) && !canBreakWall(traits, breakCause(cause, mover))) return no("material");
   if (cause.kind === "force-open") {
-    const roll = forceOpenOf(message);
-    if (!roll) return no("note");
-    if ((message.author ?? message.user)?.id !== sender.id) return no("sender");
-    if (forceOpenDoor(token, walls, scene, grid, roll.outcome)?.id !== wall.id) return no("far");
+    const why = forceOpenCheck({ wall, scene, grid, sender, message, token, walls, system, used, traits });
+    if (why) return no(why);
   }
   const raw = req?.note;
   if (!raw || !Number.isFinite(raw.seed) || !Number.isFinite(raw.cutAngle) || !finite(raw.from)) return no("note");
@@ -118,7 +118,27 @@ export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mo
   // Only the seed, the cut and where the blow came from are the requester's; the rest is read here.
   // A blast scorches.
   const note = wallNote({ seed: raw.seed, cutAngle: raw.cutAngle, from: raw.from, kind: traits.kind, material: traits.material, damageType: cause.kind === "blast" ? "fire" : cause.damageType });
+  if (cause.kind === "force-open") note.messageId = message.id; // one break per message, kept on the wall
   return { ok: true, note, update: wallBreakUpdate(wall, note) };
+}
+
+// The GM's own reading of a Force Open roll, or why it is refused. The author sent it and owns the rolling token; that
+// token stands within a square of this door (a roll from the door names it; a sheet roll means the closest forced door);
+// the message holds a roll, has not broken a door yet, and meets the DC the GM reads from this wall.
+function forceOpenCheck({ wall, scene, grid, sender, message, token, walls, system, used, traits }) {
+  const fo = forceOpenOf(message);
+  if (!fo) return "roll";
+  if (fo.authorId !== sender.id) return "sender";
+  if (![token?.x, token?.y, token?.w, token?.h].every(Number.isFinite)) return "far";
+  if (token.authorOwns !== true) return "sender";
+  const door = fo.wallId ? (fo.wallId === wall.id ? closestForcedDoor(token, [wall], scene, grid) : null) : closestForcedDoor(token, walls, scene, grid);
+  if (door?.id !== wall.id) return "far";
+  if (!Array.from(message.rolls ?? []).length) return "roll";
+  const spent = used === true || message.flags?.animater?.forceOpenUsed === true
+    || (walls ?? []).some((w) => w?.flags?.animater?.breakWall?.broken?.messageId === message.id);
+  if (spent) return "used";
+  const result = forceOpenResult({ system, message, dc: traits.forceDC, material: traits.material });
+  return result.ok ? null : result.why;
 }
 
 // Whether a wall update is someone's own edit of its door or restrictions (not a break or Repair of ours, not flags only).
