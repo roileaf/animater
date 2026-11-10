@@ -3,6 +3,7 @@ import { STYLES } from "./prop-traits.mjs";
 import { FRAGMENT_PATTERNS, FRAGMENT_COUNTS, FRAGMENT_TINTS } from "../fragments/fragments.mjs";
 
 const MARKS = ["scorch", "frost", "stain", "burn", "dust"];
+const POWDER = ["spilled", "exploded"]; // a powder keg's note only (prop-blast.mjs)
 // pieces, spread per square, spin; the pattern is per material (wood also has a boxy cut).
 const BREAK = {
   wood: { pattern: "shards", pieces: 10, spread: 0.32, spin: 120 },
@@ -34,7 +35,8 @@ export function brokenNote({ seed, cutAngle, look, from, walls, size, style = "s
   return { seed, cutAngle, pattern, pieces, spread: clamp(spread * (size > 0 ? size : 1), 0, 3), spin, tint: tint ?? "none", mark: look.mark, from: { x: from.x, y: from.y }, walls: [...walls], style, lights: [], ...(fire === true ? { fire: true } : {}), ...extra };
 }
 
-// Validates and clamps a note read from a tile flag or the socket; null when it is not one.
+// Validates and clamps a note read from a tile flag or the socket; null when it is not one. A powder keg's note keeps
+// its powder and its burst (an integer 1-4); the GM decides both (validBreakRequest).
 export function readNote(raw) {
   if (!raw || typeof raw !== "object") return null;
   const { seed, cutAngle, pattern, pieces, spread, spin, tint, mark, from, walls } = raw, style = raw.style ?? "shatter";
@@ -45,7 +47,8 @@ export function readNote(raw) {
   const [lo, hi] = FRAGMENT_COUNTS[pattern];
   const ids = Array.isArray(walls) ? walls.filter((w) => typeof w === "string" && w.length <= 32).slice(0, 64) : [];
   const lights = Array.isArray(raw.lights) ? raw.lights.filter((w) => typeof w === "string" && w.length <= 32).slice(0, 16) : [];
-  return { seed, cutAngle, pattern, pieces: Math.round(clamp(pieces, lo, hi)), spread: clamp(spread, 0, 3), spin: clamp(spin, 0, 720), tint, mark, from: { x: from.x, y: from.y }, walls: ids, style, lights, ...(raw.fire === true ? { fire: true } : {}) };
+  return { seed, cutAngle, pattern, pieces: Math.round(clamp(pieces, lo, hi)), spread: clamp(spread, 0, 3), spin: clamp(spin, 0, 720), tint, mark, from: { x: from.x, y: from.y }, walls: ids, style, lights, ...(raw.fire === true ? { fire: true } : {}),
+    ...(POWDER.includes(raw.powder) ? { powder: raw.powder } : {}), ...(Number.isInteger(raw.burst) && raw.burst >= 1 && raw.burst <= 4 ? { burst: raw.burst } : {}) };
 }
 
 // A missed swing breaks the prop beside it: always on a critical failure, else by the chance (percent).

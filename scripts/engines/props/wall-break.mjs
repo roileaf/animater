@@ -24,7 +24,9 @@ export function wallTraits(wall, scene) {
 }
 
 // Whether this cause breaks a wall of these traits. A pure damage and slam rule: Force Open and smash have their own rule.
+// A blast breaks any door or window the GM has not set to Won't break.
 export function canBreakWall(traits, cause = {}) {
+  if (cause.blast === true) return (traits?.kind === "door" || traits?.kind === "window") && traits.material !== "none";
   const size = Number(cause.slam?.size), slam = Number.isFinite(size) ? size : 0;
   if (traits?.kind === "window") return traits.material === "glass" && (canBreak("glass", { damageType: cause.damageType }) || slam > 0);
   if (traits?.kind !== "door") return false;

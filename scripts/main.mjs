@@ -31,6 +31,7 @@ import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest,
 import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, forceOpenDoor, smashFrom, windowOnLine } from "./engines/props/wall-triggers.mjs";
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
+import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
 import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
 import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
@@ -7158,8 +7159,9 @@ async function requestPropBreak(tile, cause, { from } = {}) {
   // Checked here first, then again by the GM. A plain miss waits for the GM's roll; anything else shows at once.
   const here = validBreakRequest({ cause: clean, note }, { tile: view, walls, scene, grid, sender: game.user, lights, ...await propPlace(clean, scene, grid), roll: 0 });
   if (!here.ok) return false;
-  // A lit lantern's oil catches here too (the same lights the GM reads), so its flames show at once.
-  if (scene === canvas?.scene && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakPropHere(doc, here.fire ? { ...note, fire: true } : note);
+  // A lit lantern's oil catches here too (the same lights the GM reads), so its flames show at once. An ignite only
+  // changes an existing wreck's note: nothing to show here before the GM writes it.
+  if (scene === canvas?.scene && clean.kind !== "ignite" && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakPropHere(doc, here.fire ? { ...note, fire: true } : note);
   game.socket.emit(`module.${ID}`, { type: PROP_BREAK_MESSAGE, sender: clientId, sceneId: scene.id, tileId: doc.id, cause: clean, note });
   return true;
 }
@@ -7168,15 +7170,76 @@ async function applyPropBreak(scene, doc, cause, rawNote, user) {
   propWriting.add(doc.id);
   try {
     const grid = propGrid(scene), walls = scene.walls?.contents ?? [];
-    const check = validBreakRequest({ cause, note: rawNote }, { tile: propTileView(doc), walls, scene, grid, sender: user, lights: sceneLights(scene), ...await propPlace(cause, scene, grid), roll: Math.random() });
+    const check = validBreakRequest({ cause, note: rawNote }, { tile: propTileView(doc), walls, scene, grid, sender: user, lights: sceneLights(scene), ...await propPlace(cause, scene, grid),
+      ...blastPlace(cause, scene), roll: Math.random() });
     if (!check.ok) { runtime?.trace("props", `not broken: ${check.why}`); return false; }
+    // Spilled powder set off by a fire area: only its note changes (the wreck is already there), then its blast.
+    if (check.ignite) {
+      await doc.update({ [`flags.${ID}.prop.broken`]: check.note }, { animater: { propIgnite: true } });
+      void runBlast(scene, doc, check.note).catch((e) => runtime?.trace("props", `blast: ${e?.message ?? e}`));
+      return true;
+    }
     await doc.update({ hidden: true, [`flags.${ID}.prop.broken`]: check.note }, { animater: { propBreak: true } });
     // The tile is already written: a failed wall batch is only reported.
     if (check.wallUpdates.length) await scene.updateEmbeddedDocuments("Wall", check.wallUpdates).catch((e) => runtime?.trace("props", `walls not opened: ${e?.message ?? e}`));
     if (check.lightUpdates?.length) await scene.updateEmbeddedDocuments("AmbientLight", check.lightUpdates).catch((e) => runtime?.trace("props", `lights not put out: ${e?.message ?? e}`));
     if (check.fire) await lightPropFire(scene, doc);
+    // Written broken before its blast runs: a blast that reaches back here is refused as broken, so a chain ends.
+    if (check.explode) void runBlast(scene, doc, check.note).catch((e) => runtime?.trace("props", `blast: ${e?.message ?? e}`));
     return true;
   } finally { propWriting.delete(doc.id); }
+}
+// A blast's source as the GM's own documents hold it (R15): the keg tile it names on this scene, and its levels.
+function blastPlace(cause, scene) {
+  if (cause?.kind !== "blast") return {};
+  const src = cause.sourceId ? scene.tiles?.get(cause.sourceId) : null;
+  return src ? { source: propTileView(src), levels: [...(src.levels ?? [])] } : {};
+}
+// A powder keg goes off (GM): the GMs are whispered the burst and who stands in it, then everything breakable in the
+// burst is broken through the usual relays (applyPropBreak, applyWallBreak), 120-250 ms after by distance. A keg it
+// sets off runs its own blast from applyPropBreak. No token damage: the GM rules that.
+async function runBlast(scene, doc, note) {
+  if (!game.users.activeGM?.isSelf || !scene || !doc) return;
+  const grid = propGrid(scene), r = tileRect(doc), centre = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  const burst = note?.burst ?? propTraits(propTileView(doc), grid, scene).burst, levels = [...(doc.levels ?? [])];
+  const tokens = (scene.tokens?.contents ?? []).map((t) => ({ name: t.name, x: t.x, y: t.y, w: t.width * grid, h: t.height * grid, level: t.level }));
+  const gms = game.users.filter((u) => u.isGM).map((u) => u.id);
+  await ChatMessage.create({ whisper: gms, speaker: { alias: "Animater" }, content: blastWhisper(burst, tokensInBurst(tokens, centre, burst, grid, levels)) })
+    .catch((e) => runtime?.trace("props", `blast whisper: ${e?.message ?? e}`));
+  const cause = { kind: "blast", sourceId: doc.id }, look = { ...cause, damageType: "fire" }; // the wreck's look is scorched
+  const targets = blastTargets({ centre, burst, grid, tiles: scene.tiles.contents.map(propTileView), walls: (scene.walls?.contents ?? []).map(wallView), scene, levels, sourceId: doc.id });
+  for (const t of targets) setTimeout(() => propSafe("blast target", () => {
+    const seed = Math.floor(Math.random() * 0x7fffffff);
+    if (t.type === "tile") {
+      const target = scene.tiles.get(t.id);
+      if (!target) return;
+      const note = breakNoteFor({ tile: propTileView(target), walls: scene.walls?.contents ?? [], grid, cause: look, seed, from: centre, scene });
+      void applyPropBreak(scene, target, cause, note, game.user).catch((e) => runtime?.trace("props", `blast prop: ${e?.message ?? e}`));
+    } else {
+      const wall = scene.walls?.get(t.id);
+      if (!wall) return;
+      const note = wallNoteFor({ wall: wallView(wall), scene, cause: look, seed, from: centre });
+      void applyWallBreak(scene, wall, cause, note, game.user).catch((e) => runtime?.trace("props", `blast door: ${e?.message ?? e}`));
+    }
+  }), t.delay);
+}
+// Placeholder explosion look until Task 13: a flash that swells and fades at the keg, and a bundled fire burst.
+const BLAST_SOUNDS = ["fire-burst-260554-0", "fire-burst-260555-0", "fire-burst-637533-0"].map((n) => `modules/${ID}/assets/sounds/surfaces/freesound/${n}.ogg`);
+function showBlastHere(doc, note) {
+  if (!propViewed(doc) || !canvas?.ready) return;
+  const r = tileRect(doc), at = { x: r.x + r.width / 2, y: r.y + r.height / 2 }, grid = canvas.grid?.size ?? 100;
+  void playUnder("propBreak", at, { file: BLAST_SOUNDS[Math.floor(Math.random() * BLAST_SOUNDS.length)], volume: 1, reach: 40, walls: true, gmAlways: true, room: 0.8 });
+  const PIXI = globalThis.PIXI, layer = canvas.interface;
+  if (!PIXI?.Graphics || !layer) return;
+  const g = new PIXI.Graphics(), radius = (Number(note?.burst) || 2) * grid, start = performance.now(), MS = 700;
+  layer.addChild(g);
+  const frame = (now) => {
+    const p = Math.min(1, (now - start) / MS);
+    if (g.destroyed) return;
+    g.clear(); g.beginFill(0xffa040, 0.55 * (1 - p)); g.drawCircle(at.x, at.y, radius * (0.3 + 0.7 * p)); g.endFill();
+    if (p < 1) requestAnimationFrame(frame); else g.destroy();
+  };
+  requestAnimationFrame(frame);
 }
 // Burning lamp oil (GM): one temporary fire light at the broken tile (prop-lights.mjs burnLightData: its glow, the
 // fire-pot loop and smoke; the wreck draws the flames), deleted after BURN_MS. Each GM that becomes the active one
@@ -7318,7 +7381,7 @@ async function applyWallBreak(scene, doc, cause, rawNote, user) {
   try {
     const grid = propGrid(scene);
     if (cause.kind === "force-open" && forceOpenUsed.has(cause.messageId)) { runtime?.trace("props", "door not broken: used"); return false; }
-    const check = validWallBreakRequest({ cause, note: rawNote }, { wall: wallView(doc), scene, grid, sender: user, roll: Math.random(), ...await wallPlace(cause, scene, grid, user) });
+    const check = validWallBreakRequest({ cause, note: rawNote }, { wall: wallView(doc), scene, grid, sender: user, roll: Math.random(), ...await wallPlace(cause, scene, grid, user), ...blastPlace(cause, scene) });
     if (!check.ok) { runtime?.trace("props", `door not broken: ${check.why}`); return false; }
     const { _id, ...update } = check.update;
     await doc.update(update, { animater: { wallBreak: true }, sound: false });
@@ -7415,10 +7478,14 @@ function breakAreaProps(message) {
   const hits = propsInArea(tilesOnLevel(scene.tiles.contents.map(propTileView), area.levels), area.testPoint, propGrid(scene), d.type).filter((t) => propAreas.claim(area.templateId, t.id));
   const doors = (propSafe("area doors", () => doorsInArea((scene.walls?.contents ?? []).map(wallView), area.testPoint, scene, d.type, area.levels)) ?? [])
     .filter((w) => propAreas.claim(area.templateId, `wall:${w.id}`));
-  if (!hits.length && !doors.length) return;
+  // Fire also sets off powder spilled from a keg broken earlier, once per area.
+  const spills = d.type !== "fire" ? [] : (propSafe("area powder", () => ignitableInArea(tilesOnLevel(scene.tiles.contents.map(propTileView), area.levels), area.testPoint)) ?? [])
+    .filter((t) => propAreas.claim(area.templateId, `ignite:${t.id}`));
+  if (!hits.length && !doors.length && !spills.length) return;
   const ask = () => {
     for (const t of hits) void askProp(scene, t.id, { kind: "area", damageType: d.type, at: area.at }, area.at);
     for (const w of doors) void askWall(scene, w.id, { kind: "area", damageType: d.type, at: area.at }, area.at);
+    for (const t of spills) void askProp(scene, t.id, { kind: "ignite", damageType: "fire", at: area.at }, area.at);
   };
   const wait = propAreas.delayFor(area);
   if (wait > 0) setTimeout(ask, wait); else ask();
@@ -7567,10 +7634,18 @@ Hooks.on("updateTile", (doc, changes, options) => {
   if (doc.parent !== canvas?.scene) return;
   if (options?.animater?.propBreak) {
     // Already flying on the screen that asked for it; already seen there if the write came after it was shown again.
-    const seed = readNote(doc.flags?.[ID]?.prop?.broken)?.seed;
+    const note = readNote(doc.flags?.[ID]?.prop?.broken), seed = note?.seed;
     const mine = propPending.get(doc.id)?.seed === seed, late = !mine && propLate.get(doc.id)?.seed === seed;
     settlePropHere(doc.id, false); forgetLateProp(doc.id);
     if (!mine) drawPropWreck(doc, !late);
+    if (note?.powder === "exploded" && !late) showBlastHere(doc, note);
+    return;
+  }
+  // Spilled powder set off later: the wreck stays as it lies (redrawn still from its new note), and the keg explodes.
+  if (options?.animater?.propIgnite) {
+    const note = readNote(doc.flags?.[ID]?.prop?.broken);
+    drawPropWreck(doc, false);
+    if (note?.powder === "exploded") showBlastHere(doc, note);
     return;
   }
   // A changed note, contents, place or visibility redraws it (the wreckage never redraws in place).
@@ -9825,6 +9900,16 @@ Hooks.on("renderTileConfig", (app, html) => {
   const doc = app.document ?? app.object, own = doc?.flags?.[ID]?.prop ?? {};
   const tab = root.querySelector('.tab[data-tab="overhead"]') ?? root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector(".tab.active") ?? root.querySelector("form, .window-content") ?? root;
   tab.insertAdjacentHTML("beforeend", propTileFieldsHTML({ src: doc?.texture?.src, ...own }));
+  // The Burst field shows only while Contents is black powder (picked, or Automatic guessing it); hidden, it does not submit.
+  const set = tab.querySelector("[data-animater-prop]"), contents = set?.querySelector(`[name="flags.${ID}.prop.contents"]`);
+  contents?.addEventListener("change", () => {
+    const powder = (contents.value || set.dataset.guessContents) === "powder";
+    for (const group of set.querySelectorAll('[data-show-for="powder"]')) {
+      group.hidden = !powder;
+      for (const input of group.querySelectorAll("input, select")) input.disabled = !powder;
+    }
+    app.setPosition?.({ height: "auto" });
+  });
 });
 
 // Token configuration fields go on both a placed token's sheet and its actor's prototype token.

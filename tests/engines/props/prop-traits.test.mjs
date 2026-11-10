@@ -49,7 +49,7 @@ test("breakStyle", () => {
 test("the lists", () => {
   assert.deepEqual(STYLES, ["shatter", "collapse", "topple", "tip", "burn", "split"]);
   assert.deepEqual(STYLE_CHOICES, ["shatter", "collapse"]);
-  assert.deepEqual(CONTENTS, ["none", "water", "wine", "oil", "grain", "goods", "books", "potions", "lampoil"]);
+  assert.deepEqual(CONTENTS, ["none", "water", "wine", "oil", "grain", "goods", "books", "potions", "lampoil", "powder"]);
 });
 
 test("lanterns and lamps hold lamp oil; the GM can choose it", () => {

@@ -1,15 +1,18 @@
 // Breakable props: the tile's material and contents fields, the scene's switch, chance and Repair button.
 import { MATERIALS } from "../engines/props/prop-material.mjs";
-import { CONTENTS, STYLE_CHOICES, propGuesses } from "../engines/props/prop-traits.mjs";
+import { CONTENTS, STYLE_CHOICES, propGuesses, burstOf } from "../engines/props/prop-traits.mjs";
 
 const ID = "animater";
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const LABELS = { wood: "Wood", glass: "Glass", clay: "Clay", metal: "Metal", stone: "Stone", none: "Won't break" };
-const CONTENT_LABELS = { none: "Nothing", water: "Water", wine: "Wine", oil: "Oil", grain: "Grain", goods: "Loose goods", books: "Books", potions: "Potions", lampoil: "Lamp oil" };
+const CONTENT_LABELS = { none: "Nothing", water: "Water", wine: "Wine", oil: "Oil", grain: "Grain", goods: "Loose goods", books: "Books", potions: "Potions", lampoil: "Lamp oil", powder: "Black powder" };
 const STYLE_LABELS = { shatter: "Shatter", collapse: "Collapse" };
 const options = (list, value) => list.map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("");
 
-export function propTileFieldsHTML({ src, material = "", contents = "", style = "", light = "", tips = "" } = {}) {
+// Groups marked data-show-for="powder" show only while Contents resolves to black powder (the GM's pick, else the
+// guess in data-guess-contents); a hidden group's inputs are disabled so they do not submit. The tile config hook
+// toggles them when Contents changes.
+export function propTileFieldsHTML({ src, material = "", contents = "", style = "", light = "", tips = "", burst } = {}) {
   const guesses = propGuesses(src), guess = guesses.material, mat = MATERIALS.includes(material) ? material : "", own = CONTENTS.includes(contents) ? contents : "", sty = STYLE_CHOICES.includes(style) ? style : "";
   const mats = [["", `Automatic (${guess === "none" ? "won't break" : guess})`], ...MATERIALS.map((m) => [m, LABELS[m]])];
   const styles = [["", `Automatic (${guesses.style})`], ...STYLE_CHOICES.map((c) => [c, STYLE_LABELS[c]])];
@@ -18,10 +21,12 @@ export function propTileFieldsHTML({ src, material = "", contents = "", style = 
   const lightOpts = [["", `Automatic (${guesses.light ? "yes" : "no"})`], ["yes", "Yes"], ["no", "No"]];
   const tip = tips === "yes" || tips === "no" ? tips : "";
   const tipOpts = [["", `Automatic (${guesses.tips ? "yes" : "no"})`], ["yes", "Yes"], ["no", "No"]];
-  return `<fieldset data-animater-prop data-src="${esc(src)}"><legend>Breakable prop</legend>
+  const powder = (own || guesses.contents) === "powder";
+  return `<fieldset data-animater-prop data-src="${esc(src)}" data-guess-contents="${esc(guesses.contents)}"><legend>Breakable prop</legend>
     <div class="form-group"><label>Material</label><div class="form-fields"><select name="flags.${ID}.prop.material">${options(mats, mat)}</select></div><p class="hint">What the prop is made of decides what can break it. Automatic goes by the file name.</p></div>
     <div class="form-group"><label>Breaks as</label><div class="form-fields"><select name="flags.${ID}.prop.style">${options(styles, sty)}</select></div><p class="hint">How it comes apart. Automatic goes by the file name: furniture collapses, everything else shatters.</p></div>
-    <div class="form-group"><label>Contents</label><div class="form-fields"><select name="flags.${ID}.prop.contents">${options(conts, own)}</select></div><p class="hint">What spills when it breaks.</p></div>
+    <div class="form-group"><label>Contents</label><div class="form-fields"><select name="flags.${ID}.prop.contents">${options(conts, own)}</select></div><p class="hint">What spills when it breaks. Black powder explodes from fire, electricity or another blast; anything else spills it, and a later fire spell can still set it off.</p></div>
+    <div class="form-group" data-show-for="powder"${powder ? "" : " hidden"}><label>Burst (squares)</label><div class="form-fields"><input type="number" name="flags.${ID}.prop.burst" min="1" max="4" step="1" value="${burstOf(burst)}"${powder ? "" : " disabled"}></div><p class="hint">How far the explosion reaches. Every prop, door and window inside it breaks, and the GM is told who stands in it.</p></div>
     <div class="form-group"><label>Light prop</label><div class="form-fields"><select name="flags.${ID}.prop.light">${options(lightOpts, lit)}</select></div><p class="hint">A lantern, brazier or candelabra puts out the lights on it when it breaks, and Repair lights them again. Automatic goes by the file name.</p></div>
     <div class="form-group"><label>Tips over instead of breaking</label><div class="form-fields"><select name="flags.${ID}.prop.tips">${options(tipOpts, tip)}</select></div><p class="hint">A brazier is knocked over by any shove: its fire goes out and hot coals scatter. Spells and blows still go by its material. Automatic goes by the file name.</p></div>
   </fieldset>`;

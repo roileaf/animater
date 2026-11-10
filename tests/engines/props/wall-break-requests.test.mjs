@@ -279,3 +279,62 @@ test("a miss only breaks a window, and not twice or off the target's level", () 
 test("cleanWallCause keeps the attacker a miss names", () => {
   assert.equal(cleanWallCause({ kind: "miss", attackerUuid: "Scene.s.Token.a", outcome: "miss" }).attackerUuid, "Scene.s.Token.a");
 });
+
+// Powder kegs (Task 12): a blast breaks doors and windows in its burst, the GM's only.
+import { canBreakWall, wallTraits } from "../../../scripts/engines/props/wall-break.mjs";
+const kegAt = (cx, cy, powder = "exploded", burst = 2, extra = {}) => ({ id: "keg", x: cx - 50, y: cy - 50, width: 100, height: 100, hidden: true, levels: [], texture: { src: "Keg_Powder.webp" },
+  flags: { animater: { prop: { broken: { seed: 1, powder, burst } } } }, ...extra });
+const gmSender = { id: "gm", viewedScene: "s", isGM: true };
+const blastWallReq = (w = wall()) => ({ cause: { kind: "blast", sourceId: "keg" }, note: wallNoteFor({ wall: w, scene: scene(), cause: { damageType: "fire" }, seed: 9, from: { x: 350, y: 300 } }) });
+
+test("canBreakWall: a blast breaks any door or window but Won't break", () => {
+  for (const material of ["wood", "metal", "stone"]) assert.equal(canBreakWall({ kind: "door", material }, { blast: true }), true, material);
+  assert.equal(canBreakWall({ kind: "window", material: "glass" }, { blast: true }), true);
+  assert.equal(canBreakWall({ kind: "window", material: "none" }, { blast: true }), false);
+  assert.equal(canBreakWall({ kind: null, material: "wood" }, { blast: true }), false);
+  assert.equal(canBreakWall({ kind: "door", material: "metal" }, { damageType: "fire" }), false, "no blast, the old rule");
+});
+
+test("a blast breaks a door in its burst: the GM's only, from a keg that exploded", () => {
+  // Review Focus 5: a player's blast
+  const ctx = (extra = {}) => ({ wall: wall(), scene: scene(), grid: 100, sender: gmSender, source: kegAt(350, 300), ...extra });
+  assert.deepEqual(validWallBreakRequest(blastWallReq(), ctx({ sender })), { ok: false, why: "sender" });
+  // the source only spilled, never broke, or is missing
+  assert.deepEqual(validWallBreakRequest(blastWallReq(), ctx({ source: kegAt(350, 300, "spilled") })), { ok: false, why: "far" });
+  assert.deepEqual(validWallBreakRequest(blastWallReq(), ctx({ source: { ...kegAt(350, 300), flags: {} } })), { ok: false, why: "far" });
+  assert.deepEqual(validWallBreakRequest(blastWallReq(), ctx({ source: undefined })), { ok: false, why: "far" });
+  // midpoint 2.5 squares from a 2-square burst; a 3-square burst reaches it
+  assert.deepEqual(validWallBreakRequest(blastWallReq(), ctx({ source: kegAt(350, 450) })), { ok: false, why: "far" });
+  assert.equal(validWallBreakRequest(blastWallReq(), ctx({ source: kegAt(350, 450, "exploded", 3) })).ok, true);
+  // on another level than the blast
+  assert.deepEqual(validWallBreakRequest(blastWallReq(wall({ levels: ["up"] })), ctx({ wall: wall({ levels: ["up"] }), levels: ["ground"] })), { ok: false, why: "far" });
+  // good: a metal door too, while the GM views another scene; the note is scorched
+  const iron = wall({ flags: { animater: { breakWall: { material: "metal" } } } });
+  const r = validWallBreakRequest(blastWallReq(iron), ctx({ wall: iron, sender: { ...gmSender, viewedScene: "other" } }));
+  assert.equal(r.ok, true);
+  assert.equal(r.update.door, 0);
+  assert.equal(r.note.material, "metal");
+  assert.equal(r.note.mark, "scorch");
+  // a door set Never, a window set Won't break
+  assert.deepEqual(validWallBreakRequest(blastWallReq(), ctx({ wall: wall({ flags: { animater: { breakWall: { door: "never" } } } }) })), { ok: false, why: "kind" });
+  const pane = wall({ door: 0, flags: { animater: { breakWall: { window: true, material: "none" } } } });
+  assert.deepEqual(validWallBreakRequest(blastWallReq(pane), ctx({ wall: pane })), { ok: false, why: "material" });
+  const glass = wall({ door: 0, flags: { animater: { breakWall: { window: true } } } });
+  assert.equal(wallTraits(glass, scene()).kind, "window");
+  const g = validWallBreakRequest(blastWallReq(glass), ctx({ wall: glass }));
+  assert.equal(g.ok, true);
+  assert.equal(g.update.sight, 0);
+  assert.equal(g.update.move, undefined, "a broken window still blocks movement");
+});
+
+test("two blasts reach one door: the second is refused as broken", () => {
+  const ctx = (w) => ({ wall: w, scene: scene(), grid: 100, sender: gmSender, source: kegAt(350, 300) });
+  const first = validWallBreakRequest(blastWallReq(), ctx(wall()));
+  assert.equal(first.ok, true);
+  const broken = written(wall(), first.update);
+  assert.deepEqual(validWallBreakRequest(blastWallReq(broken), ctx(broken)), { ok: false, why: "broken" });
+});
+
+test("a blast cause from the socket keeps its source tile", () => {
+  assert.deepEqual(cleanWallCause({ kind: "blast", sourceId: "keg", junk: true }), { kind: "blast", sourceId: "keg" });
+});

@@ -54,7 +54,8 @@ export function propMaterial(tile, grid) {
 
 export function canBreak(material, cause = {}) {
   if (!MATERIALS.includes(material) || material === "none") return false;
-  const { damageType, slam } = cause;
+  const { damageType, slam, blast } = cause;
+  if (blast === true) return true; // a powder keg's blast breaks anything that is a prop at all
   if (slam) {
     if (material === "metal" || material === "stone") return slam.size >= BIG_SLAM;
     return true;

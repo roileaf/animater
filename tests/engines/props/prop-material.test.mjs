@@ -65,3 +65,9 @@ test("furniture words are wood and beat glass words", () => {
 test("nameTokens is exported", () => {
   assert.deepEqual(nameTokens("maps/Old%20BarrelA.webp"), ["old", "barrel", "a"]);
 });
+test("a blast breaks every material but Won't break, whatever else the cause says", () => {
+  for (const m of ["wood", "glass", "clay", "metal", "stone"]) assert.equal(canBreak(m, { blast: true }), true, m);
+  assert.equal(canBreak("metal", { blast: true, damageType: "cold" }), true);
+  assert.equal(canBreak("none", { blast: true }), false);
+  assert.equal(canBreak("metal", { damageType: "fire" }), false, "without a blast metal still follows its damage");
+});

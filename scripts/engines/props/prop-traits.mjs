@@ -4,11 +4,13 @@ import { MATERIALS, FURNITURE, nameTokens, guessMaterial, propMaterial } from ".
 
 export const STYLES = ["shatter", "collapse", "topple", "tip", "burn", "split"];
 export const STYLE_CHOICES = ["shatter", "collapse"]; // what the "Breaks as" setting offers
-export const CONTENTS = ["none", "water", "wine", "oil", "grain", "goods", "books", "potions", "lampoil"];
+export const CONTENTS = ["none", "water", "wine", "oil", "grain", "goods", "books", "potions", "lampoil", "powder"];
+export const BURST_DEFAULT = 2; // a powder keg's burst, in squares (the tile's "Burst (squares)" 1-4)
 
 const BOOKS = new Set(["book", "books", "bookshelf", "bookshelves", "bookcase", "library"]);
 const POTIONS = new Set(["potion", "potions", "apothecary", "alchemy", "alchemist"]);
 const LAMPS = new Set(["lantern", "lanterns", "lamp", "lamps"]); // they hold lamp oil
+const POWDER = new Set(["powder", "gunpowder", "explosive", "explosives"]);
 const TIPS = new Set(["brazier", "braziers"]); // knocked over whole, never broken by a slam
 const LEGS = new Set(["table", "tables", "chair", "chairs", "bench", "benches", "stool", "stools", "desk", "desks", "bed", "beds"]);
 
@@ -17,11 +19,17 @@ export function propGuesses(src) {
   return {
     material: guessMaterial(src),
     style: has(FURNITURE) ? "collapse" : "shatter",
-    contents: has(BOOKS) ? "books" : has(POTIONS) ? "potions" : has(LAMPS) ? "lampoil" : "none",
+    contents: has(BOOKS) ? "books" : has(POTIONS) ? "potions" : has(LAMPS) ? "lampoil" : has(POWDER) ? "powder" : "none",
     legs: has(LEGS),
     light: guessLight(src),
     tips: has(TIPS),
   };
+}
+
+// The tile's burst setting (a form may save it as text) rounded and clamped to 1-4; BURST_DEFAULT when it is not a number.
+export function burstOf(value) {
+  const n = typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN;
+  return Number.isFinite(n) ? Math.min(4, Math.max(1, Math.round(n))) : BURST_DEFAULT;
 }
 
 export function propTraits(tile, grid, scene = {}) { // eslint-disable-line no-unused-vars
@@ -33,6 +41,7 @@ export function propTraits(tile, grid, scene = {}) { // eslint-disable-line no-u
     legs: guess.legs,
     light: own.light === "yes" ? true : own.light === "no" ? false : guess.light,
     tips: own.tips === "yes" ? true : own.tips === "no" ? false : guess.tips,
+    burst: burstOf(own.burst),
   };
 }
 

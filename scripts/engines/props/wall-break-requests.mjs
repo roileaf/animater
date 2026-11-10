@@ -5,9 +5,10 @@ import { cleanCause, sizeOf, PATH_SQUARES } from "./prop-requests.mjs";
 import { onLevel } from "./prop-pick.mjs";
 import { forceOpenOf, forceOpenDoor, windowOnLine } from "./wall-triggers.mjs";
 import { missBreaks } from "./prop-break.mjs";
+import { blastFrom, inBurst } from "./prop-blast.mjs";
 
 export const WALL_BREAK_MESSAGE = "prop-wall-break";
-const KINDS = ["area", "path", "smash", "force-open", "miss"];
+const KINDS = ["area", "path", "smash", "force-open", "miss", "blast"];
 const MISS_CHANCE = 25; // percent: a plain ranged miss breaks a window (the scene's propMissChance overrides)
 const OWN_RULE = new Set(["smash", "force-open"]); // R1: no damage type or slam; their own material rule
 const AREA_REACH = 30; // squares from the area's centre to the wall's middle
@@ -46,13 +47,18 @@ export function slamSenderOk({ sender, mover, from, senderTokens = [], grid = 10
   });
 }
 
-// What canBreakWall is asked: a slam uses the mover's own size when the GM knows it.
-const breakCause = (cause, mover) => (cause.kind === "path" ? { slam: { size: sizeOf(mover?.size ?? cause.slam?.size) } } : { damageType: cause.damageType });
+// What canBreakWall is asked: a slam uses the mover's own size when the GM knows it; a blast breaks any door or window.
+const breakCause = (cause, mover) => (cause.kind === "path" ? { slam: { size: sizeOf(mover?.size ?? cause.slam?.size) } } : cause.kind === "blast" ? { blast: true } : { damageType: cause.damageType });
 
 // The cause has to fit where things stand on the GM's screen. A smash is the GM's own and fits anywhere.
-function plausible(cause, wall, grid, mover, { scene, walls, attacker, target } = {}) {
+// A blast reaches the wall's middle from its source keg (blastFrom: one that exploded), on the blast's levels.
+function plausible(cause, wall, grid, mover, { scene, walls, attacker, target, source, levels } = {}) {
   if (OWN_RULE.has(cause.kind)) return true; // a smash fits anywhere; Force Open was placed by forceOpenDoor
   const mid = wallMid(wall);
+  if (cause.kind === "blast") {
+    const b = blastFrom(source);
+    return !!b && inBurst(mid, b.centre, b.burst, grid) && onLevel(wall.levels, levels ?? source.levels);
+  }
   if (cause.kind === "miss") {
     // the shot's line, attacker to the target's centre, meets this window first (windowOnLine), on the target's level
     if (!finite(attacker) || ![target?.x, target?.y, target?.w, target?.h].every(Number.isFinite)) return false;
@@ -76,11 +82,15 @@ function plausible(cause, wall, grid, mover, { scene, walls, attacker, target } 
 // [0, 1) for a plain miss's chance, and walls (the scene's). The window must be the first one on the line (else "far").
 // Force Open: message, the GM's own copy of the chat message the cause names; token, its speaker's footprint
 // {x, y, w, h, level} on this scene; walls, the scene's walls (the door it opens is the one forceOpenDoor picks).
-export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mover, senderTokens, levels, message, token, walls, attacker, target, roll = 1 } = {}) {
+// A blast {kind: "blast", sourceId}: the GM's only (runBlast); source, the GM's view of the keg tile it names.
+export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mover, senderTokens, levels, message, token, walls, attacker, target, roll = 1, source } = {}) {
   const no = (why) => ({ ok: false, why });
   if (scene?.flags?.animater?.breakableProps !== true) return no("off");
   if (!sender) return no("sender");
-  if (sender.viewedScene !== scene.id) return no("scene");
+  const gmBlast = req?.cause?.kind === "blast" && sender.isGM === true;
+  if (req?.cause?.kind === "blast" && !gmBlast) return no("sender");
+  // the GM's blast may run on a scene the GM is not viewing (a player's break set it off)
+  if (!gmBlast && sender.viewedScene !== scene.id) return no("scene");
   if (!wall) return no("missing");
   if (wall.flags?.animater?.breakWall?.broken) return no("broken");
   const traits = wallTraits(wall, scene), cause = req?.cause ?? {};
@@ -100,13 +110,14 @@ export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mo
   const raw = req?.note;
   if (!raw || !Number.isFinite(raw.seed) || !Number.isFinite(raw.cutAngle) || !finite(raw.from)) return no("note");
   if (levels !== undefined && !onLevel(wall.levels, levels)) return no("far");
-  if (!plausible(cause, wall, grid, mover, { scene, walls, attacker, target })) return no("far");
+  if (!plausible(cause, wall, grid, mover, { scene, walls, attacker, target, source, levels })) return no("far");
   if (cause.kind === "miss") {
     const chance = Number(scene.flags.animater.propMissChance ?? MISS_CHANCE); // a form may save it as text
     if (!missBreaks(cause.outcome, Number.isFinite(chance) ? chance : MISS_CHANCE, roll)) return no("lucky");
   }
   // Only the seed, the cut and where the blow came from are the requester's; the rest is read here.
-  const note = wallNote({ seed: raw.seed, cutAngle: raw.cutAngle, from: raw.from, kind: traits.kind, material: traits.material, damageType: cause.damageType });
+  // A blast scorches.
+  const note = wallNote({ seed: raw.seed, cutAngle: raw.cutAngle, from: raw.from, kind: traits.kind, material: traits.material, damageType: cause.kind === "blast" ? "fire" : cause.damageType });
   return { ok: true, note, update: wallBreakUpdate(wall, note) };
 }
 

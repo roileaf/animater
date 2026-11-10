@@ -336,3 +336,54 @@ test("the requester's note for a brazier slam says tip", () => {
   assert.equal(noteFor(brazier(), shove(1)).style, "tip");
   assert.equal(noteFor(brazier(), { kind: "area", damageType: "bludgeoning", at: { x: 250, y: 250 } }).style, "shatter");
 });
+
+// Powder kegs (Task 12): any break of a keg says whether it explodes, and its note keeps the powder and the burst.
+const powderKeg = (prop = {}) => barrel({ id: "keg", texture: { src: "props/Keg_Powder.webp" }, flags: { animater: { prop } } });
+test("a powder keg broken by fire explodes; by an axe or a shove it spills; the note keeps its burst", () => {
+  const fire = { kind: "area", damageType: "fire", at: { x: 250, y: 250 } };
+  const r = validBreakRequest({ cause: fire, note: noteFor(powderKeg(), fire) }, ctx({ tile: powderKeg() }));
+  assert.equal(r.ok, true);
+  assert.equal(r.explode, true);
+  assert.equal(r.note.powder, "exploded");
+  assert.equal(r.note.burst, 2);
+  assert.equal(validBreakRequest({ cause: fire, note: noteFor(powderKeg({ burst: 4 }), fire) }, ctx({ tile: powderKeg({ burst: 4 }) })).note.burst, 4);
+  const zap = { kind: "area", damageType: "electricity", at: { x: 250, y: 250 } };
+  assert.equal(validBreakRequest({ cause: zap, note: noteFor(powderKeg(), zap) }, ctx({ tile: powderKeg() })).explode, true);
+  const axe = { kind: "area", damageType: "slashing", at: { x: 250, y: 250 } };
+  const spilt = validBreakRequest({ cause: axe, note: noteFor(powderKeg(), axe) }, ctx({ tile: powderKeg() }));
+  assert.equal(spilt.ok, true);
+  assert.equal(spilt.explode, false);
+  assert.equal(spilt.note.powder, "spilled");
+  assert.equal(spilt.note.burst, 2);
+  const slam = shove(2);
+  const shoved = validBreakRequest({ cause: slam, note: noteFor(powderKeg(), slam) }, ctx({ tile: powderKeg(), mover: { ...smallMover, size: 2 } }));
+  assert.equal(shoved.ok, true);
+  assert.equal(shoved.explode, false);
+  assert.equal(shoved.note.powder, "spilled");
+  // a keg the GM set to hold wine is no keg of powder
+  const wine = powderKeg({ contents: "wine" }), w = validBreakRequest({ cause: fire, note: noteFor(wine, fire) }, ctx({ tile: wine }));
+  assert.equal(w.explode, false);
+  assert.equal(w.note.powder, undefined);
+});
+test("powder and burst are the GM's: a requester's claim on a crate is dropped, a keg's is rewritten", () => {
+  const fire = { kind: "area", damageType: "fire", at: { x: 250, y: 250 } };
+  const r = validBreakRequest({ cause: fire, note: { ...noteFor(), powder: "exploded", burst: 4 } }, ctx());
+  assert.equal(r.ok, true);
+  assert.equal(r.explode, false);
+  assert.equal(r.note.powder, undefined);
+  assert.equal(r.note.burst, undefined);
+  const axe = { kind: "area", damageType: "slashing", at: { x: 250, y: 250 } };
+  const k = validBreakRequest({ cause: axe, note: { ...noteFor(powderKeg(), axe), powder: "exploded", burst: 4 } }, ctx({ tile: powderKeg() }));
+  assert.equal(k.note.powder, "spilled");
+  assert.equal(k.note.burst, 2);
+});
+test("a blast or ignite cause from the socket keeps its source tile", () => {
+  assert.deepEqual(cleanCause({ kind: "blast", sourceId: "keg", extra: 1 }), { kind: "blast", sourceId: "keg" });
+  assert.equal(cleanCause({ kind: "blast", sourceId: "k".repeat(500) }).sourceId.length, 200);
+  assert.deepEqual(cleanCause({ kind: "ignite", damageType: "fire", at: { x: 1, y: 2 } }), { kind: "ignite", damageType: "fire", at: { x: 1, y: 2 } });
+});
+test("a player's forged blast is refused before anything else is looked at", () => {
+  const blast = { kind: "blast", sourceId: "keg" };
+  assert.deepEqual(validBreakRequest({ cause: blast, note: noteFor() }, ctx()), { ok: false, why: "sender" });
+  assert.deepEqual(validBreakRequest({ cause: blast, note: noteFor() }, ctx({ sender: { ...sender, isGM: false }, source: barrel({ id: "keg", hidden: true }) })), { ok: false, why: "sender" });
+});

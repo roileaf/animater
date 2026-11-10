@@ -101,3 +101,24 @@ test("Tips over select", () => {
   assert.doesNotMatch(tipsSelect(propTileFieldsHTML({ src: "Brazier.webp", tips: "junk" })), /value="(yes|no)" selected/);
   assert.match(tipsSelect(propTileFieldsHTML({ src: "Brazier.webp", tips: "yes" })), /<option value="yes" selected>Yes</);
 });
+
+test("Contents offers Black powder; a powder keg's guess says so", () => {
+  assert.match(propTileFieldsHTML({ src: "x.webp" }), /<option value="powder"[^>]*>Black powder</);
+  assert.match(propTileFieldsHTML({ src: "Keg_Gunpowder.webp" }), /Automatic \(Black powder\)/);
+});
+test("Burst field shows for black powder only", () => {
+  assert.match(propTileFieldsHTML({ src: "Keg_Powder.webp" }), /data-show-for="powder"(?![^>]*hidden)[\s\S]*name="flags\.animater\.prop\.burst"[^>]*value="2"/);
+  assert.match(propTileFieldsHTML({ src: "Barrel_Wood.webp" }), /data-show-for="powder"[^>]*hidden/);
+  // the GM's own pick of contents wins over the guess, both ways
+  assert.doesNotMatch(propTileFieldsHTML({ src: "Barrel_Wood.webp", contents: "powder" }), /data-show-for="powder"[^>]*hidden/);
+  assert.match(propTileFieldsHTML({ src: "Keg_Powder.webp", contents: "wine" }), /data-show-for="powder"[^>]*hidden/);
+  // a hidden field does not submit; the label and range
+  assert.match(propTileFieldsHTML({ src: "Barrel_Wood.webp" }), /name="flags\.animater\.prop\.burst"[^>]*disabled/);
+  assert.doesNotMatch(propTileFieldsHTML({ src: "Keg_Powder.webp" }), /name="flags\.animater\.prop\.burst"[^>]*disabled/);
+  const html = propTileFieldsHTML({ src: "Keg_Powder.webp", burst: 3 });
+  assert.match(html, /<label>Burst \(squares\)<\/label>/);
+  assert.match(html, /<input type="number" name="flags\.animater\.prop\.burst" min="1" max="4" step="1" value="3"/);
+  assert.match(propTileFieldsHTML({ src: "Keg_Powder.webp", burst: 12 }), /prop\.burst"[^>]*value="4"/);
+  // the guess the toggle falls back to when Contents is Automatic
+  assert.match(propTileFieldsHTML({ src: "Keg_Powder.webp" }), /data-animater-prop[^>]*data-guess-contents="powder"/);
+});
