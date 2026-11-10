@@ -162,3 +162,18 @@ test("which wrecks to draw, keep, settle or take away", () => {
   assert.deepEqual(r.hide, ["gone"]);
   assert.deepEqual(decorWreckChanges({ shown: m({ a: 1 }), wanted: [{ id: "a", note: n(5) }], pending: m({}), late: m({}), animate: false }).show.map((s) => s.id), ["a"]);
 });
+
+// ---- the shared pickers take decoration views as they are ----
+import { propsInArea, propsOnPath, propNextToMiss } from "../../../scripts/engines/props/prop-pick.mjs";
+import { blastTargets } from "../../../scripts/engines/props/prop-blast.mjs";
+test("areas, misses, paths and blasts pick decoration views like tiles", () => {
+  const r = on(), views = decorTargets([r], grid, index), crate = views.find((v) => v.decor.kind === "crate");
+  const c = { x: crate.x + crate.width / 2, y: crate.y + crate.height / 2 };
+  assert.ok(propsInArea(views, (p) => Math.hypot(p.x - c.x, p.y - c.y) < 1, grid, "bludgeoning").includes(crate));
+  assert.ok(!propsInArea(views, () => true, grid, "cold").some((v) => v.decor.kind === "crate"));
+  assert.ok(propsOnPath([{ x: c.x - 300, y: c.y }, { x: c.x + 300, y: c.y }], 1, views, grid).includes(crate));
+  const target = { x: c.x + crate.width / 2 + 1, y: c.y - 50, w: 100, h: 100 };
+  assert.equal(propNextToMiss({ attacker: { x: target.x + 400, y: c.y }, target }, [crate], grid, "bludgeoning"), crate);
+  assert.equal(propNextToMiss({ attacker: { x: c.x - 400, y: c.y }, target }, [crate], grid, "bludgeoning"), null, "never on the attacker's side");
+  assert.ok(blastTargets({ centre: c, burst: 1, grid, tiles: [crate], walls: [], scene: scene(), levels: ["L1"], sourceId: "keg" }).some((t) => t.id === crate.id));
+});

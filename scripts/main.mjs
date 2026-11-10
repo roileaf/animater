@@ -3358,7 +3358,7 @@ const fireBlast = (p, kind, radius, variant = null) => {
       return [{ _id: c.id, x: Math.round(to.x - c.w / 2), y: Math.round(to.y - c.h / 2) }];
     });
     if (updates.length) setTimeout(async () => {
-      await Promise.all([...slammed.map((s) => askProp(scene, s.t.id, s.cause, s.from)), ...doorsHit.map((s) => askWall(scene, s.id, s.cause, s.from))]);
+      await Promise.all([...slammed.map((s) => (s.t.decor ? askDecor(scene, s.t, s.cause, s.from) : askProp(scene, s.t.id, s.cause, s.from))), ...doorsHit.map((s) => askWall(scene, s.id, s.cause, s.from))]);
       void scene?.updateEmbeddedDocuments("Token", updates, { animate: true });
     }, 250);
   }
@@ -7813,6 +7813,14 @@ async function runBlast(scene, doc, note) {
     .catch((e) => runtime?.trace("props", `blast whisper: ${e?.message ?? e}`));
   const cause = { kind: "blast", sourceId: doc.id }, look = { ...cause, damageType: "fire" }; // the wreck's look is scorched
   const targets = blastTargets({ centre, burst, grid, tiles: scene.tiles.contents.map(propTileView), walls: (scene.walls?.contents ?? []).map(wallView), scene, levels, sourceId: doc.id });
+  const decorSeen = decorViews(scene, levels), decorHit = blastTargets({ centre, burst, grid, tiles: decorSeen, walls: [], scene, levels, sourceId: doc.id });
+  for (const hit of decorHit) setTimeout(() => propSafe("blast decoration", () => {
+    const view = decorSeen.find((v) => v.id === hit.id), region = view && scene.regions.get(view.decor.regionId);
+    if (!region) return;
+    const seed = Math.floor(Math.random() * 0x7fffffff);
+    const note = breakNoteFor({ tile: view, walls: [], grid, cause: look, seed, from: centre, scene });
+    void applyDecorBreak(scene, region, view.decor.key, cause, note, game.user).catch((e) => runtime?.trace("props", `blast decoration: ${e?.message ?? e}`));
+  }), hit.delay);
   for (const t of targets) setTimeout(() => propSafe("blast target", () => {
     const seed = Math.floor(Math.random() * 0x7fffffff);
     if (t.type === "tile") {
@@ -8303,11 +8311,13 @@ function breakAreaProps(message) {
   // Fire also sets off powder spilled from a keg broken earlier, once per area.
   const spills = d.type !== "fire" ? [] : (propSafe("area powder", () => ignitableInArea(tilesOnLevel(scene.tiles.contents.map(propTileView), area.levels), area.testPoint)) ?? [])
     .filter((t) => propAreas.claim(area.templateId, `ignite:${t.id}`));
-  if (!hits.length && !doors.length && !spills.length) return;
+  const decorHits = propsInArea(decorViews(scene, area.levels), area.testPoint, propGrid(scene), d.type).filter((t) => propAreas.claim(area.templateId, t.id));
+  if (!hits.length && !doors.length && !spills.length && !decorHits.length) return;
   const ask = () => {
     // Each names its area, which the GM checks for itself (prop-areas.mjs).
     const areaUuid = area.templateId;
     for (const t of hits) void askProp(scene, t.id, { kind: "area", damageType: d.type, at: area.at, areaUuid }, area.at);
+    for (const t of decorHits) void askDecor(scene, t, { kind: "area", damageType: d.type, at: area.at, areaUuid }, area.at);
     for (const w of doors) void askWall(scene, w.id, { kind: "area", damageType: d.type, at: area.at, areaUuid }, area.at);
     for (const t of spills) void askProp(scene, t.id, { kind: "ignite", damageType: "fire", at: area.at, areaUuid }, area.at);
   };
@@ -8494,10 +8504,11 @@ async function breakPropOnMiss(event) {
     return;
   }
   const pick = nextToMiss({ attacker: from, target: { x: target.x, y: target.y, w: target.width * grid, h: target.height * grid } },
-    { tiles: tilesOnLevel(scene.tiles.contents.map(propTileView), target.level), walls: (scene.walls?.contents ?? []).map(wallView), scene, levels: target.level }, grid, damageType);
+    { tiles: [...tilesOnLevel(scene.tiles.contents.map(propTileView), target.level), ...decorViews(scene, target.level)], walls: (scene.walls?.contents ?? []).map(wallView), scene, levels: target.level }, grid, damageType);
   if (!pick) return;
   await afterDice(event);
   if (pick.type === "wall") await askWall(scene, pick.wall.id, cause, from);
+  else if (pick.tile.decor) await askDecor(scene, pick.tile, { kind: "miss", damageType, outcome, targetUuid: target.uuid }, from);
   else await askProp(scene, pick.tile.id, { kind: "miss", damageType, outcome, targetUuid: target.uuid }, from);
 }
 const propMiss = (event) => { void propSafe("miss", () => breakPropOnMiss(event))?.catch?.((e) => runtime?.trace("props", `miss: ${e?.message ?? e}`)); };
@@ -8509,7 +8520,7 @@ function slamProps(doc, a, b) {
   const scene = doc?.parent;
   if (!propsOn(scene) || !game.users.activeGM || ![a?.x, a?.y, b?.x, b?.y].every(Number.isFinite) || (a.x === b.x && a.y === b.y)) return [];
   const grid = propGrid(scene), path = { from: a, to: b }, mover = { x: a.x, y: a.y, size: moverSize(doc) };
-  return propsOnPath([a, b], mover.size, tilesOnLevel(scene.tiles.contents.map(propTileView), doc.level), grid).filter((t) => slamPlausible(t, path, mover, grid));
+  return propsOnPath([a, b], mover.size, [...tilesOnLevel(scene.tiles.contents.map(propTileView), doc.level), ...decorViews(scene, doc.level)], grid).filter((t) => slamPlausible(t, path, mover, grid));
 }
 // A forced move's breakable doors (wall documents): those a mover of its size crosses from a to b (centres), on its
 // level, in path order, when the GM will take this client's word for the slam (slamSenderOk) and the path is not too
@@ -8533,7 +8544,7 @@ const doorAsTile = (doc) => { const m = wallMid(doc); return { id: doc.id, x: m.
 // doors; a window still stops the mover at its frame). Any other prop's walls still stop it.
 function slamWalls(doc, a, b) {
   const scene = doc?.parent, grid = propGrid(scene), walls = scene?.walls?.contents ?? [];
-  const ids = new Set(slamProps(doc, a, b).flatMap((t) => ownWalls(t, walls, grid).map((w) => w.id)));
+  const ids = new Set(slamProps(doc, a, b).filter((t) => !t.decor).flatMap((t) => ownWalls(t, walls, grid).map((w) => w.id)));
   for (const w of slamDoors(doc, a, b)) if (wallTraits(wallView(w), scene).kind === "door") ids.add(w.id);
   return ids;
 }
@@ -8556,7 +8567,7 @@ function slamAlong(doc, from, to, span) {
   const cause = { kind: "path", slam: { size: moverSize(doc) }, moverUuid: doc.uuid, path: { from: a, to: b } };
   const when = { start: span.start, end: Math.max(span.start, span.end - 50) };
   for (const { tile, ms } of slamTimes(a, b, tiles, when))
-    setTimeout(() => void askProp(scene, tile.id, cause, a), ms);
+    setTimeout(() => void (tile.decor ? askDecor(scene, tile, cause, a) : askProp(scene, tile.id, cause, a)), ms);
   for (const { tile, ms } of slamTimes(a, b, slamDoors(doc, a, b).map(doorAsTile), when))
     setTimeout(() => void askWall(scene, tile.id, cause, a), ms);
 }
@@ -8567,8 +8578,8 @@ function slamUnder(stage, token, source, target) {
   if (!GROUND_MOTIONS.has(stage?.motion) || !propsOn(scene) || !game.users.activeGM || doc.hidden || !token.center) return;
   const grid = propGrid(scene), size = moverSize(doc), ms = Math.max(0, Number(stage.duration) || 0);
   const travel = groundTravel(stage, { x: token.center.x, y: token.center.y }, motionDirection(token, source, target, stage.motion, grid), grid);
-  for (const { tile, p, path } of groundSlams(travel, size, tilesOnLevel(scene.tiles.contents.map(propTileView), doc.level), grid))
-    setTimeout(() => void askProp(scene, tile.id, { kind: "path", slam: { size }, moverUuid: doc.uuid, path }, path.from), Math.round(p * ms));
+  for (const { tile, p, path } of groundSlams(travel, size, [...tilesOnLevel(scene.tiles.contents.map(propTileView), doc.level), ...decorViews(scene, doc.level)], grid))
+    setTimeout(() => void (tile.decor ? askDecor(scene, tile, { kind: "path", slam: { size }, moverUuid: doc.uuid, path }, path.from) : askProp(scene, tile.id, { kind: "path", slam: { size }, moverUuid: doc.uuid, path }, path.from)), Math.round(p * ms));
   // and each door it runs through
   for (const { wall, p, path } of wallsUnderTravel(travel, size, (scene.walls?.contents ?? []).map(wallView), scene, doc.level))
     setTimeout(() => void askWall(scene, wall.id, { kind: "path", slam: { size }, moverUuid: doc.uuid, path }, path.from), Math.round(p * ms));

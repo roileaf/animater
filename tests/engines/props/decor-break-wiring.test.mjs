@@ -97,3 +97,18 @@ test("break and decoration repair writes skip the generic region rebuilds", () =
   // the decoration painter's own hook is not filtered
   assert.doesNotMatch(main.slice(main.indexOf('Hooks.on("updateRegion", (doc, changes, options) => { propSafe("decor region"'), main.indexOf('Hooks.on("deleteRegion", (doc) => { propSafe("decor region gone"')), /quietSave/);
 });
+test("every trigger asks for decorations too; decorations never free walls", () => {
+  assert.match(main, /propsInArea\(decorViews\(scene, area\.levels\), area\.testPoint/);
+  assert.match(main, /tiles: \[\.\.\.[^\]]*decorViews\(scene, target\.level\)\]/);
+  assert.match(main, /pick\.tile\.decor/);
+  assert.match(main, /slamProps\(doc, a, b\)\.filter\(\(t\) => !t\.decor\)/);
+  assert.match(main, /t\.decor \? askDecor\(/);
+  assert.match(main, /groundSlams\(travel, size, \[\.\.\.[^\]]*decorViews\(scene, doc\.level\)\]/);
+  assert.match(main, /decorSeen = decorViews\(scene, levels\), decorHit = blastTargets\(\{[^}]*tiles: decorSeen, walls: \[\]/);
+  assert.match(main, /tile\.decor \? askDecor\(scene, tile, cause, a\)/);
+  // D3: the blast-push site, D11: the blast loop reads the region document
+  assert.match(main, /slammed\.map\(\(s\) => \(s\.t\.decor \? askDecor\(scene, s\.t,/);
+  assert.match(main, /scene\.regions\.get\(view\.decor\.regionId\)/);
+  assert.match(main, /applyDecorBreak\(scene, region, view\.decor\.key, cause, note, game\.user\)/);
+  assert.match(main, /const cause = \{ kind: "blast", sourceId: doc\.id \}, look/);
+});
