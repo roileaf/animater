@@ -132,6 +132,11 @@ test('main: GM-only right-click on an animal opens its HUD; orders saved on the 
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
   assert.match(main, /globalThis\.window\?\.addEventListener\?\.\("pointerdown", \(e\) => \{\s*if \(!game\.user\?\.isGM \|\| !canvas\?\.ready \|\| e\.target !== canvas\.app\?\.view \|\| animalAim \|\| animalPick\) return;/);
   assert.match(main, /const placedLayers = \(\) => \[wildlife, fieldLife, pondLife, townLife, sceneFarm\];/);
+  // Found on a GM's server: a region's gull told to circle vanished, the scene's Outdoor life being off. Animals put down by
+  // hand show with Animals in the wild on, as a region's do, with ground of their own when the scene has none worked out.
+  assert.match(main, /const raw = bothSettingsOn\("wildlife"\) \? animalFlagsNow\(\)\.placedAnimals \?\? \[\] : \[\];/);
+  assert.match(main, /placedGround = !wildHere\(\) && placedList\(raw\)\.length \? wildGround\(/);
+  assert.match(main, /const wildOk = \(kind, x, y\) => okOn\(wildOpen \?\? placedGround, kind, x, y\);/);
   // Found on a player's screen: the placed gull twice, one on top of the other, after the pond was put back.
   assert.match(main, /for \(const l of placedLayers\(\)\) l\.removeAdded\(p\.id\); placedShown\.delete\(p\.id\);/);
   assert.match(main, /for \(const layer of layers\) layer\.orders\(orders\);/);

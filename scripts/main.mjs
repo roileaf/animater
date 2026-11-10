@@ -3335,7 +3335,10 @@ const PLACED_IN = { town: ["pigeon", "hen", "dog"], farm: ["cow", "goat", "sheep
 const replacePlaced = (layer) => { if (!canvas?.ready) return; for (const p of placedList(animalFlagsNow().placedAnimals)) if (PLACED_IN[layer].includes(p.kind)) { for (const l of placedLayers()) l.removeAdded(p.id); placedShown.delete(p.id); } syncPlacedAnimals(); };
 const syncPlacedAnimals = () => {
   if (!canvas?.ready) return;
-  const raw = wildHere() ? animalFlagsNow().placedAnimals : [];
+  // Put down by hand (or ordered from the animal HUD, a region's own animal among them), they are there whenever this
+  // screen has Animals in the wild on, as a region's animals are: the scene's Outdoor life is for the ones that come of themselves.
+  const raw = bothSettingsOn("wildlife") ? animalFlagsNow().placedAnimals ?? [] : [];
+  placedGround = !wildHere() && placedList(raw).length ? wildGround(canvas.grid.size, canvas.dimensions.sceneRect) : null;
   const { add, remove } = placedChanges(placedShown, raw);
   const layers = placedLayers();
   for (const id of remove) { for (const layer of layers) layer.removeAdded(id); placedShown.delete(id); }
@@ -3344,7 +3347,7 @@ const syncPlacedAnimals = () => {
   const orders = new Map(placedList(raw).map((p) => [p.id, p.order ?? null]));
   for (const layer of layers) layer.orders(orders);
 };
-Hooks.on("canvasTearDown", () => { placedShown.clear(); });
+Hooks.on("canvasTearDown", () => { placedShown.clear(); placedGround = null; });
 let animalsPanelApp = null, animalAim = null, animalScope = "level";
 const animalsOnLevel = () => severalLevels() && animalScope === "level";
 const saveAnimals = async (changes) => { const target = animalsOnLevel() ? canvas.level : canvas?.scene; if (target) await target.update(Object.fromEntries(Object.entries(changes).map(([k, v]) => [`flags.${ID}.${k}`, v]))); };
@@ -3989,6 +3992,8 @@ const WILD_FLOORS = new Set(["grass", "dirt", "snow", "mud", "sand"]);
 // Where a region's own animals may stand: any dry floor in it (the GM asked for them there: hens in a barn, a dog on a deck).
 const OWN_FLOORS_NOT = new Set(["water", "lava", "cavern"]);
 let wildOpen = null;
+// The ground animals put down by hand go on when the scene's Outdoor life is off (and so has no wildOpen).
+let placedGround = null;
 const groundWalls = () => {
   const walls = [];
   for (const w of canvas.walls?.placeables ?? []) { const d = w.document; if (!(Number(d?.move) > 0) || (Number(d?.door) > 0 && Number(d?.ds) === 1) || d.flags?.[ID]?.wildlifePasses === true) continue; const [x1, y1, x2, y2] = d.c; walls.push({ x1, y1, x2, y2 }); }
@@ -4163,7 +4168,7 @@ const okOn = (ground, kind, x, y) => {
   if ((kind === "ducks" || kind === "frogs") && ground?.inWater(x, y) && freshFor(ground, kind) && seaHere(ground, x, y)) return false;
   return !!(kind === "fish" || kind === "ducks" || kind === "frogs" ? ground?.inWater(x, y) : ground?.at(x, y)) && !keptOut(kind, { x, y });
 };
-const wildOk = (kind, x, y) => okOn(wildOpen, kind, x, y);
+const wildOk = (kind, x, y) => okOn(wildOpen ?? placedGround, kind, x, y);
 // Heard where they are, the hawk and the crows from far off, by distance for everyone (earsNow).
 const wildCalls = critterVoices({ gaps: WILD_GAPS });
 const WILD_SOUND = { hawkCry: { volume: 0.35, reach: 40, rates: [0.95, 1.05] }, crowCaw: { volume: 0.3, reach: 30, rates: [0.86, 1.14] }, songChirp: { volume: 0.16, reach: 8, rates: [0.95, 1.1] }, wingsUp: { volume: 0.3, reach: 9, rates: [0.9, 1.2] }, rabbitThump: { volume: 0.3, reach: 6, rates: [0.9, 1.1] }, fishSplash: { volume: 0.25, reach: 7, rates: [0.85, 1.25] }, frogPlop: { volume: 0.26, reach: 8, rates: [0.94, 1.18] }, duckQuack: { volume: 0.28, reach: 12, rates: [0.95, 1.08] }, frogCroak: { volume: 0.2, reach: 10, rates: [0.9, 1.1] }, gullCry: { volume: 0.25, reach: 25, rates: [0.92, 1.08] }, owlHoot: { volume: 0.3, reach: 30, rates: [0.95, 1.05] }, cricketChirp: { volume: 0.14, reach: 8, rates: [0.96, 1.06] }, foxBark: { volume: 0.3, reach: 18, rates: [0.92, 1.08] }, wolfHowl: { volume: 0.32, reach: 45, rates: [0.96, 1.04] }, wolfPack: { volume: 0.32, reach: 45, rates: [0.97, 1.03] }, wolfGrowl: { volume: 0.34, reach: 12, rates: [0.93, 1.05] }, dragonBuzz: { volume: 0.16, reach: 5, rates: [0.9, 1.15] }, deerCall: { volume: 0.3, reach: 18, rates: [0.92, 1.08] }, squirrelChatter: { volume: 0.24, reach: 10, rates: [0.94, 1.1] }, snakeHiss: { volume: 0.2, reach: 5, rates: [0.9, 1.1] }, heronCall: { volume: 0.3, reach: 22, rates: [0.92, 1.06] }, crabDive: { volume: 0.18, reach: 5, rates: [0.9, 1.2] }, henCluck: { volume: 0.22, reach: 7, rates: [0.92, 1.1] }, catMeow: { volume: 0.2, reach: 8, rates: [0.95, 1.08] }, dogBark: { volume: 0.32, reach: 22, rates: [0.92, 1.08] }, pigeonCoo: { volume: 0.2, reach: 7, rates: [0.88, 1.14] }, cowCall: { volume: 0.32, reach: 26, rates: [0.86, 1.06] }, goatCall: { volume: 0.26, reach: 14, rates: [0.9, 1.14] }, sheepCall: { volume: 0.26, reach: 14, rates: [0.88, 1.12] }, pigCall: { volume: 0.34, reach: 10, rates: [0.88, 1.1] }, horseCall: { volume: 0.3, reach: 22, rates: [0.9, 1.08] } };
@@ -4225,8 +4230,8 @@ const wildCanopy = (x, y) => {
   }
   return false;
 };
-const wildIndoors = (x, y) => !!wildOpen?.walled(x, y) && !roofOver(x, y);
-const wildBarred = (kind, x, y) => !!wildOpen?.closed(x, y) || keptOut(kind, { x, y });
+const wildIndoors = (x, y) => !!(wildOpen ?? placedGround)?.walled(x, y) && !roofOver(x, y);
+const wildBarred = (kind, x, y) => !!(wildOpen ?? placedGround)?.closed(x, y) || keptOut(kind, { x, y });
 // A creature's shadows out of doors, by the engine every creature's are (movement-feel.mjs shadowFalls): sun or moon as high as it
 // stands and as strong as the sky lets it, each light in reach, the darkness there, none out of the sun in a wall's shade or indoors.
 const BIRD_SHADOW_LIFT = 0.8;
@@ -4440,13 +4445,13 @@ const rebuildSceneFarm = () => {
   replacePlaced("farm");
 };
 // (Ground for one put down by hand when the scene asks for no herd: the open ground as the wild animals have it.)
-const tickSceneFarm = (seconds) => { if (sceneFarm.busy) sceneFarm.tick(seconds, { near: creaturesNow(), ok: (kind, x, y) => !!(sceneFarmGround ?? wildOpen)?.at(x, y) && !keptOut(kind, { x, y }), blocked: wallBlocks, seen: wildSeen, sound: wildVoice, tokenAt: animalTokenAt }); };
+const tickSceneFarm = (seconds) => { if (sceneFarm.busy) sceneFarm.tick(seconds, { near: creaturesNow(), ok: (kind, x, y) => !!(sceneFarmGround ?? wildOpen ?? placedGround)?.at(x, y) && !keptOut(kind, { x, y }), blocked: wallBlocks, seen: wildSeen, sound: wildVoice, tokenAt: animalTokenAt }); };
 Hooks.on("canvasTearDown", () => { sceneFarm.clear(); sceneFarmKey = null; sceneFarmGround = null; });
 const tickTown = (seconds) => {
   const near = creaturesNow(), view = viewNow();
   townLife.setPerches(birdPerches());
   // (One put down by hand on a scene with no town asked for goes on the open ground as the wild animals have it.)
-  townLife.tick(Math.min(seconds, 0.1), { near, view, tokenAt: animalTokenAt, ok: (kind, x, y) => (townOpen ? townOpen.ok(x, y) : !!wildOpen?.at(x, y)) && !keptOut(townKept[kind] ?? kind, { x, y }), blocked: wallBlocks, barred: (kind, x, y) => !!townOpen?.closed(x, y) || keptOut(townKept[kind] ?? kind, { x, y }), day: sunNow ? wildDay() : Math.max(0, Math.min(1, 1 - ((Number(canvas.environment?.darknessLevel) || 0) - 0.55) / 0.2)), night: sunNow ? wildNight() : 0, rain: skyFalling.rain, seen: wildSeen, cast: wildCast, sound: wildVoice });
+  townLife.tick(Math.min(seconds, 0.1), { near, view, tokenAt: animalTokenAt, ok: (kind, x, y) => (townOpen ? townOpen.ok(x, y) : !!(wildOpen ?? placedGround)?.at(x, y)) && !keptOut(townKept[kind] ?? kind, { x, y }), blocked: wallBlocks, barred: (kind, x, y) => !!townOpen?.closed(x, y) || keptOut(townKept[kind] ?? kind, { x, y }), day: sunNow ? wildDay() : Math.max(0, Math.min(1, 1 - ((Number(canvas.environment?.darknessLevel) || 0) - 0.55) / 0.2)), night: sunNow ? wildNight() : 0, rain: skyFalling.rain, seen: wildSeen, cast: wildCast, sound: wildVoice });
 };
 Hooks.on("canvasTearDown", () => { townLife.clear(); townKey = null; townOpen = null; });
 // Animals of a region's own (engines/motion/region-animals.mjs): each region asking for some has its own layers of them,
