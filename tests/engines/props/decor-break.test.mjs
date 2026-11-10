@@ -80,3 +80,74 @@ test("targets: switched-on regions only, breakable and unbroken, on the index's 
   const stale = [{ key: "crate:1:1:zzz", kind: "crate", x: 1, y: 1, note }];
   assert.equal(decorTargets([{ ...on, broken: stale }], grid, index).length, views.length, "a stale break is ignored");
 });
+
+// ---- the GM's check, the stored list, repair ----
+import { validDecorBreakRequest, decorBrokenAfter, decorRepairUpdates, decorRegionRepair, decorRubbleId, DECOR_BREAK_MESSAGE } from "../../../scripts/engines/props/decor-break.mjs";
+import { breakNoteFor } from "../../../scripts/engines/props/prop-requests.mjs";
+
+const scene = (flags = {}) => ({ id: "s", flags: { animater: { breakableProps: true, ...flags } } });
+const gm = { id: "gm", isGM: true, viewedScene: "s" }, player = { id: "p", viewedScene: "s" };
+const index = createDecorIndex();
+const on = (x = {}, extra = {}) => region({ canBreak: true, ...x }, extra);
+const pick = (r, kind) => index(r, grid).views.find((v) => v.decor.kind === kind);
+const bash = (v, damageType = "bludgeoning") => ({ kind: "area", damageType, at: { x: v.x + v.width / 2, y: v.y + v.height / 2 } });
+const ask = (v, cause = bash(v), extra = {}) => ({ key: v.decor.key, cause, note: breakNoteFor({ tile: v, walls: [], grid, cause, seed: 42, from: cause.at, scene: scene() }), ...extra });
+const ctx = (r, x = {}) => ({ region: r, scene: scene(), grid, sender: gm, now: 5000, index, ...x });
+
+test("the message name", () => { assert.equal(DECOR_BREAK_MESSAGE, "decor-break"); });
+
+test("a GM's area breaks a crate: the entry names it, no walls, no lights", () => {
+  const r = on(), crate = pick(r, "crate"), out = validDecorBreakRequest(ask(crate), ctx(r));
+  assert.equal(out.ok, true);
+  assert.deepEqual([out.entry.key, out.entry.kind, out.entry.x, out.entry.y], [crate.decor.key, "crate", Math.round(crate.decor.d.x), Math.round(crate.decor.d.y)]);
+  assert.deepEqual(out.entry.note.walls, []); assert.deepEqual(out.entry.note.lights, []); assert.equal(out.entry.note.seed, 42);
+});
+
+test("refused: either switch off, a key that is not a breakable decoration, already broken or queued", () => {
+  const r = on(), crate = pick(r, "crate"), req = ask(crate);
+  assert.deepEqual(validDecorBreakRequest(req, ctx(r, { scene: scene({ breakableProps: false }) })), { ok: false, why: "off" });
+  assert.deepEqual(validDecorBreakRequest(req, ctx(region())), { ok: false, why: "off" });
+  assert.deepEqual(validDecorBreakRequest({ ...req, key: index(r, grid).keyed.find((k) => k.d.kind === "rock").key }, ctx(r)), { ok: false, why: "missing" });
+  assert.deepEqual(validDecorBreakRequest(req, ctx(on({ seed: 8 }))), { ok: false, why: "missing" }); // reshuffled since
+  assert.deepEqual(validDecorBreakRequest(req, ctx({ ...r, id: "R2" })), { ok: false, why: "missing" }); // another region's key
+  const stored = [{ key: crate.decor.key, kind: "crate", x: 0, y: 0, note: req.note }];
+  assert.deepEqual(validDecorBreakRequest(req, ctx({ ...r, broken: stored })), { ok: false, why: "broken" });
+  assert.deepEqual(validDecorBreakRequest(req, ctx(r, { queued: [crate.decor.key] })), { ok: false, why: "broken" });
+});
+
+test("refused: forged walls, a player's blast, a damage the material shrugs off; a forged style is corrected", () => {
+  const r = on(), crate = pick(r, "crate"), bush = pick(r, "bush");
+  assert.deepEqual(validDecorBreakRequest({ ...ask(crate), note: { ...ask(crate).note, walls: ["w1"] } }, ctx(r)), { ok: false, why: "wall" });
+  assert.deepEqual(validDecorBreakRequest(ask(crate, { kind: "blast", sourceId: "keg" }), ctx(r, { sender: player })), { ok: false, why: "sender" });
+  assert.deepEqual(validDecorBreakRequest(ask(crate, bash(crate, "cold")), ctx(r)), { ok: false, why: "material" });
+  assert.deepEqual(validDecorBreakRequest(ask(bush, bash(bush, "slashing")), ctx(r)), { ok: false, why: "material" });
+  assert.equal(validDecorBreakRequest({ ...ask(crate), note: { ...ask(crate).note, style: "topple" } }, ctx(r)).entry.note.style, "shatter");
+  assert.equal(validDecorBreakRequest(ask(bush, bash(bush, "fire")), ctx(r)).entry.note.style, "burn");
+});
+
+test("a cobweb is cut; a stalagmite topples from force with rubble when the scene says so; an area on another level misses", () => {
+  // (both also put down by hand, so the seeded scatter cannot leave either out)
+  const byHand = [{ kind: "cobweb", x: 200, y: 200, size: 1, turn: 0, seed: 1, flip: false }, { kind: "stalagmite", x: 600, y: 600, size: 0.7, turn: 0, seed: 2, flip: false }];
+  const cave = on({ where: "cave", kinds: { cobweb: {}, stalagmite: {} }, brushed: byHand }), web = pick(cave, "cobweb"), stal = pick(cave, "stalagmite");
+  assert.equal(validDecorBreakRequest(ask(web, bash(web, "slashing")), ctx(cave)).entry.note.style, "split");
+  const fell = validDecorBreakRequest(ask(stal, bash(stal, "force")), ctx(cave, { scene: scene({ rubbleDifficult: true }) }));
+  assert.equal(fell.entry.note.style, "topple"); assert.ok(fell.rubble && fell.fall);
+  assert.equal(validDecorBreakRequest(ask(stal, bash(stal, "force")), ctx(cave)).rubble, null);
+  const AREA = "Scene.s.Region.a", cause = { ...bash(stal, "force"), areaUuid: AREA };
+  const area = { uuid: AREA, sceneId: "s", authorId: "p", rememberedAt: 1000, testPoint: () => true, levels: ["L2"] };
+  assert.deepEqual(validDecorBreakRequest(ask(stal, cause), ctx(cave, { sender: player, area })), { ok: false, why: "area" });
+  assert.equal(validDecorBreakRequest(ask(stal, cause), ctx(cave, { sender: player, area: { ...area, levels: ["L1"] } })).ok, true);
+});
+
+test("the stored list: stale entries pruned, nothing twice", () => {
+  const a = { key: "a", kind: "crate", x: 0, y: 0, note }, b = { ...a, key: "b" }, gone = { ...a, key: "gone" };
+  assert.deepEqual(decorBrokenAfter([a, gone], [b, a], new Set(["a", "b"])).map((e) => e.key), ["a", "b"]);
+});
+
+test("repair: every region's breaks; one region's breaks and its own rubble", () => {
+  const regions = [{ id: "R1", flags: { animater: { decorBroken: [{ key: "a" }] } } }, { id: "R2", flags: { animater: { decorBroken: [] } } },
+    { id: "rub1", flags: { animater: { propRubble: decorRubbleId("R1") } } }, { id: "rub2", flags: { animater: { propRubble: "tileX" } } }];
+  assert.deepEqual(decorRepairUpdates(regions), [{ _id: "R1", "flags.animater.-=decorBroken": null }]);
+  assert.deepEqual(decorRegionRepair(regions[0], regions), { update: { _id: "R1", "flags.animater.-=decorBroken": null }, deleteRegions: ["rub1"] });
+  assert.deepEqual(decorRegionRepair(regions[1], regions), { update: null, deleteRegions: [] });
+});

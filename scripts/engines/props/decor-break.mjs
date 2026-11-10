@@ -5,6 +5,7 @@
 import { decorPlacements, DECOR_MOST } from "../motion/decor-regions.mjs";
 import { DECOR_KINDS, hashText } from "../motion/decor-paint.mjs";
 import { readNote } from "./prop-break.mjs";
+import { validBreakRequest } from "./prop-requests.mjs";
 
 const ENTRY = (material, style) => Object.freeze({ material, style });
 export const DECOR_BREAKS = Object.freeze({
@@ -86,4 +87,47 @@ export function decorTargets(regions, grid, index) {
     for (const v of views) if (!gone.has(v.decor.key)) out.push(v);
   }
   return out;
+}
+
+/** The socket message a decoration break travels as. */
+export const DECOR_BREAK_MESSAGE = "decor-break";
+
+const decorIndex = createDecorIndex();
+
+/**
+ * The GM's check of a decoration break (pure). The GM recomputes the region's placements itself, then the prop rules
+ * judge the decoration view with no walls and no lights. `region` is { id, levels, settings, areas, broken }; `queued` holds keys
+ * broken but not yet stored. Refusals: off, missing, broken, then validBreakRequest's own.
+ */
+export function validDecorBreakRequest({ key, cause, note } = {}, { region, scene, grid, sender, target, mover, roll, source, levels, area, now, queued = [], index = decorIndex } = {}) {
+  const no = (why) => ({ ok: false, why });
+  if (scene?.flags?.animater?.breakableProps !== true) return no("off");
+  if (region?.settings?.canBreak !== true) return no("off");
+  const { keys, views } = index(region, grid), view = views.find((v) => v.decor.key === key);
+  if (!view) return no("missing");
+  if (liveBroken(readDecorBroken(region.broken), keys).some((e) => e.key === key) || (queued ?? []).includes(key)) return no("broken");
+  const out = validBreakRequest({ cause, note }, { tile: view, walls: [], scene, grid, sender, target, mover, roll, lights: [], source, levels, area, now });
+  if (!out.ok) return out;
+  const { d } = view.decor;
+  return { ok: true, entry: { key, kind: d.kind, x: Math.round(d.x), y: Math.round(d.y), note: out.note }, rubble: out.rubble, fall: out.fall };
+}
+
+/** The region's stored breaks after a write (pure): the live ones, then each add whose key is not already there. */
+export function decorBrokenAfter(entries, adds, keys) {
+  const out = liveBroken(entries, keys), seen = new Set(out.map((e) => e.key));
+  for (const a of adds ?? []) if (!seen.has(a.key)) { seen.add(a.key); out.push(a); }
+  return out;
+}
+
+/** The id a region's decoration rubble carries in its propRubble flag. */
+export const decorRubbleId = (regionId) => "decor:" + regionId;
+
+const REPAIR = (id) => ({ _id: id, "flags.animater.-=decorBroken": null });
+const hasBroken = (r) => Array.isArray(r?.flags?.animater?.decorBroken) && r.flags.animater.decorBroken.length > 0;
+/** One update per region that has stored breaks (pure). `regions` is [{ id, flags }]. */
+export const decorRepairUpdates = (regions) => (regions ?? []).filter(hasBroken).map((r) => REPAIR(r.id));
+/** One region's repair: its own update (or null) and the rubble regions that are its own (pure). */
+export function decorRegionRepair(region, regions) {
+  const rubble = decorRubbleId(region.id);
+  return { update: hasBroken(region) ? REPAIR(region.id) : null, deleteRegions: (regions ?? []).filter((r) => r?.flags?.animater?.propRubble === rubble).map((r) => r.id) };
 }
