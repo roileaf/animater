@@ -2,7 +2,7 @@
 import { STYLES } from "./prop-traits.mjs";
 import { FRAGMENT_PATTERNS, FRAGMENT_COUNTS, FRAGMENT_TINTS } from "../fragments/fragments.mjs";
 
-const MARKS = ["scorch", "frost", "stain", "burn", "dust"];
+const MARKS = ["scorch", "frost", "stain", "burn", "dust", "ash"];
 const POWDER = ["spilled", "exploded"]; // a powder keg's note only (prop-blast.mjs)
 // pieces, spread per square, spin; the pattern is per material (wood also has a boxy cut).
 const BREAK = {
@@ -21,10 +21,12 @@ const CAUSE = {
   electricity: { wreckTint: null, tint: "none", mark: "burn" },
 };
 const DUST = { wreckTint: null, tint: "none", mark: "dust" };
+const ASH = { wreckTint: null, tint: "none", mark: "ash" }; // a prop that burns away leaves ash, whatever set it alight
 
-export function breakLook({ material, shape, damageType } = {}) {
+// style: the break's style (breakStyle); "burn" leaves an ash mark with no wreck tint.
+export function breakLook({ material, shape, damageType, style } = {}) {
   const base = material === "wood" && shape === "boxy" ? BOXY_WOOD : BREAK[material] ?? BREAK.wood;
-  const { wreckTint, tint, mark } = CAUSE[damageType] ?? DUST;
+  const { wreckTint, tint, mark } = style === "burn" ? ASH : CAUSE[damageType] ?? DUST;
   return { stage: { ...base, fall: 0, duration: 1400, keep: true, tint }, wreckTint, mark };
 }
 

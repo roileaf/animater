@@ -54,3 +54,14 @@ test("the explosion placeholders: the three bundled fire bursts, each reachable,
   assert.ok(BREAK_SOUNDS.wood.includes(propSound("wood", "powder", () => 0.5, { powder: "spilled" }).file));
   assert.ok(BREAK_SOUNDS.wood.includes(propSound("wood", "powder", () => 0.5).file));
 });
+
+test("burning away sounds of fire (fire-sear placeholder); a cut web is silent", async () => {
+  const { BURN_SOUNDS } = await import("../../../scripts/engines/props/prop-sounds.mjs");
+  assert.equal(BURN_SOUNDS.length, 6);
+  for (const f of BURN_SOUNDS) { assert.match(f, /surfaces\/freesound\/fire-sear-\d+-\d\.ogg$/); assert.ok(existsSync(f.replace("modules/animater/", "")), f); }
+  const seen = new Set(Array.from({ length: 60 }, (_, i) => propSound("plant", "none", () => i / 60, { style: "burn" }).file));
+  assert.equal(seen.size, 6);
+  assert.equal("splash" in propSound("wood", "water", () => 0.5, { style: "burn" }), false, "burning away spills nothing to hear");
+  assert.deepEqual(propSound("plant", "none", () => 0.5, { style: "split" }), { file: null });
+  assert.ok(BREAK_SOUNDS.wood.includes(propSound("plant", "none", () => 0.5).file), "a plant with no style breaks like the default");
+});

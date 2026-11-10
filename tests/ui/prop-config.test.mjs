@@ -122,3 +122,13 @@ test("Burst field shows for black powder only", () => {
   // the guess the toggle falls back to when Contents is Automatic
   assert.match(propTileFieldsHTML({ src: "Keg_Powder.webp" }), /data-animater-prop[^>]*data-guess-contents="powder"/);
 });
+
+test("Plant and Burn away in the tile fields", () => {
+  const html = propTileFieldsHTML({ src: "Web.webp" });
+  assert.match(html, /<option value="plant"[^>]*>Plant</);
+  assert.match(html, /<option value="burn"[^>]*>Burn away</);
+  assert.match(html, /Automatic \(plant\)/);
+  assert.match(html, /Automatic \(burn away\)/);
+  assert.match(propTileFieldsHTML({ src: "Web.webp", style: "burn" }), /<option value="burn" selected>Burn away</);
+  assert.match(propTileFieldsHTML({ src: "Bush.webp", material: "wood" }), /Automatic \(shatter\)/, "a guessed burn needs the plant material");
+});

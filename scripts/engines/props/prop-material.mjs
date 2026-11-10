@@ -1,5 +1,5 @@
 // Prop material: guessed from the tile's file name, overridable per tile; decides what can break it.
-export const MATERIALS = ["wood", "glass", "clay", "metal", "stone", "none"];
+export const MATERIALS = ["wood", "glass", "clay", "metal", "stone", "plant", "none"];
 
 const TOKENS = {
   wood: ["barrel", "crate", "box", "chest","cart", "table", "chair", "bench", "stool", "shelf", "wood", "wooden", "plank", "keg", "torch"],
@@ -7,7 +7,10 @@ const TOKENS = {
   clay: ["pot", "vase", "urn", "amphora", "ceramic", "clay", "jug"],
   metal: ["metal", "iron", "steel", "cage", "brazier", "candle", "candelabra", "chandelier"],
   stone: ["stone", "statue", "pillar", "column", "rock", "obelisk"],
+  plant: ["web", "webs", "cobweb", "cobwebs", "spiderweb", "spiderwebs", "vine", "vines", "ivy", "bush", "bushes", "shrub", "shrubs", "hedge", "thicket", "brambles"],
 };
+// Plants a slashing blade cuts through (the rest only burn).
+export const CUTTABLE = new Set(["web", "webs", "cobweb", "cobwebs", "spiderweb", "spiderwebs", "vine", "vines"]);
 // Furniture is wood whatever else the name says ("Shelf_Potions" is a shelf, "Potion_Red" is glass).
 export const FURNITURE = new Set(["table", "tables", "chair", "chairs", "bench", "benches", "stool", "stools", "shelf", "shelves", "bookshelf", "bookshelves", "bookcase", "desk", "desks", "bed", "beds", "cabinet", "wardrobe"]);
 const BOXY = new Set(["crate", "box", "chest", "table", "shelf", "cart"]);
@@ -18,7 +21,8 @@ const BROKEN_BY = {
   stone: new Set(["force"]),
 };
 const BIG_SLAM = 2; // Large or bigger
-const MAX_SIDE = 3; // squares; bigger tiles are floor or roof pieces
+// The largest side a guessed prop may have, in squares; bigger tiles are floor or roof pieces. A hedge or a web runs longer.
+export const MAX_SIDE = { wood: 3, glass: 3, clay: 3, metal: 3, stone: 3, plant: 6 };
 
 const TOKEN_MATERIAL = new Map();
 for (const [m, words] of Object.entries(TOKENS)) for (const w of words) TOKEN_MATERIAL.set(w, m);
@@ -48,14 +52,17 @@ export function propMaterial(tile, grid) {
   const set = tile?.flags?.animater?.prop?.material;
   if (MATERIALS.includes(set)) return set;
   if (!tile || tile.roof || isOverhead(tile)) return "none";
-  if (Math.max(tile.width, tile.height) > MAX_SIDE * grid) return "none";
-  return guessMaterial(tile.texture?.src);
+  const guess = guessMaterial(tile.texture?.src);
+  if (Math.max(tile.width, tile.height) > (MAX_SIDE[guess] ?? 3) * grid) return "none";
+  return guess;
 }
 
-export function canBreak(material, cause = {}) {
+// cuttable: a plant a slashing blade cuts (propTraits().cuttable); plants otherwise only burn, and no slam breaks them.
+export function canBreak(material, cause = {}, { cuttable = false } = {}) {
   if (!MATERIALS.includes(material) || material === "none") return false;
   const { damageType, slam, blast } = cause;
   if (blast === true) return true; // a powder keg's blast breaks anything that is a prop at all
+  if (material === "plant") return !slam && (damageType === "fire" || (damageType === "slashing" && cuttable === true));
   if (slam) {
     if (material === "metal" || material === "stone") return slam.size >= BIG_SLAM;
     return true;

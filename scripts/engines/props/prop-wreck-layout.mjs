@@ -37,9 +37,12 @@ function blotch(cx, cy, r, steps, rand, ink = 0x1a1410, lobes = 7, squash = 1, a
   };
 }
 
+// What a web, vine or bush leaves when it burns away (mock scene 7): grey ash, readable on the floor, never a black pit.
+export const ASH = [[0x6d6660, 0.32], [0x8a837b, 0.3], [0x4a4440, 0.28]];
 function groundMark(kind, c, r, rand) {
   const one = (k, steps, ink) => ({ kind, blobs: [blotch(c.x, c.y, r * k, steps, rand, ink)], ticks: [] });
   if (kind === "scorch") return one(1.25, [[0x2a1d16, 0.5], [0x1a110c, 0.55], [0x0c0806, 0.5]]);
+  if (kind === "ash") return one(0.85, ASH);
   if (kind === "burn") return one(1.15, [[0x23222a, 0.5], [0x121218, 0.5], [0x08080b, 0.45]]);
   if (kind === "stain") return one(1.2, [[0x4a5a2a, 0.3], [0x3a4a20, 0.3], [0x2a3818, 0.28]], 0x1a2010);
   if (kind === "frost") {
@@ -54,7 +57,7 @@ function groundMark(kind, c, r, rand) {
 // mark (wall-wreck.mjs) and a collapse's dust; drawn like any ground mark.
 // A toppled statue's stone dust (mock scene 6) is paler and greyer; lobes: how many blots make it up.
 const FLAT_MARKS = { dust: [[[0x8d7c62, 0.3], [0x9d8b6e, 0.28]], 0x4a3f30], scorch: [[[0x2a1d16, 0.5], [0x1a110c, 0.55], [0x0c0806, 0.5]], 0x1a1410],
-  stone: [[[0x9a948a, 0.3], [0xb3ada3, 0.28]], 0x1a1410] };
+  stone: [[[0x9a948a, 0.3], [0xb3ada3, 0.28]], 0x1a1410], ash: [ASH, 0x1a1410] };
 export function flatMark(kind, { x, y, r, squash = 1, angle = 0, lobes = 7 }, rand) {
   const [steps, ink] = FLAT_MARKS[kind] ?? FLAT_MARKS.dust;
   return { kind: Object.hasOwn(FLAT_MARKS, kind) ? kind : "dust", blobs: [blotch(x, y, r, steps, rand, ink, lobes, squash, angle)], ticks: [] };

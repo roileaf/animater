@@ -1,9 +1,9 @@
 // What a prop is, read from the tile: the GM's flags win, anything else falls back to a guess from the file name. Pure.
 import { guessLight } from "./prop-lights.mjs";
-import { MATERIALS, FURNITURE, nameTokens, guessMaterial, propMaterial } from "./prop-material.mjs";
+import { MATERIALS, FURNITURE, CUTTABLE, nameTokens, guessMaterial, propMaterial } from "./prop-material.mjs";
 
 export const STYLES = ["shatter", "collapse", "topple", "tip", "burn", "split"];
-export const STYLE_CHOICES = ["shatter", "collapse", "topple"]; // what the "Breaks as" setting offers
+export const STYLE_CHOICES = ["shatter", "collapse", "topple", "burn"]; // what the "Breaks as" setting offers
 export const CONTENTS = ["none", "water", "wine", "oil", "grain", "goods", "books", "potions", "lampoil", "powder"];
 export const BURST_DEFAULT = 2; // a powder keg's burst, in squares (the tile's "Burst (squares)" 1-4)
 
@@ -19,12 +19,13 @@ export function propGuesses(src) {
   const tokens = nameTokens(src), has = (set) => tokens.some((t) => set.has(t)), material = guessMaterial(src), tall = has(TALL);
   return {
     material,
-    style: has(FURNITURE) ? "collapse" : tall && material === "stone" ? "topple" : "shatter",
+    style: has(FURNITURE) ? "collapse" : tall && material === "stone" ? "topple" : material === "plant" ? "burn" : "shatter",
     contents: has(BOOKS) ? "books" : has(POTIONS) ? "potions" : has(LAMPS) ? "lampoil" : has(POWDER) ? "powder" : "none",
     legs: has(LEGS),
     light: guessLight(src),
     tips: has(TIPS),
     tall,
+    cuttable: material === "plant" && has(CUTTABLE), // webs and vines; a slashing blade cuts them
   };
 }
 
@@ -38,10 +39,11 @@ export function propTraits(tile, grid, scene = {}) {
   const own = tile?.flags?.animater?.prop ?? {}, guess = propGuesses(tile?.texture?.src), material = propMaterial(tile, grid);
   return {
     material,
-    // a guessed topple needs stone (the GM may have made the statue wood)
-    style: STYLES.includes(own.style) ? own.style : guess.style === "topple" && material !== "stone" ? "shatter" : guess.style,
+    // a guessed topple needs stone (the GM may have made the statue wood), a guessed burn a plant
+    style: STYLES.includes(own.style) ? own.style : (guess.style === "topple" && material !== "stone") || (guess.style === "burn" && material !== "plant") ? "shatter" : guess.style,
     contents: CONTENTS.includes(own.contents) && own.contents !== "" ? own.contents : guess.contents,
     legs: guess.legs,
+    cuttable: guess.cuttable,
     light: own.light === "yes" ? true : own.light === "no" ? false : guess.light,
     tips: own.tips === "yes" ? true : own.tips === "no" ? false : guess.tips,
     burst: burstOf(own.burst),
@@ -50,10 +52,15 @@ export function propTraits(tile, grid, scene = {}) {
   };
 }
 
-// The style a break plays: a prop that tips over tips from any slam (checked first); a prop set (or guessed) to topple
-// topples from force or a slam; Collapse only when the prop is set (or guessed) to it; otherwise it shatters.
+// The style a break plays: a prop that tips over tips from any slam (checked first); a plant burns away from fire (a
+// blast is fire) and splits from a slash, whatever its Breaks as; a prop set to Burn away burns from fire and
+// otherwise shatters; a prop set (or guessed) to topple topples from force or a slam; Collapse only when the prop is
+// set (or guessed) to it; otherwise it shatters.
 export function breakStyle(traits, cause) {
   if (traits?.tips && cause?.slam) return "tip";
+  const fire = cause?.damageType === "fire" || cause?.blast === true;
+  if (traits?.material === "plant") return fire ? "burn" : cause?.damageType === "slashing" ? "split" : "shatter";
+  if (traits?.style === "burn") return fire ? "burn" : "shatter";
   if (traits?.style === "topple" && (cause?.damageType === "force" || cause?.slam)) return "topple";
   return traits?.style === "collapse" ? "collapse" : "shatter";
 }

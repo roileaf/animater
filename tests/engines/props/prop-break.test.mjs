@@ -74,3 +74,20 @@ test("a fire note keeps fire: true; anything else drops it", () => {
   const lit = readNote({ ...n, fire: true });
   assert.deepEqual(readNote(JSON.parse(JSON.stringify(lit))), lit);
 });
+
+const oldNote = { seed: 9, cutAngle: 0.4, pattern: "shards", pieces: 10, spread: 0.32, spin: 120, tint: "none", mark: "dust", from: { x: 0, y: 0 }, walls: [] };
+test("ash is a valid mark", () => { assert.equal(readNote({ ...oldNote, mark: "ash" }).mark, "ash"); });
+test("a burn style leaves ash with no wreck tint, whatever the damage; other styles keep the damage's mark", () => {
+  for (const damageType of ["fire", undefined, "slashing"]) {
+    const look = breakLook({ material: "plant", shape: "round", damageType, style: "burn" });
+    assert.equal(look.mark, "ash", String(damageType));
+    assert.equal(look.wreckTint, null);
+    assert.equal(look.stage.tint, "none");
+  }
+  assert.equal(breakLook({ material: "wood", shape: "round", damageType: "fire", style: "shatter" }).mark, "scorch");
+  assert.equal(breakLook({ material: "wood", shape: "round", damageType: "fire" }).mark, "scorch");
+  const n = brokenNote({ seed: 3, cutAngle: 0, look: breakLook({ material: "plant", damageType: "fire", style: "burn" }), from: { x: 0, y: 0 }, walls: [], size: 2, style: "burn" });
+  assert.deepEqual(readNote(n), n);
+  assert.deepEqual([readNote(n).style, readNote(n).mark], ["burn", "ash"]);
+  assert.equal(readNote({ ...oldNote, style: "split" }).style, "split");
+});

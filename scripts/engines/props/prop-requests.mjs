@@ -10,6 +10,7 @@ import { toppleStrip } from "./prop-topple.mjs";
 
 export const PROP_BREAK_MESSAGE = "prop-break";
 const KINDS = ["area", "miss", "path", "blast", "ignite"];
+const GM_STYLES = new Set(["tip", "topple", "burn", "split"]); // styles only the GM decides (validBreakRequest)
 const AREA_REACH = 30; // squares from the area's centre
 const MISS_CHANCE = 25;
 export const PATH_SQUARES = 12; // the longest planned path a slam may claim
@@ -90,7 +91,8 @@ export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, se
   if (!KINDS.includes(cause.kind)) return no("cause");
   // A prop that tips over is knocked down by a slam of any size (any path slam); damage still follows its material.
   const asked = breakCause(cause, mover), tips = cause.kind === "path" && tipsOver(tile, grid, asked);
-  if (!tips && !canBreak(propMaterial(tile, grid), asked)) return no("material");
+  const traits = propTraits(tile, grid, scene);
+  if (!tips && !canBreak(propMaterial(tile, grid), asked, { cuttable: traits.cuttable })) return no("material");
   const note = readNote(req.note);
   if (!note) return no("note");
   const mine = ownWalls(tile, walls, grid), ids = new Set(mine.map((w) => w.id));
@@ -100,11 +102,14 @@ export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, se
   if (cause.kind === "miss" && !missBreaks(cause.outcome, Number.isFinite(chance) ? chance : MISS_CHANCE, roll)) return no("lucky");
   // The GM decides the walls and the lights: all of the tile's own walls open, the lit lights on it go out, and the note names them.
   // Lamp oil catches when the break is fire or put a lit light out (the GM's own judgement; a requester's fire is dropped).
-  const traits = propTraits(tile, grid, scene), out = traits.light ? lightsOfProp(tile, lights, grid, tile.levels) : [];
+  const out = traits.light ? lightsOfProp(tile, lights, grid, tile.levels) : [];
   // The GM decides a tip: a slam on a prop that tips over tips it, and no other prop may claim to.
-  // Topple is the GM's call too: a prop that topples from this cause topples, and no other may claim to.
+  // Topple, burn and split are the GM's call too: a prop that does so from this cause does, and no other may claim to.
+  // A prop that burns away leaves ash; one the GM stopped from burning gets its damage's own mark back.
   const style = breakStyle(traits, asked);
-  if (tips) note.style = "tip"; else if (note.style === "tip" || note.style === "topple" || style === "topple") note.style = style;
+  if (tips) note.style = "tip"; else if (GM_STYLES.has(note.style) || GM_STYLES.has(style)) note.style = style;
+  if (note.style === "burn") note.mark = "ash";
+  else if (note.mark === "ash") note.mark = breakLook({ damageType: cause.damageType }).mark;
   // A blast is fire to lamp oil. A powder keg explodes or spills (the GM's call, never the requester's), and keeps its burst.
   const { fire: _claimed, powder: _powder, burst: _burst, region: _region, ...base } = note, outIds = out.map((l) => l.id); // eslint-disable-line no-unused-vars
   const fire = oilCatches({ contents: traits.contents, damageType: cause.kind === "blast" ? "fire" : cause.damageType, lights: outIds });
@@ -131,9 +136,10 @@ function igniteCheck(cause, tile, grid) {
 // The requester's note: the tile's own walls, its larger side in squares, cut along the line from the cause.
 export function breakNoteFor({ tile, walls = [], grid = 100, cause = {}, seed, from, scene = {} }) {
   const c = centre(tile), at = finite(from) ? from : c;
-  const look = breakLook({ material: propMaterial(tile, grid), shape: propShape(tile.texture?.src), damageType: cause.damageType, slam: cause.slam });
+  const style = breakStyle(propTraits(tile, grid, scene), cause);
+  const look = breakLook({ material: propMaterial(tile, grid), shape: propShape(tile.texture?.src), damageType: cause.damageType, slam: cause.slam, style });
   return brokenNote({ seed, cutAngle: Math.atan2(c.y - at.y, c.x - at.x), look, from: at,
-    walls: ownWalls(tile, walls, grid).map((w) => w.id), size: Math.max(tile.width, tile.height) / grid, style: breakStyle(propTraits(tile, grid, scene), cause) });
+    walls: ownWalls(tile, walls, grid).map((w) => w.id), size: Math.max(tile.width, tile.height) / grid, style });
 }
 
 const namedLights = (tile) => readNote(propOf(tile).broken)?.lights ?? [];

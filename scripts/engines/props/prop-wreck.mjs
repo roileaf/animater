@@ -3,7 +3,9 @@
 import { bloodArt } from "../motion/blood-art.mjs";
 import { wreckLayout, wreckTargets, collapseDust, flatMark, spillExtent, BLAST_SCORCH, GRAIN_TONES, POWDER_TONES, SPINE_COLOURS, BURN_DIE_MS } from "./prop-wreck-layout.mjs";
 import { BURN_MS } from "./prop-lights.mjs";
-import { createPropFx } from "./prop-fx.mjs";
+import { createPropFx, paintFlame } from "./prop-fx.mjs";
+import { burnLayout, splitLayout, burnAt, frontAt, BURN_AWAY_MS } from "./prop-burn.mjs";
+import { nameTokens } from "./prop-material.mjs";
 import { propTraits, propGuesses, BURST_DEFAULT } from "./prop-traits.mjs";
 import { collapseLayout } from "./prop-collapse.mjs";
 import { tipLayout, COAL_MS } from "./prop-tip.mjs";
@@ -584,6 +586,202 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     step(0); raf = requestAnimationFrame(tick);
   }
 
+  // A web, vine or bush burning away (mock scene 7). The plant's own picture, read back at full resolution, chars and
+  // crumbles from the hit side: each pixel's burn time is its place along the hit plus seeded noise (burnAt), and as
+  // the front passes it glows, chars, then falls to ash over BURN_AWAY_MS. A shader runs the front over the picture,
+  // so it stays sharp at any size. Flames lick along the front, embers rise where it passes, and the ash mark comes in
+  // under it. A web leaves a faint ash ghost of itself; anything denser (a bush, a prop set to Burn away) a charred
+  // heart in its ash ring, kept light so it reads as ash, never a hole. Drawn on load it is settled: ash only.
+  const BURN_VERT = `attribute vec2 aVertexPosition; attribute vec2 aTextureCoord;
+uniform mat3 projectionMatrix; uniform mat3 translationMatrix; varying vec2 vUv;
+void main() { vUv = aTextureCoord; gl_Position = vec4((projectionMatrix * translationMatrix * vec3(aVertexPosition, 1.0)).xy, 0.0, 1.0); }`;
+  // The same burn time as burnAt (prop-burn.mjs): the noise grid is a 9 x 9 texture read bilinearly. The art is
+  // premultiplied; colours are worked unpremultiplied and premultiplied again.
+  const BURN_FRAG = `varying vec2 vUv;
+uniform sampler2D uArt; uniform sampler2D uNoise; uniform vec2 uDir; uniform vec2 uSize; uniform float uHalf;
+uniform float uFront; uniform vec3 uChar; uniform float uAlpha;
+void main() {
+  vec4 o = texture2D(uArt, vUv);
+  if (o.a <= 0.0) { gl_FragColor = vec4(0.0); return; }
+  float p = dot((vUv - 0.5) * uSize, uDir) / uHalf;
+  float bt = (p + 1.0) * 0.4 + texture2D(uNoise, (clamp(vUv, 0.0, 1.0) * 8.0 + 0.5) / 9.0).r * 0.3;
+  float e = uFront - bt, a = o.a;
+  vec3 c = o.rgb / a, glow = vec3(1.0, 0.588, 0.157);
+  if (e >= 0.0) {
+    if (e < 0.05) c = mix(c, glow, e / 0.05);
+    else if (e < 0.2) c = mix(glow, uChar, (e - 0.05) / 0.15);
+    else { c = uChar; a *= 1.0 - clamp((e - 0.2) / 0.18, 0.0, 1.0); }
+  }
+  a *= uAlpha;
+  gl_FragColor = vec4(c * a, a);
+}`;
+  // Char: a web's threads go grey-brown, a bush near black (the mock's). Ghost and heart: what stays on the floor.
+  const WEB_CHAR = [40, 34, 30], BUSH_CHAR = [26, 20, 16], GHOST_TINT = 0x2a2420, GHOST_ALPHA = 0.4, HEART_ALPHA = 0.8, HEART_SCORCH = 0.3;
+  const BURN_SMOKE = [0x3a3633, 0x524c47];
+  const front = (ms) => span(ms, 0, BURN_AWAY_MS) * 1.5 - 0.05;
+  // The charred heart: the picture's own shading turned to char and ash (dark where it was dark, ash grey where it was
+  // light), so it reads as burnt brush on the floor, never as a black hole. Full resolution, as the picture.
+  const HEART_SIZE = 0.6, CHAR_DARK = [38, 32, 28], CHAR_ASH = [112, 104, 96];
+  const charred = (art) => {
+    const c = document.createElement("canvas"); c.width = art.width; c.height = art.height;
+    const g = c.getContext("2d"); g.drawImage(art, 0, 0);
+    const img = g.getImageData(0, 0, c.width, c.height), p = img.data;
+    for (let i = 0; i < p.length; i += 4) {
+      if (!p[i + 3]) continue;
+      const l = ((0.3 * p[i] + 0.59 * p[i + 1] + 0.11 * p[i + 2]) / 255) ** 0.8;
+      for (let ch = 0; ch < 3; ch++) p[i + ch] = lerp(CHAR_DARK[ch], CHAR_ASH[ch], Math.min(1, l * 1.4));
+    }
+    g.putImageData(img, 0, 0);
+    return PIXI.Texture.from(c);
+  };
+  // The front as a mesh over the art (tile-local, 0-w by 0-h): null where WebGL shaders are not to be had.
+  const burnMesh = (artTex, noise, L, w, h, char) => {
+    const bytes = new Uint8Array(81 * 4);
+    noise.forEach((v, i) => { bytes[i * 4] = Math.round(v * 255); bytes[i * 4 + 3] = 255; });
+    const noiseTex = PIXI.Texture.fromBuffer(bytes, 9, 9, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+    const geometry = new PIXI.Geometry().addAttribute("aVertexPosition", [0, 0, w, 0, w, h, 0, h], 2).addAttribute("aTextureCoord", [0, 0, 1, 0, 1, 1, 0, 1], 2).addIndex([0, 1, 2, 0, 2, 3]);
+    const shader = PIXI.Shader.from(BURN_VERT, BURN_FRAG, { uArt: artTex, uNoise: noiseTex, uDir: new Float32Array([L.dir.x, L.dir.y]), uSize: new Float32Array([w, h]),
+      uHalf: L.half, uFront: -1, uChar: new Float32Array(char.map((v) => v / 255)), uAlpha: 1 });
+    const mesh = new PIXI.Mesh(geometry, shader);
+    return { mesh, noiseTex, geometry, set(f) { shader.uniforms.uFront = f; shader.uniforms.uAlpha = mesh.worldAlpha; } };
+  };
+  // Up to 60 painted points of the art (alpha > 120), seeded, each with its burn time: where flames lick along the front.
+  const frontSpots = (art, L, w, h, seed) => {
+    const out = [], rand = seededRandom((seed >>> 0) * 211 + 19);
+    let data = null;
+    try { data = art.getContext("2d").getImageData(0, 0, art.width, art.height).data; } catch { return out; }
+    for (let i = 0; i < 1500 && out.length < 60; i++) {
+      const u = rand(), v = rand(), px = Math.min(art.width - 1, Math.floor(u * art.width)), py = Math.min(art.height - 1, Math.floor(v * art.height));
+      if (data[(py * art.width + px) * 4 + 3] > 120) out.push({ x: u * w, y: v * h, b: burnAt(L, u, v), seed: i });
+    }
+    return out;
+  };
+  function burned({ tile, d, note, entry, box, texture, centre, sortLayer, animate }) {
+    const w = d.width, h = d.height, side = Math.max(w, h), gk = (grid() || 100) / 100, web = propGuesses(d.texture?.src).cuttable;
+    const L = burnLayout(note, { width: w, height: h, grid: grid() || 100, rotation: d.rotation ?? 0 }), ashAt = tileToWorld(d, centre, L.ash);
+    // On the floor: the ash mark, a bush's faint scorch, then the web's ghost or the bush's charred heart.
+    const marks = new PIXI.Container(); marks.zIndex = -1; box.addChild(marks);
+    const ash = marks.addChild(groundMark(flatMark("ash", { x: ashAt.x, y: ashAt.y, r: L.ash.r }, seededRandom((note.seed >>> 0) * 61 + 7)), entry.textures));
+    const scorch = web ? null : marks.addChild(groundMark(flatMark("scorch", { x: ashAt.x, y: ashAt.y, r: L.ash.r * 0.53 }, seededRandom((note.seed >>> 0) * 67 + 11)), entry.textures));
+    let art = null, artTex = null, k = 1, left = null;
+    if (texture) {
+      const stand = standFor(tile, d, texture, centre, box, sortLayer);
+      k = Math.min(2, 2048 / Math.max(w, h, 1));
+      try { art = posed.art(stand, w, h, k, 0); } catch { art = null; } // the whole picture, faint threads and all (the mock's)
+      if (art) { artTex = PIXI.Texture.from(art); entry.textures.push(artTex); }
+    }
+    if (artTex) {
+      const floor = frameOf(d, centre, 0); marks.addChild(floor);
+      if (web) { left = new PIXI.Sprite(artTex); left.scale.set(1 / k); left.tint = GHOST_TINT; }
+      else {
+        const heart = charred(art); entry.textures.push(heart);
+        left = new PIXI.Sprite(heart); left.anchor.set(0.5); left.position.set(w / 2, h / 2); left.scale.set(HEART_SIZE / k);
+      }
+      floor.addChild(left);
+    }
+    const floorIn = (ms) => {
+      ash.alpha = animate ? span(ms, 300, BURN_AWAY_MS) : 1;
+      if (scorch) scorch.alpha = HEART_SCORCH * (animate ? span(ms, 600, BURN_AWAY_MS) : 1);
+      // the heart shows through as the bush crumbles off it
+      if (left) left.alpha = web ? GHOST_ALPHA * (animate ? span(ms, 400, BURN_AWAY_MS) : 1) : HEART_ALPHA * (animate ? span(ms, 300, 600) : 1);
+    };
+    entry.handle = { update() {}, destroy() {} };
+    if (!animate) { floorIn(Infinity); return; }
+    // Seen happening: the picture burning, flames along the front, embers, a bush's glow and smoke, the sound of fire.
+    let burn = null, plain = null;
+    const burning = frameOf(d, centre, 0.4); box.addChild(burning);
+    if (artTex) {
+      try { burn = burnMesh(artTex, L.noise, L, w, h, web ? WEB_CHAR : BUSH_CHAR); burning.addChild(burn.mesh); entry.textures.push(burn.noiseTex); }
+      catch (error) { console.warn("Animater prop wreckage: no burn shader", error); burn = null; }
+      // without the shader, the picture chars and fades as a whole
+      if (!burn) { plain = new PIXI.Sprite(artTex); plain.scale.set(1 / k); burning.addChild(plain); }
+    }
+    const air = new PIXI.Container(); air.zIndex = 2; box.addChild(air);
+    const flameG = new PIXI.Graphics(); air.addChild(flameG);
+    const local = art ? frontSpots(art, L, w, h, note.seed) : [], spots = local.map((p) => ({ ...p, ...tileToWorld(d, centre, p) }));
+    const flameSize = side * (web ? 0.062 : 0.126);
+    // each ember rises off the painted point nearest its place, when the front reaches that point
+    const onPaint = (e) => {
+      let best = null, bd = Infinity;
+      for (const p of local) { const dd = (p.x - e.x) ** 2 + (p.y - e.y) ** 2; if (dd < bd) { bd = dd; best = p; } }
+      return best ? { x: best.x, y: best.y, t0: frontAt(best.b) * BURN_AWAY_MS } : e;
+    };
+    const sparks = fx.embers(air, L.embers.map((e) => { const at = onPaint(e); return { ...e, ...tileToWorld(d, centre, at), at: at.t0 }; }));
+    const heat = web ? null : fx.glow(air, centre, side * 1.05, 0xff8030, { alpha: 0.35 });
+    const rand = seededRandom((note.seed >>> 0) * 83 + 13), s = side / 190;
+    const smoke = web ? null : fx.puffs(air, Array.from({ length: 10 }, (_, i) => ({ x: centre.x + (rand() - 0.5) * 80 * s, y: centre.y + (rand() - 0.5) * 60 * s, vx: 20 * gk, vy: -80 * gk,
+      r0: 16 * s, r1: 45 * s, a: 0.3, at: 200 + i * 220, life: 1500, seed: ((note.seed >>> 0) % 100000) + i })), BURN_SMOKE);
+    try { playSound(propSound(materialOf(d), "none", seededRandom(note.seed), { style: "burn" }).file, centre); }
+    catch (error) { console.warn("Animater prop wreckage: no sound", error); }
+    const end = Math.max(BURN_AWAY_MS * 1.4, ...L.embers.map((e) => e.t0 + e.life), smoke ? 200 + 9 * 220 + 1500 : 0);
+    const step = (ms) => {
+      const f = front(ms);
+      if (burn) burn.set(f);
+      if (plain) { plain.tint = mix(0xffffff, 0x2a2420, span(ms, 0, BURN_AWAY_MS * 0.5)); plain.alpha = 1 - span(ms, BURN_AWAY_MS * 0.3, BURN_AWAY_MS * 0.7); }
+      burning.visible = f < 1.6;
+      flameG.clear();
+      for (const p of spots) {
+        const e = f - p.b; if (e < -0.01 || e > 0.16) continue;
+        const kk = 1 - Math.abs(e - 0.05) / 0.11;
+        paintFlame(flameG, p.x, p.y, flameSize * (0.5 + 0.5 * kk), ms, (note.seed >>> 0) % 10000 + p.seed, clamp01(kk * 1.3));
+      }
+      sparks.update(ms);
+      if (heat) { heat.level(Math.sin(Math.PI * span(ms, 0, BURN_AWAY_MS * 1.4))); heat.update(ms); }
+      smoke?.update(ms);
+      floorIn(ms);
+    };
+    const t0 = performance.now(); let raf = 0;
+    const done = () => {
+      entry.stop = null; floorIn(Infinity);
+      if (burn) { quiet(() => burn.mesh.destroy()); quiet(() => burn.geometry.destroy()); burn = null; }
+      quiet(() => sparks.destroy()); quiet(() => heat?.destroy()); quiet(() => smoke?.destroy());
+      quiet(() => air.destroy({ children: true })); quiet(() => burning.destroy({ children: true }));
+    };
+    entry.stop = () => { cancelAnimationFrame(raf); done(); };
+    const tick = () => {
+      const ms = performance.now() - t0;
+      step(Math.min(ms, end));
+      if (ms < end) raf = requestAnimationFrame(tick); else done();
+    };
+    step(0); raf = requestAnimationFrame(tick);
+  }
+
+  // A web (or vine) cut by a slash (mock scene 7): the picture splits along a jagged cut through the middle, and the
+  // halves sag apart toward the sides they hang from, drawn in a little and turned, over SAG_MS, while loose strands
+  // hang from both cut edges into the gap. Silent: no honest recording of a web tearing was found. No ground mark.
+  // Drawn on load it is settled: the sagged halves and their strands.
+  const SAG_MS = 900, WEB_THREAD = 0xe8ecef, WEB_ALPHA_CUT = 10; // a web keeps its faint threads (the mock's cut)
+  function cutApart({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate }) {
+    const w = d.width, h = d.height, gk = (grid() || 100) / 100, S = splitLayout(note, { width: w, height: h, rotation: d.rotation ?? 0 });
+    const strands = nameTokens(d.texture?.src).some((t) => t.includes("web")) ? { colour: WEB_THREAD, alpha: 0.7, width: 0.9 } : { colour: tones.dark, alpha: 0.9, width: 1.6 };
+    let halves = null;
+    if (texture) {
+      const stand = standFor(tile, d, texture, centre, box, sortLayer);
+      const pieces = S.halves.map((p) => ({ poly: p.poly, home: p.home, to: { x: p.home.x + p.to.x, y: p.home.y + p.to.y, rot: p.to.rot, sx: p.to.sx, sy: p.to.sy },
+        delay: 0, dur: 1, hop: 0, shadow: 0, ink: false }));
+      try { halves = posed.cut(stand, pieces, { width: w, height: h }, { alphaCut: WEB_ALPHA_CUT }); entry.handle = halves; }
+      catch (error) { console.warn("Animater prop wreckage: no web halves", error); }
+    }
+    const threadFrame = frameOf(d, centre, 0.5), g = new PIXI.Graphics(); threadFrame.addChild(g); box.addChild(threadFrame);
+    const settle = (u) => {
+      halves?.update(u);
+      const e = outCubic(u); g.clear();
+      for (const t of S.threads) {
+        const m = S.halves[t.half].to, x = t.x0 - m.x * (1 - e), y = t.y0 - m.y * (1 - e), dx = (t.x1 - t.x0) * e, dy = (t.y1 - t.y0) * e;
+        g.lineStyle(strands.width * gk, strands.colour, strands.alpha).moveTo(x, y).quadraticCurveTo(x + dx * 0.5 + t.c * e, y + dy * 0.5 + Math.hypot(dx, dy) * 0.25, x + dx, y + dy);
+      }
+    };
+    if (!animate) { settle(1); return; }
+    const t0 = performance.now(); let raf = 0;
+    entry.stop = () => { cancelAnimationFrame(raf); entry.stop = null; settle(1); };
+    const tick = () => {
+      const ms = performance.now() - t0;
+      settle(Math.min(1, ms / SAG_MS));
+      if (ms < SAG_MS) raf = requestAnimationFrame(tick); else entry.stop = null;
+    };
+    settle(0); raf = requestAnimationFrame(tick);
+  }
+
   // The tile's art: its own mesh texture, or, where a hidden tile was never drawn (a player's client), loaded from its src.
   const textureOf = async (tile, src) => {
     const have = tile.mesh?.texture;
@@ -632,6 +830,8 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     if (wrecks.get(id) !== entry) return; // hidden or redrawn while loading
     if (note.style === "tip") { dropPrior(entry); tipped({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
     if (note.style === "topple") { dropPrior(entry); toppled({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate }); return; }
+    if (note.style === "burn") { dropPrior(entry); burned({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
+    if (note.style === "split") { dropPrior(entry); cutApart({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate }); return; }
     const layout = wreckLayout(note, { centre, width: d.width, height: d.height, grid: grid() || 100, contents, rotation: d.rotation ?? 0 });
     if (layout.blast) { exploded({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate, layout, contents, prior: entry.prior }); return; }
     dropPrior(entry); // anything else drawn over a wreck it replaces: the old one goes now

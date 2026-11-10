@@ -48,7 +48,7 @@ test("breakStyle", () => {
 });
 test("the lists", () => {
   assert.deepEqual(STYLES, ["shatter", "collapse", "topple", "tip", "burn", "split"]);
-  assert.deepEqual(STYLE_CHOICES, ["shatter", "collapse", "topple"]);
+  assert.deepEqual(STYLE_CHOICES, ["shatter", "collapse", "topple", "burn"]);
   assert.deepEqual(CONTENTS, ["none", "water", "wine", "oil", "grain", "goods", "books", "potions", "lampoil", "powder"]);
 });
 
@@ -79,4 +79,29 @@ test("the GM's Tips over setting beats the guess", () => {
   assert.equal(propTraits(t("Barrel.webp", "yes"), 100).tips, true);
   assert.equal(propTraits(t("Barrel.webp", "maybe"), 100).tips, false);
   assert.equal(propTraits({ texture: { src: "Brazier.webp" }, width: 100, height: 100 }, 100).tips, true);
+});
+
+test("fire burns plants away, a slash splits a web; Burn away on wood only for fire", () => {
+  assert.equal(breakStyle({ material: "plant", style: "shatter" }, { damageType: "fire" }), "burn");
+  assert.equal(breakStyle({ material: "plant", style: "shatter" }, { damageType: "slashing" }), "split");
+  assert.equal(breakStyle({ material: "wood", style: "burn" }, { damageType: "fire" }), "burn");
+  assert.equal(breakStyle({ material: "wood", style: "burn" }, { damageType: "bludgeoning" }), "shatter");
+});
+test("a blast is fire to a plant and to Burn away; a plant ignores its Breaks as", () => {
+  assert.equal(breakStyle({ material: "plant", style: "collapse" }, { blast: true }), "burn");
+  assert.equal(breakStyle({ material: "plant", style: "topple" }, { damageType: "fire" }), "burn");
+  assert.equal(breakStyle({ material: "wood", style: "burn" }, { blast: true }), "burn");
+  assert.equal(breakStyle({ material: "wood", style: "burn" }, { slam: { size: 2 } }), "shatter");
+  assert.equal(breakStyle({ material: "wood", style: "shatter" }, { damageType: "fire" }), "shatter", "wood only burns away when set to");
+});
+test("plants guess Burn away and cuttable; a guessed burn needs the plant material", () => {
+  assert.equal(propGuesses("Bush_Round.webp").style, "burn");
+  assert.equal(propGuesses("Web_Corner.webp").style, "burn");
+  const t = (src, prop = {}) => ({ texture: { src }, width: 100, height: 100, flags: { animater: { prop } } });
+  const web = propTraits(t("Web_Corner.webp"), 100);
+  assert.deepEqual([web.material, web.style, web.cuttable], ["plant", "burn", true]);
+  assert.equal(propTraits(t("Ivy.webp"), 100).cuttable, false);
+  assert.equal(propTraits(t("Bush.webp", { material: "wood" }), 100).style, "shatter", "a bush the GM made wood does not guess burn");
+  assert.equal(propTraits(t("Crate.webp", { style: "burn" }), 100).style, "burn", "the GM's Burn away on wood stays");
+  assert.equal(propTraits(t("Crate.webp"), 100).cuttable, false);
 });

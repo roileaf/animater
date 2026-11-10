@@ -15,15 +15,21 @@ export const SPLASH_SOUNDS = names("splash", "water-splash-186748");
 export const BLAST_SOUNDS = ["fire-burst-260554-0", "fire-burst-260555-0", "fire-burst-637533-0"].map((id) => `modules/animater/assets/sounds/surfaces/freesound/${id}.ogg`);
 // A statue or pillar toppling: the stone family until its own recordings ship (Task 17).
 export const TOPPLE_SOUNDS = BREAK_SOUNDS.stone;
+// A web, vine or bush burning away: the bundled fire sears until its own recordings ship (Task 17). A cut web is
+// silent: no honest recording of a web tearing was found (Roi's audition).
+export const BURN_SOUNDS = ["fire-sear-630497-0", "fire-sear-630497-1", "fire-sear-852985-0", "fire-sear-852985-1", "fire-sear-873540-0", "fire-sear-873540-1"].map((id) => `modules/animater/assets/sounds/surfaces/freesound/${id}.ogg`);
 const LIQUIDS = new Set(["water", "wine", "oil"]);
 
 const pick = (list, rand) => list[Math.min(list.length - 1, Math.floor(rand() * list.length))];
 
 // powder: a keg note's powder; "exploded" sounds the explosion in place of the material's break (spilled powder breaks
-// like its material, without a splash). style "topple": a toppled statue sounds of falling stone, whatever its material.
+// like its material, without a splash). style "topple": a toppled statue sounds of falling stone, whatever its material;
+// "burn": a prop burning away sounds of fire; "split": a cut web makes no sound (file null).
 export function propSound(material, contents, rand, { powder, style } = {}) {
   if (powder === "exploded") return { file: pick(BLAST_SOUNDS, rand) };
   if (style === "topple") return { file: pick(TOPPLE_SOUNDS, rand) };
+  if (style === "burn") return { file: pick(BURN_SOUNDS, rand) };
+  if (style === "split") return { file: null };
   const list = Object.hasOwn(BREAK_SOUNDS, material) ? BREAK_SOUNDS[material] : BREAK_SOUNDS.wood;
   const out = { file: pick(list, rand) };
   if (LIQUIDS.has(contents)) out.splash = pick(SPLASH_SOUNDS, rand);

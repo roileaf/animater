@@ -4,9 +4,9 @@ import { CONTENTS, STYLE_CHOICES, propGuesses, burstOf } from "../engines/props/
 
 const ID = "animater";
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-const LABELS = { wood: "Wood", glass: "Glass", clay: "Clay", metal: "Metal", stone: "Stone", none: "Won't break" };
+const LABELS = { wood: "Wood", glass: "Glass", clay: "Clay", metal: "Metal", stone: "Stone", plant: "Plant", none: "Won't break" };
 const CONTENT_LABELS = { none: "Nothing", water: "Water", wine: "Wine", oil: "Oil", grain: "Grain", goods: "Loose goods", books: "Books", potions: "Potions", lampoil: "Lamp oil", powder: "Black powder" };
-const STYLE_LABELS = { shatter: "Shatter", collapse: "Collapse", topple: "Topple" };
+const STYLE_LABELS = { shatter: "Shatter", collapse: "Collapse", topple: "Topple", burn: "Burn away" };
 const options = (list, value) => list.map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("");
 
 // Groups marked data-show-for="powder" show only while Contents resolves to black powder (the GM's pick, else the
@@ -16,9 +16,10 @@ const options = (list, value) => list.map(([v, l]) => `<option value="${v}"${v =
 export function propTileFieldsHTML({ src, material = "", contents = "", style = "", light = "", tips = "", burst, rubble = "" } = {}) {
   const guesses = propGuesses(src), guess = guesses.material, mat = MATERIALS.includes(material) ? material : "", own = CONTENTS.includes(contents) ? contents : "", sty = STYLE_CHOICES.includes(style) ? style : "";
   const mats = [["", `Automatic (${guess === "none" ? "won't break" : guess})`], ...MATERIALS.map((m) => [m, LABELS[m]])];
-  // a tall name is only a statue that topples while it is stone
-  const auto = guesses.style === "topple" && (mat || guesses.material) !== "stone" ? "shatter" : guesses.style;
-  const styles = [["", `Automatic (${auto})`], ...STYLE_CHOICES.map((c) => [c, STYLE_LABELS[c]])];
+  // a tall name is only a statue that topples while it is stone, a plant name only burns away while it is a plant
+  const resolved = mat || guesses.material;
+  const auto = (guesses.style === "topple" && resolved !== "stone") || (guesses.style === "burn" && resolved !== "plant") ? "shatter" : guesses.style;
+  const styles = [["", `Automatic (${STYLE_LABELS[auto].toLowerCase()})`], ...STYLE_CHOICES.map((c) => [c, STYLE_LABELS[c]])];
   const conts = [["", `Automatic (${CONTENT_LABELS[guesses.contents]})`], ...CONTENTS.map((c) => [c, CONTENT_LABELS[c]])];
   const lit = light === "yes" || light === "no" ? light : "";
   const lightOpts = [["", `Automatic (${guesses.light ? "yes" : "no"})`], ["yes", "Yes"], ["no", "No"]];
@@ -28,8 +29,8 @@ export function propTileFieldsHTML({ src, material = "", contents = "", style = 
   const rub = rubble === "yes" || rubble === "no" ? rubble : "";
   const rubbleOpts = [["", "Scene default"], ["yes", "Yes"], ["no", "No"]];
   return `<fieldset data-animater-prop data-src="${esc(src)}" data-guess-contents="${esc(guesses.contents)}" data-guess-style="${esc(guesses.style)}" data-guess-material="${esc(guesses.material)}"><legend>Breakable prop</legend>
-    <div class="form-group"><label>Material</label><div class="form-fields"><select name="flags.${ID}.prop.material">${options(mats, mat)}</select></div><p class="hint">What the prop is made of decides what can break it. Automatic goes by the file name.</p></div>
-    <div class="form-group"><label>Breaks as</label><div class="form-fields"><select name="flags.${ID}.prop.style">${options(styles, sty)}</select></div><p class="hint">How it comes apart. Automatic goes by the file name: furniture collapses, tall stone statues and pillars topple, everything else shatters. Topple needs force or a heavy slam.</p></div>
+    <div class="form-group"><label>Material</label><div class="form-fields"><select name="flags.${ID}.prop.material">${options(mats, mat)}</select></div><p class="hint">What the prop is made of decides what can break it. Automatic goes by the file name. Plants (webs, vines, bushes) only burn, and webs and vines can also be cut; a plant prop may be up to 6 squares long.</p></div>
+    <div class="form-group"><label>Breaks as</label><div class="form-fields"><select name="flags.${ID}.prop.style">${options(styles, sty)}</select></div><p class="hint">How it comes apart. Automatic goes by the file name: furniture collapses, tall stone statues and pillars topple, plants burn away, everything else shatters. Topple needs force or a heavy slam. Burn away needs fire; a plant always burns away from fire, and a web or vine is cut apart by slashing.</p></div>
     <div class="form-group" data-show-for="topple"${topple ? "" : " hidden"}><label>Rubble is difficult terrain</label><div class="form-fields"><select name="flags.${ID}.prop.rubble"${topple ? "" : " disabled"}>${options(rubbleOpts, rub)}</select></div><p class="hint">Where it falls, the rubble costs double to walk through. Scene default follows the scene's setting.</p></div>
     <div class="form-group"><label>Contents</label><div class="form-fields"><select name="flags.${ID}.prop.contents">${options(conts, own)}</select></div><p class="hint">What spills when it breaks. Black powder explodes from fire, electricity or another blast; anything else spills it, and a later fire spell can still set it off.</p></div>
     <div class="form-group" data-show-for="powder"${powder ? "" : " hidden"}><label>Burst (squares)</label><div class="form-fields"><input type="number" name="flags.${ID}.prop.burst" min="1" max="4" step="1" value="${burstOf(burst)}"${powder ? "" : " disabled"}></div><p class="hint">How far the explosion reaches. Every prop, door and window inside it breaks, and the GM is told who stands in it.</p></div>

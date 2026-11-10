@@ -25,17 +25,19 @@ export function tileFrame(PIXI, stand, { width, height }) {
 export function createPosedPieces({ PIXI }) {
   const canvas = (w, h) => { const c = document.createElement("canvas"); c.width = Math.max(1, Math.ceil(w)); c.height = Math.max(1, Math.ceil(h)); return c; };
 
-  // The tile's picture in tile-local px times k, its soft drop shadow cut away so the cut edges stay clean. Null when
-  // the art can't be read back (a video, or no source).
-  function artCanvas(stand, w, h, k) {
+  // The tile's picture in tile-local px times k, its soft drop shadow cut away so the cut edges stay clean (alpha below
+  // cut goes, the rest is stretched back to full; 0 keeps the picture as it is: a web's fine threads). Null when the
+  // art can't be read back (a video, or no source).
+  function artCanvas(stand, w, h, k, cut = ALPHA_CUT) {
     const tex = stand.texture, src = tex?.baseTexture?.resource?.source, fr = tex?.frame;
     if (!src || !fr || typeof HTMLVideoElement !== "undefined" && src instanceof HTMLVideoElement) return null;
     const c = canvas(w * k, h * k), x = c.getContext("2d");
     x.setTransform(k, 0, 0, k, 0, 0);
     x.translate(stand.anchor.x * w, stand.anchor.y * h); x.scale(stand.scale.x, stand.scale.y);
     x.drawImage(src, fr.x, fr.y, fr.width, fr.height, -stand.anchor.x * fr.width, -stand.anchor.y * fr.height, fr.width, fr.height);
+    if (!(cut > 0)) return c;
     const d = x.getImageData(0, 0, c.width, c.height);
-    for (let i = 3; i < d.data.length; i += 4) d.data[i] = d.data[i] < ALPHA_CUT ? 0 : Math.min(255, ((d.data[i] - ALPHA_CUT) * 255) / (255 - ALPHA_CUT));
+    for (let i = 3; i < d.data.length; i += 4) d.data[i] = d.data[i] < cut ? 0 : Math.min(255, ((d.data[i] - cut) * 255) / (255 - cut));
     x.setTransform(1, 0, 0, 1, 0, 0); x.putImageData(d, 0, 0);
     return c;
   }
@@ -65,11 +67,12 @@ export function createPosedPieces({ PIXI }) {
     return c;
   }
 
-  function cut(stand, pieces, size = {}) {
+  // alphaCut: how much soft edge to cut from the art (artCanvas); a web keeps its faint threads with a low one.
+  function cut(stand, pieces, size = {}, { alphaCut = ALPHA_CUT } = {}) {
     const w = size.width ?? Math.abs(stand.texture.width * stand.scale.x), h = size.height ?? Math.abs(stand.texture.height * stand.scale.y);
     const k = Math.min(K_MAX, SIDE_MAX / Math.max(w, h, 1)), textures = [];
     let art = null;
-    try { art = artCanvas(stand, w, h, k); } catch { art = null; } // a tainted or unreadable picture: masked pieces instead
+    try { art = artCanvas(stand, w, h, k, alphaCut); } catch { art = null; } // a tainted or unreadable picture: masked pieces instead
     const shadows = tileFrame(PIXI, stand, { width: w, height: h }), front = tileFrame(PIXI, stand, { width: w, height: h });
     const z = stand.zIndex ?? 0;
     shadows.zIndex = z - 0.6; front.zIndex = z + 0.01;
