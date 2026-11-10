@@ -131,3 +131,22 @@ export function decorRegionRepair(region, regions) {
   const rubble = decorRubbleId(region.id);
   return { update: hasBroken(region) ? REPAIR(region.id) : null, deleteRegions: (regions ?? []).filter((r) => r?.flags?.animater?.propRubble === rubble).map((r) => r.id) };
 }
+
+/**
+ * Which decoration wrecks to draw, settle or take away (pure). `shown`, `pending` (broken here, not yet stored) and `late`
+ * (shown here, then taken back as refused, now stored after all) are Map<id, seed>; `wanted` is [{ id, note, view }].
+ * A wreck already drawn with its seed stays; a pending one is settled; a late one is drawn at rest; any other plays (`animate`).
+ * A drawn one no longer wanted, and not pending, goes (its decoration was repaired, moved by an edit, or its region went).
+ */
+export function decorWreckChanges({ shown, wanted, pending, late, animate } = {}) {
+  const show = [], settle = [], want = new Set(), has = (map, id, seed) => !!map?.has(id) && map.get(id) === seed;
+  for (const { id, note, view } of wanted ?? []) {
+    want.add(id);
+    const seed = note?.seed;
+    if (has(shown, id, seed)) continue;
+    if (has(pending, id, seed)) { settle.push(id); continue; }
+    show.push({ id, note, view, animate: has(late, id, seed) ? false : !!animate });
+  }
+  const hide = [...(shown?.keys() ?? [])].filter((id) => !want.has(id) && !pending?.has(id));
+  return { show, hide, settle };
+}

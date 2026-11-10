@@ -49,3 +49,36 @@ test('solid things only turn a little; crowns and plants any way', () => {
   assert.equal(turnOf({ kind: 'oak', turn: 2 }), 2);
   assert.ok(Math.abs(turnOf({ kind: 'crate', turn: 2 })) < 1);
 });
+
+import { decorShown, decorWreckTile } from "../../../scripts/engines/motion/decorations.mjs";
+import { decorKeyed } from "../../../scripts/engines/props/decor-break.mjs";
+import { decorSettings } from "../../../scripts/engines/motion/decor-regions.mjs";
+test("broken decorations are not drawn; the water keeps its ids", () => {
+  const settings = decorSettings({ on: true, seed: 3, density: 1, kinds: { crate: {}, puddle: {} } }), areas = [[0, 0, 1000, 0, 1000, 1000, 0, 1000]];
+  const spec = { id: "R1", settings, areas }, crate = decorKeyed(spec, 100).find((k) => k.d.kind === "crate");
+  const { placements, shown } = decorShown({ ...spec, broken: [crate.key] }, 100), same = (d) => d.kind === "crate" && d.x === crate.d.x && d.y === crate.d.y;
+  assert.ok(placements.some(same) && !shown.some(same));
+  assert.equal(shown.length, placements.length - 1);
+  const src = readFileSync(new URL("../../../scripts/engines/motion/decorations.mjs", import.meta.url), "utf8");
+  assert.match(src, /water\(\) \{[\s\S]*?r\.placements\.forEach/);
+});
+test("a wreck tile stands, turns and mirrors as the decoration is drawn", () => {
+  const d = { kind: "cobweb", x: 300, y: 200, size: 1, turn: 1, seed: 1, flip: true };
+  const view = { id: "decor:R1:k", levels: ["L1"], texture: { src: "decor/cobweb.webp" }, flags: { animater: { prop: { material: "plant", style: "burn" } } }, decor: { regionId: "R1", key: "k", kind: "cobweb", d } };
+  const art = { texture: {}, canvas: {}, width: 124, key: "pic" }, t = decorWreckTile(view, art);
+  assert.deepEqual([t.x, t.y, t.width, t.height, t.texture.scaleX, t.texture.anchorX], [300, 200, 124, 124, -1, 0.5]);
+  assert.equal(t.art, art); assert.ok(Math.abs(t.rotation - 180 / Math.PI) < 1e-9); // flat kinds turn freely
+  assert.equal(decorWreckTile({ ...view, decor: { ...view.decor, d: { ...d, kind: "crate" } } }, art).texture.scaleX, 1);
+});
+test("flipping Decorations can break never rebuilds a region; a new break does", async () => {
+  const { createDecorations } = await import("../../../scripts/engines/motion/decorations.mjs");
+  class Container { constructor() { this.children = []; } addChild(c) { this.children.push(c); return c; } removeChild() {} destroy() {} }
+  const shadows = new Container(), layer = () => new Container(), deco = createDecorations({ PIXI: { Container }, shadows: () => shadows, ground: layer, above: layer });
+  const settings = decorSettings({ on: true, seed: 3, density: 1, kinds: {} }), areas = [[0, 0, 100, 0, 100, 100, 0, 100]], builds = () => shadows.children.length;
+  deco.sync([{ id: "R1", settings, areas, look: {} }]); const once = builds();
+  assert.ok(once > 0);
+  deco.sync([{ id: "R1", settings: { ...settings, canBreak: true }, areas, look: {} }]);
+  assert.equal(builds(), once);
+  deco.sync([{ id: "R1", settings: { ...settings, canBreak: true }, areas, look: {}, broken: ["crate:1:2:h"] }]);
+  assert.equal(builds(), once * 2);
+});

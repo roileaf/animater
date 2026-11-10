@@ -315,3 +315,17 @@ test("firePatchAt: the fire light goes on the burning patch (stopped by the wall
   assert.deepEqual(firePatchAt({ ...n, fire: undefined }, { ...at, contents: "lampoil" }), firePatchAt(n, { ...at, contents: "lampoil" }));
   assert.deepEqual(firePatchAt(n, { ...at, contents: "none" }), { x: 500, y: 300 });
 });
+
+import { readFileSync } from "node:fs";
+import { tonesOfPixels } from "../../../scripts/engines/props/prop-wreck-layout.mjs";
+test("tones from pixels: the mean of the opaque ones and the painted box", () => {
+  const w = 4, h = 4, data = new Uint8ClampedArray(w * h * 4);
+  // (the mean reads every 4th pixel, as sample does: here column 0 of each row)
+  for (let p = 0; p < w * h; p++) if (p % w <= 1) data.set([100, 50, 20, 255], p * 4);
+  const t = tonesOfPixels(data, w, h);
+  assert.equal(t.mid, (100 << 16) | (50 << 8) | 20);
+  assert.deepEqual(t.box, [0, 0, 0.5, 1]);
+  assert.equal(tonesOfPixels(new Uint8ClampedArray(64), 4, 4), null);
+  const wreck = readFileSync(new URL("../../../scripts/engines/props/prop-wreck.mjs", import.meta.url), "utf8");
+  assert.match(wreck, /tile\.art/); assert.match(wreck, /tonesOfPixels\(/);
+});

@@ -1,7 +1,7 @@
 // Draws a broken prop's wreckage: the ground mark, the spill and splinters (from prop-wreck-layout) and the prop's own
 // art cut into pieces that lie where they landed. One Container per wreck, sorted just above the tile.
 import { bloodArt } from "../motion/blood-art.mjs";
-import { wreckLayout, wreckTargets, collapseDust, flatMark, spillExtent, BLAST_SCORCH, GRAIN_TONES, POWDER_TONES, SPINE_COLOURS, BURN_DIE_MS } from "./prop-wreck-layout.mjs";
+import { tonesOfPixels, wreckLayout, wreckTargets, collapseDust, flatMark, spillExtent, BLAST_SCORCH, GRAIN_TONES, POWDER_TONES, SPINE_COLOURS, BURN_DIE_MS } from "./prop-wreck-layout.mjs";
 import { BURN_MS } from "./prop-lights.mjs";
 import { createPropFx } from "./prop-fx.mjs";
 import { createTorchFires } from "./prop-fire.mjs";
@@ -130,28 +130,28 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     return artTextures.get(key);
   };
 
+  // A picture drawn downscaled (about 64 px longest side): the same mean colour for far less memory.
+  const tonesOf = (img, w, h) => {
+    const k = Math.min(1, 64 / Math.max(w, h, 1));
+    const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+    const x = c.getContext("2d"); x.drawImage(img, 0, 0, c.width, c.height);
+    return tonesOfPixels(x.getImageData(0, 0, c.width, c.height).data, c.width, c.height) ?? FALLBACK;
+  };
   // The prop's own colours (mean of its opaque pixels, darker and lighter), sampled once per src.
   const sample = (src) => {
     if (!colours.has(src)) {
       colours.set(src, (async () => {
-        try {
-          const img = new Image(); img.src = src; await img.decode();
-          // Drawn downscaled (about 64 px longest side): the same mean colour for far less memory.
-          const k = Math.min(1, 64 / Math.max(img.width, img.height, 1));
-          const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
-          const x = c.getContext("2d"); x.drawImage(img, 0, 0, c.width, c.height);
-          const d = x.getImageData(0, 0, c.width, c.height).data; let r = 0, g = 0, b = 0, n = 0;
-          for (let i = 0; i < d.length; i += 16) if (d[i + 3] > 200) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
-          if (!n) return FALLBACK;
-          // The painted part's bounds (past the soft drop shadow), as shares of the picture: where a collapse's boards lie.
-          let x0 = c.width, y0 = c.height, x1 = 0, y1 = 0;
-          for (let i = 3, p = 0; i < d.length; i += 4, p++) if (d[i] > 150) { const x = p % c.width, y = (p / c.width) | 0; x0 = Math.min(x0, x); x1 = Math.max(x1, x + 1); y0 = Math.min(y0, y); y1 = Math.max(y1, y + 1); }
-          const m = [r / n, g / n, b / n], hex = (k) => (Math.min(255, m[0] * k) << 16) | (Math.min(255, m[1] * k) << 8) | Math.min(255, m[2] * k);
-          return { mid: hex(1), dark: hex(0.55), light: hex(1.25), box: [x0 / c.width, y0 / c.height, x1 / c.width, y1 / c.height] };
-        } catch { return FALLBACK; }
+        try { const img = new Image(); img.src = src; await img.decode(); return tonesOf(img, img.width, img.height); }
+        catch { return FALLBACK; }
       })());
     }
     return colours.get(src);
+  };
+  // A picture handed in with the tile (tile.art: a painted decoration's own canvas): its colours, sampled once per art.key.
+  const artTones = (art) => {
+    const key = `art:${art.key}`;
+    if (!colours.has(key)) { let t = FALLBACK; try { if (art.canvas) t = tonesOf(art.canvas, art.canvas.width, art.canvas.height); } catch { t = FALLBACK; } colours.set(key, t); }
+    return colours.get(key);
   };
 
   const groundMark = (mark, held) => paintMark(PIXI, mark, held);
@@ -890,8 +890,9 @@ void main() {
     if (sortLayer !== undefined) box.sortLayer = sortLayer;
     layer().addChild(box);
 
-    const src = d.texture?.src;
-    const [texture, tones] = await Promise.all([textureOf(tile, src).catch(() => null), src ? sample(src) : FALLBACK]);
+    // A tile that brings its own picture (tile.art, a painted decoration) is drawn from it, not from its src.
+    const src = d.texture?.src, art = tile.art ?? null;
+    const [texture, tones] = art ? [art.texture ?? null, artTones(art)] : await Promise.all([textureOf(tile, src).catch(() => null), src ? sample(src) : FALLBACK]);
     if (wrecks.get(id) !== entry) return; // hidden or redrawn while loading
     if (note.style === "tip") { dropPrior(entry); tipped({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
     if (note.style === "topple") { dropPrior(entry); toppled({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate }); return; }

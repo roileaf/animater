@@ -338,3 +338,17 @@ export function wreckTargets(tiles) {
 export function firePatchAt(note, opts) {
   return wreckLayout({ ...note, fire: true }, opts).fire?.at ?? { x: opts.centre.x, y: opts.centre.y };
 }
+
+/**
+ * A picture's own colours from its pixels (pure): the mean of its opaque ones (every 4th pixel), darker and lighter, and the
+ * painted part's bounds past the soft drop shadow, as shares of the picture (where a collapse's boards lie). Null when none is opaque.
+ */
+export function tonesOfPixels(data, width, height) {
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let i = 0; i < data.length; i += 16) if (data[i + 3] > 200) { r += data[i]; g += data[i + 1]; b += data[i + 2]; n++; }
+  if (!n) return null;
+  let x0 = width, y0 = height, x1 = 0, y1 = 0;
+  for (let i = 3, p = 0; i < data.length; i += 4, p++) if (data[i] > 150) { const x = p % width, y = (p / width) | 0; x0 = Math.min(x0, x); x1 = Math.max(x1, x + 1); y0 = Math.min(y0, y); y1 = Math.max(y1, y + 1); }
+  const m = [r / n, g / n, b / n], hex = (k) => (Math.min(255, m[0] * k) << 16) | (Math.min(255, m[1] * k) << 8) | Math.min(255, m[2] * k);
+  return { mid: hex(1), dark: hex(0.55), light: hex(1.25), box: [x0 / width, y0 / height, x1 / width, y1 / height] };
+}

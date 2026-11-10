@@ -9,6 +9,7 @@
 import { DECOR_KINDS, paintDecor, waterOutline } from './decor-paint.mjs';
 import { CAVERN_KINDS, canopyKindOf, decorPlacements, decorRole } from './decor-regions.mjs';
 import { SNOW_LOOK } from './snow-look.mjs';
+import { decorKeyed } from '../props/decor-break.mjs';
 
 // Snow on the decorations: the ground's own snow (snow-look.mjs, as sky-light.mjs lays it), on each one's top. A region's
 // standing decorations baked small twice: their pictures (where snow can catch: their lighter parts) and their silhouettes
@@ -75,6 +76,28 @@ export function lampShadow(d, height, light, grid = 100) {
   const alpha = Math.min(1, strength) * (1 - dist / radius) ** 0.7;
   return alpha < 0.03 ? null : { angle: Math.atan2(dy, dx), reach, alpha };
 }
+/**
+ * What a region draws (pure): `placements` all of them (the water's ids count through these), `shown` those not broken.
+ * `spec.broken` holds the broken decorations' keys; with none, nothing is keyed.
+ */
+export function decorShown(spec, grid) {
+  const broken = spec.broken ?? [];
+  if (!broken.length) { const placements = decorPlacements({ settings: spec.settings, areas: spec.areas, grid, id: spec.id }); return { placements, shown: placements }; }
+  const gone = new Set(broken), keyed = decorKeyed({ id: spec.id, settings: spec.settings, areas: spec.areas }, grid);
+  return { placements: keyed.map((k) => k.d), shown: keyed.filter((k) => !gone.has(k.key)).map((k) => k.d) };
+}
+/**
+ * A broken decoration's wreck as a tile (pure), shaped as createPropWreckage reads one: its picture (`art`, from the engine's
+ * art()) at its drawn size, centred where it stands, turned and mirrored as the painter draws it.
+ */
+export function decorWreckTile(view, art, { elevation = 0 } = {}) {
+  const d = view.decor.d;
+  return {
+    id: view.id, x: d.x, y: d.y, width: art.width, height: art.width, rotation: (turnOf(d) * 180) / Math.PI, elevation, sort: 0, levels: view.levels,
+    texture: { src: view.texture.src, anchorX: 0.5, anchorY: 0.5, scaleX: d.flip && DECOR_KINDS[d.kind].flat ? -1 : 1, scaleY: 1 },
+    flags: view.flags, decor: view.decor, art,
+  };
+}
 /** How much a crown over a creature opens (pure, 0 not at all - 1 fully): any creature within its reach. */
 export function crownOpen(d, creatures = [], grid = 100) {
   const reach = (d.size * 0.46 + 0.45) * grid;
@@ -121,7 +144,7 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
     if (!pictures.has(p.key)) {
       const art = paintDecor(d.kind, 7919 * (p.variant + 1) + d.kind.length, p.size * grid(), { ...look, unit: grid(), liveWater: true }, canvasOf);
       const tex = (c) => (c ? PIXI.Texture.from(c) : null);
-      pictures.set(p.key, art ? { art: tex(art.canvas), shadow: tex(art.shadow), trunk: tex(art.trunk), width: art.width, painted: p.size } : null);
+      pictures.set(p.key, art ? { art: tex(art.canvas), shadow: tex(art.shadow), trunk: tex(art.trunk), width: art.width, painted: p.size, canvas: art.canvas } : null);
     }
     return { pic: pictures.get(p.key), scale: d.size / p.size };
   };
@@ -146,15 +169,19 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
   return {
     /** A sprite of one decoration's picture, placed and turned as it would stand (for the brush's ghost), or null. */
     sprite(d, look = {}) { const { pic, scale } = picture(d, look); return pic?.art ? place(new PIXI.Sprite(pic.art), d, pic, scale) : null; },
+    /** One decoration's painted picture, for its wreck: the shared texture, the canvas it was painted on, its drawn width and picture key; or null. */
+    art(d, look = {}) { const { pic, scale } = picture(d, look); return pic?.art ? { texture: pic.art, canvas: pic.canvas, width: pic.art.width * scale, key: pictureOf(d, look).key } : null; },
     sync(list = []) {
       const seen = new Set(), g = grid();
       for (const spec of list) {
         seen.add(spec.id);
-        const key = JSON.stringify([spec.settings, spec.areas, spec.look, g]), had = regions.get(spec.id);
+        // (The switch that lets them break draws nothing: flipping it never rebuilds. A break does, from the cached pictures.)
+        const { canBreak: _switch, ...drawn } = spec.settings ?? {};
+        const key = JSON.stringify([drawn, spec.areas, spec.look, g, spec.broken ?? []]), had = regions.get(spec.id);
         if (had?.key === key) continue;
         if (had) dropRegion(had);
-        const placements = decorPlacements({ settings: spec.settings, areas: spec.areas, grid: g, id: spec.id }), where = spec.settings?.where ?? 'surface';
-        const r = { key, placements, where, look: spec.look, sprites: [], shadowSprites: [], crowns: [], castLayer: null };
+        const { placements, shown } = decorShown(spec, g), where = spec.settings?.where ?? 'surface';
+        const r = { key, placements, shown, where, look: spec.look, sprites: [], shadowSprites: [], crowns: [], castLayer: null };
         // Shadows: the soft dark at each standing one's foot whatever the light, then the cast ones in a layer of their own (one alpha for all, so overlaps never stack darker).
         const contact = new PIXI.Container(), cast = new PIXI.Container(), Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter;
         if (PIXI.BlurFilter) { contact.filters = [new PIXI.BlurFilter(g * 0.05)]; cast.filters = [new PIXI.BlurFilter(g * 0.015), ...(Alpha ? [new Alpha(1)] : [])]; }
@@ -162,7 +189,7 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
         // The lights' shadows: a layer of their own, filled as the lights near them are told (lamps()).
         const lampLayer = new PIXI.Container(); if (PIXI.BlurFilter) lampLayer.filters = [new PIXI.BlurFilter(g * 0.02), ...(Alpha ? [new Alpha(1)] : [])]; lampLayer.alpha = 0.6;
         r.lampLayer = lampLayer; r.casters = [];
-        for (const d of placements) {
+        for (const d of shown) {
           const role = decorRole(d, where); if (!role || role === 'cavern') continue;
           // (Standing ones take their snow from the snow layer over them, flat ones the ground's lying over them; a tree's crown has its own painted.)
           const { pic, scale } = picture(d, role !== 'tree' && render ? { ...spec.look, snow: 0 } : spec.look); if (!pic) continue;
@@ -181,7 +208,7 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
         }
         shadows().addChild(contact); shadows().addChild(cast); shadows().addChild(lampLayer); r.sprites.push(contact, cast, lampLayer);
         // Snow on the standing ones (not underground). (A tree's crown carries its own, painted, as it opens over the creatures.)
-        if (where !== 'cave') { const standing = placements.filter((d) => decorRole(d, where) === 'standing').map((d) => ({ d, ...picture(d, { ...spec.look, snow: 0 }) })).filter((it) => it.pic); try { r.snow = bakeSnow(r, standing); } catch (err) { console.warn('Animater | decoration snow', err); } }
+        if (where !== 'cave') { const standing = shown.filter((d) => decorRole(d, where) === 'standing').map((d) => ({ d, ...picture(d, { ...spec.look, snow: 0 }) })).filter((it) => it.pic); try { r.snow = bakeSnow(r, standing); } catch (err) { console.warn('Animater | decoration snow', err); } }
         regions.set(spec.id, r); aim(r);
       }
       for (const [id, r] of regions) if (!seen.has(id)) { dropRegion(r); regions.delete(id); }
@@ -235,7 +262,7 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
     cavern() {
       const out = { fungus: [], crystals: [], lava: [], webs: [] }, ring = (x, y, rad) => Array.from({ length: 12 }, (_, i) => [x + Math.cos(i / 12 * 6.283) * rad, y + Math.sin(i / 12 * 6.283) * rad]).flat();
       const TONES = { fungus: ['green', 'blue', 'violet'], crystals: ['amethyst', 'quartz', 'rose'] };
-      for (const r of regions.values()) if (r.where === 'cave') for (const d of r.placements) {
+      for (const r of regions.values()) if (r.where === 'cave') for (const d of r.shown) {
         const what = CAVERN_KINDS[d.kind]; if (!what) continue;
         const g = grid(), area = ring(d.x, d.y, d.size * g * (what === 'webs' ? 1.2 : 0.5)), scale = d.size / DECOR_KINDS[d.kind].size;
         if (what === 'fungus') out.fungus.push({ areas: [area], color: TONES.fungus[d.seed % 3], scale });

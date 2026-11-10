@@ -151,3 +151,14 @@ test("repair: every region's breaks; one region's breaks and its own rubble", ()
   assert.deepEqual(decorRegionRepair(regions[0], regions), { update: { _id: "R1", "flags.animater.-=decorBroken": null }, deleteRegions: ["rub1"] });
   assert.deepEqual(decorRegionRepair(regions[1], regions), { update: null, deleteRegions: [] });
 });
+
+import { decorWreckChanges } from "../../../scripts/engines/props/decor-break.mjs";
+test("which wrecks to draw, keep, settle or take away", () => {
+  const n = (seed) => ({ seed }), m = (o) => new Map(Object.entries(o));
+  const wanted = [{ id: "a", note: n(1) }, { id: "b", note: n(2) }, { id: "c", note: n(3) }, { id: "d", note: n(4) }];
+  const r = decorWreckChanges({ shown: m({ a: 1, gone: 9, mine: 7 }), wanted, pending: m({ b: 2, mine: 7 }), late: m({ c: 3 }), animate: true });
+  assert.deepEqual(r.settle, ["b"]);
+  assert.deepEqual(r.show.map((s) => [s.id, s.animate]), [["c", false], ["d", true]]);
+  assert.deepEqual(r.hide, ["gone"]);
+  assert.deepEqual(decorWreckChanges({ shown: m({ a: 1 }), wanted: [{ id: "a", note: n(5) }], pending: m({}), late: m({}), animate: false }).show.map((s) => s.id), ["a"]);
+});
