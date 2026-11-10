@@ -1,12 +1,13 @@
 // Draws a broken prop's wreckage: the ground mark, the spill and splinters (from prop-wreck-layout) and the prop's own
 // art cut into pieces that lie where they landed. One Container per wreck, sorted just above the tile.
 import { bloodArt } from "../motion/blood-art.mjs";
-import { wreckLayout, wreckTargets, collapseDust, spillExtent, BLAST_SCORCH, GRAIN_TONES, POWDER_TONES, SPINE_COLOURS, BURN_DIE_MS } from "./prop-wreck-layout.mjs";
+import { wreckLayout, wreckTargets, collapseDust, flatMark, spillExtent, BLAST_SCORCH, GRAIN_TONES, POWDER_TONES, SPINE_COLOURS, BURN_DIE_MS } from "./prop-wreck-layout.mjs";
 import { BURN_MS } from "./prop-lights.mjs";
 import { createPropFx } from "./prop-fx.mjs";
 import { propTraits, propGuesses, BURST_DEFAULT } from "./prop-traits.mjs";
 import { collapseLayout } from "./prop-collapse.mjs";
 import { tipLayout, COAL_MS } from "./prop-tip.mjs";
+import { toppleLayout, TOPPLE_MS, CHUNK_MS } from "./prop-topple.mjs";
 import { createPosedPieces, tileFrame } from "./prop-pieces.mjs";
 import { propSound } from "./prop-sounds.mjs";
 import { seededRandom } from "../fragments/fragments.mjs";
@@ -368,6 +369,130 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     settle(0); raf = requestAnimationFrame(tick);
   }
 
+  // A statue or pillar toppled (mock scene 6). The plinth's ring stays, cut from the tile's own art, its middle a
+  // broken stone stump. The figure is a lying statue seen from above: the figure's part of the picture stretched along
+  // the fall, cut to a lying silhouette and inked. It lengthens from the plinth's edge over TOPPLE_MS (faster as it
+  // goes, its shadow closing in), then breaks into chunks cut from that same lying figure, which jolt apart along the
+  // strip with stone chips, a pale dust mark, a dust cloud, the stone sound and a jolt of the view. Drawn on load it
+  // is settled: stump, lying chunks, chips and mark only.
+  const STONE_FRESH = "rgba(205,200,190,0.95)", CHIP_GREY = 0xa8a298, SMALL_CHIPS = [0x9a948a, 0x7a746b], STONE_DUST = [0xa59b8a, 0xbdb3a2];
+  const LIE_PAD = 4, BIG_CHIP_MS = 550, SMALL_CHIP_MS = 600, MARK_IN_MS = 500;
+  // The lying figure into a canvas (fall frame + pad, times kl): the figure's part of the picture turned so its axis
+  // nearest the fall lies along it, stretched to the lying size, cut to the silhouette, inked and shaded across, lit
+  // on its up-the-page side. art: the tile's picture times k.
+  const lyingFigure = (art, k, F, lit) => {
+    const P = LIE_PAD, kl = Math.min(2, 2048 / (F.length + 2 * P)), c = document.createElement("canvas");
+    c.width = Math.ceil((F.length + 2 * P) * kl); c.height = Math.ceil((F.width + 2 * P) * kl);
+    const g = c.getContext("2d"), [sx, sy, sw, sh] = F.src, sideways = Math.abs(Math.sin(F.axis)) > 0.5;
+    g.setTransform(kl, 0, 0, kl, P * kl, (P + F.width / 2) * kl); // the break at the origin, x along the fall
+    g.save(); g.translate(F.length / 2, 0); g.scale(F.length / (sideways ? sh : sw), F.width / (sideways ? sw : sh)); g.rotate(-F.axis);
+    g.drawImage(art, sx * k, sy * k, sw * k, sh * k, -sw / 2, -sh / 2, sw, sh); g.restore();
+    const o = F.outline, path = () => { g.beginPath(); g.moveTo(o[0], o[1]); for (let i = 2; i < o.length; i += 2) g.lineTo(o[i], o[i + 1]); g.closePath(); };
+    g.globalCompositeOperation = "destination-in"; path(); g.fill();
+    g.globalCompositeOperation = "source-over"; g.strokeStyle = "rgba(20,15,10,0.95)"; g.lineWidth = 2.2; g.lineJoin = "round"; path(); g.stroke();
+    const h = F.width / 2, sh0 = g.createLinearGradient(0, lit ? -h : h, 0, lit ? h : -h);
+    sh0.addColorStop(0, "rgba(255,255,255,0.18)"); sh0.addColorStop(0.5, "rgba(0,0,0,0)"); sh0.addColorStop(1, "rgba(0,0,0,0.28)");
+    g.globalCompositeOperation = "source-atop"; g.fillStyle = sh0; g.fillRect(-P, -h - P, F.length + 2 * P, F.width + 2 * P);
+    return { canvas: c, kl };
+  };
+  function toppled({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate }) {
+    const size = { width: d.width, height: d.height }, turn = ((d.rotation ?? 0) * Math.PI) / 180, gk = (grid() || 100) / 100;
+    const L = toppleLayout(note, { ...size, grid: grid() || 100, rotation: d.rotation ?? 0, box: paintedBox(d, tones) }), F = L.fall;
+    // Under everything: the pale stone mark along the fall, and the small chips that settle into it.
+    const marks = new PIXI.Container(); marks.zIndex = -1; box.addChild(marks);
+    const mark = marks.addChild(groundMark(flatMark("stone", { ...L.mark, ...tileToWorld(d, centre, L.mark), angle: L.mark.angle + turn, lobes: 9 }, seededRandom((note.seed >>> 0) * 41 + 9)), entry.textures));
+    const smallFrame = frameOf(d, centre, 0), smallG = new PIXI.Graphics(); smallFrame.addChild(smallG); marks.addChild(smallFrame);
+    // The stump over the plinth's ring: a broken stone top, paler in the middle, cracks running out.
+    const stumpFrame = frameOf(d, centre, 0.05), sg = new PIXI.Graphics(), c0 = L.stump.centre; stumpFrame.addChild(sg); box.addChild(stumpFrame);
+    sg.lineStyle(1.6, INK, 1).beginFill(mix(tones.mid, 0x8f8a82, 0.75), 1).drawPolygon(L.stump.poly).endFill();
+    sg.lineStyle(0).beginFill(mix(tones.light, 0xb5afa5, 0.75), 0.9).drawPolygon(L.stump.poly.map((v, i) => lerp(v, i % 2 ? c0.y : c0.x, 0.35))).endFill();
+    sg.lineStyle(1, INK, 0.6); for (const [ax, ay, bx, by] of L.stump.cracks) sg.moveTo(ax, ay).lineTo(bx, by);
+    // The ring, the lying figure and its chunks, all from the tile's own picture.
+    let ring = null, chunks = null, fig = null, figShade = null, lying = null;
+    const breakW = tileToWorld(d, centre, F.at), fallTurn = F.angle + turn, stretch = F.to.stretch;
+    if (texture) {
+      const stand = standFor(tile, d, texture, centre, box, sortLayer);
+      try { ring = posed.cut(stand, [{ poly: L.stump.ring, home: c0, to: { ...c0, rot: 0 }, delay: 0, dur: 1, hop: 0, shadow: 0 }], size); }
+      catch (error) { console.warn("Animater prop wreckage: no plinth", error); }
+      let art = null;
+      try { art = posed.art(stand, d.width, d.height, Math.min(2, 2048 / Math.max(d.width, d.height, 1))); } catch { art = null; }
+      if (art) {
+        const lit = Math.cos(fallTurn) >= 0, { canvas: lc, kl } = lyingFigure(art, Math.min(2, 2048 / Math.max(d.width, d.height, 1)), F, lit);
+        const tex = PIXI.Texture.from(lc); entry.textures.push(tex);
+        const anchor = [(LIE_PAD * kl) / lc.width, ((LIE_PAD + F.width / 2) * kl) / lc.height];
+        const placed = (s) => { s.anchor.set(...anchor); s.scale.set(1 / kl); s.position.set(breakW.x, breakW.y); s.rotation = fallTurn; return s; };
+        // The falling figure: a whole sprite that lengthens from the plinth's edge, its shadow under it.
+        figShade = placed(new PIXI.Sprite(tex)); figShade.tint = 0x000000; figShade.alpha = 0.35; figShade.zIndex = 0.3;
+        fig = placed(new PIXI.Sprite(tex)); fig.zIndex = 0.4; box.addChild(figShade, fig);
+        // The chunks: cut from the lying figure (its stand unseen), shown once it lands.
+        lying = new PIXI.Container(); lying.sortableChildren = true; lying.zIndex = 0.45; box.addChild(lying);
+        const lyingStand = placed(new PIXI.Sprite(tex)); lyingStand.renderable = false; lyingStand.zIndex = 0; lying.addChild(lyingStand);
+        const ux = Math.cos(F.angle), uy = Math.sin(F.angle), oy = LIE_PAD + F.width / 2;
+        const toLying = (x, y) => { const dx = x - F.at.x, dy = y - F.at.y; return [dx * ux + dy * uy + LIE_PAD, -dx * uy + dy * ux + oy]; };
+        const pts = (list) => { const o = []; for (let i = 0; i < list.length; i += 2) o.push(...toLying(list[i], list[i + 1])); return o; };
+        const pt = (p) => { const [x, y] = toLying(p.x, p.y); return { x, y }; };
+        const pieces = L.chunks.map((c) => ({ poly: pts(c.poly), home: pt(c.home), to: { ...pt(c.to), rot: c.to.rot }, delay: c.delay, dur: c.dur, hop: 0.12, shadow: 0.4,
+          ...(c.edge ? { edge: pts(c.edge), fresh: STONE_FRESH } : {}) }));
+        try { chunks = posed.cut(lyingStand, pieces, { width: lc.width / kl, height: lc.height / kl }); }
+        catch (error) { console.warn("Animater prop wreckage: no chunks", error); }
+      }
+    }
+    entry.handle = { update() {}, destroy() { quiet(() => ring?.destroy()); quiet(() => chunks?.destroy()); } };
+    // The big chips over everything that lies; the small ones in the mark. t: ms since the impact.
+    const chipFrame = frameOf(d, centre, 0.5), chipG = new PIXI.Graphics(); chipFrame.addChild(chipG); box.addChild(chipFrame);
+    const big = L.chips.filter((c) => !c.small), small = L.chips.filter((c) => c.small);
+    const bigTone = (t) => [tones.mid, tones.light, tones.dark, CHIP_GREY][t] ?? CHIP_GREY;
+    const drawChips = (g, list, t, dur, colour, ink) => {
+      g.clear(); if (animate && t < 0) return;
+      for (const c of list) {
+        const r = animate ? span(t, 0, dur * c.sh) : 1, u = outQuart(r), lift = Math.sin(Math.PI * r) * 10 * gk;
+        const x = lerp(c.x0, c.x, u), y = lerp(c.y0, c.y, u) - lift, ro = lerp(c.rot0, c.rot, u);
+        const dx = (Math.cos(ro) * c.l) / 2, dy = (Math.sin(ro) * c.l) / 2, nx = (-Math.sin(ro) * c.w) / 2, ny = (Math.cos(ro) * c.w) / 2;
+        const p = [x - dx, y - dy, x + nx * 1.6, y + ny * 1.6, x + dx, y + dy, x - nx, y - ny];
+        g.lineStyle(0).beginFill(0x000000, 0.25).drawPolygon(p.map((v, i) => v + (i % 2 ? 2.5 + lift * 0.6 : 1.5))).endFill();
+        g.lineStyle(0.8, INK, ink).beginFill(colour(c.tone), 1).drawPolygon(p).endFill();
+      }
+    };
+    const settle = (ms) => {
+      const t = animate ? ms - TOPPLE_MS : Infinity, down = t >= 0;
+      if (fig) {
+        // faster as it goes; its shadow, far off while it is high, closes in as it comes down
+        const u = span(ms, 0, TOPPLE_MS) ** 2, k = F.width / 83;
+        for (const s of [fig, figShade]) { s.visible = animate && !down; s.scale.x = lerp(1 / stretch, 1, u) * s.scale.y; }
+        figShade.position.set(breakW.x + (6 + (1 - u) * 18) * k, breakW.y + (8 + (1 - u) * 22) * k);
+      }
+      if (lying) lying.visible = down;
+      chunks?.update(down ? Math.min(1, t / CHUNK_MS) : 0);
+      drawChips(chipG, big, t, BIG_CHIP_MS, bigTone, 0.7);
+      drawChips(smallG, small, t, SMALL_CHIP_MS, (k) => SMALL_CHIPS[k] ?? SMALL_CHIPS[0], 0.3);
+      mark.alpha = animate ? span(t, 0, MARK_IN_MS) : 1;
+    };
+    ring?.update(1);
+    if (!animate) { settle(Infinity); return; }
+    // Seen happening: the dust cloud rolls up along the fallen figure at the impact, with the stone sound and a jolt.
+    const air = new PIXI.Container(); air.zIndex = 2; box.addChild(air);
+    const dust = fx.puffs(air, L.dust.map((p) => ({ ...p, ...tileToWorld(d, centre, p) })), STONE_DUST, { inkA: 0.08 });
+    const end = TOPPLE_MS + Math.max(CHUNK_MS, BIG_CHIP_MS * 1.3, SMALL_CHIP_MS * 1.3, MARK_IN_MS, ...L.dust.map((p) => p.at + p.life));
+    let landed = false;
+    const land = () => {
+      landed = true;
+      const at = tileToWorld(d, centre, { x: F.at.x + Math.cos(F.angle) * F.length * 0.55, y: F.at.y + Math.sin(F.angle) * F.length * 0.55 });
+      try { playSound(propSound(materialOf(d), "none", seededRandom(note.seed), { style: "topple" }).file, at); }
+      catch (error) { console.warn("Animater prop wreckage: no sound", error); }
+      try { shake(at, 1); } catch { /* no shake */ }
+    };
+    const t0 = performance.now(); let raf = 0;
+    const done = () => { entry.stop = null; quiet(() => dust.destroy()); quiet(() => air.destroy({ children: true })); for (const s of [fig, figShade]) if (s) s.visible = false; };
+    entry.stop = () => { cancelAnimationFrame(raf); done(); };
+    const step = (ms) => { settle(ms); dust.update(ms - TOPPLE_MS); if (!landed && ms >= TOPPLE_MS) land(); };
+    const tick = () => {
+      const ms = performance.now() - t0;
+      step(Math.min(ms, end));
+      if (ms < end) raf = requestAnimationFrame(tick); else done();
+    };
+    step(0); raf = requestAnimationFrame(tick);
+  }
+
   // A powder keg exploded (mock scene 5): a big scorch with soft soot under it, spent powder, charred staves cut from
   // the keg's own art thrown far, bent iron hoops and splinters of its wood. Seen happening, a flash and a hot glow, a
   // painted fireball darkening into smoke that rolls away, embers, the explosion's sound and a jolt of the view.
@@ -506,6 +631,7 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     const [texture, tones] = await Promise.all([textureOf(tile, src).catch(() => null), src ? sample(src) : FALLBACK]);
     if (wrecks.get(id) !== entry) return; // hidden or redrawn while loading
     if (note.style === "tip") { dropPrior(entry); tipped({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
+    if (note.style === "topple") { dropPrior(entry); toppled({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate }); return; }
     const layout = wreckLayout(note, { centre, width: d.width, height: d.height, grid: grid() || 100, contents, rotation: d.rotation ?? 0 });
     if (layout.blast) { exploded({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate, layout, contents, prior: entry.prior }); return; }
     dropPrior(entry); // anything else drawn over a wreck it replaces: the old one goes now

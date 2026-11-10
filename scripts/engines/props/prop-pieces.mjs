@@ -2,8 +2,9 @@
 // along its cut (and a pale fresh edge where it snapped), going from where it sat to where it lands with a short hop,
 // bigger and its shadow further off while in the air. Collapse uses it; tip and topple reuse it.
 // A piece: {poly (tile-local px), home: {x, y}, to: {x, y, rot, sx?, sy?}, delay, dur (shares of the 0-1 timeline),
-// edge? (the snapped line, tile-local), fresh? (a CSS colour stroked inside the whole cut when there is no edge: a
-// charred stave), hop?, shadow?, ink? (false: no ink line, for a whole picture that never snapped)}.
+// edge? (the snapped line, tile-local), fresh? (a CSS colour: the edge in that colour, pale wood by default; with no
+// edge, stroked inside the whole cut: a charred stave), hop?, shadow?, ink? (false: no ink line, for a whole picture
+// that never snapped)}.
 
 const K_MAX = 2, SIDE_MAX = 2048, ALPHA_CUT = 90;
 const FRESH = "rgba(214,180,124,0.9)", INK = "rgba(20,15,10,0.85)";
@@ -48,7 +49,7 @@ export function createPosedPieces({ PIXI }) {
     const line = (pts, close) => { g.beginPath(); g.moveTo(pts[0] * k, pts[1] * k); for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i] * k, pts[i + 1] * k); if (close) g.closePath(); };
     g.save(); line(p.poly, true); g.clip(); g.drawImage(art, 0, 0);
     g.globalCompositeOperation = "source-atop"; g.lineJoin = "round";
-    if (p.edge) { g.strokeStyle = FRESH; g.lineWidth = 1.4 * k * 2.4; line(p.edge, false); g.stroke(); }
+    if (p.edge) { g.strokeStyle = p.fresh ?? FRESH; g.lineWidth = 1.4 * k * 2.4; line(p.edge, false); g.stroke(); }
     else if (p.fresh) { g.strokeStyle = p.fresh; g.lineWidth = 1.3 * k * 2.4; line(p.poly, true); g.stroke(); } // a charred stave: dark all round
     if (p.ink !== false) { g.strokeStyle = INK; g.lineWidth = 1.4 * k; line(p.poly, true); g.stroke(); }
     g.restore();
@@ -120,5 +121,6 @@ export function createPosedPieces({ PIXI }) {
     return { update, tint, destroy };
   }
 
-  return { cut };
+  // art(stand, w, h, k): the picture read back as above (a toppled statue builds its lying figure from it).
+  return { cut, art: artCanvas };
 }

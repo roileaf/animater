@@ -52,10 +52,12 @@ function groundMark(kind, c, r, rand) {
 
 // A flattened dust or scorch mark, in world px: squash flattens it across, then it turns by angle. A broken door's
 // mark (wall-wreck.mjs) and a collapse's dust; drawn like any ground mark.
-const FLAT_MARKS = { dust: [[[0x8d7c62, 0.3], [0x9d8b6e, 0.28]], 0x4a3f30], scorch: [[[0x2a1d16, 0.5], [0x1a110c, 0.55], [0x0c0806, 0.5]], 0x1a1410] };
-export function flatMark(kind, { x, y, r, squash = 1, angle = 0 }, rand) {
+// A toppled statue's stone dust (mock scene 6) is paler and greyer; lobes: how many blots make it up.
+const FLAT_MARKS = { dust: [[[0x8d7c62, 0.3], [0x9d8b6e, 0.28]], 0x4a3f30], scorch: [[[0x2a1d16, 0.5], [0x1a110c, 0.55], [0x0c0806, 0.5]], 0x1a1410],
+  stone: [[[0x9a948a, 0.3], [0xb3ada3, 0.28]], 0x1a1410] };
+export function flatMark(kind, { x, y, r, squash = 1, angle = 0, lobes = 7 }, rand) {
   const [steps, ink] = FLAT_MARKS[kind] ?? FLAT_MARKS.dust;
-  return { kind: Object.hasOwn(FLAT_MARKS, kind) ? kind : "dust", blobs: [blotch(x, y, r, steps, rand, ink, 7, squash, angle)], ticks: [] };
+  return { kind: Object.hasOwn(FLAT_MARKS, kind) ? kind : "dust", blobs: [blotch(x, y, r, steps, rand, ink, lobes, squash, angle)], ticks: [] };
 }
 
 // The dust a collapse settles in, in world px: {x, y, r, squash, angle} from collapseLayout, turned with the tile.

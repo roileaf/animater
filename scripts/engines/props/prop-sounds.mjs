@@ -13,14 +13,17 @@ export const BREAK_SOUNDS = {
 export const SPLASH_SOUNDS = names("splash", "water-splash-186748");
 // A powder keg going off: the bundled fire bursts until the explosion family ships (Task 17).
 export const BLAST_SOUNDS = ["fire-burst-260554-0", "fire-burst-260555-0", "fire-burst-637533-0"].map((id) => `modules/animater/assets/sounds/surfaces/freesound/${id}.ogg`);
+// A statue or pillar toppling: the stone family until its own recordings ship (Task 17).
+export const TOPPLE_SOUNDS = BREAK_SOUNDS.stone;
 const LIQUIDS = new Set(["water", "wine", "oil"]);
 
 const pick = (list, rand) => list[Math.min(list.length - 1, Math.floor(rand() * list.length))];
 
 // powder: a keg note's powder; "exploded" sounds the explosion in place of the material's break (spilled powder breaks
-// like its material, without a splash).
-export function propSound(material, contents, rand, { powder } = {}) {
+// like its material, without a splash). style "topple": a toppled statue sounds of falling stone, whatever its material.
+export function propSound(material, contents, rand, { powder, style } = {}) {
   if (powder === "exploded") return { file: pick(BLAST_SOUNDS, rand) };
+  if (style === "topple") return { file: pick(TOPPLE_SOUNDS, rand) };
   const list = Object.hasOwn(BREAK_SOUNDS, material) ? BREAK_SOUNDS[material] : BREAK_SOUNDS.wood;
   const out = { file: pick(list, rand) };
   if (LIQUIDS.has(contents)) out.splash = pick(SPLASH_SOUNDS, rand);
