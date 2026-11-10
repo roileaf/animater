@@ -3399,6 +3399,11 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater .an-dmg-linger{display:flex;flex-direction:column;gap:8px;padding-top:14px;border-top:1px solid var(--an-border,#34343f)}
 .animater .an-dmg-linger-buttons{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .animater .an-dmg-linger-buttons button{margin:0;height:30px;font-size:12px}
+.animater .an-dmg-friend{display:flex;flex-direction:column;gap:8px;padding-top:14px;border-top:1px solid var(--an-border,#34343f)}
+.animater .an-dmg-friend>span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--an-muted,#8f8c99)}
+.animater .an-dmg-friend .an-hint{margin:0;font-size:11px}
+.animater .an-dmg-friend label{display:flex;flex-direction:column;gap:4px;font-size:12px}
+.animater .an-dmg-friend>button{margin:0;height:30px;font-size:12px}
 .animater .an-dmg-wound{display:flex;flex-direction:column;gap:8px;padding-top:14px;border-top:1px solid var(--an-border,#34343f)}
 .animater .an-dmg-wound>span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--an-muted,#8f8c99)}
 .animater .an-dmg-wound .an-hint{margin:0;font-size:11px}

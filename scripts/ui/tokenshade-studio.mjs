@@ -109,7 +109,9 @@ export class TokenshadeStudio {
     const live = this.followsGame() ? `<div class="an-studio-card an-studio-live"><div class="an-studio-card-title"><b>Try it as the game changes</b><small>${this.live ? "Your values" : "Changing on their own until you move one"}</small></div>${Object.entries(DRIVE_SOURCES).map(([k, label]) => `<label>${esc(label)}<input type="range" data-studio-live="${k}" min="0" max="1" step="0.05" value="${this.live?.[k] ?? 0}"></label>`).join("")}</div>` : "";
     const use = has ? `<div class="an-studio-card an-studio-use"><div class="an-studio-card-title"><b>Use it</b><small>As a token filter stage in any animation</small></div>
       <div class="an-studio-use-row"><select data-studio="recipe" aria-label="Recipe to add it to"><option value="">Choose a recipe…</option>${recipes.map((r) => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join("")}</select><button type="button" class="an-studio-primary" data-action="studio-add" ${recipes.length ? "" : "disabled"}>Add to animation</button></div>
-      <button type="button" class="an-studio-ghost" data-action="studio-canvas" ${this.w.host.previewTokenFx ? "" : "disabled"}>Preview on the canvas</button></div>` : "";
+      <div class="an-studio-use-row"><button type="button" class="an-studio-ghost" data-action="studio-canvas" ${this.w.host.previewTokenFx ? "" : "disabled"}>Preview on the canvas</button>
+      <button type="button" class="an-studio-primary" data-action="studio-apply" ${this.w.host.applyTokenFx ? "" : "disabled"} title="Puts this look on the selected tokens for everyone, until you remove it">Apply to selected tokens</button>
+      <button type="button" class="an-studio-ghost" data-action="studio-unapply" ${this.w.host.removeTokenFx ? "" : "disabled"} title="Takes the looks applied from here off the selected tokens">Remove</button></div></div>` : "";
     return `<div class="an-work an-studio-work"><section class="an-library an-studio-list">
   <header class="an-studio-head"><span class="an-eyebrow">TOOLS</span><h2>Tokenshade</h2><p>Animater's own shader effects: try any, change any layer, save your own, add it to an animation.</p></header>
   <div class="an-segmented an-studio-libraries" role="group" aria-label="Preset library">${tabs}</div>
@@ -278,6 +280,19 @@ export class TokenshadeStudio {
     }
     if (action === "studio-canvas") {
       try { const handle = await this.w.host.previewTokenFx({ ...this.draft, subject: "source" }); this.setStatus("Playing on canvas · only you can see this"); setTimeout(() => void handle?.stop?.(), 8000); }
+      catch (error) { this.setStatus(error.message); }
+      return true;
+    }
+    if (action === "studio-apply") {
+      if (!this.draft) return true;
+      try {
+        const n = await this.w.host.applyTokenFx(stageForRecipe(this.draft, this.preset()), this.draft.fxPreset || "Custom look");
+        this.setStatus(`Applied to ${n} token${n === 1 ? "" : "s"} · everyone sees it until you remove it`);
+      } catch (error) { this.setStatus(error.message); }
+      return true;
+    }
+    if (action === "studio-unapply") {
+      try { const n = await this.w.host.removeTokenFx(); this.setStatus(n ? `Removed from ${n} token${n === 1 ? "" : "s"}` : "No applied looks on the selected tokens"); }
       catch (error) { this.setStatus(error.message); }
       return true;
     }
