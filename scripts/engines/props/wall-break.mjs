@@ -5,13 +5,23 @@ import { canBreak } from "./prop-material.mjs";
 import { closesWindow } from "../motion/window-state.mjs";
 import { forceDCOf } from "./force-open.mjs"; // a cycle of function declarations only (force-open reads wallTraits)
 
-const KINDS = ["door", "window"];
+const KINDS = ["door", "window", "wall"];
 const MATERIALS = ["wood", "reinforced", "metal", "stone"]; // reinforced: a reinforced wooden door
-const NOTE_MATERIALS = [...MATERIALS, "glass", "none"]; // a window's note carries glass (or none)
+export const WALL_MATERIALS = Object.freeze(["wood", "brick", "stone", "metal"]); // a breakable plain wall's structure
+const NOTE_MATERIALS = [...MATERIALS, "brick", "glass", "none"]; // a window's note carries glass (or none)
 const MARKS = ["dust", "scorch"];
 const RESTORE_KEYS = ["door", "ds", "move", "sight", "light", "sound"];
 const WINDOW_RESTORE_KEYS = ["sight", "light", "sound"]; // a broken window still blocks movement
 const WOOD_DAMAGE = new Set(["bludgeoning", "slashing", "force", "fire"]);
+// A plain wall (Table 11-4 structures): the area damage types that breach it and the smallest slammed size that does
+// (squares; Infinity: no slam). A powder-keg blast breaches any of them.
+const WALL_RULES = {
+  wood: { damage: new Set(["fire", "force"]), slam: 3 },
+  brick: { damage: new Set(["force"]), slam: 4 },
+  stone: { damage: new Set(), slam: 4 },
+  metal: { damage: new Set(), slam: Infinity },
+};
+const isSegment = (c) => Array.isArray(c) && c.length === 4 && c.every(isNum);
 const isNum = (n) => typeof n === "number" && Number.isFinite(n);
 
 // What this wall is for breaking: kind null when it cannot break (not a door and not a wall the GM marked Window, the
@@ -26,6 +36,8 @@ export function wallTraits(wall, scene, system) {
     const pane = PANES.includes(own.windowMaterial) ? own.windowMaterial : own.material;
     return { kind: "window", material: wallMaterialOf(pane, "window"), forceOpen: false, forceDC: null };
   }
+  // A plain wall the GM marked breakable (never by default, never in bulk): its structure is its own field.
+  if (!door && on && wall?.door === 0 && wallOn(wall)) return { kind: "wall", material: wallMaterialOf(own.wallMaterial, "wall"), forceOpen: false, forceDC: null };
   const material = wallMaterialOf(own.material, "door");
   return { kind: door ? "door" : null, material, forceOpen: own.forceOpen !== false, forceDC: forceDCOf(own, material, system) };
 }
@@ -34,6 +46,11 @@ export function wallTraits(wall, scene, system) {
 // Automatic existed), else Automatic: on when Animater's own window on the wall is a glass one (the light it lets
 // through: glass, leaded, mosaic, rose or frosted panes), off otherwise.
 export const GLASS_PANES = Object.freeze(["glass", "leaded", "mosaic", "rose", "frosted"]);
+// Whether the GM marked this plain wall breakable (Breakable wall: Yes). A window's own choice comes first (wallTraits).
+export function wallOn(wall) {
+  const choice = wall?.flags?.animater?.breakWall?.wall;
+  return choice === true || choice === "yes";
+}
 export function windowOn(wall) {
   const choice = wall?.flags?.animater?.breakWall?.window;
   if (choice === true || choice === "yes") return true;
@@ -48,6 +65,7 @@ const PANES = ["glass", "none"];
 export function wallMaterialOf(raw, kind) {
   const list = Array.isArray(raw) ? raw : [raw];
   if (kind === "window") return [...list].reverse().find((m) => PANES.includes(m)) === "none" ? "none" : "glass";
+  if (kind === "wall") return list.find((m) => WALL_MATERIALS.includes(m)) ?? "wood";
   return list.find((m) => MATERIALS.includes(m)) ?? "wood";
 }
 
@@ -78,8 +96,12 @@ export function wallFormDoor(wall, selected) {
 // Whether this cause breaks a wall of these traits. A pure damage and slam rule: Force Open and smash have their own rule.
 // A blast breaks any door or window the GM has not set to Won't break.
 export function canBreakWall(traits, cause = {}) {
-  if (cause.blast === true) return (traits?.kind === "door" || traits?.kind === "window") && traits.material !== "none";
+  if (cause.blast === true) return (traits?.kind === "door" || traits?.kind === "window" || traits?.kind === "wall") && traits.material !== "none";
   const size = Number(cause.slam?.size), slam = Number.isFinite(size) ? size : 0;
+  if (traits?.kind === "wall") {
+    const rule = WALL_RULES[traits.material] ?? WALL_RULES.wood;
+    return rule.damage.has(cause.damageType) || slam >= rule.slam;
+  }
   if (traits?.kind === "window") return traits.material === "glass" && (canBreak("glass", { damageType: cause.damageType }) || slam > 0);
   if (traits?.kind !== "door") return false;
   if (traits.material === "wood") return WOOD_DAMAGE.has(cause.damageType) || slam >= 2;
@@ -113,9 +135,23 @@ export function readWallNote(raw) {
   if (!isNum(seed) || !isNum(cutAngle) || !from || !isNum(from.x) || !isNum(from.y)) return null;
   if (!KINDS.includes(kind) || !NOTE_MATERIALS.includes(material) || !MARKS.includes(mark)) return null;
   const note = { seed, cutAngle, from: { x: from.x, y: from.y }, kind, material, mark };
+  // A breached wall: the gap's segment, and the part B the breach made (null: none).
+  if (kind === "wall") {
+    if (!isSegment(raw.gap)) return null;
+    note.gap = [...raw.gap];
+    if (raw.partId !== undefined) {
+      if (raw.partId !== null && (typeof raw.partId !== "string" || !raw.partId || raw.partId.length > 64)) return null;
+      note.partId = raw.partId;
+    }
+  }
   if (restore !== undefined) {
     if (!restore || typeof restore !== "object") return null;
     const kept = {};
+    // A breached wall's whole segment as it was.
+    if (restore.c !== undefined) {
+      if (!isSegment(restore.c)) return null;
+      kept.c = [...restore.c];
+    }
     for (const k of RESTORE_KEYS) if (restore[k] !== undefined) {
       if (!Number.isInteger(restore[k])) return null;
       kept[k] = restore[k];
@@ -151,13 +187,13 @@ export function wallBreakUpdate(wall, note) {
   return { _id: wall.id, door: 0, ds: 0, move: 0, sight: 0, light: 0, sound: 0, "flags.animater.breakWall.broken": { ...note, restore } };
 }
 
-// Repair: a broken wall back as it was, and a hit door back to full HP (its hp flag goes; the hits it remembers stay,
+// Repair: a broken wall back as it was (a breached one's whole segment too: wall-breach.mjs deletes its part B), and a hit door back to full HP (its hp flag goes; the hits it remembers stay,
 // so a roll already applied never applies again).
 export function wallRestoreUpdate(wall) {
   const own = wall?.flags?.animater?.breakWall, note = readWallNote(own?.broken), hp = own?.hp !== undefined && own?.hp !== null;
   const healed = hp ? { "flags.animater.breakWall.-=hp": null } : {};
   if (!note?.restore) return hp ? { _id: wall.id, ...healed } : null;
-  const { windowKind, windowOpen, ...fields } = note.restore, up = { _id: wall.id, ...fields };
+  const { windowKind, windowOpen, c, ...fields } = note.restore, up = { _id: wall.id, ...(c ? { c: [...c] } : {}), ...fields };
   if (windowKind !== undefined) { if (windowKind === null) up["flags.animater.-=window"] = null; else up["flags.animater.window"] = windowKind; }
   if (windowOpen !== undefined) up["flags.animater.windowOpen"] = windowOpen;
   return { ...up, "flags.animater.breakWall.-=broken": null, ...healed };

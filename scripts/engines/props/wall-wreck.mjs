@@ -3,7 +3,7 @@
 // shattered window: the pane gone dark with glass teeth in the frame, pale shards fanned out past the wall (a few on the
 // near side), a handful of glints that twinkle once. One Container per wreck on the primary canvas, on the wall's
 // level's floor, sorted above the tiles.
-import { doorWreckLayout, windowWreckLayout, wallWreckTargets, wallLevelBase, doorCrackLayout, crackSeed, DOOR_COLOUR, IRON_TONES, STONE_TONES, SPLINTER_TONES } from "./wall-wreck-layout.mjs";
+import { doorWreckLayout, breachWreckLayout, windowWreckLayout, wallWreckTargets, wallLevelBase, doorCrackLayout, crackSeed, DOOR_COLOUR, IRON_TONES, STONE_TONES, SPLINTER_TONES } from "./wall-wreck-layout.mjs";
 import { flatMark } from "./prop-wreck-layout.mjs";
 import { paintMark, paintShard } from "./prop-wreck.mjs";
 import { wallSound } from "./prop-sounds.mjs";
@@ -124,7 +124,8 @@ export function createWallWreckage({ PIXI, layer, grid, playSound = () => {} }) 
   const gridOf = () => (typeof grid === "function" ? grid() : grid) || 100;
   const layerOf = () => (typeof layer === "function" ? layer() : layer);
   const sortLayer = () => globalThis.canvas?.primary?.constructor?.SORT_LAYERS?.TILES ?? globalThis.foundry?.canvas?.groups?.PrimaryCanvasGroup?.SORT_LAYERS?.TILES;
-  const keyOf = (d, note) => `${note.seed}:${note.cutAngle}:${note.mark}:${(d.c ?? []).join(",")}`;
+  // A breach's wreck lies along its gap (the note's own), the same before and after the GM splits the wall.
+  const keyOf = (d, note) => `${note.seed}:${note.cutAngle}:${note.mark}:${(note.kind === "wall" ? note.gap : d.c ?? []).join(",")}`;
 
   const release = (e) => {
     e.stop?.();
@@ -141,7 +142,8 @@ export function createWallWreckage({ PIXI, layer, grid, playSound = () => {} }) 
     g.lineStyle(0).beginFill(0x2e2620, 0.8).drawPolygon(L.gap.inner).endFill();
     // Each stub in its own frame: x along its rot into the doorway, y across the wall (half the door's thickness).
     const profile = [[0, -1], [12, -1], [7, -0.45], [15, 0], [6, 0.55], [10, 1], [0, 1]];
-    const stone = L.look === "stone", body = stone ? STONE_TONES[1] : DOOR_COLOUR, fresh = stone ? 0xcfc9bd : FRESH;
+    const stone = L.look === "stone", iron = L.look === "iron";
+    const body = L.stubTone ?? (stone ? STONE_TONES[1] : DOOR_COLOUR), fresh = stone ? 0xcfc9bd : iron ? IRON_TONES[2] : FRESH;
     for (const s of L.stubs) {
       const c = Math.cos(s.rot), sn = Math.sin(s.rot), h = L.doorHalf, f = s.len / 15;
       const pts = profile.flatMap(([x, y]) => { const px = x * f, py = y * h; return [s.x + px * c - py * sn, s.y + px * sn + py * c]; });
@@ -216,7 +218,7 @@ export function createWallWreckage({ PIXI, layer, grid, playSound = () => {} }) 
   }
 
   function draw(d, note, entry, animate) {
-    const grid = gridOf(), k = grid / 100, mid = wallMid(d);
+    const grid = gridOf(), k = grid / 100, mid = note.kind === "wall" ? wallMid({ c: note.gap }) : wallMid(d);
     const box = new PIXI.Container(); entry.box = box;
     const scene = d.parent;
     box.elevation = wallLevelBase(d.levels, scene?.levels?.contents ?? scene?.levels ?? [], scene?.initialLevel?.id ?? null);
@@ -248,9 +250,10 @@ export function createWallWreckage({ PIXI, layer, grid, playSound = () => {} }) 
     look.frame(0); raf = requestAnimationFrame(tick);
   }
 
-  // A door: the gap and stubs, the mark, planks thrown through, splinters and (seen happening) dust.
+  // A door: the gap and stubs, the mark, planks thrown through, splinters and (seen happening) dust. A breached wall the
+  // same, along its gap: its planks, stone or brick chunks, or iron plates.
   function doorLook(d, note, entry, box, { grid, k, mid, animate }) {
-    const L = doorWreckLayout(note, d, grid), [x1, y1, x2, y2] = d.c;
+    const wall = note.kind === "wall", L = wall ? breachWreckLayout(note, grid) : doorWreckLayout(note, d, grid), [x1, y1, x2, y2] = wall ? note.gap : d.c;
     box.addChild(drawGap(L, k));
     const mark = paintMark(PIXI, flatMark(L.mark.kind, { ...L.mark, squash: 0.6, angle: Math.atan2(y2 - y1, x2 - x1) }, seededRandom((note.seed >>> 0) * 31 + 9)), entry.textures);
     box.addChild(mark);

@@ -292,6 +292,15 @@ What happens to each kind of prop:
 - An area only breaks things when it was placed on the map for that spell (its template or region), by that player or a GM, in the last 10 minutes, on the same level, and the damage types come from the spell itself. The GM's screen checks this (also for an area placed before the GM's screen loaded), so a player can't break a door or set off spilled powder without a real area over it.
 - **GM smash:** Shift+right-click a door's control icon to smash it open (from the selected token's side, if one is selected), in any game system.
 
+**Breakable walls.** On a plain wall (Door Type None, not a window) the **Breakable** box has **Breakable wall** (**No** by default, or **Yes**) and **Material**: **Wood** (palisade, plank wall), **Brick**, **Stone** (masonry) or **Metal** (iron plate). Only walls you mark can break, and the scene buttons for doors and windows never mark walls.
+
+- **What breaches it:** wood, a fire or force area, a powder keg, or a Huge or bigger creature forced or charging into it; brick, a force area, a keg, or a Gargantuan creature; stone, a keg or a Gargantuan creature; metal, only a keg. Misses and strikes never breach a wall.
+- **Where:** an area breaches a wall where the area's centre meets it (straight across to the wall), and only when that spot is inside the area; a keg where the wall is nearest the keg, within its burst; a slammed creature where it hits the wall.
+- **The breach:** a gap one square wide (two for a powder keg) opens there, kept inside the wall; a wall shorter than a square and a half opens whole. The rest of the wall stands. Creatures, sight, light and sound pass through the gap. A ragged hole is painted over it and debris lies on the far side from the hit: splintered planks for wood, stone or brick chunks and dust, bent iron plates, shards and sparks for metal. Wood sounds like a door bursting, stone and brick like falling stone, metal clatters. Every screen sees the same wreck, and after a reload it lies there settled.
+- **Breach wall (GM):** the Animater controls have a **Breach wall** button. Click it, then click on a breakable wall (it lights up under the pointer) to breach it there at once; the debris flies away from your selected token, or from the side you clicked. Escape or right click cancels. **Show the Breach wall button** in the settings hides it.
+- **In PF2e** the wall's configuration shows its Hardness, HP and Broken Threshold (core rules: wood 10/40/20, brick 12/48/24, stone 14/56/28, iron 18/72/36). Walls can't be attacked yet.
+- **Repair broken props** closes every breach: the wall is put back exactly as it was. If you move or change either piece of a breached wall by hand, your edit stays and Repair leaves that wall alone; if you delete the second piece by hand, Repair still puts the whole wall back.
+
 **Force open from the door.** In PF2e, SF2e, D&D 5e, Daggerheart and Draw Steel, a player right-clicks a closed or locked breakable door's control icon and is asked "Force it open? Athletics vs DC 15" (in the system's words). It rolls for their selected token, or their only token within 1 square of the door. A GM does the same for a selected token with Alt+right-click. A roll that meets the DC breaks the door open.
 
 - **PF2e and SF2e:** the system's Force Open action with the door's DC; a success or critical success breaks it. A Force Open rolled from the character sheet without a DC is checked against the DC of the closest closed breakable door within 1 square.
@@ -340,7 +349,7 @@ The wreck is cut from the decoration's own painting, and every screen sees the s
 
 A scattered decoration is known by where it stands. Editing the region so its decorations move (its shape, **How dense**, **Size**, a kind's size or how many, ticking kinds, **Reshuffle**, or rubbing out with the brush) brings its decorations back whole, and a toppled one's rubble goes with it. Undoing that edit brings the other breaks back. Decorations you painted by hand keep their breaks for as long as they stay.
 
-**Repair broken props** puts back everything: props, their walls, doors (locked ones locked again), windows, the lights that went out, broken decorations, and rubble regions; burning oil's lights go too.
+**Repair broken props** puts back everything: props, their walls, doors (locked ones locked again), windows, breached walls, the lights that went out, broken decorations, and rubble regions; burning oil's lights go too.
 
 What breaks what: glass and clay break from any bludgeoning, piercing, slashing, fire, cold, electricity, acid, sonic or force damage; wood from bludgeoning, slashing, fire, electricity or force; metal from bludgeoning, force or acid; stone from force. A creature forced into wood, glass or clay breaks it; into metal or stone, only a Large or bigger creature does. Poison, mental, spirit, vitality, void and bleed never break a prop. Deleting a broken tile puts its walls back as they were.
 

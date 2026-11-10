@@ -47,7 +47,10 @@ export function propSound(material, contents, rand, { powder, style } = {}) {
 // wall-wreck.mjs. material: a metal door clatters (the metal-clatter family), a stone one falls like stone (stone-topple).
 const WALL_SOUNDS = { door: DOOR_SOUNDS, window: BREAK_SOUNDS.glass };
 const DOOR_MATERIAL_SOUNDS = { metal: TIP_SOUNDS, stone: TOPPLE_SOUNDS };
+// A breached wall: stone and brick fall like stone (stone-topple), wood bursts like a door, metal clatters.
+const BREACH_SOUNDS = { wood: DOOR_SOUNDS, brick: TOPPLE_SOUNDS, stone: TOPPLE_SOUNDS, metal: TIP_SOUNDS };
 export function wallSound(kind, rand, material) {
+  if (kind === "wall") return { file: pick(Object.hasOwn(BREACH_SOUNDS, material) ? BREACH_SOUNDS[material] : BREACH_SOUNDS.wood, rand) };
   if (kind === "door" && Object.hasOwn(DOOR_MATERIAL_SOUNDS, material)) return { file: pick(DOOR_MATERIAL_SOUNDS[material], rand) };
   return { file: pick(Object.hasOwn(WALL_SOUNDS, kind) ? WALL_SOUNDS[kind] : WALL_SOUNDS.door, rand) };
 }

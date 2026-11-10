@@ -1,0 +1,98 @@
+// Breakable walls: where a breach opens in a plain wall, the split the GM writes for it, and the Repair that puts the
+// wall back. Pure: no Foundry globals. A breach is a gap in the wall's segment: the original wall becomes the part before
+// the gap (part A, carrying the note with everything Repair needs) and a copy of it is made for the part after (part B).
+import { wallTraits, readWallNote, wallRestoreUpdate } from "./wall-break.mjs";
+import { onLevel } from "./prop-pick.mjs";
+
+export const BREACH_SQUARES = 1, BLAST_BREACH_SQUARES = 2; // the gap's length
+const WHOLE_BELOW = 1.5; // squares: a shorter segment opens whole
+const SLIVER = 0.25; // squares: a piece shorter than this left at an end opens with the gap
+const PICK_REACH = 0.5; // squares: the GM's click picks a wall this close
+const finite = (p) => Number.isFinite(p?.x) && Number.isFinite(p?.y);
+const segment = (c) => Array.isArray(c) && c.length === 4 && c.every(Number.isFinite);
+const intact = (w) => !w?.flags?.animater?.breakWall?.broken;
+
+// The point of the wall segment c nearest p: {x, y, along (px from its first end), len}.
+export function projectOnWall(c, p) {
+  const [x1, y1, x2, y2] = c, dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+  if (!len) return { x: x1, y: y1, along: 0, len: 0 };
+  const along = Math.max(0, Math.min(len, ((p.x - x1) * dx + (p.y - y1) * dy) / len));
+  return { x: x1 + (dx * along) / len, y: y1 + (dy * along) / len, along, len };
+}
+
+// Where the line a-b crosses the wall segment c, or null when it does not (touching an end does not count).
+export function crossingPoint(a, b, c) {
+  const [x1, y1, x2, y2] = c, rx = b.x - a.x, ry = b.y - a.y, sx = x2 - x1, sy = y2 - y1, den = rx * sy - ry * sx;
+  if (!den) return null;
+  const u = ((x1 - a.x) * sy - (y1 - a.y) * sx) / den, v = ((x1 - a.x) * ry - (y1 - a.y) * rx) / den;
+  if (u <= 0 || u >= 1 || v <= 0 || v >= 1) return null;
+  return { x: a.x + rx * u, y: a.y + ry * u };
+}
+
+// The gap a breach of `squares` opens at the hit point (projected onto the segment, the gap clamped inside it) and the
+// wall pieces left either side ([] when the whole segment opens: it is shorter than 1.5 squares, or than the gap).
+// Coordinates are whole numbers, as Foundry keeps a wall's.
+export function breachSplit(c, hit, { grid = 100, squares = BREACH_SQUARES } = {}) {
+  const [x1, y1, x2, y2] = c, p = projectOnWall(c, finite(hit) ? hit : { x: (x1 + x2) / 2, y: (y1 + y2) / 2 }), L = p.len, g = squares * grid;
+  if (L < WHOLE_BELOW * grid || g >= L) return { gap: [...c], parts: [] };
+  const mid = Math.max(g / 2, Math.min(L - g / 2, p.along));
+  let t0 = mid - g / 2, t1 = mid + g / 2;
+  if (t0 < SLIVER * grid) t0 = 0;
+  if (L - t1 < SLIVER * grid) t1 = L;
+  const at = (t) => [Math.round(x1 + ((x2 - x1) * t) / L), Math.round(y1 + ((y2 - y1) * t) / L)];
+  const a = at(t0), b = at(t1), parts = [];
+  if (t0 > 0) parts.push([x1, y1, ...a]);
+  if (t1 < L) parts.push([...b, x2, y2]);
+  return { gap: [...a, ...b], parts };
+}
+
+// The write that breaches part A (the original wall): its first piece's c (or, with no piece left, its passage open),
+// and the note with what the wall was (restore: c and its restrictions) and the part B made for the second piece.
+export function wallBreachUpdate(wall, note, split, partId = null) {
+  const restore = { c: [...wall.c], move: wall.move, sight: wall.sight, light: wall.light, sound: wall.sound };
+  const broken = { ...note, partId: split.parts.length > 1 && typeof partId === "string" ? partId : null, restore };
+  const open = split.parts.length ? { c: [...split.parts[0]] } : { move: 0, sight: 0, light: 0, sound: 0 };
+  return { _id: wall.id, ...open, "flags.animater.breakWall.broken": broken };
+}
+
+// Part B's creation data: a copy of the original wall (source: its toObject()) on the second piece, keeping its fields
+// and flags but not its note, naming the wall it was split from (breachOf).
+export function breachPartData(source, c, ofId) {
+  const data = structuredClone(source ?? {});
+  delete data._id; delete data._stats;
+  data.c = [...c];
+  data.flags ??= {}; data.flags.animater ??= {};
+  const { broken, hp, hits, ...own } = data.flags.animater.breakWall ?? {};
+  data.flags.animater.breakWall = { ...own, breachOf: ofId };
+  return data;
+}
+
+// The wall a part B was split from, or null.
+export function breachPartOf(wall) {
+  const id = wall?.flags?.animater?.breakWall?.breachOf;
+  return typeof id === "string" && id ? id : null;
+}
+
+// Repair: every broken wall back as it was (wallRestoreUpdate), and every part B a breach made deleted (those still
+// there). A wall being deleted is not also updated.
+export function wallRepairPlan(walls) {
+  const ids = new Set((walls ?? []).map((w) => w?.id)), deletes = [];
+  for (const w of walls ?? []) {
+    const part = readWallNote(w?.flags?.animater?.breakWall?.broken)?.partId;
+    if (typeof part === "string" && ids.has(part) && !deletes.includes(part)) deletes.push(part);
+  }
+  const updates = (walls ?? []).filter((w) => !deletes.includes(w?.id)).map(wallRestoreUpdate).filter(Boolean);
+  return { updates, deletes };
+}
+
+// The GM tool's pick: the nearest intact breakable plain wall within half a square of the click p, on the levels.
+export function breachWallAt(p, walls, scene, grid = 100, levels) {
+  if (!finite(p)) return null;
+  let best = null, bestD = PICK_REACH * grid;
+  for (const w of walls ?? []) {
+    if (!segment(w?.c) || !intact(w) || !onLevel(w.levels, levels) || wallTraits(w, scene).kind !== "wall") continue;
+    const q = projectOnWall(w.c, p), d = Math.hypot(q.x - p.x, q.y - p.y);
+    if (d <= bestD) { best = w; bestD = d; }
+  }
+  return best;
+}

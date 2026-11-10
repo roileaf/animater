@@ -11,6 +11,7 @@ import { missBreaks } from "./prop-break.mjs";
 import { blastFrom, inBurst } from "./prop-blast.mjs";
 import { areaCauseRefusal } from "./prop-areas.mjs";
 import { doorAttackCheck } from "./door-attack.mjs";
+import { projectOnWall, crossingPoint, breachSplit, wallBreachUpdate, BREACH_SQUARES, BLAST_BREACH_SQUARES } from "./wall-breach.mjs";
 
 export const WALL_BREAK_MESSAGE = "prop-wall-break";
 const KINDS = ["area", "path", "smash", "force-open", "miss", "through", "blast", "attack"];
@@ -20,6 +21,11 @@ const MISS_CHANCE = 25; // percent: a plain ranged miss breaks a window (the sce
 const OWN_RULE = new Set(["smash", "force-open", "attack"]);
 // Not c: Repair restores no position, so a moved broken door keeps its note (and its originals) as it was.
 const EDIT_KEYS = ["door", "move", "sight", "light", "sound"];
+// A breached wall's pieces are where the breach put them: moving either is the GM's own edit.
+const BREACH_EDIT_KEYS = [...EDIT_KEYS, "c"];
+// What may breach a plain wall: an area's damage, a slam, a keg's blast, the GM's Breach wall tool.
+const WALL_CAUSES = new Set(["area", "path", "blast", "breach"]);
+const BREACH_REACH = 1; // squares: the GM tool's click lies this close to the wall
 const SHOVE_REACH = 2; // squares from the slam's start to a token of the sender's
 const finite = (p) => Number.isFinite(p?.x) && Number.isFinite(p?.y);
 const centreOf = (r) => (r ? { x: r.x + r.w / 2, y: r.y + r.h / 2 } : null);
@@ -125,6 +131,7 @@ export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mo
   if (!wall) return no("missing");
   if (wall.flags?.animater?.breakWall?.broken) return no("broken");
   const traits = wallTraits(wall, scene, system), cause = req?.cause ?? {};
+  if (traits.kind === "wall") return breachRequest(req, cause, traits, { wall, scene, grid, sender, mover, senderTokens, levels, source, area, now });
   if (!traits.kind || !KINDS.includes(cause.kind)) return no("kind");
   if (ATTACKS.has(cause.kind) && traits.kind !== "window") return no("kind");
   if (traits.kind === "window" && OWN_RULE.has(cause.kind)) return no("kind"); // smash and Force Open are for doors
@@ -170,6 +177,52 @@ export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mo
   return { ok: true, note, update: wallBreakUpdate(wall, note) };
 }
 
+// A plain wall's breach (wall-breach.mjs): the GM checks the trigger as for a door, then works out the breach point from
+// the trigger's own geometry (an area's centre, as the GM's own record of the area holds it, projected onto the wall and
+// inside the area; the keg's centre projected, within its burst; the crossing of the slam's path; the GM's click, within a
+// square of the wall) and the gap (a square; a blast's two). Only the seed is the requester's (and, for the GM's own tool,
+// where the blow came from). {ok, note, split, update}: update writes part A without part B's id; the GM's write creates
+// part B first and names it (wallBreachUpdate).
+function breachRequest(req, cause, traits, { wall, scene, grid, sender, mover, senderTokens, levels, source, area, now }) {
+  const no = (why) => ({ ok: false, why });
+  if (!WALL_CAUSES.has(cause.kind) || !Array.isArray(wall.c)) return no("kind");
+  if (cause.kind === "breach" && sender.isGM !== true) return no("sender");
+  if (cause.kind === "path" && !slamSenderOk({ sender, mover, from: cause.path?.from, senderTokens, grid })) return no("sender");
+  if (cause.kind !== "breach" && !canBreakWall(traits, breakCause(cause, mover))) return no("material");
+  const raw = req?.note;
+  if (!raw || !Number.isFinite(raw.seed)) return no("note");
+  if (levels !== undefined && !onLevel(wall.levels, levels)) return no("far");
+  let hit = null, from = null;
+  if (cause.kind === "area") {
+    from = finite(area?.at) ? area.at : finite(cause.at) ? cause.at : null;
+    if (!from) return no("area");
+    hit = projectOnWall(wall.c, from);
+    const why = areaCauseRefusal(cause, hit, wall.levels, { area, sceneId: scene.id, sender, now, grid });
+    if (why) return no(why);
+  } else if (cause.kind === "blast") {
+    const b = blastFrom(source);
+    if (!b) return no("far");
+    from = b.centre; hit = projectOnWall(wall.c, from);
+    if (!inBurst(hit, b.centre, b.burst, grid) || !onLevel(wall.levels, levels ?? source.levels)) return no("far");
+  } else if (cause.kind === "path") {
+    if (!plausible(cause, wall, grid, mover)) return no("far");
+    from = cause.path.from; hit = crossingPoint(cause.path.from, cause.path.to, wall.c);
+    if (!hit) return no("far");
+  } else {
+    if (!finite(cause.at)) return no("far");
+    hit = projectOnWall(wall.c, cause.at);
+    if (Math.hypot(hit.x - cause.at.x, hit.y - cause.at.y) > BREACH_REACH * grid) return no("far");
+    from = finite(raw.from) ? raw.from : cause.at;
+  }
+  const squares = cause.kind === "blast" ? BLAST_BREACH_SQUARES : BREACH_SQUARES;
+  const split = breachSplit(wall.c, hit, { grid, squares });
+  // The cut runs from the blow to the breach point; a blow on the wall's own line (the GM's click) runs across the wall.
+  const [x1, y1, x2, y2] = wall.c, dx = hit.x - from.x, dy = hit.y - from.y;
+  const cutAngle = Math.hypot(dx, dy) > 1e-6 ? Math.atan2(dy, dx) : Math.atan2(x2 - x1, -(y2 - y1));
+  const note = { ...wallNote({ seed: raw.seed, cutAngle, from, kind: "wall", material: traits.material, damageType: cause.kind === "blast" ? "fire" : cause.damageType }), gap: split.gap };
+  return { ok: true, note, split, update: wallBreachUpdate(wall, note, split, null) };
+}
+
 // Whether a request breaks for sure once the GM finds it plausible (no chance roll to wait for), so the requester shows it
 // at once: anything but a plain melee miss at a window beside the target (not crossed by the swing's line). attacker and
 // target: footprints {x, y, w, h}.
@@ -198,11 +251,12 @@ function forceOpenCheck({ wall, scene, grid, sender, message, token, walls, syst
 }
 
 // Whether a wall update is someone's own edit of its door or restrictions (not a break or Repair of ours, not flags only).
-export function handEdited(changes, options) {
+// note: the wall's broken note (or {kind: "wall"} for a breach's part B): a breached wall's position counts too.
+export function handEdited(changes, options, note) {
   if (!changes || typeof changes !== "object") return false;
   const ours = options?.animater ?? {};
   if (ours.wallBreak || ours.wallRepair) return false;
-  return EDIT_KEYS.some((k) => k in changes);
+  return (note?.kind === "wall" ? BREACH_EDIT_KEYS : EDIT_KEYS).some((k) => k in changes);
 }
 
 // The write that forgets a hand-edited broken wall's note (its wreck goes, Repair leaves the edit alone).

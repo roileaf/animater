@@ -4,6 +4,7 @@
 // keeps `powder` ("spilled" | "exploded") and `burst` (squares, 1-4).
 import { propMaterial } from "./prop-material.mjs";
 import { wallTraits, canBreakWall, wallMid } from "./wall-break.mjs";
+import { projectOnWall } from "./wall-breach.mjs";
 import { onLevel } from "./prop-pick.mjs";
 import { BURST_DEFAULT } from "./prop-traits.mjs";
 
@@ -49,7 +50,8 @@ export function blastTargets({ centre, burst = BURST_DEFAULT, grid = 100, tiles 
   for (const w of walls ?? []) {
     if (!w?.c || w.flags?.animater?.breakWall?.broken || !onLevel(w.levels, levels)) continue;
     if (!canBreakWall(wallTraits(w, scene), { blast: true })) continue;
-    const d = dist(wallMid(w), centre);
+    // a plain wall is reached by its nearest point (where the breach opens), a door or window by its middle
+    const d = dist(wallTraits(w, scene).kind === "wall" ? projectOnWall(w.c, centre) : wallMid(w), centre);
     if (d <= radius + EDGE) out.push({ type: "wall", id: w.id, delay: blastDelay(d, radius) });
   }
   return out.sort((a, b) => a.delay - b.delay);

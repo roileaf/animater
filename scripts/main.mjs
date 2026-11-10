@@ -26,7 +26,8 @@ import { propMaterial } from "./engines/props/prop-material.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls, blockingWalls, wallStop } from "./engines/props/prop-walls.mjs";
-import { wallMid, readWallNote, wallRepairUpdates, wallTraits, wallBreakFormMerge, wallFormDoor, canBreakWall } from "./engines/props/wall-break.mjs";
+import { wallMid, readWallNote, wallTraits, wallBreakFormMerge, wallFormDoor, canBreakWall } from "./engines/props/wall-break.mjs";
+import { wallBreachUpdate, breachPartData, wallRepairPlan, breachWallAt, breachPartOf, crossingPoint } from "./engines/props/wall-breach.mjs";
 import { firePatchAt } from "./engines/props/prop-wreck-layout.mjs";
 import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest, handEdited, handEditUpdate, slamSenderOk, breaksSure } from "./engines/props/wall-break-requests.mjs";
 import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, smashFrom, nextToMiss } from "./engines/props/wall-triggers.mjs";
@@ -40,7 +41,7 @@ import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/pro
 import { DECOR_BREAK_MESSAGE, DECOR_NAMES, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
-import { bulkBreakableUpdates } from "./engines/props/wall-break-bulk.mjs";
+import { bulkBreakableUpdates, isWindowWall } from "./engines/props/wall-break-bulk.mjs";
 import { damageTypesOfItem, areaIdOf, areaOriginRefOf, placedRecordOf, typesBreaking, rollDamageTypes } from "./engines/props/area-damage.mjs";
 import { createPlayWatch, strikeMoment, momentWait } from "./engines/props/play-moments.mjs";
 import { askClaimed, createAreaWaits, AREA_TTL_MS, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
@@ -3817,6 +3818,8 @@ Hooks.on("getSceneControlButtons", (controls) => {
       onChange: () => clearRubbleAsk() });
     add({ name: "animaterRepairProps", title: "Repair broken props: put every broken prop, decoration, door and window in this scene back", icon: "fa-solid fa-hammer", order: order + 1.5, button: true, visible: toolShown("toolRepairProps"),
       onChange: () => repairPropsAsk() });
+    add({ name: "animaterBreachWall", title: "Breach wall: click on a wall marked breakable to smash a gap in it there", icon: "fa-solid fa-block-brick", order: order + 1.6, button: true, visible: toolShown("toolBreachWall"),
+      onChange: () => aimBreach() });
     add({ name: "animaterClearBlood", title: "Clear blood: wipe the blood off the floor, on every screen", icon: "fa-solid fa-droplet-slash", order: order + 2, button: true, visible: toolShown("toolClearBlood"),
       onChange: () => clearBloodEverywhere() });
     add({ name: "animaterSplatBlood", title: "Splat blood: fresh blood on the ground around the selected tokens, kept with the scene", icon: "fa-solid fa-droplet", order: order + 2.25, button: true, visible: toolShown("toolSplatBlood"),
@@ -3882,6 +3885,41 @@ const repairPropsAsk = async () => {
     if (!await foundry.applications.api.DialogV2.confirm({ window: { title: "Repair broken props" }, content: "<p>Unhide every broken prop in this scene and put its walls, doors, windows and decorations back?</p>", rejectClose: false })) return;
     await repairAllProps(scene);
   } catch (e) { runtime?.trace("props", `repair: ${e?.message ?? e}`); } finally { repairAsking = false; }
+};
+// The toolbar's Breach wall (GM): the breakable wall under the pointer lights up; a click breaches it there, as the GM's
+// own smash (wall-breach.mjs breachWallAt picks it; the GM's write checks it as any breach). Escape or right click cancels.
+// The blow comes from the GM's one controlled token, else from the side of the wall clicked on.
+const aimBreach = () => {
+  stopCaveInAim();
+  if (!game.user?.isGM || !canvas?.ready) return;
+  const scene = canvas.scene;
+  if (scene?.flags?.[ID]?.breakableProps !== true || scene.flags[ID].breakWalls === false) { ui.notifications?.warn("Breach wall: this scene needs Breakable props and Doors and windows break on."); return; }
+  const glow = new PIXI.Graphics(); glow.eventMode = "none"; (canvas.interface ?? canvas.stage).addChild(glow);
+  const at = (e) => canvas.canvasCoordinatesFromClient({ x: e.clientX, y: e.clientY }), onCanvas = (e) => e.target === canvas.app.view;
+  const pick = (p) => breachWallAt(p, (scene.walls?.contents ?? []).map(wallView), scene, propGrid(scene), canvas.level?.id);
+  const move = (e) => {
+    if (!onCanvas(e)) return;
+    const w = pick(at(e));
+    glow.clear();
+    if (w) { const [x1, y1, x2, y2] = w.c; glow.lineStyle(10 / (canvas.stage.scale.x || 1), 0xff8a3d, 0.75).moveTo(x1, y1).lineTo(x2, y2); }
+  };
+  const down = (e) => {
+    if (!onCanvas(e)) return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    const p = e.button === 0 ? at(e) : null;
+    stopCaveInAim();
+    if (!p) return;
+    const w = pick(p), doc = w ? scene.walls.get(w.id) : null;
+    if (!doc) { ui.notifications?.info("Breach wall: no breakable wall there. Mark a wall Breakable wall: Yes in its configuration first."); return; }
+    const mine = canvas.tokens?.controlled ?? [], t = mine.length === 1 ? mine[0] : null;
+    const from = t?.center ? { x: t.center.x, y: t.center.y } : { x: p.x, y: p.y };
+    void requestWallBreak(doc, { kind: "breach", at: { x: p.x, y: p.y } }, { from }).catch((err) => runtime?.trace("props", `breach: ${err?.message ?? err}`));
+  };
+  const key = (e) => { if (e.key === "Escape") { e.stopImmediatePropagation(); stopCaveInAim(); } };
+  const none = () => {};
+  caveInAim = { ring: glow, move, down, key, up: none, wheel: none };
+  window.addEventListener("pointermove", move, true); window.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key, true);
+  ui.notifications?.info("Breach wall: click on a breakable wall to breach it there. Escape or right click to cancel.");
 };
 let rubbleAsking = false;
 const clearRubbleAsk = async () => {
@@ -8359,6 +8397,20 @@ async function requestWallBreak(wall, cause, { from } = {}) {
   game.socket.emit(`module.${ID}`, { type: WALL_BREAK_MESSAGE, sender: clientId, sceneId: scene.id, wallId: doc.id, cause: clean, note });
   return true;
 }
+// A breached wall (wall-breach.mjs): part B (a copy of the wall on the gap's far piece) is made first, then the wall becomes
+// part A with the note naming it. A failed write takes part B away again.
+async function writeBreach(scene, doc, check) {
+  let partId = null;
+  if (check.split.parts.length > 1) {
+    const [made] = await scene.createEmbeddedDocuments("Wall", [breachPartData(doc.toObject(), check.split.parts[1], doc.id)], { animater: { wallBreak: true } });
+    partId = made?.id ?? null;
+    if (!partId) return false;
+  }
+  const { _id, ...update } = wallBreachUpdate(wallView(doc), check.note, check.split, partId);
+  try { await doc.update(update, { animater: { wallBreak: true }, sound: false }); }
+  catch (e) { if (partId) await scene.deleteEmbeddedDocuments("Wall", [partId]).catch(() => {}); throw e; }
+  return true;
+}
 async function applyWallBreak(scene, doc, cause, rawNote, user) {
   if (!game.users.activeGM?.isSelf || !scene || !doc || wallWriting.has(doc.id)) return false;
   wallWriting.add(doc.id);
@@ -8379,6 +8431,7 @@ async function applyWallBreak(scene, doc, cause, rawNote, user) {
     }
     const check = validWallBreakRequest({ cause, note: rawNote }, { wall: wallView(doc), scene, grid, sender: user, roll: Math.random(), ...await wallPlace(cause, scene, grid, user), ...blastPlace(cause, scene), ...areaPlace(cause, user) });
     if (!check.ok) { runtime?.trace("props", `door not broken: ${check.why}`); return false; }
+    if (check.split) return await writeBreach(scene, doc, check);
     const { _id, ...update } = check.update;
     await doc.update(update, { animater: { wallBreak: true }, sound: false });
     if (hit) { doorHitsUsed.add(cause.messageId); postDoorLine(hit); }
@@ -8416,13 +8469,16 @@ async function undoPropBreak(doc, { deleted = false } = {}) {
 async function repairAllProps(scene = canvas?.scene) {
   if (!game.user?.isGM || !scene) return 0;
   const walls = scene.walls?.contents ?? [], r = repairUpdates(scene.tiles.contents.map(propTileView), walls, { lights: sceneLights(scene), regions: sceneRegions(scene), grid: propGrid(scene) }), del = propDel();
-  const wallFixes = mergeWallFixes(r.walls, wallRepairUpdates(walls));
+  // Breached walls come back whole and their part B goes (wall-breach.mjs); a wall being deleted is not also written.
+  const breaches = wallRepairPlan(walls), wallFixes = mergeWallFixes(r.walls, breaches.updates).filter((w) => !breaches.deletes.includes(w._id));
   if (r.tiles.length) await scene.updateEmbeddedDocuments("Tile", r.tiles.map((t) => withDeletes(t, del)));
   // Every region's broken decorations too, in one region batch (their rubble goes with every prop's, below).
   await holdDecorWrites(async () => {
     const decorFixes = decorRepairUpdates(sceneRegions(scene));
     if (decorFixes.length) await scene.updateEmbeddedDocuments("Region", decorFixes.map((u) => withDeletes(u, del)), { animater: { decorRepair: true } });
   });
+  // A breach's part B goes first, so the wall put back whole never overlaps it.
+  if (breaches.deletes.length) await scene.deleteEmbeddedDocuments("Wall", breaches.deletes, { animater: { wallRepair: true } });
   if (wallFixes.length) await scene.updateEmbeddedDocuments("Wall", wallFixes.map((w) => withDeletes(w, del)), { animater: { wallRepair: true }, sound: false });
   if (r.lights.length) await scene.updateEmbeddedDocuments("AmbientLight", r.lights).catch((e) => runtime?.trace("props", `lights not relit: ${e?.message ?? e}`));
   for (const t of r.tiles) forgetPropFire(t._id);
@@ -8533,7 +8589,7 @@ function areaPlace(cause, user) {
   try { const actor = actorUuid ? fromUuidSync(actorUuid) : null; ownsOrigin = !!user && actor?.testUserPermission?.(user, "OWNER") === true; } catch { ownsOrigin = false; }
   const levels = doc ? [...(doc.levels ?? [])] : [...(rec?.levels ?? [])];
   return { now, area: { uuid, sceneId: doc?.parent?.id ?? null, authorId: placed.authorId ?? null, authorIsGM: !!(placed.authorId && game.users.get(placed.authorId)?.isGM),
-    ownsOrigin, rememberedAt: placed.rememberedAt, testPoint: rec?.testPoint ?? (doc ? areaTestOf(doc) : undefined), levels, damageTypes: doc ? areaPlaceTypes(doc, cause, user, now) : [] } };
+    ownsOrigin, rememberedAt: placed.rememberedAt, testPoint: rec?.testPoint ?? (doc ? areaTestOf(doc) : undefined), levels, at: rec?.at ?? (doc ? areaCentreOf(doc) : null), damageTypes: doc ? areaPlaceTypes(doc, cause, user, now) : [] } };
 }
 for (const hook of ["deleteMeasuredTemplate", "deleteRegion"]) Hooks.on(hook, (doc) => propAreas.forget(doc.uuid));
 // Everything inside a remembered area on its level that one of the given damage types breaks (the first of them that
@@ -8549,7 +8605,7 @@ function breakAreaThings(area, types, { messageId } = {}) {
   const grid = propGrid(scene), tiles = tilesOnLevel(scene.tiles.contents.map(propTileView), area.levels), walls = (scene.walls?.contents ?? []).map(wallView);
   const decor = propSafe("area decorations", () => decorViews(scene, area.levels)) ?? [], id = (t) => t.id;
   const hits = typesBreaking(types, (type) => propsInArea(tiles, area.testPoint, grid, type), id).filter(({ thing }) => propAreas.claim(area.templateId, thing.id));
-  const doors = typesBreaking(types, (type) => propSafe("area doors", () => doorsInArea(walls, area.testPoint, scene, type, area.levels)) ?? [], id)
+  const doors = typesBreaking(types, (type) => propSafe("area doors", () => doorsInArea(walls, area.testPoint, scene, type, area.levels, area.at)) ?? [], id)
     .filter(({ thing }) => propAreas.claim(area.templateId, `wall:${thing.id}`));
   const spills = !types.includes("fire") ? [] : (propSafe("area powder", () => ignitableInArea(tiles, area.testPoint)) ?? []).filter((t) => propAreas.claim(area.templateId, `ignite:${t.id}`));
   const decorHits = typesBreaking(types, (type) => propsInArea(decor, area.testPoint, grid, type), id).filter(({ thing }) => propAreas.claim(area.templateId, thing.id));
@@ -9004,14 +9060,18 @@ function slamDoors(doc, a, b) {
     .map((w) => scene.walls.get(w.id)).filter(Boolean);
 }
 // A door's middle as slamTimes reads a tile: the mover reaches it there.
-const doorAsTile = (doc) => { const m = wallMid(doc); return { id: doc.id, x: m.x, y: m.y, width: 0, height: 0 }; };
-// The walls that move's wall test leaves out: those props' own walls, and the doors it breaks on the way (R16: only
-// doors; a window still stops the mover at its frame). Any other prop's walls still stop it.
+// A breakable plain wall: where the path a-b crosses it (its breach opens there).
+const doorAsTile = (doc, a, b) => {
+  const cross = a && b && wallTraits(wallView(doc), doc.parent).kind === "wall" ? crossingPoint(a, b, doc.c) : null, m = cross ?? wallMid(doc);
+  return { id: doc.id, x: m.x, y: m.y, width: 0, height: 0 };
+};
+// The walls that move's wall test leaves out: those props' own walls, and the doors and breakable walls it breaks on the
+// way (R16: a window still stops the mover at its frame). Any other prop's walls still stop it.
 function slamWalls(doc, a, b) {
   const scene = doc?.parent, grid = propGrid(scene), walls = scene?.walls?.contents ?? [];
   // Decorations own no walls: not even worked out (this runs on every pointer move of a Push or Pull).
   const ids = new Set(slamProps(doc, a, b, { decor: false }).filter((t) => !t.decor).flatMap((t) => ownWalls(t, walls, grid).map((w) => w.id)));
-  for (const w of slamDoors(doc, a, b)) if (wallTraits(wallView(w), scene).kind === "door") ids.add(w.id);
+  for (const w of slamDoors(doc, a, b)) { const kind = wallTraits(wallView(w), scene).kind; if (kind === "door" || kind === "wall") ids.add(w.id); }
   return ids;
 }
 // The move wall test, less the `ignore`d walls: each crossing's walls are read from the test's own report.
@@ -9034,7 +9094,7 @@ function slamAlong(doc, from, to, span) {
   const when = { start: span.start, end: Math.max(span.start, span.end - 50) };
   for (const { tile, ms } of slamTimes(a, b, tiles, when))
     setTimeout(() => void (tile.decor ? askDecor(scene, tile, cause, a) : askProp(scene, tile.id, cause, a)), ms);
-  for (const { tile, ms } of slamTimes(a, b, slamDoors(doc, a, b).map(doorAsTile), when))
+  for (const { tile, ms } of slamTimes(a, b, slamDoors(doc, a, b).map((w) => doorAsTile(w, a, b)), when))
     setTimeout(() => void askWall(scene, tile.id, cause, a), ms);
 }
 // A cosmetic ground motion (charge, roll, dodge, lunge, path) this client starts: each prop its token's centre runs
@@ -9119,7 +9179,17 @@ Hooks.on("canvasTearDown", () => {
 // A broken door: the GM's break write is drawn on every screen (once: not again where it was asked). The GM's own edit
 // of its door type or restrictions forgets its note, so its wreck goes and Repair never undoes that edit.
 Hooks.on("updateWall", (doc, changes, options) => {
-  if (doc.flags?.[ID]?.breakWall?.broken && handEdited(changes, options)) {
+  // A breach's part B edited by hand: the wall it was split from forgets its note too (its wreck goes, Repair leaves both).
+  const partOf = breachPartOf(doc);
+  if (partOf && handEdited(changes, options, { kind: "wall" })) {
+    const a = doc.parent?.walls?.get(partOf), aNote = readWallNote(a?.flags?.[ID]?.breakWall?.broken);
+    if (a && aNote?.partId === doc.id) {
+      const clear = handEditUpdate(a);
+      if (clear && game.users.activeGM?.isSelf) void a.update(withDeletes(clear, propDel())).catch((e) => console.warn("Animater props: edited breach", e));
+      settleWallHere(a.id, false); forgetLateWall(a.id); wallWreckage.hide(a.id);
+    }
+  }
+  if (doc.flags?.[ID]?.breakWall?.broken && handEdited(changes, options, readWallNote(doc.flags[ID].breakWall.broken))) {
     const clear = handEditUpdate(doc);
     if (clear && game.users.activeGM?.isSelf) void doc.update(withDeletes(clear, propDel())).catch((e) => console.warn("Animater props: edited door", e));
     settleWallHere(doc.id, false); forgetLateWall(doc.id); wallWreckage.hide(doc.id);
@@ -9925,6 +9995,7 @@ Hooks.once("init", () => {
     ['toolDecorate','Show the Decorations button','In the Animater controls: a brush for painting rocks, trees, bushes and more onto the map. Hidden, a region\'s Decorations section still has its own Brush.'],
     ['toolClearRubble','Show the Clear rubble button','In the Animater controls.'],
     ['toolRepairProps','Show the Repair broken props button','In the Animater controls, for the GM: unhides every broken prop in the scene and puts its walls, doors, windows and decorations back, as the scene configuration\'s Repair button does.'],
+    ['toolBreachWall','Show the Breach wall button','In the Animater controls, for the GM: click on a wall marked Breakable wall: Yes to breach it there at once.'],
     ['toolClearBlood','Show the Clear blood button','In the Animater controls. Blood still fades by itself.'],
     ['toolSplatBlood','Show the Splat blood button','In the Animater controls, for the GM: old blood on the ground around the selected tokens, kept with the scene until Clear blood.'],
     ['toolBakeBlood','Show the Bake blood button','In the Animater controls, for the GM: the blood on the floor becomes one tile the scene keeps, saved in the world\'s files.'],
@@ -11299,11 +11370,18 @@ Hooks.on("renderWallConfig", (app, html) => {
   if (!root || root.querySelector("[data-animater-break-wall]")) return;
   const doc = app.document ?? app.object, sceneOn = doc?.parent?.flags?.[ID]?.breakableProps === true;
   const set = document.createElement("fieldset");
-  set.innerHTML = wallBreakFieldsHTML({ door: wallFormDoor(doc), own: doc?.flags?.[ID]?.breakWall, windowKind: doc?.flags?.[ID]?.window, sceneOn, system: game.system.id });
+  const windowWall = isWindowWall(doc);
+  set.innerHTML = wallBreakFieldsHTML({ door: wallFormDoor(doc), own: doc?.flags?.[ID]?.breakWall, windowKind: doc?.flags?.[ID]?.window, sceneOn, system: game.system.id, windowWall });
   const fieldset = set.firstElementChild;
   appendWallSection(root, fieldset);
   const select = root.querySelector('select[name="door"]'), group = fieldset.querySelector('[data-group="door"]');
-  const windowGroup = fieldset.querySelector('[data-group="window"]');
+  const windowGroup = fieldset.querySelector('[data-group="window"]'), wallGroup = fieldset.querySelector('[data-group="wall"]');
+  // A plain wall's hint lines (what breaches it, its Table 11-4 stats) follow its Material select.
+  const wallMaterial = wallGroup?.querySelector(`select[name="flags.${ID}.breakWall.wallMaterial"]`);
+  wallMaterial?.addEventListener("change", () => {
+    const cap = String(wallMaterial.value).replace(/^./, (c) => c.toUpperCase());
+    for (const el of wallGroup.querySelectorAll("[data-wall-breaks], [data-wall-stats]")) { const v = el.dataset[`${"wallBreaks" in el.dataset ? "breaks" : "stats"}${cap}`]; if (v) el.textContent = v; }
+  });
   // The Force open DC's "Automatic (N)" follows the door's Material select.
   const dcField = group.querySelector(`[name="flags.${ID}.breakWall.forceDC"]`), doorMaterial = group.querySelector(`select[name="flags.${ID}.breakWall.material"]`);
   doorMaterial?.addEventListener("change", () => {
@@ -11315,7 +11393,8 @@ Hooks.on("renderWallConfig", (app, html) => {
   // The group matching Door Type shows; the other's inputs are disabled, so Material submits from one select only.
   const sync = () => {
     const isDoor = [1, 2].includes(wallFormDoor(doc, select?.value));
-    for (const [g, hide] of [[group, !isDoor], [windowGroup, isDoor]]) {
+    for (const [g, hide] of [[group, !isDoor], [windowGroup, isDoor], [wallGroup, isDoor || windowWall]]) {
+      if (!g) continue;
       g.hidden = hide;
       for (const el of g.querySelectorAll("input, select")) el.disabled = hide;
     }

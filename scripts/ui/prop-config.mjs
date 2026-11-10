@@ -2,8 +2,8 @@
 import { MATERIALS } from "../engines/props/prop-material.mjs";
 import { CONTENTS, STYLE_CHOICES, propGuesses, burstOf } from "../engines/props/prop-traits.mjs";
 import { defaultForceDC, ownForceDC, forceOpenWording } from "../engines/props/force-open.mjs";
-import { wallMaterialOf, GLASS_PANES } from "../engines/props/wall-break.mjs";
-import { DOOR_ATTACK_SYSTEMS, DOOR_STAT_KEYS, defaultDoorStats, ownDoorStat, doorStats, doorHp } from "../engines/props/door-attack.mjs";
+import { wallMaterialOf, GLASS_PANES, WALL_MATERIALS } from "../engines/props/wall-break.mjs";
+import { DOOR_ATTACK_SYSTEMS, DOOR_STAT_KEYS, defaultDoorStats, ownDoorStat, doorStats, doorHp, defaultWallStats } from "../engines/props/door-attack.mjs";
 
 const ID = "animater";
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -79,10 +79,27 @@ export function propSceneFieldsHTML({ on = false, chance = 25, breakWalls, rubbl
   const n = Number(chance), pct = Number.isFinite(n) && n >= 0 && n <= 100 ? n : 25;
   return `<div class="form-group"><label>Breakable props</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.breakableProps"${on === true ? " checked" : ""}></div><p class="hint">Prop tiles (barrels, crates, pots) break from spells, shoves and missed swings and leave wreckage.</p></div>
     <div class="form-group"><label>Chance a miss breaks a prop (%)</label><div class="form-fields"><input type="number" min="0" max="100" step="1" name="flags.${ID}.propMissChance" value="${pct}"></div></div>
-    <div class="form-group"><label>Doors and windows break</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.breakWalls"${breakWalls === false ? "" : " checked"}></div><p class="hint">With Breakable props on, doors (and windows the GM marks breakable) can be smashed open by hits, Force Open and heavy shoves.</p></div>
+    <div class="form-group"><label>Doors and windows break</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.breakWalls"${breakWalls === false ? "" : " checked"}></div><p class="hint">With Breakable props on, doors (and windows the GM marks breakable) can be smashed open by hits, Force Open and heavy shoves, and walls the GM marks breakable can be breached by powder kegs, some spells and huge creatures slammed into them.</p></div>
     <div class="form-group"><label>Rubble is difficult terrain</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.rubbleDifficult"${rubble === true ? " checked" : ""}></div><p class="hint">A statue or pillar that topples leaves rubble that costs double to walk through. Each tile can override this. Read when it topples: changing it later does not change rubble already there.</p></div>
     <div class="form-group"><label>Repair</label><div class="form-fields"><button type="button" data-action="animater-repair-props"><i class="fa-solid fa-hammer"></i> Repair broken props</button></div><p class="hint">Puts back every broken prop, door, window and decoration on this scene.</p></div>
     <div class="form-group"><label>Doors and windows</label><div class="form-fields"><button type="button" data-action="animater-breakable-all"><i class="fa-solid fa-door-open"></i> Make all doors and windows breakable</button><button type="button" data-action="animater-breakable-none"><i class="fa-solid fa-ban"></i> Make none breakable</button></div><p class="hint">Set every door and window on this scene at once (GM only): all breakable, or none. Doors and windows already broken are left alone.</p></div>`;
+}
+
+const WALL_LABELS = { wood: "Wood (palisade, plank wall)", brick: "Brick", stone: "Stone (masonry)", metal: "Metal (iron plate)" };
+const WALL_BREAKS = { wood: "Breached by fire or force spells, a powder keg, or a Huge or bigger creature slammed into it.", brick: "Breached by force spells, a powder keg, or a Gargantuan creature slammed into it.",
+  stone: "Breached by a powder keg, or a Gargantuan creature slammed into it.", metal: "Breached only by a powder keg." };
+const wallStatsLine = (m) => { const s = defaultWallStats(m); return `Hardness ${s.hardness}, HP ${s.maxHp}, Broken Threshold ${s.bt}.`; };
+// A plain wall's Breakable wall (No by default) and its structure; what breaches it, and in PF2e its Table 11-4 Hardness,
+// HP and Broken Threshold (recorded for later: a wall has no Attack yet). The hint lines follow the Material select
+// (data-breaks-* and data-stats-* carry every material's).
+function wallGroupHTML({ own, sceneOn, system, show }) {
+  const mat = wallMaterialOf(own.wallMaterial, "wall"), on = own.wall === true || own.wall === "yes";
+  const data = (key, f) => WALL_MATERIALS.map((m) => `data-${key}-${m}="${esc(f(m))}"`).join(" ");
+  const stats = DOOR_ATTACK_SYSTEMS.has(system) ? `<p class="hint" data-wall-stats ${data("stats", wallStatsLine)}>${wallStatsLine(mat)}</p>` : "";
+  return `<div data-group="wall"${show ? "" : " hidden"}>
+      <div class="form-group"><label>Breakable wall</label><div class="form-fields"><select name="flags.${ID}.breakWall.wall"${show ? "" : " disabled"}>${options([["no", "No"], ["yes", "Yes"]], on ? "yes" : "no")}</select></div><p class="hint">${sceneOn ? "This scene has Breakable props on." : "Needs Breakable props on in the scene."} Yes lets this wall be breached: a gap a square wide (a powder keg's two) opens where it is hit, with rubble or splinters, and the rest of the wall stands. Repair closes it. The GM can also breach it with Breach wall in the Animater controls.</p></div>
+      <div class="form-group"><label>Material</label><div class="form-fields"><select name="flags.${ID}.breakWall.wallMaterial"${show ? "" : " disabled"}>${options(WALL_MATERIALS.map((m) => [m, WALL_LABELS[m]]), mat)}</select></div><p class="hint" data-wall-breaks ${data("breaks", (m) => WALL_BREAKS[m])}>${WALL_BREAKS[mat]}</p>${stats}</div>
+    </div>`;
 }
 
 // The Breakable fieldset in a wall's configuration: the door group for doors, the window group (Window box and Material)
@@ -90,8 +107,10 @@ export function propSceneFieldsHTML({ on = false, chance = 25, breakWalls, rubbl
 // Foundry submits disabled inputs too: so the window group's Material is its own field (breakWall.windowMaterial) and
 // the wall hooks merge the two into one material by the Door Type saved (wall-break wallBreakFormMerge). system: game.system.id, for the door's Force open DC (blank = Automatic, by material; the
 // field carries each material's automatic DC in data-dc-*, so the wall config hook can follow the Material select).
-export function wallBreakFieldsHTML({ door, own = {}, sceneOn = false, system, windowKind } = {}) {
-  const isDoor = door === 1 || door === 2, off = (hidden) => (hidden ? " disabled" : "");
+// windowWall: the wall is a window here (wall-break-bulk isWindowWall), so its wall group stays hidden: the wall group is
+// for plain walls (door type None). Its fields are their own (breakWall.wall, breakWall.wallMaterial), so no merge.
+export function wallBreakFieldsHTML({ door, own = {}, sceneOn = false, system, windowKind, windowWall = false } = {}) {
+  const isDoor = door === 1 || door === 2, off = (hidden) => (hidden ? " disabled" : ""), isWall = !isDoor && !windowWall;
   const mat = wallMaterialOf(own.material, "door");
   const pane = wallMaterialOf(["glass", "none"].includes(own.windowMaterial) ? own.windowMaterial : own.material, "window");
   const doors = [["", "Automatic (on when the scene has Breakable props)"], ["never", "Never"]];
@@ -109,5 +128,6 @@ export function wallBreakFieldsHTML({ door, own = {}, sceneOn = false, system, w
       <div class="form-group"><label>Window</label><div class="form-fields"><select name="flags.${ID}.breakWall.window"${off(isDoor)}>${options([["", `Automatic (${GLASS_PANES.includes(windowKind) ? "yes: a glass window" : "no"})`], ["yes", "Yes"], ["no", "No"]], own.window === true ? "yes" : own.window === false ? "no" : ["yes", "no"].includes(own.window) ? own.window : "")}</select></div><p class="hint">${sceneOn ? "This scene has Breakable props on." : "Needs Breakable props on in the scene."} Whether this wall is a window that can break. Automatic: yes when its Animater window (below) is glass, leaded, mosaic, rose or frosted. When it breaks it opens: a glass window becomes an open one, shutters stand open. Repair puts it back.</p></div>
       <div class="form-group"><label>Material</label><div class="form-fields"><select name="flags.${ID}.breakWall.windowMaterial"${off(isDoor)}>${options(panes, pane)}</select></div><p class="hint">Glass breaks to most blows, cold, fire and any shove, and a strike made through it, hit or miss, always shatters it. Won't break keeps it whole. A broken window lets sight, light and sound through but still blocks movement.</p></div>
     </div>
+    ${wallGroupHTML({ own, sceneOn, system, show: isWall })}
   </fieldset>`;
 }

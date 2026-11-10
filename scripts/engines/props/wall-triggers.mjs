@@ -3,14 +3,23 @@
 // cause's own level; the GM checks each again (wall-break-requests.mjs).
 import { wallTraits, canBreakWall, wallMid, crossesWall } from "./wall-break.mjs";
 import { onLevel, missFrame, missBetter, propNextToMiss } from "./prop-pick.mjs";
+import { projectOnWall } from "./wall-breach.mjs";
 
 const intact = (w) => !w?.flags?.animater?.breakWall?.broken;
 const finite = (p) => Number.isFinite(p?.x) && Number.isFinite(p?.y);
 const reachable = (w, scene, levels) => intact(w) && Array.isArray(w?.c) && onLevel(w.levels, levels) && wallTraits(w, scene).kind !== null;
 
-// The intact breakable walls whose middle the area covers (testPoint) and whose material its damage breaks.
-export function doorsInArea(walls, testPoint, scene, damageType, levels) {
-  return (walls ?? []).filter((w) => reachable(w, scene, levels) && canBreakWall(wallTraits(w, scene), { damageType }) && testPoint(wallMid(w)) === true);
+// The intact breakable walls whose middle the area covers (testPoint) and whose material its damage breaks. A plain wall
+// (a breach) is tested where the area's centre `at` projects onto it, never by its middle: a long wall is breached
+// where the area meets it, and only when that point is inside the area.
+export function doorsInArea(walls, testPoint, scene, damageType, levels, at) {
+  return (walls ?? []).filter((w) => {
+    if (!reachable(w, scene, levels)) return false;
+    const traits = wallTraits(w, scene);
+    if (!canBreakWall(traits, { damageType })) return false;
+    if (traits.kind !== "wall") return testPoint(wallMid(w)) === true;
+    return finite(at) && testPoint(projectOnWall(w.c, at)) === true;
+  });
 }
 
 // How far along a-b (0..1) it meets the wall's line.

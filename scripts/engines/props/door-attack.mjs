@@ -22,6 +22,18 @@ const targeted = (m) => { const c = m?.flags?.pf2e?.context; return !!(c?.target
 const footprint = (t) => [t?.x, t?.y, t?.w, t?.h].every(Number.isFinite);
 const str = (v) => (typeof v === "string" && v ? v.slice(0, 64) : null);
 
+// Table 11-4 structures, for a breakable plain wall (wall-break.mjs kind "wall"): a wooden, brick, stone or iron one.
+// Recorded and shown in Wall Configuration; walls have no Attack yet (they break from blasts, spells, slams and the GM).
+const WALL_STATS = {
+  wood: { hardness: 10, maxHp: 40, bt: 20 },
+  brick: { hardness: 12, maxHp: 48, bt: 24 },
+  stone: { hardness: 14, maxHp: 56, bt: 28 },
+  metal: { hardness: 18, maxHp: 72, bt: 36 },
+};
+export function defaultWallStats(material) {
+  return { ...(WALL_STATS[material] ?? WALL_STATS.wood) };
+}
+
 export function defaultDoorStats(material) {
   return { ...(STATS[material] ?? STATS.wood) };
 }

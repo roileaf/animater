@@ -21,6 +21,8 @@ const FRAME_TONES = [0x5a3e26, 0x7a5a3a];
 // A metal door's iron (dark, mid, worn) and a stone door's stone (shadowed, mid, pale): its slabs, flakes and chips.
 export const IRON_TONES = [0x2e2b29, 0x46413d, 0x5c5650];
 export const STONE_TONES = [0x6f6a62, 0x8a847a, 0xa49e93];
+// A brick wall's fired clay (dark, mid, pale).
+export const BRICK_TONES = [0x7a3e2e, 0x9a4f38, 0xb4664a];
 const FAR_SHARDS = 60, NEAR_SHARDS = 9, FAR_GLINTS = 7, NEAR_GLINTS = 2; // mock scene 3
 
 // The planks a door breaks into, at grid 100: length, width, turn off the throw, distance (squares), spin as it lands.
@@ -179,6 +181,89 @@ function stoneDoor(note, F, k) {
     near: chips(near, () => Math.PI + (rand() - 0.5) * 2.2, 2 + Math.floor(rand() * 4), [0.05, 0.35], [3, 6]),
   };
   return { look: "stone", planks, hinges: [], sparks: [], splinters };
+}
+
+// A breached plain wall (wall-breach.mjs): its wreck lies along the gap alone (note.gap), so it reads the same before
+// and after the GM splits the wall, on every client and every reload. A ragged dark hole in the wall's line, its broken
+// ends left jagged in the pieces either side; debris thrown through to the far side from the hit: a wooden wall's planks
+// and splinters (the door's, without the iron band), stone or brick chunks with chips and dust, an iron wall's bent
+// plates, shards and sparks. Same shape as a door's layout, so the door's drawing paints it.
+export function breachWreckLayout(note, grid = 100) {
+  const seg = { c: note.gap }, k = (grid || 100) / 100, F = wallFrame(note, seg), L = F.len;
+  const rand = seededRandom((note.seed >>> 0) * 457 + 71);
+  // The hole runs a little past the gap into the pieces left, its ends torn across.
+  const over = 6 * k, steps = Math.max(8, Math.round(L / (12 * k))), half = GAP_HALF * k;
+  const top = ragged(F.at, -over, L + over, half, steps, 3.5 * k, rand), bottom = ragged(F.at, L + over, -over, -half, steps, 3.5 * k, rand);
+  const end = (u, sign) => [0.5, 0, -0.5].flatMap((v) => { const p = F.at(u + sign * (2 + rand() * 6) * k, v * sign * half); return [p.x, p.y]; });
+  const poly = [...top, ...end(L + over, 1), ...bottom, ...end(-over, -1)];
+  const inner = [[0.1, 0.5], [0.9, 0.5], [0.9, 0.2], [0.1, 0.2]].flatMap(([u, v]) => { const p = F.at(L * u, v * half); return [p.x, p.y]; });
+  const gap = { poly, inner };
+  const stubs = [[-over * 0.5, F.t], [L + over * 0.5, { x: -F.t.x, y: -F.t.y }]].map(([u, inward]) => ({ ...F.at(u, 0), rot: Math.atan2(inward.y, inward.x), len: (10 + rand() * 6) * k }));
+  const scorch = note.mark === "scorch", m = F.at(L / 2, 40 * k), r = Math.max(55, L * 0.45) * k;
+  const base = { gap, stubs, hinges: [], sparks: [], doorHalf: DOOR_HALF * k };
+  if (note.material === "wood") {
+    const wood = doorWreckLayout({ ...note, material: "wood" }, seg, grid);
+    return { ...wood, ...base, look: "wood", planks: wood.planks.map((p) => ({ ...p, band: false })), mark: { kind: scorch ? "scorch" : "dust", x: m.x, y: m.y, r } };
+  }
+  if (note.material === "metal") return { ...base, ...ironBreach(note, F, k), stubTone: IRON_TONES[1], mark: { kind: scorch ? "scorch" : "dust", x: m.x, y: m.y, r } };
+  const tones = note.material === "brick" ? BRICK_TONES : STONE_TONES;
+  return { ...base, ...rubbleBreach(note, F, k, tones), stubTone: tones[1], mark: { kind: scorch ? "scorch" : "stone", x: m.x, y: m.y, r } };
+}
+
+// A breached stone or brick wall: irregular chunks thrown out of the hole (most far, a few back toward the hitter), chips
+// and dust. Each chunk flies from the wall's line where it stood.
+function rubbleBreach(note, F, k, tones) {
+  const rand = seededRandom((note.seed >>> 0) * 613 + 29), L = F.len, squares = L / (100 * k);
+  const count = Math.round(5 + squares * 4 + rand() * 3), planks = [];
+  for (let i = 0; i < count; i++) {
+    const nearSide = i < Math.max(1, Math.round(count * 0.15)), u = L * (0.08 + 0.84 * rand());
+    const size = lerp(7, nearSide ? 12 : 19, rand() ** 1.3) * k, sides = 5 + Math.floor(rand() * 3), poly = [];
+    for (let j = 0; j < sides; j++) { const a = (j / sides) * Math.PI * 2 + (rand() - 0.5) * 0.6, rr = size * (0.6 + rand() * 0.45); poly.push(Math.cos(a) * rr, Math.sin(a) * rr * 0.8); }
+    const d = (nearSide ? -lerp(8, 30, rand()) : lerp(14, 95, rand() ** 1.4)) * k, along = (rand() - 0.5) * 30 * k + F.lean * d;
+    const at = F.at(u + along, d), home = F.at(u, 0), rot = rand() * Math.PI * 2, spin = (rand() - 0.5) * 3;
+    const cracks = rand() < 0.5 ? [[(rand() - 0.5) * 0.4, (rand() - 0.5) * 0.4, (rand() - 0.5) * 0.4, (rand() - 0.5) * 0.4]] : [];
+    planks.push({ look: "stone", x: at.x, y: at.y, rot, poly, w: size * 2, h: size * 1.6, cracks, tone: tones[Math.floor(rand() * tones.length)], home: { x: home.x, y: home.y, rot: rot - spin }, spin });
+  }
+  const far = F.at(L / 2, 4 * k), near = F.at(L / 2, -8 * k);
+  const chips = (origin, spread, n, dist, lenR) => Array.from({ length: n }, () => {
+    const s = splinter(origin, F.dir(spread()), rand, k, { dist, len: lenR, tones });
+    let cx = 0, cy = 0;
+    for (let j = 0; j < 8; j += 2) { cx += s.pts[j] / 4; cy += s.pts[j + 1] / 4; }
+    const lx = (rand() - 0.5) * L * 0.8, shift = { x: F.t.x * lx, y: F.t.y * lx };
+    return { ...s, pts: s.pts.map((v, j) => (j % 2 ? cy + shift.y + (v - cy) * 1.8 : cx + shift.x + (v - cx) * 0.8)) };
+  });
+  const splinters = {
+    far: chips(far, () => F.lean + (rand() - 0.5) * 1.9, Math.round(18 + squares * 8 + rand() * 6), [0.1, 1.2], [4, 9]),
+    near: chips(near, () => Math.PI + (rand() - 0.5) * 2.2, 3 + Math.floor(rand() * 4), [0.05, 0.35], [3, 6]),
+  };
+  return { look: "stone", planks, splinters };
+}
+
+// A breached iron wall: two to four bent plates torn out of it (riveted, dented) lying past the wall, iron shards, and a
+// spray of sparks back toward the hitter.
+function ironBreach(note, F, k) {
+  const rand = seededRandom((note.seed >>> 0) * 709 + 17), L = F.len, n = 2 + Math.floor(rand() * 2) + (L > 150 * k ? 1 : 0), planks = [];
+  for (let i = 0; i < n; i++) {
+    const len = lerp(32, 52, rand()) * k, wid = lerp(18, 28, rand()) * k, u = L * ((i + 0.5) / n) + (rand() - 0.5) * 12 * k;
+    const d = lerp(18, 70, rand()) * k, at = F.at(u + F.lean * d, d), home = F.at(u, 0), turn = (rand() - 0.5) * 1.6;
+    const rivets = [];
+    for (const v of [-0.38, 0.38]) for (let j = 0; j < 3; j++) rivets.push({ u: -0.36 + j * 0.36, v });
+    const dent = { u: (rand() - 0.5) * 0.3, v: (rand() - 0.5) * 0.3, r: (0.18 + rand() * 0.1) * Math.min(len, wid) };
+    planks.push({ look: "iron", x: at.x, y: at.y, rot: Math.atan2(F.t.y, F.t.x) + turn, len, wid, rivets, dent, tone: IRON_TONES[1],
+      home: { x: home.x, y: home.y, rot: Math.atan2(F.n.y, F.n.x) }, spin: turn });
+  }
+  const hit = F.at(L / 2 + (rand() - 0.5) * L * 0.3, -3 * k);
+  const sparks = Array.from({ length: 12 + Math.floor(rand() * 8) }, () => {
+    const dir = F.dir(Math.PI + (rand() - 0.5) * 1.8), d = 100 * k * lerp(0.15, 0.6, rand() ** 1.3);
+    return { x0: hit.x, y0: hit.y, x: hit.x + dir.x * d, y: hit.y + dir.y * d, at: Math.round(rand() * 80), life: Math.round(250 + rand() * 250), w: (0.8 + rand() * 0.8) * k };
+  });
+  const far = F.at(L / 2, 4 * k), near = F.at(L / 2, -6 * k);
+  const shard = (origin, da, dist, len) => { const s = splinter(origin, F.dir(da), rand, k, { dist, len, tones: IRON_TONES }), lx = (rand() - 0.5) * L * 0.8; return { ...s, pts: s.pts.map((v, j) => v + (j % 2 ? F.t.y : F.t.x) * lx) }; };
+  const splinters = {
+    far: Array.from({ length: 12 + Math.floor(rand() * 6) }, () => shard(far, F.lean + (rand() - 0.5) * 1.6, [0.1, 1.0], [4, 9])),
+    near: Array.from({ length: 1 + Math.floor(rand() * 3) }, () => shard(near, Math.PI + (rand() - 0.5) * 2, [0.05, 0.3], [3, 5])),
+  };
+  return { look: "iron", planks, sparks, splinters };
 }
 
 // One glass shard at rest: a thin triangle about its centre (pts, unturned), turned by rot, flown from `from` (a point
