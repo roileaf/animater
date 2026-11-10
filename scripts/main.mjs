@@ -35,7 +35,7 @@ import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
-import { DECOR_BREAK_MESSAGE, DECOR_NAMES, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
+import { DECOR_BREAK_MESSAGE, DECOR_NAMES, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
 import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
@@ -2559,8 +2559,9 @@ const syncTrunkWalls = async (mine = false) => {
   try { if (gone.length) await scene.deleteEmbeddedDocuments("Wall", gone); if (made.length) await scene.createEmbeddedDocuments("Wall", made); }
   catch (err) { console.warn("Animater | trunk walls", err); }
 };
-// Dragging a region carries what was painted into it by hand (and the spots rubbed out) along with it, in the same update.
-Hooks.on("preUpdateRegion", (doc, change) => { if (!change?.shapes) return; try { const moved = carryDecor(doc.flags?.[ID]?.decor, doc.toObject().shapes, change.shapes); if (moved) foundry.utils.setProperty(change, `flags.${ID}.decor.brushed`, moved.brushed), foundry.utils.setProperty(change, `flags.${ID}.decor.erased`, moved.erased); } catch (err) { console.warn("Animater | moving a region's decorations", err); } });
+// Dragging a region carries what was painted into it by hand (and the spots rubbed out) along with it, in the same update, and
+// the breaks of those hand decorations too (decor-break carryDecorBroken).
+Hooks.on("preUpdateRegion", (doc, change) => { if (!change?.shapes) return; try { const moved = carryDecor(doc.flags?.[ID]?.decor, doc.toObject().shapes, change.shapes); if (moved) { foundry.utils.setProperty(change, `flags.${ID}.decor.brushed`, moved.brushed); foundry.utils.setProperty(change, `flags.${ID}.decor.erased`, moved.erased); const broken = readDecorBroken(doc.flags?.[ID]?.decorBroken); if (broken.length) foundry.utils.setProperty(change, `flags.${ID}.decorBroken`, carryDecorBroken(broken, moved.dx, moved.dy)); } } catch (err) { console.warn("Animater | moving a region's decorations", err); } });
 // (A decoration break or repair write moves no trunk: trees never break.)
 for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options, ...more) => { if (quietSave(first, changes, options)) return; const userId = [changes, options, ...more].at(-1); if (first?.parent === canvas?.scene) trunkWallsSoon(userId === game.user?.id); });
 Hooks.on("canvasReady", () => { trunkWallsSoon(); });

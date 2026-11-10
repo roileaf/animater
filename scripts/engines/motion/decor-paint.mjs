@@ -1669,7 +1669,7 @@ const DRAFTS = {
   } },
   throne: { label: 'Thrones', size: 1.4, height: 1.2, paint(g, s, rng, o) {
     // A high-backed seat on a stepped dais: carved frame (dark wood or grey stone), a red buttoned cushion, armrests either side.
-    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], stone = rng() < 0.4, frameCol = stone ? '#7a766e' : '#4a3020';
+    const { a, material } = PAINTED.throne(rng), c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], stone = material === 'stone', frameCol = stone ? '#7a766e' : '#4a3020';
     if (stone) { const dais = boxAt(0, s * 0.1, s * 0.75, s * 0.6, a); softShadow(g, dais, o, 0.5); inked(g, rng, dais, '#8a867e', o, { sharp: true, band: 0.35, ink: 1.5 }); }
     const seat = boxAt(...at(0, s * 0.05), s * 0.42, s * 0.4, a); softShadow(g, seat, o, 0.55); inked(g, rng, seat, frameCol, o, { sharp: true, grain: a, lines: stone ? 2 : 8, hatch: 0.35, ink: 1.8 });
     const back = boxAt(...at(0, -s * 0.4), s * 0.46, s * 0.1, a); inked(g, rng, back, shade(frameCol, 0.1), o, { sharp: true, band: 0.3, ink: 1.6 });
@@ -1710,7 +1710,7 @@ const DRAFTS = {
   } },
   bathtub: { label: 'Bathtubs', size: 1.4, height: 0.6, paint(g, s, rng, o) {
     // A round-ended tub (stone, copper or staves) with a thick rim, still grey-blue water in it, a cloth over its edge.
-    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.78, W = s * 0.44, rimCol = pick(rng, ['#8a867e', '#a8643a', '#6a5032']);
+    const { a, material } = PAINTED.bathtub(rng), c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.78, W = s * 0.44, rimCol = TUB_RIM[material];
     const tub = []; for (let k = 0; k < 32; k++) { const q = (k / 32) * 6.283, x = Math.cos(q), y = Math.sin(q); tub.push(at(Math.sign(x) * Math.pow(Math.abs(x), 0.6) * L, Math.sign(y) * Math.pow(Math.abs(y), 0.6) * W)); }
     softShadow(g, tub, o, 0.55); inked(g, rng, tub, rimCol, o, { band: 0.45, lit: 0.15, ink: 1.8 });
     const water = tub.map(([x, y]) => [x * 0.8, y * 0.76]); trace(g, water); const wg = g.createLinearGradient(...at(-L, -W), ...at(L, W)); wg.addColorStop(0, '#7a8e96'); wg.addColorStop(1, '#3e4e56'); g.fillStyle = wg; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink * 1.2; g.stroke();
@@ -1829,6 +1829,19 @@ export const DECOR_IDS = Object.freeze(Object.keys(KINDS));
 // Paints one decoration into a fresh canvas. px: the drawing's full width in pixels; look.unit: pixels per grid square, so leaves and
 // blades keep the map's own scale whatever the object's size. look: { season, snow 0..1, wet 0..1, frozen, night, unit }. Returns
 // { canvas, shadow, width, height }: shadow is its silhouette in white on clear (null for a flat kind), both centred on the object.
+// What a throne or a bathtub is made of: its painter's first draws (its turn, then its material). The prop rules (decor-break.mjs)
+// read the same draws, so each breaks as what it is painted of.
+const PAINTED = {
+  throne: (rng) => { const a = rng() * 6.28; return { a, material: rng() < 0.4 ? 'stone' : 'wood' }; },
+  bathtub: (rng) => { const a = rng() * 6.28; return { a, material: pick(rng, ['stone', 'metal', 'wood']) }; },
+};
+const TUB_RIM = { stone: '#8a867e', metal: '#a8643a', wood: '#6a5032' };
+/** What a picture of a throne or a bathtub painted from this seed is made of (pure): 'stone', 'wood' or 'metal'; null for other kinds. */
+export const paintedMaterial = (kind, seed) => (Object.hasOwn(PAINTED, kind) ? PAINTED[kind](seeded(seed)).material : null);
+// How many looks a kind has; a decoration's own seed picks one, and the look's picture is painted from paintSeedOf.
+export const DECOR_VARIANTS = 6;
+/** The seed a decoration's picture is painted from (pure): the same for every decoration of its kind and look. */
+export const paintSeedOf = (d) => 7919 * (((d.seed >>> 0) % DECOR_VARIANTS) + 1) + d.kind.length;
 export function paintDecor(kind, seed, px, look = {}, make = defaultCanvas) {
   const k = KINDS[kind] ?? DRAFTS[kind]; if (!k) return null;
   const size = Math.max(8, Math.ceil(px)), pad = Math.ceil(size * 0.12), w = size + pad * 2;

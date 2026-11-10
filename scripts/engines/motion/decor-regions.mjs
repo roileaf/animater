@@ -60,7 +60,7 @@ export function shapesBox(shapes = []) {
 }
 /**
  * What a region's hand-placed decorations become when the region is dragged (pure): moved with it, and its rubbed-out spots too,
- * as { brushed, erased }; null when it was not simply moved (reshaped, resized) or holds nothing placed by hand.
+ * as { brushed, erased } and how far ({ dx, dy }); null when it was not simply moved (reshaped, resized) or holds nothing placed by hand.
  */
 export function carryDecor(decor, beforeShapes, afterShapes) {
   const brushed = Array.isArray(decor?.brushed) ? decor.brushed : [], erased = Array.isArray(decor?.erased) ? decor.erased : [];
@@ -69,7 +69,7 @@ export function carryDecor(decor, beforeShapes, afterShapes) {
   if (!a || !b || Math.abs(a.w - b.w) > 1 || Math.abs(a.h - b.h) > 1) return null;
   const dx = Math.round(b.x - a.x), dy = Math.round(b.y - a.y);
   if (!dx && !dy) return null;
-  return { brushed: brushed.map((d) => ({ ...d, x: d.x + dx, y: d.y + dy })), erased: erased.map(([x, y, r]) => [x + dx, y + dy, r]) };
+  return { brushed: brushed.map((d) => ({ ...d, x: d.x + dx, y: d.y + dy })), erased: erased.map(([x, y, r]) => [x + dx, y + dy, r]), dx, dy };
 }
 /** New settings for a region turned on: its place's usual kinds, each at its usual size and amount (pure). */
 export function freshDecor(where = 'surface', seed = 1) {

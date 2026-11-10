@@ -7,7 +7,7 @@
 // reads as another, so a region of hundreds costs a few dozen small pictures.
 
 import { gustAt } from './flame-wind.mjs';
-import { DECOR_KINDS, paintDecor, waterOutline } from './decor-paint.mjs';
+import { DECOR_KINDS, DECOR_VARIANTS, paintDecor, paintSeedOf, waterOutline } from './decor-paint.mjs';
 import { CAVERN_KINDS, canopyKindOf, decorPlacements, decorRole } from './decor-regions.mjs';
 import { SNOW_LOOK } from './snow-look.mjs';
 import { decorKeyed } from '../props/decor-break.mjs';
@@ -52,7 +52,7 @@ void main(){
 export const DECOR_SHADER_SOURCES = Object.freeze([[SNOW_VERT, SNOW_FRAG]]);
 
 // How many looks a kind has (its seed picks one), and the sizes each is painted at (a decoration is drawn at the nearest).
-export const VARIANTS = 6;
+export const VARIANTS = DECOR_VARIANTS;
 const SIZE_STEPS = [0.6, 0.85, 1.2, 1.7];
 /** Which painted picture a decoration uses (pure): its kind, one of a few looks, and the size step nearest its own. */
 export function pictureOf(d, look = {}) {
@@ -186,7 +186,7 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
   const picture = (d, look) => {
     const p = pictureOf(d, look);
     if (!pictures.has(p.key)) {
-      const art = paintDecor(d.kind, 7919 * (p.variant + 1) + d.kind.length, p.size * grid(), { ...look, unit: grid(), liveWater: true }, canvasOf);
+      const art = paintDecor(d.kind, paintSeedOf(d), p.size * grid(), { ...look, unit: grid(), liveWater: true }, canvasOf);
       const tex = (c) => (c ? PIXI.Texture.from(c) : null);
       pictures.set(p.key, art ? { art: tex(art.canvas), shadow: tex(art.shadow), trunk: tex(art.trunk), cloth: tex(art.cloth), width: art.width, painted: p.size, canvas: art.canvas } : null);
     }

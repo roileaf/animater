@@ -3,7 +3,7 @@
 // groundSlams and the rest read unchanged. A break is stored on its region by the decoration's key.
 
 import { CAVERN_KINDS, decorPlacements, DECOR_MOST } from "../motion/decor-regions.mjs";
-import { DECOR_KINDS, hashText } from "../motion/decor-paint.mjs";
+import { DECOR_KINDS, hashText, paintedMaterial, paintSeedOf } from "../motion/decor-paint.mjs";
 import { webCorners } from "../motion/webs.mjs";
 import { readNote } from "./prop-break.mjs";
 import { validBreakRequest } from "./prop-requests.mjs";
@@ -31,9 +31,22 @@ export const DECOR_BREAKS = Object.freeze({
   // its name would read as a lantern's oil to spill, and it spills none.
   lampPost: ENTRY("metal", "topple", { rule: "heavy", contents: "none" }), tableStools: ENTRY("wood", "collapse"), marketStall: ENTRY("wood", "collapse", { boxy: true }),
   stakeFence: ENTRY("wood", "collapse"), strawBed: ENTRY("plant", "burn"),
+  // The indoor and water kinds (spec Amendment 2). A throne or a bathtub breaks as what its picture is painted of (`painted`,
+  // by decor-paint paintedMaterial): wood shatters or collapses, stone needs force, a copper tub follows metal's rules.
+  bookshelf: ENTRY("wood", "collapse", { boxy: true, contents: "books" }), bed: ENTRY("wood", "collapse", { boxy: true }), desk: ENTRY("wood", "collapse", { boxy: true }),
+  counter: ENTRY("wood", "collapse", { boxy: true }), rowboat: ENTRY("wood", "collapse"), strongbox: ENTRY("wood", "shatter", { boxy: true }), mooringPost: ENTRY("wood", "topple"),
+  statue: ENTRY("stone", "topple"), altar: ENTRY("stone", "shatter", { boxy: true, rule: "noSlam" }),
+  pottedPlant: ENTRY("clay", "shatter"), rug: ENTRY("plant", "burn"), cattails: ENTRY("plant", "burn"),
+  throne: Object.freeze({ painted: Object.freeze({ wood: ENTRY("wood", "collapse", { boxy: true }), stone: ENTRY("stone", "shatter", { boxy: true, rule: "noSlam" }) }) }),
+  bathtub: Object.freeze({ painted: Object.freeze({ wood: ENTRY("wood", "shatter", { contents: "water" }), stone: ENTRY("stone", "shatter", { contents: "water", rule: "noSlam" }), metal: ENTRY("metal", "shatter", { contents: "water" }) }) }),
 });
+/** How one decoration breaks (pure): its kind's entry, or for a throne or a bathtub the entry of what its picture is painted of; null when it never breaks. */
+export function decorBreakOf(d) {
+  const b = Object.hasOwn(DECOR_BREAKS, d?.kind) ? DECOR_BREAKS[d.kind] : null;
+  return b?.painted ? b.painted[paintedMaterial(d.kind, paintSeedOf(d))] ?? null : b;
+}
 /** What the topple whisper calls a toppled decoration. */
-export const DECOR_NAMES = Object.freeze({ stalagmite: "A stalagmite", column: "A rock column", signpost: "A signpost", tombstone: "A gravestone", lampPost: "A street lamp" });
+export const DECOR_NAMES = Object.freeze({ stalagmite: "A stalagmite", column: "A rock column", signpost: "A signpost", tombstone: "A gravestone", lampPost: "A street lamp", statue: "A statue", mooringPost: "A mooring post" });
 
 const px = (n) => Math.round(n);
 // An area's holes are an array property, which JSON.stringify of the areas array drops: write them out.
@@ -49,10 +62,11 @@ export function decorFingerprint(region, grid) {
 /** Every placement of a region with its key, breakable or not; `hand` marks one put down by hand (pure). */
 export function decorKeyed(region, grid) {
   const { settings, areas, id } = region;
-  const placed = decorPlacements({ settings, areas, grid, id }), byHand = new Set(settings?.brushed ?? []);
+  // (A hand one scaled by the region's Size or its kind's size is a copy: told apart by its kind, place and seed.)
+  const handOf = (d) => `${d.kind}:${d.x}:${d.y}:${d.seed}`, placed = decorPlacements({ settings, areas, grid, id }), byHand = new Set(settings?.brushed ?? []), handAt = new Set((settings?.brushed ?? []).map(handOf));
   if (!placed.length) return [];
   const fp = decorFingerprint(region, grid);
-  return placed.map((d) => { const hand = byHand.has(d); return { d, hand, key: `${d.kind}:${px(d.x)}:${px(d.y)}:${hand ? "h" : fp}` }; });
+  return placed.map((d) => { const hand = byHand.has(d) || handAt.has(handOf(d)); return { d, hand, key: `${d.kind}:${px(d.x)}:${px(d.y)}:${hand ? "h" : fp}` }; });
 }
 
 /**
@@ -61,7 +75,7 @@ export function decorKeyed(region, grid) {
  * and tipping; `decor.rule` what breaks it where its material's rules say otherwise.
  */
 export function decorView({ d, key }, region, grid) {
-  const b = DECOR_BREAKS[d.kind]; if (!b) return null;
+  const b = decorBreakOf(d); if (!b) return null;
   const s = d.size * grid, prop = { material: b.material, style: b.style };
   if (b.contents) prop.contents = b.contents;
   if (b.tips) prop.tips = "yes";
@@ -149,6 +163,18 @@ export function readDecorBroken(raw) {
     out.push({ key: e.key, kind: e.kind, x: e.x, y: e.y, note });
   }
   return out;
+}
+/**
+ * A region dragged (decor-regions carryDecor moved what was painted by hand by dx, dy): the breaks of those hand decorations move
+ * with them (pure), keyed where they now stand. A toppled one that left rubble is not carried: the edit stands it up again and
+ * its rubble goes with its stale entry (decorToppledPrune). Scattered ones are left as they are (the drag moved their scatter).
+ */
+export function carryDecorBroken(entries, dx, dy) {
+  return (entries ?? []).map((e) => {
+    if (!e?.key?.endsWith(":h") || e.note?.region || !Number.isFinite(e.x) || !Number.isFinite(e.y)) return e;
+    const x = e.x + dx, y = e.y + dy;
+    return { ...e, x, y, key: `${e.kind}:${px(x)}:${px(y)}:h` };
+  });
 }
 /** The breaks whose decoration still stands (pure); the others are stale and ignored. */
 export const liveBroken = (entries, keys) => entries.filter((e) => keys.has(e.key));

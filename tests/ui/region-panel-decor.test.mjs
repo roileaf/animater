@@ -203,3 +203,8 @@ test('Shift+wheel turns what the brush lays; a turned stamp keeps its whole turn
   assert.match(bar, /Shift\+wheel: rotate · Ctrl\+Shift\+wheel: density/);
   assert.match(bar, /turnBy: \(dir\) =>/);
 });
+
+test("the Decorations can break tip names the indoor and water things that break too", () => {
+  const src = readFileSync(new URL("../../scripts/ui/region-panel-sections.mjs", import.meta.url), "utf8"), line = src.split(/\r?\n/).find((l) => l.includes("toggle('Decorations can break'"));
+  for (const w of ["bookshelves", "beds", "thrones", "statues", "rowboats", "mooring posts", "cattails"]) assert.ok(line.includes(w), w);
+});
