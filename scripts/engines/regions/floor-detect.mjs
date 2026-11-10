@@ -821,24 +821,30 @@ const FLOOR_LOOK = Object.freeze({
   ice: ["Ice", "#8fd4e6"], mud: ["Mud", "#5f4a32"], glass: ["Glass", "#9fd0e0"], metal: ["Metal", "#76828e"],
   cavern: ["Cave", "#6b5a73"], lava: ["Lava", "#e85a1f"],
 });
-// A cave's saved floor is the empty string. The picker and the memory use "cavern", which is a real id.
-const lookId = (floor) => (floor === "" ? "cavern" : floor);
-export const floorName = (floor) => FLOOR_LOOK[lookId(floor)]?.[0] ?? FLOOR_LOOK.water[0];
-export const floorColour = (floor) => FLOOR_LOOK[lookId(floor)]?.[1] ?? FLOOR_LOOK.water[1];
+export const floorName = (floor) => FLOOR_LOOK[floor]?.[0] ?? FLOOR_LOOK.water[0];
+export const floorColour = (floor) => FLOOR_LOOK[floor]?.[1] ?? FLOOR_LOOK.water[1];
 export const isAreaFloor = (floor) => AREA_FLOORS.includes(floor);
-// Picker id "cavern" and the empty wire floor are the same cave.
-export const wireFloor = (floor) => (floor === "cavern" || floor === "" ? "" : floor);
-// What the creator shows for a saved region's flags. Empty floor is a cave. A missing floor with cave growth is a cave too. Anything else unknown stays water, so an old water region is not called a cave.
-export function displayFloorOf(own = {}) {
-  if (!own || typeof own !== "object") return "water";
-  if (own.floor === "") return "cavern";
-  if (isAreaFloor(own.floor)) return own.floor;
-  if (caveHasMenu(stepFlags(own)) || (own.cavern && own.cavern !== "lava")) return "cavern";
+// The creator picks "cavern"; a cave region saves no floor of its own. These two are the only crossings between the two.
+export const savedFloor = (floor) => (floor === "cavern" ? "" : floor);
+export function pickerFloor(own = {}) {
+  if (isAreaFloor(own?.floor)) return own.floor;
+  if (!own?.floor && (caveHasMenu(stepFlags(own ?? {})) || (own?.cavern && own.cavern !== "lava"))) return "cavern";
   return "water";
 }
-// The flags a floor brings with it beyond `floor`: water its kind and flow, lava its own steps.
+// A Foundry flag patch applied to a plain object: `-=key` deletes that key.
+export function patchFlags(flags, patch) {
+  for (const [key, value] of Object.entries(patch ?? {})) {
+    if (key.startsWith("-=")) delete flags[key.slice(2)];
+    else flags[key] = value;
+  }
+  return flags;
+}
+
+// The flags a floor brings with it beyond `floor`: water its kind and flow, lava its own steps, a cave the growth that
+// makes the rest of Animater read it as a cave (the region panel's Cave starts with the same).
 export function floorFlags(floor, { waterKind = "still", flowTo = "", current = "", waveTo = "", seaBeach = "" } = {}) {
   if (floor === "lava") return caveKindFlags({}, "lava");
+  if (floor === "cavern") return caveKindFlags({}, "fungus");
   if (floor !== "water") return {};
   const kind = WATER_KINDS.some(([value]) => value === waterKind) ? waterKind : "still";
   const flags = waterKindFlags({ flowTo: FLOW.has(flowTo) ? flowTo : "", current }, kind);
@@ -850,7 +856,7 @@ export function floorFlags(floor, { waterKind = "still", flowTo = "", current = 
   return flags;
 }
 
-export function toRegionData(proposal, { sceneRect, imageWidth, imageHeight, levelId, name, floor = "water", waterKind = "still", flowTo = "", current = "", waveTo = "", seaBeach = "", texture = "", pattern = "", edge = "", overWater = false, steps = null, flags: extra = null, roof = null } = {}) {
+export function toRegionData(proposal, { sceneRect, imageWidth, imageHeight, levelId, name, floor = "water", waterKind = "still", flowTo = "", current = "", waveTo = "", seaBeach = "", texture = "", pattern = "", edge = "", overWater = false, steps = null, panelFlags = null, roof = null } = {}) {
   if (!(sceneRect?.width > 0) || !(sceneRect?.height > 0)) throw new Error("toRegionData: sceneRect needs a width and a height");
   if (!(imageWidth > 0) || !(imageHeight > 0)) throw new Error("toRegionData: image size is missing");
   const scaleX = sceneRect.width / imageWidth;
@@ -863,9 +869,8 @@ export function toRegionData(proposal, { sceneRect, imageWidth, imageHeight, lev
     if (points.length < 6 || points.length % 2 !== 0) continue;
     shapes.push({ type: "polygon", points, hole: loop.hole === true });
   }
-  const area = floor === "" || floor === "cavern" ? "cavern" : isAreaFloor(floor) ? floor : "water";
-  const wire = wireFloor(area);
-  const animater = { floor: wire, generated: GENERATED_MARK, ...floorFlags(area, { waterKind, flowTo, current, waveTo, seaBeach }) };
+  const area = isAreaFloor(floor) ? floor : "water";
+  const animater = { floor: savedFloor(area), generated: GENERATED_MARK, ...floorFlags(area, { waterKind, flowTo, current, waveTo, seaBeach }) };
   if (texture === "on" || texture === "off") animater.texture = texture; // else the scene's floor texture setting decides
   if (pattern) animater.textureStyles = { [area]: pattern };
   // Built out over water (a deck, a jetty): what the region panel calls Dock. Never water or lava itself.
@@ -874,15 +879,7 @@ export function toRegionData(proposal, { sceneRect, imageWidth, imageHeight, lev
   if (steps && typeof steps === "object") Object.assign(animater, steps);
   const soft = edge === "" || edge === undefined || edge === null ? NaN : Number(edge);
   if (Number.isFinite(soft)) { if (soft <= 0) animater.stepEdgeOff = true; else animater.stepEdge = Math.min(3, soft); }
-  // Draft patches from the embedded panel. The row's floor still wins.
-  if (extra && typeof extra === "object") {
-    for (const [key, value] of Object.entries(extra)) {
-      if (key === "floor" || key === "generated") continue;
-      if (key.startsWith("-=")) delete animater[key.slice(2)];
-      else animater[key] = value;
-    }
-  }
-  animater.floor = wire;
+  patchFlags(animater, panelFlags);
   if (roof === true) animater.roof = true;
   return {
     name: name || floorName(area),

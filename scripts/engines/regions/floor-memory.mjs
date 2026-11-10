@@ -79,8 +79,7 @@ export function lookOf(choices = {}) {
 // The memory with these examples added: `entries` are { key, sig, floor, look }. An example with a key already kept
 // (one region, saved again) replaces it. The newest `limit` stay.
 export function rememberAreas(stored, entries, { limit = MEMORY_TUNING.limit, now = Date.now() } = {}) {
-  // A cave's wire floor is "". Memory keeps the picker id, or the truthy check would drop the example.
-  const fresh = (entries ?? []).map((e) => (e && e.floor === "" ? { ...e, floor: "cavern" } : e)).filter((e) => e?.key && e.sig && e.floor).map((e) => ({ key: String(e.key), sig: e.sig, floor: e.floor, look: lookOf({ ...e.look, floor: e.floor }), at: now }));
+  const fresh = (entries ?? []).filter((e) => e?.key && e.sig && e.floor).map((e) => ({ key: String(e.key), sig: e.sig, floor: e.floor, look: lookOf({ ...e.look, floor: e.floor }), at: now }));
   const keys = new Set(fresh.map((e) => e.key));
   return [...memoryOf(stored).filter((e) => !keys.has(e.key)), ...fresh].slice(-limit);
 }

@@ -4,6 +4,7 @@
 import { stepFlags, caveLook } from "../engines/motion/region-steps.mjs";
 import { fungusIn, crystalsIn, FUNGUS_COLORS, CRYSTAL_STONES } from "../engines/motion/cavern.mjs";
 import { regionHasAnimals } from "../engines/motion/region-animals.mjs";
+import { worldAreas } from "../engines/regions/area-outline.mjs";
 
 const DRESSING = { webs: "Cobwebs", wet: "Wet walls", steam: "Steam", foul: "Bad air" };
 const KIND_BADGE = { mist: "Mist", lava: "Lava" };
@@ -18,29 +19,6 @@ const wallRev = (walls) => {
   return `${n}:${Math.round(sum)}`;
 };
 
-const loopKey = (loops) => (loops ?? []).map((loop) => `${loop.hole ? "h" : "o"}:${(loop.points ?? []).length}:${loop.points?.[0] ?? ""}:${loop.points?.[1] ?? ""}`).join(";");
-
-// Loops in scene coordinates, holes on the ring that contains them. Local so this file does not import the creator window.
-function sceneAreas(loops, rect, width, height) {
-  if (!(rect?.width > 0) || !(rect?.height > 0) || !(width > 0) || !(height > 0)) return [];
-  const kx = rect.width / width, ky = rect.height / height;
-  const world = (points) => Array.from(points ?? [], (value, i) => (i % 2 ? rect.y + value * ky : rect.x + value * kx));
-  const inside = (x, y, points) => {
-    let hit = false;
-    for (let i = 0, j = points.length - 2; i < points.length; j = i, i += 2) {
-      if ((points[i + 1] > y) !== (points[j + 1] > y) && x < ((points[j] - points[i]) * (y - points[i + 1])) / (points[j + 1] - points[i + 1]) + points[i]) hit = !hit;
-    }
-    return hit;
-  };
-  const outers = (loops ?? []).filter((loop) => !loop.hole && loop.points?.length >= 6).map((loop) => Object.assign(world(loop.points), { holes: [], raw: loop.points }));
-  for (const hole of (loops ?? []).filter((loop) => loop.hole && loop.points?.length >= 6)) {
-    const owner = outers.find((outer) => inside(hole.points[0], hole.points[1], outer.raw));
-    if (owner) owner.holes.push(world(hole.points));
-  }
-  for (const outer of outers) delete outer.raw;
-  return outers;
-}
-
 function badgesFor(flags, own, look) {
   const badges = [];
   if (look && look.kind !== "fungus" && look.kind !== "crystals") badges.push(KIND_BADGE[look.kind] ?? look.kind);
@@ -52,10 +30,13 @@ function badgesFor(flags, own, look) {
   return badges;
 }
 
-export function previewKey({ flags = {}, loops, rect, width, height, grid = 100, walls, seed = "cave" } = {}) {
+// `walls` may be a function: only crystals need them, so the scene's walls are read only for a crystal cave.
+const wallsOf = (walls) => (typeof walls === "function" ? walls() : walls) ?? [];
+
+// The loops are not in the key: the cache below holds the loops array it was laid out for.
+function previewKey({ flags = {}, rect, width, height, grid = 100, walls, seed = "cave" } = {}, look) {
   const own = stepFlags(flags ?? {});
-  const look = caveLook(own);
-  return [look?.kind ?? "", look?.tone ?? "", look?.amount ?? "", look?.scale ?? "", grid, wallRev(walls), seed, loopKey(loops), rect?.x ?? "", rect?.y ?? "", rect?.width ?? "", rect?.height ?? "", width ?? "", height ?? "", own.drips ? 1 : 0, flags?.roof === true ? 1 : 0, flags?.cavern ?? ""].join("|");
+  return [look?.kind ?? "", look?.tone ?? "", look?.amount ?? "", look?.scale ?? "", grid, look?.kind === "crystals" ? wallRev(wallsOf(walls)) : "", seed, rect?.x ?? "", rect?.y ?? "", rect?.width ?? "", rect?.height ?? "", width ?? "", height ?? "", own.drips ? 1 : 0, flags?.roof === true ? 1 : 0, flags?.cavern ?? ""].join("|");
 }
 
 export function layoutCavePreview(args = {}) {
@@ -63,21 +44,22 @@ export function layoutCavePreview(args = {}) {
   const own = stepFlags(flags);
   const look = caveLook(own);
   const grid = args.grid || 100;
-  const areas = sceneAreas(args.loops, args.rect, args.width, args.height);
+  const sized = args.rect?.width > 0 && args.rect?.height > 0 && args.width > 0 && args.height > 0;
+  const areas = sized ? worldAreas(args.loops ?? [], args.rect, args.width, args.height) : [];
   const seed = String(args.seed ?? "cave");
   const fungus = look?.kind === "fungus" ? fungusIn(areas, { grid, seed: `${seed}:fungus`, amount: look.amount ?? 1, scale: look.scale ?? 1 }) : [];
-  const crystals = look?.kind === "crystals" ? crystalsIn(areas, { walls: args.walls ?? [], grid, seed: `${seed}:crystals`, amount: look.amount ?? 1, scale: look.scale ?? 1 }) : [];
-  return { look, fungus, crystals, badges: badgesFor(flags, own, look), key: previewKey(args) };
+  const crystals = look?.kind === "crystals" ? crystalsIn(areas, { walls: wallsOf(args.walls), grid, seed: `${seed}:crystals`, amount: look.amount ?? 1, scale: look.scale ?? 1 }) : [];
+  return { look, fungus, crystals, badges: badgesFor(flags, own, look) };
 }
 
+// Per proposal. Every outline edit gives the proposal a new loops array, so a moved vertex misses.
 const cache = new WeakMap();
-// `holder` is the proposal object. A new shape is a new object, so the layout is thrown away with it.
 export function cachedCavePreview(holder, args) {
-  const key = previewKey(args);
+  const key = previewKey(args, caveLook(stepFlags(args.flags ?? {})));
   const hit = holder ? cache.get(holder) : null;
-  if (hit?.key === key) return hit;
+  if (hit?.key === key && hit.loops === args.loops) return hit.layout;
   const layout = layoutCavePreview(args);
-  if (holder) cache.set(holder, layout);
+  if (holder) cache.set(holder, { key, loops: args.loops, layout });
   return layout;
 }
 

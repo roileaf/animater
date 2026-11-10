@@ -6,9 +6,10 @@ import { readFileSync } from "node:fs";
 import { WATER_KINDS, waterKindOf, waterFlows } from "../../scripts/engines/motion/region-steps.mjs";
 import {
   FLOW_OPTIONS, CURRENT_OPTIONS, noneMessage, failureMessage, clickMessage, loadMapRgba, floorWindowHTML, areaRowHTML,
-  floorRegionsWindow, savedAreaProposals, readAreaChoices, planFloorCreate, commitFloorPlan, openFloorRegions, previewPixel, levelMapIsPlain, SMART_CONSENT, loadMapView, paintAreaPreview, VIEW_MAX, waterSummary, saveLabel, areaShade, rowMeta, areaListHTML, paintsTexture, worldAreas, sizeOf, AUTO_FLOOR, NO_FLOOR, learnSaved, floorMemoryStore, FLOOR_MEMORY_SETTING,
+  floorRegionsWindow, savedAreaProposals, readAreaChoices, planFloorCreate, commitFloorPlan, openFloorRegions, previewPixel, levelMapIsPlain, SMART_CONSENT, loadMapView, paintAreaPreview, VIEW_MAX, waterSummary, saveLabel, areaShade, rowMeta, areaListHTML, paintsTexture, sizeOf, AUTO_FLOOR, NO_FLOOR, learnSaved, floorMemoryStore, FLOOR_MEMORY_SETTING,
 } from "../../scripts/ui/floor-regions-ui.mjs";
 import { createAreaDrafts } from "../../scripts/ui/area-draft.mjs";
+import { worldAreas } from "../../scripts/engines/regions/area-outline.mjs";
 import { cachedCavePreview, layoutCavePreview } from "../../scripts/ui/cave-preview.mjs";
 
 const sceneRect = { x: 1000, y: 2000, width: 5000, height: 2500 };
@@ -1051,15 +1052,16 @@ function savedRegion(id, x = 100) {
 }
 const editRect = { x: 100, y: 200, width: 200, height: 200 };
 
-test("a saved cave reopens as Cave, not water, and does not grow fungus it never had", () => {
+test("a saved cave reopens as Cave, and a floorless region with no cave growth does not", () => {
   const region = savedRegion("cave");
-  region.flags.animater = { generated: "floor-detect", floor: "" };
+  region.flags.animater = { generated: "floor-detect", floor: "", cavern: "crystals-quartz" };
   const [proposal] = savedAreaProposals([region], { levelId: "level-1", sceneRect: editRect, width: 20, height: 20 });
   assert.equal(proposal.floor, "cavern");
   assert.equal(proposal.savedChoices.floor, "cavern");
-  assert.equal(proposal.savedFlags.floor, "");
-  assert.equal(proposal.savedFlags.cavern, undefined);
+  assert.equal(proposal.savedFlags.cavern, "crystals-quartz", "its own growth, not the default fungus");
   assert.match(areaRowHTML(proposal), /<option value="cavern" selected>Cave<\/option>/);
+  region.flags.animater = { generated: "floor-detect", floor: "" };
+  assert.equal(savedAreaProposals([region], { levelId: "level-1", sceneRect: editRect, width: 20, height: 20 })[0].floor, "water");
 });
 
 test("saved water reloads its ID, settings, exact outlines and hole coverage", () => {
@@ -2107,6 +2109,73 @@ test("saving a cave writes its flags and roof, and a later edit writes only what
   assert.deepEqual(roofs, [["cave", true]]);
   assert.deepEqual(result, { created: 0, updated: 1 });
   assert.equal(scene.calls.at(-1)[2][0]["flags.animater.roof"], true);
+});
+
+test("picking a floor for an area Auto didn't know keeps its Over water tick", () => {
+  const drafts = createAreaDrafts();
+  drafts.seed("area-1", {});
+  drafts.chooseFloor("area-1", "wood");
+  assert.equal(drafts.read("area-1").own.overWater, undefined, "an unknown floor is not a cave, so nothing is cleared");
+  const plan = planFloorCreate({
+    proposals: [{ ...square, floor: "wood" }],
+    picked: [{ id: "area-1", checked: true, floor: "wood", overWater: true }],
+    effects: new Map([["area-1", drafts.export("area-1")]]),
+    sceneRect, imageWidth: 10, imageHeight: 5, levelId: "level-1", regions: [],
+  });
+  assert.equal(plan.creates[0].flags.animater.overWater, true);
+});
+
+test("a cave turned to stone keeps the row's Over water tick over the panel's", () => {
+  const drafts = createAreaDrafts();
+  drafts.seed("area-1", { floor: "", cavern: "fungus-green" });
+  drafts.chooseFloor("area-1", "stone");
+  assert.equal(drafts.read("area-1").own.overWater, false, "leaving a cave clears it in the draft");
+  const plan = planFloorCreate({
+    proposals: [{ ...square, floor: "stone" }],
+    picked: [{ id: "area-1", checked: true, floor: "stone", overWater: true }],
+    effects: new Map([["area-1", drafts.export("area-1")]]),
+    sceneRect, imageWidth: 10, imageHeight: 5, levelId: "level-1", regions: [],
+  });
+  assert.equal(plan.creates[0].flags.animater.overWater, true);
+  assert.equal(plan.creates[0].flags.animater.cavern, "");
+});
+
+test("a cave's fungus does not replace the area's outline", () => {
+  const area = { id: "area-1", floor: "cavern", loops: caveLoops, pixels: Int32Array.from([0]) };
+  const layout = layoutCavePreview({ ...caveView, flags: { floor: "", cavern: "fungus-green" } });
+  let path = [];
+  const strokes = [];
+  const ctx = new Proxy({}, {
+    get: (target, key) => key in target ? target[key]
+      : key === "beginPath" ? () => { path = []; }
+      : ["moveTo", "lineTo", "arc"].includes(key) ? (...args) => path.push([key, ...args])
+      : key === "stroke" ? () => strokes.push(path)
+      : () => {},
+    set: (target, key, value) => { target[key] = value; return true; },
+  });
+  paintAreaPreview(ctx, null, 100, 100, [area], "", new Map([["area-1", "cavern"]]), { sceneRect: caveRect, effects: new Map([["area-1", layout]]) });
+  assert.ok(layout.fungus.length > 0);
+  assert.deepEqual(strokes[0][0], ["moveTo", 0, 0], "the outline is the area's loop");
+  assert.ok(!strokes[0].some(([op]) => op === "arc"), "not the last fungus cap");
+});
+
+test("the preview recomputes when an outline moves, and reads walls only for crystals", () => {
+  const holder = {};
+  let reads = 0;
+  const walls = () => { reads++; return []; };
+  const first = cachedCavePreview(holder, { ...caveView, flags: { floor: "", cavern: "fungus-green" }, walls });
+  assert.equal(cachedCavePreview(holder, { ...caveView, flags: { floor: "", cavern: "fungus-green" }, walls }), first);
+  const moved = [{ points: [0, 0, 100, 0, 100, 60, 0, 60], hole: false }];
+  assert.notEqual(cachedCavePreview(holder, { ...caveView, loops: moved, flags: { floor: "", cavern: "fungus-green" }, walls }), first);
+  assert.equal(reads, 0, "fungus does not read the scene's walls");
+  cachedCavePreview(holder, { ...caveView, flags: { floor: "", cavern: "crystals-amethyst" }, walls });
+  assert.ok(reads > 0);
+});
+
+test("Effects shows on a cave row only, and an area with no floor yet shows none", () => {
+  assert.match(areaRowHTML({ ...square, floor: "cavern" }), /<div data-effects-field>/);
+  assert.match(areaRowHTML({ ...square, floor: "grass" }), /<div data-effects-field hidden>/);
+  assert.match(areaRowHTML({ ...square, floor: NO_FLOOR }), /<div data-effects-field hidden>/);
 });
 
 test("the map preview places fewer fungus clusters when the amount drops, and names effects it does not draw", () => {

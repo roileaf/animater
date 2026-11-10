@@ -3292,7 +3292,7 @@ const openFloorRegionsTool = async () => {
     levelId,
     textures,
     grid: canvas.grid?.size ?? 100,
-    effectsOff: () => ["Fungus", "Crystals", "Lava", "Mist"].filter((_, index) => !bothSettingsOn(["caveFungus", "caveCrystals", "caveLava", "caveMist"][index])),
+    effectsOff: () => Object.entries({ Fungus: "caveFungus", Crystals: "caveCrystals", Lava: "caveLava", Mist: "caveMist" }).filter(([, key]) => !bothSettingsOn(key)).map(([label]) => label),
     walls: () => { try { return wallsHere(); } catch { return []; } },
     setRoof,
     tile: (floor, style) => floorTextures.tileImage(floor, style),

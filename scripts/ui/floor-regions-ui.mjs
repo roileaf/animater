@@ -1,9 +1,9 @@
 // Experimental water proposals. The form, the create plan and the image read are pure and exported.
 // The window takes what it needs as options. Nothing here runs until a GM clicks the Regions tool.
 
-import { detectWater, selectColourAt, areaPixels, mergeAreaProposals, fitSize, toRegionData, editableFloorRegionIds, areaProposalFromLoops, WATER_TUNING, AREA_FLOORS, floorName, floorColour, isAreaFloor, displayFloorOf, wireFloor } from "../engines/regions/floor-detect.mjs";
+import { detectWater, selectColourAt, areaPixels, mergeAreaProposals, fitSize, toRegionData, editableFloorRegionIds, areaProposalFromLoops, WATER_TUNING, AREA_FLOORS, floorName, floorColour, isAreaFloor, pickerFloor, savedFloor, floorFlags } from "../engines/regions/floor-detect.mjs";
 import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindOf, caveKindFlags, TEXTURE_STYLES, STEP_EDGE, stepEdge, stepListOf, stepIndexOf, changeStep, activeStep, caveLook, stepFlags } from "../engines/motion/region-steps.mjs";
-import { outlinePoint, hitOutline, changeVertex, validateOutline, smoothOutline, unionOutlines, subtractOutlines } from "../engines/regions/area-outline.mjs";
+import { worldAreas, outlinePoint, hitOutline, changeVertex, validateOutline, smoothOutline, unionOutlines, subtractOutlines } from "../engines/regions/area-outline.mjs";
 import { sizeOrder, startSize, boxPoints, nearbyClicks, consensus, cutStart, cutFrom, solidCut, spotAt, sliverAt, smallSpots, maskPieces, cleanSelection, nextAreaId, smartProposal, keepToColours, colourCut } from "../engines/regions/smart-select.mjs";
 import { SMART_MODEL, loadSmartModel, isSmartModelCached } from "./smart-model.mjs";
 import { areaSignature, rememberAreas, recallFloor, memoryOf, markAreas, knowsFloors, NONE_FLOOR } from "../engines/regions/floor-memory.mjs";
@@ -307,12 +307,14 @@ export function areaRowHTML(proposal, options = {}) {
         <label title="How far the texture fades out past the region's line, in squares. 0 is a hard edge.">Soft edge <span class="an-range"><input type="range" min="0" max="${STEP_EDGE.max}" step="0.1" value="${soft}" data-edge="${id}"><output data-edge-value>${soft ? soft.toFixed(1) : "Hard"}</output></span></label>
       </div>
     </div>
-    <p class="an-effects-status" data-effects-status>Preview. Applies on Save.</p>
-    <details class="an-effects" data-effects open>
-      <summary>Effects</summary>
-      <p class="an-effects-off" data-effects-off hidden></p>
-      <div class="an-effects-host" data-effects-host></div>
-    </details>
+    <div data-effects-field${floor === "cavern" && !unknown ? "" : " hidden"}>
+      <p class="an-effects-status" data-effects-status>Preview. Applies on Save.</p>
+      <details class="an-effects" data-effects open>
+        <summary>Effects</summary>
+        <p class="an-effects-off" data-effects-off hidden></p>
+        <div class="an-effects-host" data-effects-host></div>
+      </details>
+    </div>
     <div class="an-insp-tools">
       <button type="button" class="an-floors-add" data-add-to="${id}" aria-pressed="false" title="Click more of this floor on the map to add it to this area"><i class="fa-solid fa-plus" inert></i> Add to</button>
       <button type="button" class="an-floors-edit" data-edit-outline="${id}" aria-pressed="false" title="Drag the outline's handles"><i class="fa-solid fa-pen-nib" inert></i> Outline</button>
@@ -474,25 +476,21 @@ export function savedAreaProposals(regions, { levelId, sceneRect, width, height 
     }
     const own = region.flags?.animater ?? {};
     const kind = waterKindOf(own);
-    const floor = displayFloorOf(own);
+    const floor = pickerFloor(own);
     const savedChoices = { floor, generated: own.generated, waterKind: kind, flowTo: flowDefault(kind, own.flowTo), current: currentDefault(kind, own.current), waveTo: own.waveTo ?? "", seaBeach: own.seaBeach === "off" ? "off" : "", texture: textureOf(own.texture), pattern: patternOf(floor, own.textureStyles?.[floor]), edge: String(own.stepEdgeOff === true ? 0 : stepEdge(own)), overWater: own.overWater === true, stepsOwn: own.steps ? { steps: own.steps, stepsFloor: own.stepsFloor, step: own.step, stepsEdited: own.stepsEdited } : null };
     savedChoices.step = stepStart(floor, savedChoices.stepsOwn);
     return { ...areaProposalFromLoops(loops, width, height), id: `area-${index + 1}`, regionId: region.id, name: region.name ?? floorName(floor), floor, savedChoices, savedFlags: { ...own }, roofed: hasRoof(region), preselected: false };
   }).filter((proposal) => proposal.loops.length).map((proposal, i) => ({ ...proposal, id: `area-${i + 1}` }));
 }
 
-// Keys the embedded panel changed, apart from the floor the row already owns.
-function effectFlags(fx) {
-  if (!fx) return null;
+// The row's own controls set these. The Effects panel's copy never overrides them.
+const ROW_KEYS = new Set(["floor", "generated", "overWater"]);
+// Keys the Effects panel changed, as a flag patch.
+function effectFlags(draft) {
+  if (!draft) return null;
   const out = {};
-  for (const key of fx.intent ?? []) {
-    if (key === "floor" || key === "generated") continue;
-    out[key] = fx.flags?.[key];
-  }
-  for (const key of fx.deleted ?? []) {
-    if (key === "floor" || key === "generated") continue;
-    out[`-=${key}`] = null;
-  }
+  for (const key of draft.intent ?? []) if (!ROW_KEYS.has(key)) out[key] = draft.flags?.[key];
+  for (const key of draft.deleted ?? []) if (!ROW_KEYS.has(key)) out[`-=${key}`] = null;
   return Object.keys(out).length ? out : null;
 }
 
@@ -505,20 +503,19 @@ export function planFloorCreate({ proposals, picked, sceneRect, imageWidth, imag
     if (!row.checked) continue;
     const proposal = byId.get(row.id);
     if (!proposal) continue;
-    const fx = effects?.get?.(row.id) ?? null;
-    const patched = effectFlags(fx);
+    const draft = effects?.get?.(row.id) ?? null;
+    const patched = effectFlags(draft);
     const data = toRegionData(proposal, { sceneRect, imageWidth, imageHeight, levelId, floor: row.floor,
       waterKind: row.waterKind, flowTo: row.flowTo, current: row.current, waveTo: row.waveTo, seaBeach: row.seaBeach, texture: row.texture,
       pattern: row.pattern ? patternOf(row.floor, row.pattern) : "", edge: row.edge, overWater: row.overWater === true, steps: proposal.regionId ? null : stepPatch(row.floor, row.step),
-      flags: patched, roof: fx?.roofTouched && fx.roof ? true : null });
+      panelFlags: patched, roof: draft?.roofTouched && draft.roof ? true : null });
     if (!proposal.regionId) { creates.push(data); sources.push(proposal.id); continue; }
     if (!editable.has(proposal.regionId)) throw new Error("The saved region is no longer editable on this level. Reopen the generator.");
     const patch = { _id: proposal.regionId };
     if (proposal.geometryChanged) patch.shapes = data.shapes;
     const before = proposal.savedChoices;
     const own = data.flags.animater;
-    // Compare the wire floor. A cave's picker id is "cavern" and its saved floor is "".
-    const wasFloor = wireFloor(before.floor ?? "water");
+    const wasFloor = savedFloor(before.floor ?? "water");
     if (own.floor !== wasFloor) {
       patch["flags.animater.floor"] = own.floor;
       // Off water: its kind, flow, waves and beach no longer apply. To lava: lava's own steps come with it.
@@ -551,14 +548,14 @@ export function planFloorCreate({ proposals, picked, sceneRect, imageWidth, imag
         patch[path] = value;
       }
     }
-    if (fx?.roofTouched) roofs.push({ regionId: proposal.regionId, enabled: fx.roof === true });
+    if (draft?.roofTouched) roofs.push({ regionId: proposal.regionId, enabled: draft.roof === true });
     // A region saved with the old "water-detect" marker keeps it: the generator reads both, and an update writes only what changed.
     if (Object.keys(patch).length > 1) updates.push(patch);
   }
   // Named by floor: "Water", or "Grass 1", "Grass 2" when one save makes several of the same floor.
   // Numbers carry on after the regions already on the scene, so a second save never makes another "Grass 1".
   const perFloor = new Map(), taken = new Map();
-  for (const data of creates) perFloor.set(data.flags.animater.floor, (perFloor.get(data.flags.animater.floor) ?? 0) + 1);
+  for (const data of creates) perFloor.set(pickerFloor(data.flags.animater), (perFloor.get(pickerFloor(data.flags.animater)) ?? 0) + 1);
   for (const region of Array.isArray(regions) ? regions : regions?.contents ?? []) {
     for (const floor of perFloor.keys()) {
       const base = floorName(floor), m = String(region.name ?? "").match(new RegExp(`^${base} ?(\\d*)$`));
@@ -567,7 +564,7 @@ export function planFloorCreate({ proposals, picked, sceneRect, imageWidth, imag
   }
   const seen = new Map();
   for (const data of creates) {
-    const floor = data.flags.animater.floor, n = (seen.get(floor) ?? taken.get(floor) ?? 0) + 1;
+    const floor = pickerFloor(data.flags.animater), n = (seen.get(floor) ?? taken.get(floor) ?? 0) + 1;
     seen.set(floor, n);
     data.name = perFloor.get(floor) === 1 && !taken.has(floor) ? floorName(floor) : `${floorName(floor)} ${n}`;
   }
@@ -659,14 +656,17 @@ export function paintAreaPreview(ctx, rgba, width, height, proposals, highlightI
   const line = view.unit ? view.unit * 1.25 : Math.max(1, width / 600);
   const perFloor = new Map(), shadeOf = new Map(), badgesOf = new Map();
   for (const proposal of proposals) {
-    ctx.beginPath();
-    for (const loop of proposal.loops ?? []) {
-      const points = loop.points ?? [];
-      if (points.length < 6) continue;
-      ctx.moveTo(points[0], points[1]);
-      for (let i = 2; i < points.length; i += 2) ctx.lineTo(points[i], points[i + 1]);
-      ctx.closePath();
-    }
+    const trace = () => {
+      ctx.beginPath();
+      for (const loop of proposal.loops ?? []) {
+        const points = loop.points ?? [];
+        if (points.length < 6) continue;
+        ctx.moveTo(points[0], points[1]);
+        for (let i = 2; i < points.length; i += 2) ctx.lineTo(points[i], points[i + 1]);
+        ctx.closePath();
+      }
+    };
+    trace();
     const hot = proposal.id === highlightId;
     const floor = floors?.get(proposal.id) ?? proposal.floor, kind = isAreaFloor(floor) ? floor : floor === NO_FLOOR ? NO_FLOOR : "water";
     const k = perFloor.get(kind) ?? 0; perFloor.set(kind, k + 1);
@@ -675,16 +675,16 @@ export function paintAreaPreview(ctx, rgba, width, height, proposals, highlightI
     const look = view.looks?.get(proposal.id);
     shadeOf.set(proposal.id, colour);
     // A painted area shows as it will look, soft edge and all: no outline over it unless it is the highlighted one.
-    const decor = view.effects?.get?.(proposal.id);
-    if (decor && (decor.fungus?.length || decor.crystals?.length)) {
+    const cave = view.effects?.get?.(proposal.id);
+    if (cave && (cave.fungus?.length || cave.crystals?.length)) {
       ctx.save();
       if (typeof ctx.clip === "function") ctx.clip("evenodd");
-      paintCavePreview(ctx, decor, view.sceneRect, width, height);
+      paintCavePreview(ctx, cave, view.sceneRect, width, height);
       ctx.restore();
+      trace(); // each cap and shard began its own path
     }
-    if (decor?.badges?.length) badgesOf.set(proposal.id, decor.badges);
+    if (cave?.badges?.length) badgesOf.set(proposal.id, cave.badges);
     const painted = view.painted?.ids?.has(proposal.id) || (look && drawPainted(ctx, proposal, look, scale));
-    // A painted area still shows its cave layout. The fast path only skips the colour fill.
     if (painted && !hot) continue;
     if (painted) { ctx.fillStyle = rgbaOf(ACCENT, 0.1); ctx.fill("evenodd"); }
     else { ctx.fillStyle = rgbaOf(colour, hot ? 0.34 : 0.2); ctx.fill("evenodd"); }
@@ -721,19 +721,6 @@ export function paintAreaPreview(ctx, rgba, width, height, proposals, highlightI
   }
 }
 
-// An area's loops in scene coordinates, as the floor renderer takes a region's: each outer ring with its holes.
-export function worldAreas(loops, rect, width, height) {
-  const kx = rect.width / width, ky = rect.height / height;
-  const world = (points) => Array.from(points, (v, i) => (i % 2 ? rect.y + v * ky : rect.x + v * kx));
-  const inside = (x, y, p) => { let c = false; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > y) !== (p[j + 1] > y) && x < ((p[j] - p[i]) * (y - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) c = !c; return c; };
-  const outers = loops.filter((l) => !l.hole && l.points?.length >= 6).map((l) => Object.assign(world(l.points), { holes: [], raw: l.points }));
-  for (const hole of loops.filter((l) => l.hole && l.points?.length >= 6)) {
-    const owner = outers.find((o) => inside(hole.points[0], hole.points[1], o.raw));
-    if (owner) owner.holes.push(world(hole.points));
-  }
-  for (const o of outers) delete o.raw;
-  return outers;
-}
 // A number per area object, so a changed shape asks for a new snapshot.
 const serials = new WeakMap();
 let nextSerial = 1;
@@ -819,6 +806,8 @@ function updateKindFields(row) {
   for (const field of row.querySelectorAll("[data-sea-field]")) field.hidden = !water || kind !== "sea";
   const over = row.querySelector("[data-over-water-field]");
   if (over) over.hidden = !canStandOverWater(floor);
+  const effects = row.querySelector("[data-effects-field]");
+  if (effects) effects.hidden = floor !== "cavern";
   updateStepField(row, floor);
   updateRowMeta(row);
   updateTextureFields(row);
@@ -1199,9 +1188,10 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
     seedDraft(id) {
       if (!id || this.drafts.get(id)) return;
       const proposal = this.detect?.proposals.find((item) => item.id === id);
-      const rowFloor = choicesFromElement(this.element).find((item) => item.id === id)?.floor ?? proposal?.floor ?? "water";
-      const flags = proposal?.savedFlags ? { ...proposal.savedFlags } : { floor: wireFloor(rowFloor) };
-      this.drafts.seed(id, flags, { roofed: proposal?.roofed === true });
+      const rowFloor = choicesFromElement(this.element).find((item) => item.id === id)?.floor ?? proposal?.floor;
+      // An area still waiting for its floor seeds nothing that reads as one.
+      const fresh = isAreaFloor(rowFloor) ? { floor: savedFloor(rowFloor), ...floorFlags(rowFloor) } : {};
+      this.drafts.seed(id, proposal?.savedFlags ? { ...proposal.savedFlags } : fresh, { roofed: proposal?.roofed === true });
     }
 
     effectsOffLabels(own) {
@@ -1230,10 +1220,11 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
 
     onDraft(id) {
       const row = [...(this.element?.querySelectorAll?.("[data-id]") ?? [])].find((item) => item.dataset?.id === id);
-      const display = displayFloorOf(this.drafts.read(id).own);
+      const floor = pickerFloor(this.drafts.read(id).own);
       const select = row?.querySelector?.("[data-floor]");
-      if (select && isAreaFloor(display) && select.value !== display) {
-        select.value = display;
+      if (select && select.value !== floor) {
+        select.value = floor;
+        this.floorGiven(row, floor);
         updateKindFields(row);
       }
       this.noteEffects(id);
@@ -1242,7 +1233,8 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
 
     mountEffects() {
       const id = this.selectedId;
-      const host = this.effectsHostFor(id);
+      const caveRow = choicesFromElement(this.element).find((item) => item.id === id)?.floor === "cavern";
+      const host = caveRow ? this.effectsHostFor(id) : null;
       if (!host) { this.effectsFor = ""; return; }
       if (this.effectsFor === id && this.effectsHost === host && this.effects?.isOpen) { this.noteEffects(id); return; }
       this.seedDraft(id);
@@ -1252,12 +1244,12 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       const proposal = this.detect?.proposals.find((item) => item.id === id);
       this.effects.open({
         presentation: { kind: "embedded", host, onLayout: () => this.fitInspector() },
-        floor: displayFloorOf(this.drafts.read(id).own),
+        floor: pickerFloor(this.drafts.read(id).own),
         target: {
           read: () => {
             const { own, roofed } = this.drafts.read(id);
             const rowFloor = choicesFromElement(this.element).find((item) => item.id === id)?.floor;
-            const floor = !this.drafts.dirty(id) && isAreaFloor(rowFloor) ? rowFloor : displayFloorOf(own);
+            const floor = !this.drafts.dirty(id) && isAreaFloor(rowFloor) ? rowFloor : pickerFloor(own);
             return { own, roofed, floor, name: proposal?.name ?? "" };
           },
           apply: (change) => {
@@ -1273,16 +1265,18 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
     caveEffects() {
       const { detect } = this;
       if (!detect?.sceneRect) return null;
-      const walls = hooks.walls?.() ?? [];
+      let walls = null;
+      const wallsOnce = () => (walls ??= hooks.walls?.() ?? []);
       const map = new Map();
       for (const row of choicesFromElement(this.element)) {
+        if (row.floor !== "cavern") continue;
         const proposal = detect.proposals.find((item) => item.id === row.id);
         if (!proposal?.loops?.length) continue;
         const draft = this.drafts.get(row.id);
-        const flags = { ...(draft?.flags ?? proposal.savedFlags ?? {}), floor: wireFloor(row.floor) };
+        const flags = { ...(draft?.flags ?? proposal.savedFlags ?? floorFlags("cavern")), floor: "" };
         const roofed = draft ? (draft.roof === null ? draft.roofBase === true : draft.roof === true) : proposal.roofed === true;
         if (roofed) flags.roof = true;
-        const layout = cachedCavePreview(proposal, { flags, loops: proposal.loops, rect: detect.sceneRect, width: detect.width, height: detect.height, grid: detect.grid || 100, walls, seed: String(detect.scene?.id ?? "cave") });
+        const layout = cachedCavePreview(proposal, { flags, loops: proposal.loops, rect: detect.sceneRect, width: detect.width, height: detect.height, grid: detect.grid || 100, walls: wallsOnce, seed: String(detect.scene?.id ?? "cave") });
         if (layout.fungus.length || layout.crystals.length || layout.badges.length) map.set(row.id, layout);
       }
       return map;
@@ -2093,7 +2087,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
         const dirty = this.drafts.unticked(detect.proposals, picked);
         if (dirty.length && !(await hooks.confirm?.(`Experimental. ${dirty.length === 1 ? "An unticked area has effect changes" : `${dirty.length} unticked areas have effect changes`} that will be discarded. Tick ${dirty.length === 1 ? "it" : "them"} to save the effects, or continue to discard.`))) return;
         const effects = new Map();
-        for (const row of picked) { const fx = this.drafts.export(row.id); if (fx) effects.set(row.id, fx); }
+        for (const row of picked) { const draft = this.drafts.export(row.id); if (draft) effects.set(row.id, draft); }
         const plan = planFloorCreate({
           proposals: detect.proposals,
           picked,

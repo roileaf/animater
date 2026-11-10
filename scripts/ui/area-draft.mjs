@@ -1,26 +1,20 @@
 // One draft per area in the floor creator. The inspector and the embedded region panel both write it.
 // Geometry stays on the proposal. Nothing here writes a Foundry document.
 
-import { displayFloorOf } from "../engines/regions/floor-detect.mjs";
+import { pickerFloor, patchFlags } from "../engines/regions/floor-detect.mjs";
 import { kindFlags } from "./region-panel-model.mjs";
 
 const WATER_KEYS = ["waterKind", "flowTo", "current", "waveTo", "seaBeach"];
 
 const blank = () => ({ flags: {}, intent: new Set(), deleted: new Set(), roof: null, roofBase: false, roofTouched: false });
 
-// Shallow Foundry patch: `-=key` deletes that key. Nested objects are already merged by the section that sends them.
+// Nested objects are already merged by the section that sends them, so the patch is shallow.
 function applyPatch(draft, patch) {
-  for (const [key, value] of Object.entries(patch ?? {})) {
-    if (key.startsWith("-=")) {
-      const real = key.slice(2);
-      delete draft.flags[real];
-      draft.deleted.add(real);
-      draft.intent.delete(real);
-    } else {
-      draft.flags[key] = value;
-      draft.intent.add(key);
-      draft.deleted.delete(key);
-    }
+  patchFlags(draft.flags, patch);
+  for (const key of Object.keys(patch ?? {})) {
+    const deletes = key.startsWith("-="), real = deletes ? key.slice(2) : key;
+    (deletes ? draft.deleted : draft.intent).add(real);
+    (deletes ? draft.intent : draft.deleted).delete(real);
   }
 }
 
@@ -50,19 +44,17 @@ export function createAreaDrafts() {
       return draft;
     },
     // The floor dropdown. Cave is the one kind change that has to clear the other kind's flags.
-    chooseFloor(id, display) {
+    chooseFloor(id, floor) {
       const own = ensure(id).flags;
-      const now = displayFloorOf(own);
-      if (display === "cavern") {
+      if (floor === "cavern") {
         const clear = Object.fromEntries(WATER_KEYS.map((key) => [`-=${key}`, null]));
         return this.apply(id, { ...kindFlags("cave", own), ...clear });
       }
-      if (now === "cavern") {
-        const kind = display === "water" ? "water" : display === "lava" ? "lava" : "ground";
-        const next = kindFlags(kind, { ...own, floor: own.floor === "" ? "cavern" : own.floor });
-        return this.apply(id, { ...next, floor: display });
+      if (pickerFloor(own) === "cavern") {
+        const kind = floor === "water" ? "water" : floor === "lava" ? "lava" : "ground";
+        return this.apply(id, { ...kindFlags(kind, own), floor });
       }
-      return this.apply(id, { floor: display });
+      return this.apply(id, { floor });
     },
     drop(id) { drafts.delete(id); },
     copy(from, to) {

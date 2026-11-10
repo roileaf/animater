@@ -98,7 +98,7 @@ export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, 
       line.setAttribute('aria-expanded', String(on)); line.append(icon(on ? 'fa-caret-down' : 'fa-caret-right'), element('span', '', label));
       return on ? [line, ...build()] : [line];
     };
-    const editSteps = target ? (target.actions?.editSteps ?? null) : edit;
+    const editSteps = target ? null : edit;
     const c = { doc, own, floor, kind, at: open_.at ?? null, act, toFloor, roofed, setRoof: setRoofNow, more, texture, season, presets, weathers, close, edit: editSteps, stepsNote: embedded && !editSteps ? 'Save first to edit the step list.' : '', saving: () => saving > 0 };
 
     const parts = [];
