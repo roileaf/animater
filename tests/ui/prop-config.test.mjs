@@ -28,6 +28,14 @@ test("scene fields default to off and 25%", () => {
   assert.match(html, /data-action="animater-breakable-all"[^>]*>[^<]*<i[^>]*><\/i> Make all doors and windows breakable/);
   assert.match(html, /data-action="animater-breakable-none"[^>]*>[^<]*<i[^>]*><\/i> Make none breakable/);
   assert.equal((html.match(/type="button"/g) ?? []).length, 3);
+  const rows = html.split('<div class="form-group">');
+  const repair = rows.find((r) => r.includes("<label>Repair</label>")), doors = rows.find((r) => r.includes("<label>Doors and windows</label>"));
+  assert.ok(repair && doors, "Repair and Doors and windows are separate rows");
+  assert.match(repair, /animater-repair-props/);
+  assert.doesNotMatch(repair, /animater-breakable/);
+  assert.match(doors, /animater-breakable-all[\s\S]*animater-breakable-none/);
+  assert.doesNotMatch(doors, /animater-repair-props/);
+  assert.match(doors, /class="hint">Set every door and window on this scene at once \(GM only\)/);
 });
 test("scene fields keep on and a chosen chance, including 0", () => {
   assert.match(propSceneFieldsHTML({ on: true, chance: 10 }), /breakableProps"[^>]*checked[\s\S]*value="10"/);
