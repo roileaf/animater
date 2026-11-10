@@ -2,7 +2,8 @@
 // along its cut (and a pale fresh edge where it snapped), going from where it sat to where it lands with a short hop,
 // bigger and its shadow further off while in the air. Collapse uses it; tip and topple reuse it.
 // A piece: {poly (tile-local px), home: {x, y}, to: {x, y, rot, sx?, sy?}, delay, dur (shares of the 0-1 timeline),
-// edge? (the snapped line, tile-local), hop?, shadow?, ink? (false: no ink line, for a whole picture that never snapped)}.
+// edge? (the snapped line, tile-local), fresh? (a CSS colour stroked inside the whole cut when there is no edge: a
+// charred stave), hop?, shadow?, ink? (false: no ink line, for a whole picture that never snapped)}.
 
 const K_MAX = 2, SIDE_MAX = 2048, ALPHA_CUT = 90;
 const FRESH = "rgba(214,180,124,0.9)", INK = "rgba(20,15,10,0.85)";
@@ -48,6 +49,7 @@ export function createPosedPieces({ PIXI }) {
     g.save(); line(p.poly, true); g.clip(); g.drawImage(art, 0, 0);
     g.globalCompositeOperation = "source-atop"; g.lineJoin = "round";
     if (p.edge) { g.strokeStyle = FRESH; g.lineWidth = 1.4 * k * 2.4; line(p.edge, false); g.stroke(); }
+    else if (p.fresh) { g.strokeStyle = p.fresh; g.lineWidth = 1.3 * k * 2.4; line(p.poly, true); g.stroke(); } // a charred stave: dark all round
     if (p.ink !== false) { g.strokeStyle = INK; g.lineWidth = 1.4 * k; line(p.poly, true); g.stroke(); }
     g.restore();
     return { tex: PIXI.Texture.from(c), ax: (p.home.x - x0) * k + pad, ay: (p.home.y - y0) * k + pad };

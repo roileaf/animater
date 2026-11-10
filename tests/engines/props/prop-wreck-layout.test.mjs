@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { wreckLayout, wreckTargets, LIQUIDS, SPILL_FAN, POTION_COLOURS, PAGE_COLOURS, SPINE_COLOURS, collapseDust, spillExtent } from "../../../scripts/engines/props/prop-wreck-layout.mjs";
+import { wreckLayout, wreckTargets, LIQUIDS, SPILL_FAN, POTION_COLOURS, PAGE_COLOURS, SPINE_COLOURS, POWDER_TONES, collapseDust, spillExtent } from "../../../scripts/engines/props/prop-wreck-layout.mjs";
 import { tileToWorld } from "../../../scripts/engines/props/prop-wreck.mjs";
 import { propGuesses } from "../../../scripts/engines/props/prop-traits.mjs";
 import { tileRect } from "../../../scripts/engines/props/prop-geometry.mjs";
@@ -157,4 +157,65 @@ test("a fire note lays out flames over the spill; the rest of the wreck is uncha
   assert.ok(Math.hypot(mean(xs) - c.x, mean(ys) - c.y) < 20);
   // a fire note on a prop with no oil still scorches, with no flames
   assert.equal(wreckLayout(lit, { ...at, contents: "none" }).fire, null);
+});
+
+// Powder kegs (Task 13)
+test("an exploded keg leaves a big scorch and thrown staves and hoops; a spilled one dark grain", () => {
+  const boom = wreckLayout({ ...note, powder: "exploded", burst: 2, mark: "scorch" }, { ...at, contents: "powder" });
+  assert.equal(boom.spill, null);
+  const r = Math.max(...boom.mark.blobs[0].steps[0].polys.flat().filter((_, i) => i % 2 === 0).map((x) => Math.abs(x - 500)));
+  assert.ok(r >= 0.6 * 2 * 100);
+  assert.ok(boom.blast.staves.length >= 8 && boom.blast.staves.length <= 14 && boom.blast.hoops.length >= 2);
+  const spilled = wreckLayout({ ...note, powder: "spilled" }, { ...at, contents: "powder" });
+  assert.equal(spilled.spill.kind, "powder");
+  assert.ok(spilled.spill.marks.every((m) => Number.isInteger(m.tone) && m.tone >= 0 && m.tone < POWDER_TONES.length));
+});
+test("every exploded keg: a scorch at least 0.6 of its burst, 8-14 staves thrown outward, 2-4 hoops, fire turning to smoke", () => {
+  assert.deepEqual(POWDER_TONES, [0x1e1c1a, 0x2a2724, 0x3a3631, 0x141312]);
+  for (let seed = 1; seed <= 60; seed++) for (const burst of [1, 2, 4]) {
+    const n = { ...note, seed, powder: "exploded", burst, mark: "dust" }, L = wreckLayout(n, { ...at, contents: "powder" });
+    assert.deepEqual(L, wreckLayout(n, { ...at, contents: "powder" }), "seeded");
+    assert.equal(L.mark.kind, "scorch", "an explosion scorches whatever the mark said");
+    const pts = L.mark.blobs[0].steps[0].polys.flat(), xs = pts.filter((_, i) => i % 2 === 0), ys = pts.filter((_, i) => i % 2 === 1);
+    const reach = Math.max(...xs.map((x) => Math.abs(x - 500)), ...ys.map((y) => Math.abs(y - 300)));
+    assert.ok(reach >= 0.6 * burst * 100, `seed ${seed} burst ${burst}: scorch reaches ${reach}`);
+    assert.ok(reach <= 1.6 * burst * 100, "and stays about the burst's size");
+    const { staves, hoops, puffs, slivers, grains } = L.blast;
+    assert.ok(staves.length >= 8 && staves.length <= 14 && staves.length % 2 === 0, "each stave split in two along its length");
+    for (const s of staves) {
+      assert.ok(s.poly.length >= 6 && s.poly.every(Number.isFinite));
+      assert.ok(s.poly.every((v, i) => v >= -1 && v <= 101), "cut from the keg's own picture (tile-local px)");
+      const out = Math.hypot(s.to.x - 50, s.to.y - 50) - Math.hypot(s.home.x - 50, s.home.y - 50);
+      assert.ok(out > 20, `seed ${seed}: a stave thrown outward (${out})`);
+      assert.ok(s.dur >= 650 && s.dur <= 900 && Number.isFinite(s.to.rot));
+    }
+    assert.ok(hoops.length >= 2 && hoops.length <= 4);
+    for (const h of hoops) { assert.ok(h.r > 0 && h.l > 0.5 && h.l < 3, "a bent arc, never a whole ring"); assert.ok(Math.hypot(h.x - 500, h.y - 300) > 30); assert.deepEqual([h.x0, h.y0], [500, 300]); }
+    const fire = puffs.filter((p) => p.kind === "fire"), smoke = puffs.filter((p) => p.kind === "smoke");
+    assert.equal(fire.length + smoke.length, puffs.length);
+    assert.ok(fire.length >= 5 && smoke.length >= 6);
+    assert.ok(Math.max(...fire.map((p) => p.at)) < Math.min(...smoke.map((p) => p.at)), "the fireball comes first, the smoke after");
+    assert.ok(smoke.every((p) => p.vy < 0 && p.r1 > p.r0 && p.life >= 1500), "smoke grows and rolls away up the screen");
+    assert.ok(slivers.length > 0 && slivers.every((s) => [0, 1, 2].includes(s.tone)));
+    assert.ok(grains.every((g) => g.tone === 0 || g.tone === 1));
+  }
+});
+test("a spilled keg: dark powder grains along the hit, the keg itself still breaks; an exploded one spills none", () => {
+  const plain = wreckLayout({ ...note, powder: "spilled" }, { ...at, contents: "powder" });
+  assert.equal(plain.blast, null);
+  assert.equal(plain.specks.length, 18);
+  assert.ok(plain.spill.marks.length >= 300);
+  assert.ok(plain.spill.marks.every((m) => m.l > 0 && m.l <= 2.5 && m.w > 0 && m.w <= 1.5), "fine grains");
+  const mean = Math.atan2(...plain.spill.marks.reduce(([sy, sx], k) => [sy + k.y - 300, sx + k.x - 500], [0, 0]));
+  assert.ok(Math.abs(mean - note.cutAngle) < 0.6);
+  // A keg's note from before it was set (no powder) spills like a spilled one.
+  assert.equal(wreckLayout(note, { ...at, contents: "powder" }).spill.kind, "powder");
+  // Grain stays grain.
+  assert.equal(wreckLayout(note, { ...at, contents: "grain" }).spill.kind, "grain");
+  assert.equal(wreckLayout({ ...note, powder: "exploded", burst: 2 }, { ...at, contents: "powder" }).specks.length, 0, "its splinters are the blast's slivers");
+});
+test("an explosion's burst defaults to the keg default when its note has none", () => {
+  const a = wreckLayout({ ...note, powder: "exploded" }, { ...at, contents: "powder" }), b = wreckLayout({ ...note, powder: "exploded", burst: 2 }, { ...at, contents: "powder" });
+  assert.deepEqual(a, b);
+  assert.notDeepEqual(wreckLayout({ ...note, powder: "exploded", burst: 3 }, { ...at, contents: "powder" }).mark, b.mark);
 });

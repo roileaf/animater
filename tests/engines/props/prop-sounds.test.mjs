@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { propSound, wallSound, BREAK_SOUNDS, SPLASH_SOUNDS } from "../../../scripts/engines/props/prop-sounds.mjs";
+import { propSound, wallSound, BREAK_SOUNDS, SPLASH_SOUNDS, BLAST_SOUNDS } from "../../../scripts/engines/props/prop-sounds.mjs";
 
 test("a material's break sound is one of its own family, chosen by rand", () => {
   for (const m of Object.keys(BREAK_SOUNDS)) {
@@ -41,4 +41,16 @@ test("a window sounds like glass", () => {
   assert.equal(wallSound("window", () => 0).file, BREAK_SOUNDS.glass[0]);
   assert.equal(wallSound("window", () => 0.999999).file, BREAK_SOUNDS.glass.at(-1));
   assert.ok(BREAK_SOUNDS.wood.includes(wallSound("door", () => 0.5).file), "a door still sounds like wood");
+});
+test("an explosion sounds like a fire burst until its own family ships", () => {
+  assert.match(propSound("wood", "powder", () => 0, { powder: "exploded" }).file, /fire-burst-\d+-0\.ogg$/);
+});
+test("the explosion placeholders: the three bundled fire bursts, each reachable, all bundled; spilled powder breaks like its material", () => {
+  assert.deepEqual(BLAST_SOUNDS.map((f) => f.split("/").pop()), ["fire-burst-260554-0.ogg", "fire-burst-260555-0.ogg", "fire-burst-637533-0.ogg"]);
+  for (const f of BLAST_SOUNDS) assert.ok(existsSync(f.replace("modules/animater/", "")), f);
+  const seen = new Set(Array.from({ length: 30 }, (_, i) => propSound("metal", "powder", () => i / 30, { powder: "exploded" }).file));
+  assert.equal(seen.size, 3);
+  assert.equal("splash" in propSound("wood", "powder", () => 0.5, { powder: "exploded" }), false);
+  assert.ok(BREAK_SOUNDS.wood.includes(propSound("wood", "powder", () => 0.5, { powder: "spilled" }).file));
+  assert.ok(BREAK_SOUNDS.wood.includes(propSound("wood", "powder", () => 0.5).file));
 });

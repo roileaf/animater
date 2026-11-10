@@ -1,10 +1,10 @@
 // Draws a broken prop's wreckage: the ground mark, the spill and splinters (from prop-wreck-layout) and the prop's own
 // art cut into pieces that lie where they landed. One Container per wreck, sorted just above the tile.
 import { bloodArt } from "../motion/blood-art.mjs";
-import { wreckLayout, wreckTargets, collapseDust, spillExtent, GRAIN_TONES, SPINE_COLOURS, BURN_DIE_MS } from "./prop-wreck-layout.mjs";
+import { wreckLayout, wreckTargets, collapseDust, spillExtent, BLAST_SCORCH, GRAIN_TONES, POWDER_TONES, SPINE_COLOURS, BURN_DIE_MS } from "./prop-wreck-layout.mjs";
 import { BURN_MS } from "./prop-lights.mjs";
 import { createPropFx } from "./prop-fx.mjs";
-import { propTraits, propGuesses } from "./prop-traits.mjs";
+import { propTraits, propGuesses, BURST_DEFAULT } from "./prop-traits.mjs";
 import { collapseLayout } from "./prop-collapse.mjs";
 import { tipLayout, COAL_MS } from "./prop-tip.mjs";
 import { createPosedPieces, tileFrame } from "./prop-pieces.mjs";
@@ -85,8 +85,9 @@ export function paintMark(PIXI, mark, held) {
   return s;
 }
 
-// materialOf(tile doc) names the prop's material; playSound(file, at) plays a recording at a point (main.mjs, with room acoustics).
-export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = () => "wood", playSound = () => {} }) {
+// materialOf(tile doc) names the prop's material; playSound(file, at, {volume, reach}?) plays a recording at a point
+// (main.mjs, with room acoustics); shake(at, burst) jolts the view for an explosion seen happening (optional).
+export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = () => "wood", playSound = () => {}, shake = () => {} }) {
   const wrecks = new Map(); // tile id -> { box, handle, stop }
   const artTextures = new Map(), colours = new Map();
   const posed = createPosedPieces({ PIXI });
@@ -237,12 +238,14 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
         }
       };
     }
-    // Grain and goods: each bit a small shadow, then the bit; goods take the tile's tones, grain its own.
-    const g = new PIXI.Graphics(), goods = spill.kind === "goods", tone = (k) => (goods ? [tones.dark, tones.mid, tones.light][k.tone] : GRAIN_TONES[k.tone]);
+    // Grain, goods and powder: each bit a small shadow, then the bit; goods take the tile's tones, grain and powder their own.
+    const g = new PIXI.Graphics(), goods = spill.kind === "goods", powder = spill.kind === "powder";
+    const tone = (k) => (goods ? [tones.dark, tones.mid, tones.light][k.tone] : powder ? POWDER_TONES[k.tone] : GRAIN_TONES[k.tone]);
     const quad = (k, m = 1) => { const dx = Math.cos(k.rot) * m, dy = Math.sin(k.rot) * m; return [k.x - dx * k.l, k.y - dy * k.l, k.x - dy * k.w, k.y + dx * k.w, k.x + dx * k.l, k.y + dy * k.l, k.x + dy * k.w, k.y - dx * k.w]; };
-    for (const k of spill.marks) g.beginFill(0x2a1e10, 0.28).drawEllipse(k.x + 0.8, k.y + 0.9, k.l, k.w).endFill();
+    for (const k of spill.marks) g.beginFill(powder ? 0x0c0a08 : 0x2a1e10, powder ? 0.18 : 0.28).drawEllipse(k.x + 0.8, k.y + 0.9, k.l, k.w).endFill();
     for (const k of spill.marks) {
-      if (k.husk) g.lineStyle(0.6, 0x6d5a3a, 0.5).beginFill(0xe6d6a8, 0.75).drawPolygon(quad(k, 2)).endFill().lineStyle(0);
+      if (k.husk && powder) g.beginFill(0x77726a, 0.85).drawPolygon(quad(k)).endFill(); // a grey glint in the powder
+      else if (k.husk) g.lineStyle(0.6, 0x6d5a3a, 0.5).beginFill(0xe6d6a8, 0.75).drawPolygon(quad(k, 2)).endFill().lineStyle(0);
       else g.beginFill(tone(k), 1).drawPolygon(quad(k)).endFill();
     }
     g.alpha = 0; box.addChild(g);
@@ -365,6 +368,97 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     settle(0); raf = requestAnimationFrame(tick);
   }
 
+  // A powder keg exploded (mock scene 5): a big scorch with soft soot under it, spent powder, charred staves cut from
+  // the keg's own art thrown far, bent iron hoops and splinters of its wood. Seen happening, a flash and a hot glow, a
+  // painted fireball darkening into smoke that rolls away, embers, the explosion's sound and a jolt of the view.
+  // Drawn on load it is settled: scorch and debris only. `prior`: the spilled keg's wreck an ignite blows up; the
+  // explosion plays over it and the exploded wreck replaces it under the fireball (BLAST_SWAP_MS).
+  const STAVE_CHAR = 0x8a7266, STAVE_EDGE = "rgba(60,40,26,0.9)", BLAST_SWAP_MS = 220, HOOP_MS = 700;
+  const fireTones = [(r) => mix(0xc8401a, 0x2a2422, clamp01(r * 1.4)), (r) => mix(0xf6c04a, 0x3a3230, clamp01(r * 1.6)), (r) => mix(0xfde69a, 0x4a4240, clamp01(r * 1.9))];
+  const SMOKE_TONES = [0x3e3a37, 0x55504b, 0x6a645e], SLIVER_TONES = [0x2a1d16, 0x3d2c22], GRAIN_SPENT = [0x141210, 0x222020];
+  function exploded({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate, layout, contents, prior }) {
+    const B = layout.blast, k = (grid() || 100) / 100, burst = note.burst ?? BURST_DEFAULT;
+    // Under everything: the soot, the scorch, the spent powder.
+    const marks = new PIXI.Container(); marks.zIndex = -1; box.addChild(marks);
+    const soot = fx.glow(marks, centre, BLAST_SCORCH * burst * (grid() || 100) * 1.25, 0x0c0806, { alpha: 0.4, flicker: false, add: false });
+    const mark = marks.addChild(groundMark(layout.mark, entry.textures));
+    const grains = new PIXI.Graphics(); marks.addChild(grains);
+    // The staves: the keg's picture cut along its wedges, each thrown out and charred as it flies.
+    let staves = null;
+    if (texture) {
+      const stand = standFor(tile, d, texture, centre, box, sortLayer);
+      const pieces = B.staves.map((s) => ({ poly: s.poly, home: s.home, to: s.to, delay: 0, dur: s.dur / FLIGHT_MS, hop: s.hop, shadow: 0.32, fresh: STAVE_EDGE }));
+      try { staves = posed.cut(stand, pieces, { width: d.width, height: d.height }); entry.handle = staves; }
+      catch (error) { console.warn("Animater prop wreckage: no staves", error); }
+    }
+    // Hoops and splinters, in world px over the staves' shadows.
+    const debris = new PIXI.Graphics(); debris.zIndex = 0.5; box.addChild(debris);
+    const sliverTone = (t) => (t < 2 ? SLIVER_TONES[t] : shade(tones.mid, 0.6));
+    const quad = (x, y, ro, l, w, chip) => {
+      const dx = (Math.cos(ro) * l) / 2, dy = (Math.sin(ro) * l) / 2, nx = (-Math.sin(ro) * w) / 2, ny = (Math.cos(ro) * w) / 2;
+      return chip ? [x - dx, y - dy, x + nx * 1.6, y + ny * 1.6, x + dx, y + dy, x - nx, y - ny]
+        : [x - dx - nx * 0.4, y - dy - ny * 0.4, x + dx * 0.2 - nx, y + dy * 0.2 - ny, x + dx, y + dy, x + dx * 0.1 + nx, y + dy * 0.1 + ny];
+    };
+    const fly = (g, list, ms, dur, chip, colour, ink) => {
+      for (const it of list) {
+        const r = animate ? span(ms, 0, dur * it.sh) : 1, u = outQuart(r), lift = Math.sin(Math.PI * r) * 10 * k;
+        const pts = quad(lerp(it.x0, it.x, u), lerp(it.y0, it.y, u) - lift, lerp(it.rot0, it.rot, u), it.l, it.w, chip);
+        g.lineStyle(0).beginFill(0x000000, 0.25).drawPolygon(pts.map((v, i) => v + (i % 2 ? 2.5 + lift * 0.6 : 1.5))).endFill();
+        g.lineStyle(ink ? 0.8 : 0, INK, ink).beginFill(colour(it.tone), 1).drawPolygon(pts).endFill();
+      }
+    };
+    // Each arc starts with a move to its first point, so no straight line joins one hoop (or stroke) to the next.
+    const arc = (x, y, w, c, a, r, s0, s1) => { debris.lineStyle(w * k, c, a).moveTo(x + Math.cos(s0) * r, y + Math.sin(s0) * r).arc(x, y, r, s0, s1); };
+    const drawDebris = (ms) => {
+      debris.clear(); grains.clear();
+      fly(grains, B.grains, ms, 500, true, (t) => GRAIN_SPENT[t], 0);
+      fly(debris, B.slivers, ms, 700, false, sliverTone, 0.55);
+      if (animate && ms <= 0) return;
+      const u = animate ? outQuart(span(ms, 0, HOOP_MS)) : 1;
+      for (const h of B.hoops) {
+        const x = lerp(h.x0, h.x, u), y = lerp(h.y0, h.y, u);
+        arc(x, y, 5, INK, 0.9, h.r, h.s, h.s + h.l); arc(x, y, 3, 0x4a4540, 1, h.r, h.s, h.s + h.l); arc(x, y, 1, 0x8a8278, 0.6, h.r - k, h.s + 0.1, h.s + h.l - 0.1);
+      }
+      debris.lineStyle(0);
+    };
+    const char = (ms) => staves?.tint(mix(0xffffff, STAVE_CHAR, animate ? clamp01((ms / FLIGHT_MS) * 1.5) : 1));
+    const settle = (ms) => {
+      staves?.update(animate ? Math.min(1, ms / FLIGHT_MS) : 1); char(ms); drawDebris(ms);
+      const u = animate ? span(ms, 0, 250) : 1; mark.alpha = u; soot.sprite.alpha = 0.4 * u;
+    };
+    if (!animate) { settle(FLIGHT_MS); return; }
+    // An ignite: the exploded wreck lies settled, unseen until the fireball covers the spilled keg it replaces.
+    const swapIn = !!prior;
+    if (swapIn) { settle(FLIGHT_MS); box.visible = false; }
+    // The blast, over everything; its own container so it shows while an ignite's wreck waits to be swapped in.
+    const air = new PIXI.Container(); air.sortableChildren = true;
+    air.elevation = box.elevation; air.sort = box.sort + 1; if (sortLayer !== undefined) air.sortLayer = sortLayer;
+    layer().addChild(air); entry.extras.push(air);
+    const glow = fx.glow(air, centre, B.glow, 0xff8a30, { alpha: 0.8, flicker: false });
+    const fire = fx.puffs(air, B.puffs.filter((p) => p.kind === "fire"), fireTones, { inkA: 0.18 });
+    const smoke = fx.puffs(air, B.puffs.filter((p) => p.kind === "smoke"), SMOKE_TONES);
+    const sparks = fx.embers(air, B.embers), flash = fx.flash(air, centre, B.flash, { dur: 260 });
+    try { playSound(propSound(materialOf(d), contents, seededRandom(note.seed), { powder: "exploded" }).file, centre, { volume: 1, reach: 40 }); }
+    catch (error) { console.warn("Animater prop wreckage: no sound", error); }
+    try { shake(centre, burst); } catch { /* no shake */ }
+    const end = Math.max(FLIGHT_MS, ...B.puffs.map((p) => p.at + p.life), ...B.embers.map((e) => e.at + e.life));
+    const t0 = performance.now(); let raf = 0;
+    const swap = () => { box.visible = true; dropPrior(entry); };
+    const done = () => { entry.stop = null; swap(); quiet(() => air.destroy({ children: true })); entry.extras = entry.extras.filter((x) => x !== air); };
+    entry.stop = () => { cancelAnimationFrame(raf); done(); };
+    const step = (ms) => {
+      if (!swapIn) settle(Math.min(ms, FLIGHT_MS)); else if (ms >= BLAST_SWAP_MS) swap();
+      glow.sprite.visible = ms < HOOP_MS; glow.sprite.alpha = 0.8 * (1 - span(ms, 0, HOOP_MS));
+      flash.update(ms); fire.update(ms); smoke.update(ms); sparks.update(ms);
+    };
+    const tick = () => {
+      const ms = performance.now() - t0;
+      step(Math.min(ms, end));
+      if (ms < end) raf = requestAnimationFrame(tick); else done();
+    };
+    step(0); raf = requestAnimationFrame(tick);
+  }
+
   // The tile's art: its own mesh texture, or, where a hidden tile was never drawn (a player's client), loaded from its src.
   const textureOf = async (tile, src) => {
     const have = tile.mesh?.texture;
@@ -376,8 +470,11 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     entry.stop?.();
     quiet(() => entry.handle?.destroy());
     quiet(() => entry.box.destroy({ children: true }));
+    for (const x of entry.extras ?? []) quiet(() => x.destroy({ children: true }));
     for (const t of entry.textures) quiet(() => t.destroy(true));
+    dropPrior(entry);
   };
+  function dropPrior(entry) { if (entry.prior) { const p = entry.prior; entry.prior = null; release(p); } }
 
   const hide = (id) => { const e = wrecks.get(id); if (e) { wrecks.delete(id); release(e); } };
 
@@ -391,11 +488,13 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     catch (error) { hide(id); console.warn("Animater prop wreckage: could not draw", error); }
   }
 
-  async function draw(tile, note, contents, { animate = false }) {
+  // ignite: spilled powder set off later; the wreck already drawn stays until the explosion covers it (exploded).
+  async function draw(tile, note, contents, { animate = false, ignite = false }) {
     const d = tile.document ?? tile, id = d.id;
-    hide(id);
+    const prior = ignite && animate ? wrecks.get(id) ?? null : null;
+    if (prior) { wrecks.delete(id); prior.stop?.(); } else hide(id);
     const rect = tileRect(d), centre = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-    const box = new PIXI.Container(), entry = { box, handle: null, stop: null, fire: null, textures: [] };
+    const box = new PIXI.Container(), entry = { box, handle: null, stop: null, fire: null, textures: [], extras: [], prior };
     wrecks.set(id, entry);
     box.sortableChildren = true;
     box.elevation = d.elevation ?? 0; box.sort = (d.sort ?? 0) + 1;
@@ -406,8 +505,10 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     const src = d.texture?.src;
     const [texture, tones] = await Promise.all([textureOf(tile, src).catch(() => null), src ? sample(src) : FALLBACK]);
     if (wrecks.get(id) !== entry) return; // hidden or redrawn while loading
-    if (note.style === "tip") { tipped({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
+    if (note.style === "tip") { dropPrior(entry); tipped({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
     const layout = wreckLayout(note, { centre, width: d.width, height: d.height, grid: grid() || 100, contents, rotation: d.rotation ?? 0 });
+    if (layout.blast) { exploded({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate, layout, contents, prior: entry.prior }); return; }
+    dropPrior(entry); // anything else drawn over a wreck it replaces: the old one goes now
     const marks = new PIXI.Container(); marks.zIndex = -1; box.addChild(marks);
     const over = new PIXI.Container(); over.zIndex = 0.5; box.addChild(over); // spilled books, pages and shards land on top
     // Furniture that collapses folds into its own boards, with leg stubs, over a dust mark (in place of the plain dust).

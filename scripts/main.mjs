@@ -7086,8 +7086,10 @@ const propGrid = (scene) => scene?.grid?.size ?? canvas?.grid?.size ?? 100;
 const propWreckage = createPropWreckage({ PIXI: globalThis.PIXI, layer: () => canvas.primary, grid: () => canvas?.grid?.size ?? 100,
   renderer: createFragmentRenderer({ PIXI: globalThis.PIXI, grid: () => canvas?.grid?.size ?? 100 }),
   materialOf: (doc) => propMaterial(propTileView(doc), propGrid(doc.parent)),
-  // Heard where it breaks, with the room's acoustics (playUnder).
-  playSound: (file, at) => { void playUnder("propBreak", at, { file, volume: 0.8, reach: 20, rate: 0.95 + Math.random() * 0.1, walls: true, gmAlways: true, room: 0.8 }); } });
+  // Heard where it breaks, with the room's acoustics (playUnder); an explosion louder and further.
+  playSound: (file, at, { volume = 0.8, reach = 20 } = {}) => { void playUnder("propBreak", at, { file, volume, reach, rate: 0.95 + Math.random() * 0.1, walls: true, gmAlways: true, room: 0.8 }); },
+  // A powder keg going off jolts the view a little (the cave-in's tremor, a touch bigger with the burst).
+  shake: (at, burst) => { cameraShake.tremor({ at, weight: 6, sceneId: canvas.scene?.id, level: canvas?.level?.id, seed: `keg:${Math.round(at.x)}:${Math.round(at.y)}`, scale: 0.8 + 0.2 * (Number(burst) || 2) }); } });
 const PROP_REFUSED_MS = 3000, PROP_LATE_MS = 30000;
 const propPending = new Map(), propWriting = new Set(); // broken on this screen, waiting on the GM; being written by the GM
 const propLate = new Map(); // shown again after PROP_REFUSED_MS: a GM write that still comes is drawn without playing again
@@ -7118,11 +7120,12 @@ async function propPlace(cause, scene, grid) {
 }
 // A wreck shows where its tile would: only while the tile's level is the one viewed (a tile on no level, always).
 const propViewed = (doc) => onLevel(doc.levels, canvas?.level?.id);
-// Draws (or removes) a tile's wreckage from what the tile holds now.
-const drawPropWreck = (doc, animate) => {
+// Draws (or removes) a tile's wreckage from what the tile holds now. ignite: spilled powder going off, played over the
+// wreck already there (which stays until the explosion covers it).
+const drawPropWreck = (doc, animate, { ignite = false } = {}) => {
   const note = doc.hidden && propViewed(doc) ? readNote(doc.flags?.[ID]?.prop?.broken) : null;
-  propWreckage.hide(doc.id);
-  if (note) void propWreckage.show(doc.object ?? doc, note, propContents(doc), { animate });
+  if (!note || !ignite) propWreckage.hide(doc.id);
+  if (note) void propWreckage.show(doc.object ?? doc, note, propContents(doc), { animate, ignite });
 };
 // Broken on this screen the moment it is asked: the tile hides and its pieces fly. Shown again if the GM never writes it.
 function breakPropHere(doc, note) {
@@ -7130,7 +7133,7 @@ function breakPropHere(doc, note) {
   if (doc.object?.mesh) doc.object.mesh.renderable = false;
   void propWreckage.show(doc.object ?? doc, note, propContents(doc), { animate: true });
   clearTimeout(propPending.get(doc.id)?.timer);
-  propPending.set(doc.id, { seed: note.seed, timer: setTimeout(() => settlePropHere(doc.id, true), PROP_REFUSED_MS) });
+  propPending.set(doc.id, { seed: note.seed, powder: note.powder, timer: setTimeout(() => settlePropHere(doc.id, true), PROP_REFUSED_MS) });
 }
 function forgetLateProp(id) { clearTimeout(propLate.get(id)?.timer); propLate.delete(id); }
 function settlePropHere(id, refused) {
@@ -7160,8 +7163,10 @@ async function requestPropBreak(tile, cause, { from } = {}) {
   const here = validBreakRequest({ cause: clean, note }, { tile: view, walls, scene, grid, sender: game.user, lights, ...await propPlace(clean, scene, grid), roll: 0 });
   if (!here.ok) return false;
   // A lit lantern's oil catches here too (the same lights the GM reads), so its flames show at once. An ignite only
-  // changes an existing wreck's note: nothing to show here before the GM writes it.
-  if (scene === canvas?.scene && clean.kind !== "ignite" && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakPropHere(doc, here.fire ? { ...note, fire: true } : note);
+  // changes an existing wreck's note: nothing to show here before the GM writes it. A powder keg shows here as the GM
+  // will write it (exploded or spilled, its burst), so its explosion plays once, at once.
+  const powder = here.note?.powder ? { powder: here.note.powder, burst: here.note.burst } : {};
+  if (scene === canvas?.scene && clean.kind !== "ignite" && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakPropHere(doc, { ...note, ...(here.fire ? { fire: true } : {}), ...powder });
   game.socket.emit(`module.${ID}`, { type: PROP_BREAK_MESSAGE, sender: clientId, sceneId: scene.id, tileId: doc.id, cause: clean, note });
   return true;
 }
@@ -7222,24 +7227,6 @@ async function runBlast(scene, doc, note) {
       void applyWallBreak(scene, wall, cause, note, game.user).catch((e) => runtime?.trace("props", `blast door: ${e?.message ?? e}`));
     }
   }), t.delay);
-}
-// Placeholder explosion look until Task 13: a flash that swells and fades at the keg, and a bundled fire burst.
-const BLAST_SOUNDS = ["fire-burst-260554-0", "fire-burst-260555-0", "fire-burst-637533-0"].map((n) => `modules/${ID}/assets/sounds/surfaces/freesound/${n}.ogg`);
-function showBlastHere(doc, note) {
-  if (!propViewed(doc) || !canvas?.ready) return;
-  const r = tileRect(doc), at = { x: r.x + r.width / 2, y: r.y + r.height / 2 }, grid = canvas.grid?.size ?? 100;
-  void playUnder("propBreak", at, { file: BLAST_SOUNDS[Math.floor(Math.random() * BLAST_SOUNDS.length)], volume: 1, reach: 40, walls: true, gmAlways: true, room: 0.8 });
-  const PIXI = globalThis.PIXI, layer = canvas.interface;
-  if (!PIXI?.Graphics || !layer) return;
-  const g = new PIXI.Graphics(), radius = (Number(note?.burst) || 2) * grid, start = performance.now(), MS = 700;
-  layer.addChild(g);
-  const frame = (now) => {
-    const p = Math.min(1, (now - start) / MS);
-    if (g.destroyed) return;
-    g.clear(); g.beginFill(0xffa040, 0.55 * (1 - p)); g.drawCircle(at.x, at.y, radius * (0.3 + 0.7 * p)); g.endFill();
-    if (p < 1) requestAnimationFrame(frame); else g.destroy();
-  };
-  requestAnimationFrame(frame);
 }
 // Burning lamp oil (GM): one temporary fire light at the broken tile (prop-lights.mjs burnLightData: its glow, the
 // fire-pot loop and smoke; the wreck draws the flames), deleted after BURN_MS. Each GM that becomes the active one
@@ -7635,19 +7622,14 @@ Hooks.on("updateTile", (doc, changes, options) => {
   if (options?.animater?.propBreak) {
     // Already flying on the screen that asked for it; already seen there if the write came after it was shown again.
     const note = readNote(doc.flags?.[ID]?.prop?.broken), seed = note?.seed;
-    const mine = propPending.get(doc.id)?.seed === seed, late = !mine && propLate.get(doc.id)?.seed === seed;
+    const pending = propPending.get(doc.id), mine = pending?.seed === seed, late = !mine && propLate.get(doc.id)?.seed === seed;
     settlePropHere(doc.id, false); forgetLateProp(doc.id);
-    if (!mine) drawPropWreck(doc, !late);
-    if (note?.powder === "exploded" && !late) showBlastHere(doc, note);
+    // A keg the requester showed with other powder than the GM wrote is drawn again (its explosion is the wreck's own).
+    if (!mine || (pending.powder ?? null) !== (note?.powder ?? null)) drawPropWreck(doc, !late);
     return;
   }
-  // Spilled powder set off later: the wreck stays as it lies (redrawn still from its new note), and the keg explodes.
-  if (options?.animater?.propIgnite) {
-    const note = readNote(doc.flags?.[ID]?.prop?.broken);
-    drawPropWreck(doc, false);
-    if (note?.powder === "exploded") showBlastHere(doc, note);
-    return;
-  }
+  // Spilled powder set off later: the explosion plays over the spilled keg, then it lies exploded (prop-wreck.mjs).
+  if (options?.animater?.propIgnite) { drawPropWreck(doc, true, { ignite: true }); return; }
   // A changed note, contents, place or visibility redraws it (the wreckage never redraws in place).
   if (PROP_LOOK_KEYS.some((k) => k in changes) || propFlagsChanged(changes)) drawPropWreck(doc, false);
 });
