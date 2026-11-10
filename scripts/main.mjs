@@ -25,6 +25,7 @@ import { propMaterial } from "./engines/props/prop-material.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propNextToMiss, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls } from "./engines/props/prop-walls.mjs";
+import { propTraits } from "./engines/props/prop-traits.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML } from "./ui/prop-config.mjs";
 import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
 import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
@@ -7086,7 +7087,7 @@ const propLate = new Map(); // shown again after PROP_REFUSED_MS: a GM write tha
 let propNoGmTraced = false;
 // v14's deletion marker for the "-=" keys of the pure updates.
 const propDel = () => globalThis._del ?? (foundry.data?.operators?.ForcedDeletion ? new foundry.data.operators.ForcedDeletion() : undefined);
-const propContents = (doc) => doc.flags?.[ID]?.prop?.contents ?? "none";
+const propContents = (doc) => propTraits(propTileView(doc), propGrid(doc.parent), doc.parent).contents;
 // The tile as the prop rules read it: overhead when it stands at or above the top of its level.
 const propTileView = (doc) => {
   const scene = doc.parent, elevation = Number(doc.elevation) || 0;
@@ -7142,7 +7143,7 @@ async function requestPropBreak(tile, cause, { from } = {}) {
   const gm = game.users.activeGM;
   if (!gm) { if (!propNoGmTraced) { propNoGmTraced = true; runtime?.trace("props", "no GM connected"); } return false; }
   const clean = cleanCause(cause), grid = propGrid(scene), view = propTileView(doc), walls = scene.walls?.contents ?? [];
-  const note = breakNoteFor({ tile: view, walls, grid, cause: clean, seed: Math.floor(Math.random() * 0x7fffffff), from: from ?? clean.at });
+  const note = breakNoteFor({ tile: view, walls, grid, cause: clean, seed: Math.floor(Math.random() * 0x7fffffff), from: from ?? clean.at, scene });
   if (gm.isSelf) return applyPropBreak(scene, doc, clean, note, game.user);
   // Checked here first, then again by the GM. A plain miss waits for the GM's roll; anything else shows at once.
   const here = validBreakRequest({ cause: clean, note }, { tile: view, walls, scene, grid, sender: game.user, ...await propPlace(clean, scene, grid), roll: 0 });
@@ -9524,7 +9525,7 @@ Hooks.on("renderTileConfig", (app, html) => {
   if (!root || root.querySelector(`[name="flags.${ID}.prop.material"]`)) return;
   const doc = app.document ?? app.object, own = doc?.flags?.[ID]?.prop ?? {};
   const tab = root.querySelector('.tab[data-tab="overhead"]') ?? root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector(".tab.active") ?? root.querySelector("form, .window-content") ?? root;
-  tab.insertAdjacentHTML("beforeend", propTileFieldsHTML({ src: doc?.texture?.src, material: own.material, contents: own.contents }));
+  tab.insertAdjacentHTML("beforeend", propTileFieldsHTML({ src: doc?.texture?.src, ...own }));
 });
 
 // Token configuration fields go on both a placed token's sheet and its actor's prototype token.

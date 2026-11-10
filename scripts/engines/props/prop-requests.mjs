@@ -1,5 +1,6 @@
 // The GM's checks on a break request, and the updates for breaking, undoing and repairing. Pure.
 import { propMaterial, propShape, canBreak } from "./prop-material.mjs";
+import { propTraits, breakStyle } from "./prop-traits.mjs";
 import { breakLook, brokenNote, readNote, missBreaks } from "./prop-break.mjs";
 import { ownWalls, openUpdates, restoreUpdates } from "./prop-walls.mjs";
 import { segRectDist, headsInto, onLevel } from "./prop-pick.mjs";
@@ -86,11 +87,11 @@ export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, se
 }
 
 // The requester's note: the tile's own walls, its larger side in squares, cut along the line from the cause.
-export function breakNoteFor({ tile, walls = [], grid = 100, cause = {}, seed, from }) {
+export function breakNoteFor({ tile, walls = [], grid = 100, cause = {}, seed, from, scene = {} }) {
   const c = centre(tile), at = finite(from) ? from : c;
   const look = breakLook({ material: propMaterial(tile, grid), shape: propShape(tile.texture?.src), damageType: cause.damageType, slam: cause.slam });
   return brokenNote({ seed, cutAngle: Math.atan2(c.y - at.y, c.x - at.x), look, from: at,
-    walls: ownWalls(tile, walls, grid).map((w) => w.id), size: Math.max(tile.width, tile.height) / grid });
+    walls: ownWalls(tile, walls, grid).map((w) => w.id), size: Math.max(tile.width, tile.height) / grid, style: breakStyle(propTraits(tile, grid, scene), cause) });
 }
 
 const namedIds = (tile) => new Set(readNote(propOf(tile).broken)?.walls ?? []);

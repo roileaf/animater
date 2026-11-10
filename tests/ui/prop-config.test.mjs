@@ -10,8 +10,8 @@ test("tile fields show the guess and keep the GM's choice", () => {
 });
 test("contents use the spec's words: Nothing ... Loose goods", () => {
   const html = propTileFieldsHTML({ src: "x.webp" }).split("prop.contents")[1];
-  const labels = [...html.matchAll(/<option value="(none|water|wine|oil|grain|goods)"[^>]*>([^<]*)</g)].map((m) => m[2]);
-  assert.deepEqual(labels, ["Nothing", "Water", "Wine", "Oil", "Grain", "Loose goods"]);
+  const labels = [...html.matchAll(/<option value="(none|water|wine|oil|grain|goods|books|potions)"[^>]*>([^<]*)</g)].map((m) => m[2]);
+  assert.deepEqual(labels, ["Nothing", "Water", "Wine", "Oil", "Grain", "Loose goods", "Books", "Potions"]);
 });
 test("tile fields keep a chosen material and escape the file name", () => {
   const html = propTileFieldsHTML({ src: 'a"<b>.webp', material: "glass" });
@@ -29,4 +29,17 @@ test("scene fields default to off and 25%", () => {
 test("scene fields keep on and a chosen chance, including 0", () => {
   assert.match(propSceneFieldsHTML({ on: true, chance: 10 }), /breakableProps"[^>]*checked[\s\S]*value="10"/);
   assert.match(propSceneFieldsHTML({ chance: 0 }), /propMissChance"[^>]*value="0"/);
+});
+test("Breaks as shows the guess; contents guess and new kinds", () => {
+  const html = propTileFieldsHTML({ src: "Bookshelf_A.webp" });
+  assert.match(html, /name="flags\.animater\.prop\.style"/);
+  assert.match(html, /<option value="" selected>Automatic \(collapse\)</);
+  assert.match(html, /Automatic \(Books\)/);
+  assert.match(html, /<option value="potions"[^>]*>Potions</);
+});
+test("Breaks as keeps the GM's pick and offers Shatter and Collapse", () => {
+  const html = propTileFieldsHTML({ src: "Table.webp", style: "shatter" });
+  assert.match(html, /<option value="shatter" selected>Shatter</);
+  assert.match(html, /<option value="collapse">Collapse</);
+  assert.match(html, /<label>Breaks as</);
 });

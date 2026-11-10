@@ -1,4 +1,5 @@
 // How a prop breaks: the look of its wreckage, the note saved on the tile, and the miss roll. Pure.
+import { STYLES } from "./prop-traits.mjs";
 import { FRAGMENT_PATTERNS, FRAGMENT_COUNTS, FRAGMENT_TINTS } from "../fragments/fragments.mjs";
 
 const MARKS = ["scorch", "frost", "stain", "burn", "dust"];
@@ -27,21 +28,23 @@ export function breakLook({ material, shape, damageType } = {}) {
 }
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-export function brokenNote({ seed, cutAngle, look, from, walls, size }) {
+export function brokenNote({ seed, cutAngle, look, from, walls, size, style = "shatter", extra = {} }) {
   const { pattern, pieces, spread, spin, tint } = look.stage;
-  return { seed, cutAngle, pattern, pieces, spread: clamp(spread * (size > 0 ? size : 1), 0, 3), spin, tint: tint ?? "none", mark: look.mark, from: { x: from.x, y: from.y }, walls: [...walls] };
+  return { seed, cutAngle, pattern, pieces, spread: clamp(spread * (size > 0 ? size : 1), 0, 3), spin, tint: tint ?? "none", mark: look.mark, from: { x: from.x, y: from.y }, walls: [...walls], style, lights: [], ...extra };
 }
 
 // Validates and clamps a note read from a tile flag or the socket; null when it is not one.
 export function readNote(raw) {
   if (!raw || typeof raw !== "object") return null;
-  const { seed, cutAngle, pattern, pieces, spread, spin, tint, mark, from, walls } = raw;
+  const { seed, cutAngle, pattern, pieces, spread, spin, tint, mark, from, walls } = raw, style = raw.style ?? "shatter";
+  if (!STYLES.includes(style)) return null;
   if (!Number.isInteger(seed) || seed < 0 || !Number.isFinite(cutAngle)) return null;
   if (!Object.hasOwn(FRAGMENT_PATTERNS, pattern) || !Object.hasOwn(FRAGMENT_TINTS, tint) || !MARKS.includes(mark)) return null;
   if (![pieces, spread, spin, from?.x, from?.y].every((v) => Number.isFinite(v))) return null;
   const [lo, hi] = FRAGMENT_COUNTS[pattern];
   const ids = Array.isArray(walls) ? walls.filter((w) => typeof w === "string" && w.length <= 32).slice(0, 64) : [];
-  return { seed, cutAngle, pattern, pieces: Math.round(clamp(pieces, lo, hi)), spread: clamp(spread, 0, 3), spin: clamp(spin, 0, 720), tint, mark, from: { x: from.x, y: from.y }, walls: ids };
+  const lights = Array.isArray(raw.lights) ? raw.lights.filter((w) => typeof w === "string" && w.length <= 32).slice(0, 16) : [];
+  return { seed, cutAngle, pattern, pieces: Math.round(clamp(pieces, lo, hi)), spread: clamp(spread, 0, 3), spin: clamp(spin, 0, 720), tint, mark, from: { x: from.x, y: from.y }, walls: ids, style, lights };
 }
 
 // A missed swing breaks the prop beside it: always on a critical failure, else by the chance (percent).

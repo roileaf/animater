@@ -2,6 +2,7 @@
 // art cut into pieces that lie where they landed. One Container per wreck, sorted just above the tile.
 import { bloodArt } from "../motion/blood-art.mjs";
 import { wreckLayout, wreckTargets, GRAIN_TONES } from "./prop-wreck-layout.mjs";
+import { propTraits } from "./prop-traits.mjs";
 import { propSound } from "./prop-sounds.mjs";
 import { seededRandom } from "../fragments/fragments.mjs";
 import { tileRect, tileArtScale } from "./prop-geometry.mjs";
@@ -209,7 +210,7 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     for (const id of [...wrecks.keys()]) if (!ids.has(id)) hide(id);
     for (const { id, note } of want) {
       if (wrecks.has(id)) continue;
-      const tile = byId.get(id), contents = (tile.document ?? tile).flags?.animater?.prop?.contents ?? "none";
+      const tile = byId.get(id), contents = propTraits(tile.document ?? tile, grid() || 100).contents;
       show(tile, note, contents, { animate: false });
     }
   }

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { MATERIALS, guessMaterial, propMaterial, propShape, canBreak } from "../../../scripts/engines/props/prop-material.mjs";
+import { MATERIALS, nameTokens, guessMaterial, propMaterial, propShape, canBreak } from "../../../scripts/engines/props/prop-material.mjs";
 
 test("material is guessed from the file name only, by name tokens", () => {
   assert.equal(guessMaterial("fa/Core_Settlements/Clutter/Barrel_Wood_A_1x1.webp"), "wood");
@@ -56,4 +56,12 @@ test("percent-encoded file names are read decoded; a broken encoding is read as 
   assert.equal(guessMaterial("props/Old%20Barrel.webp"), "wood");
   assert.equal(guessMaterial("props/Glass%20Bottle%201.png"), "glass");
   assert.equal(guessMaterial("props/Barrel%E0%A4%A.webp"), "wood");
+});
+test("furniture words are wood and beat glass words", () => {
+  for (const s of ["Desk_Oak.webp", "Bed_Double.webp", "Bookshelf_Tall.webp", "Cabinet_A.webp", "Wardrobe_1x2.webp", "Tables_Long.webp", "Bookcase.webp"]) assert.equal(guessMaterial(s), "wood", s);
+  assert.equal(guessMaterial("Shelf_Potions_A.webp"), "wood");
+  assert.equal(guessMaterial("Potion_Red.webp"), "glass");
+});
+test("nameTokens is exported", () => {
+  assert.deepEqual(nameTokens("maps/Old%20BarrelA.webp"), ["old", "barrel", "a"]);
 });

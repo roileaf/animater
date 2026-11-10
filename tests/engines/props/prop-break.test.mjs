@@ -41,3 +41,23 @@ test("a critical failure always breaks; a miss by the chance; a hit never", () =
   assert.equal(missBreaks("hit", 100, 0), false);
   assert.equal(missBreaks("criticalSuccess", 100, 0), false);
 });
+test("old notes read as shatter with no lights; a bad style is refused", () => {
+  const old = { seed: 9, cutAngle: 0.4, pattern: "shards", pieces: 10, spread: 0.32, spin: 120, tint: "none", mark: "dust", from: { x: 0, y: 0 }, walls: [] };
+  assert.equal(readNote(old).style, "shatter");
+  assert.deepEqual(readNote(old).lights, []);
+  assert.equal(readNote({ ...old, style: "evil" }), null);
+  assert.equal(readNote({ ...old, style: "collapse" }).style, "collapse");
+});
+test("brokenNote always writes style and lights; lights are capped on read", () => {
+  const look = breakLook({ material: "wood" });
+  const n = brokenNote({ seed: 1, cutAngle: 0, look, from: { x: 0, y: 0 }, walls: [], size: 1 });
+  assert.equal(n.style, "shatter");
+  assert.deepEqual(n.lights, []);
+  assert.equal(brokenNote({ seed: 1, cutAngle: 0, look, from: { x: 0, y: 0 }, walls: [], size: 1, style: "collapse" }).style, "collapse");
+  const many = Array.from({ length: 20 }, (_, i) => `L${i}`);
+  const read = readNote({ ...n, lights: [...many, "x".repeat(33), 7] });
+  assert.equal(read.lights.length, 16);
+  assert.deepEqual(read.lights, many.slice(0, 16));
+  const again = readNote({ ...n, style: "collapse", lights: ["a"] });
+  assert.deepEqual(readNote(again), again);
+});

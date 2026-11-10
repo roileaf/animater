@@ -8,6 +8,8 @@ const TOKENS = {
   metal: ["metal", "iron", "steel", "cage", "brazier"],
   stone: ["stone", "statue", "pillar", "column", "rock"],
 };
+// Furniture is wood whatever else the name says ("Shelf_Potions" is a shelf, "Potion_Red" is glass).
+export const FURNITURE = new Set(["table", "tables", "chair", "chairs", "bench", "benches", "stool", "stools", "shelf", "shelves", "bookshelf", "bookshelves", "bookcase", "desk", "desks", "bed", "beds", "cabinet", "wardrobe"]);
 const BOXY = new Set(["crate", "box", "chest", "table", "shelf", "cart"]);
 const BREAKING = new Set(["bludgeoning", "piercing", "slashing", "fire", "cold", "electricity", "acid", "sonic", "force"]);
 const BROKEN_BY = {
@@ -23,13 +25,15 @@ for (const [m, words] of Object.entries(TOKENS)) for (const w of words) TOKEN_MA
 
 const decoded = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
 // file name only (no folders, no extension, percent-encoding undone: Old%20Barrel), camelCase split, lowercase tokens
-function nameTokens(src) {
+export function nameTokens(src) {
   const name = decoded(String(src ?? "").split(/[\/]/).pop()).replace(/\.[^.]*$/, "");
   return name.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
 }
 
 export function guessMaterial(src) {
-  for (const t of nameTokens(src)) if (TOKEN_MATERIAL.has(t)) return TOKEN_MATERIAL.get(t);
+  const tokens = nameTokens(src);
+  if (tokens.some((t) => FURNITURE.has(t))) return "wood";
+  for (const t of tokens) if (TOKEN_MATERIAL.has(t)) return TOKEN_MATERIAL.get(t);
   return "none";
 }
 
