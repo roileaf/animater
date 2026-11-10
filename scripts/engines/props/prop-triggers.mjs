@@ -5,6 +5,7 @@ import { motionPose, pathSpan } from "../motion/motion.mjs";
 import { motionPhases } from "../motion/motion-path.mjs";
 import { propsUnderTravel } from "./prop-pick.mjs";
 import { slamPlausible } from "./prop-requests.mjs";
+import { AREA_TTL_MS } from "./prop-areas.mjs";
 
 const FLIGHTS = new Set(["travel", "projectile"]);
 
@@ -12,7 +13,7 @@ const FLIGHTS = new Set(["travel", "projectile"]);
 // played: when the area's own recipe lands (now() clock); claim: each prop is asked for once per area.
 // An area still on the scene is kept for ttl (10 minutes); a damage roll that only an expired area would have matched
 // is reported through trace(message), so a late roll breaking nothing leaves a reason.
-export const AREA_TTL_MS = 600000;
+export { AREA_TTL_MS };
 export function createAreaWaits({ now = () => Date.now(), ttl = AREA_TTL_MS, trace = () => {} } = {}) {
   const areas = new Map(), expired = [];
   const drop = () => {
@@ -39,6 +40,8 @@ export function createAreaWaits({ now = () => Date.now(), ttl = AREA_TTL_MS, tra
       return best;
     },
     forget(templateId) { areas.delete(templateId); const i = expired.findIndex((e) => e.templateId === templateId); if (i >= 0) expired.splice(i, 1); },
+    // The GM's own record of one area by its id (authorId: who placed it; rememberedAt: when), or null.
+    get(templateId) { return areas.get(templateId) ?? null; },
     size() { return areas.size; },
     played(templateId, at) { const a = areas.get(templateId); if (a && Number.isFinite(at)) a.impactAt = at; },
     delayFor(area) { return Number.isFinite(area?.impactAt) ? Math.max(0, area.impactAt - now()) : 0; },

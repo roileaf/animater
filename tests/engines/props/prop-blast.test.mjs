@@ -217,24 +217,35 @@ test("blast causes are the GM's only; the source must have exploded", () => {
 });
 
 const spilledKeg = (extra = {}) => prop("keg", "Keg_Powder.webp", 500, 500, { hidden: true, flags: { animater: { prop: { broken: kegNote("spilled") } } }, ...extra });
-const ignite = (damageType = "fire", at = { x: 450, y: 500 }) => ({ cause: { kind: "ignite", damageType, at } });
+const AREA = "Scene.s.Region.fireball";
+const ignite = (damageType = "fire", at = { x: 450, y: 500 }) => ({ cause: { kind: "ignite", damageType, at, areaUuid: AREA } });
 const player = { id: "p", viewedScene: "s", isGM: false };
+// The GM's record of the player's fireball: fresh, on this scene, holding the spill's centre (550, 550).
+const fireball = (x = {}) => ({ uuid: AREA, sceneId: "s", authorId: "p", rememberedAt: 1000, testPoint: (p) => Math.hypot(p.x - 500, p.y - 500) <= 200, levels: [], ...x });
+const onFire = { area: fireball(), now: 2000 };
 
 test("spilled powder caught by a fire area explodes once", () => {
   const keg = spilledKeg();
-  const r = validBreakRequest(ignite(), { tile: keg, scene: blastScene(), grid, sender: player });
+  const r = validBreakRequest(ignite(), { tile: keg, scene: blastScene(), grid, sender: player, ...onFire });
   assert.deepEqual(r, { ok: true, note: { ...kegNote("spilled"), powder: "exploded" }, ignite: true, explode: true, wallUpdates: [], lightUpdates: [] });
   // cold does not set it off
-  assert.deepEqual(validBreakRequest(ignite("cold"), { tile: keg, scene: blastScene(), grid, sender: player }), { ok: false, why: "material" });
+  assert.deepEqual(validBreakRequest(ignite("cold"), { tile: keg, scene: blastScene(), grid, sender: player, ...onFire }), { ok: false, why: "material" });
   // the second time it has already gone off
   const gone = spilledKeg({ flags: { animater: { prop: { broken: r.note } } } });
-  assert.deepEqual(validBreakRequest(ignite(), { tile: gone, scene: blastScene(), grid, sender: player }), { ok: false, why: "broken" });
-  // an area far away, a broken crate (no powder), an unbroken keg
-  assert.deepEqual(validBreakRequest(ignite("fire", { x: 500 + 31 * grid, y: 500 }), { tile: keg, scene: blastScene(), grid, sender: player }), { ok: false, why: "far" });
-  assert.deepEqual(validBreakRequest(ignite("fire", null), { tile: keg, scene: blastScene(), grid, sender: player }), { ok: false, why: "far" });
+  assert.deepEqual(validBreakRequest(ignite(), { tile: gone, scene: blastScene(), grid, sender: player, ...onFire }), { ok: false, why: "broken" });
+  // I1: an area that does not hold the spill, none, another player's, an expired one, one on another scene
+  const far = fireball({ testPoint: (p) => Math.hypot(p.x - 3600, p.y - 500) <= 200 });
+  assert.deepEqual(validBreakRequest(ignite(), { tile: keg, scene: blastScene(), grid, sender: player, area: far, now: 2000 }), { ok: false, why: "area" });
+  assert.deepEqual(validBreakRequest(ignite(), { tile: keg, scene: blastScene(), grid, sender: player, now: 2000 }), { ok: false, why: "area" });
+  assert.deepEqual(validBreakRequest(ignite(), { tile: keg, scene: blastScene(), grid, sender: player, area: fireball({ authorId: "q" }), now: 2000 }), { ok: false, why: "area" });
+  assert.deepEqual(validBreakRequest(ignite(), { tile: keg, scene: blastScene(), grid, sender: player, area: fireball(), now: 1000 + 600001 }), { ok: false, why: "area" });
+  assert.deepEqual(validBreakRequest(ignite(), { tile: keg, scene: blastScene(), grid, sender: player, area: fireball({ sceneId: "x" }), now: 2000 }), { ok: false, why: "area" });
+  // M2: the fireball on another level than the spill
+  assert.deepEqual(validBreakRequest(ignite(), { tile: spilledKeg({ levels: ["cellar"] }), scene: blastScene(), grid, sender: player, area: fireball({ levels: ["hall"] }), now: 2000 }), { ok: false, why: "area" });
+  // a broken crate (no powder), an unbroken keg
   const crate = prop("crate", "Crate_Wood.webp", 500, 500, { hidden: true, flags: { animater: { prop: { broken: kegNote(undefined) } } } });
-  assert.deepEqual(validBreakRequest(ignite(), { tile: crate, scene: blastScene(), grid, sender: player }), { ok: false, why: "broken" });
-  assert.deepEqual(validBreakRequest(ignite(), { tile: prop("keg", "Keg_Powder.webp", 500, 500), scene: blastScene(), grid, sender: player }), { ok: false, why: "cause" });
+  assert.deepEqual(validBreakRequest(ignite(), { tile: crate, scene: blastScene(), grid, sender: player, ...onFire }), { ok: false, why: "broken" });
+  assert.deepEqual(validBreakRequest(ignite(), { tile: prop("keg", "Keg_Powder.webp", 500, 500), scene: blastScene(), grid, sender: player, ...onFire }), { ok: false, why: "cause" });
   // still off unless on
-  assert.deepEqual(validBreakRequest(ignite(), { tile: keg, scene: { id: "s", flags: {} }, grid, sender: player }), { ok: false, why: "off" });
+  assert.deepEqual(validBreakRequest(ignite(), { tile: keg, scene: { id: "s", flags: {} }, grid, sender: player, ...onFire }), { ok: false, why: "off" });
 });

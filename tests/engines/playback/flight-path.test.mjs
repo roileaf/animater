@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { departureOf, footprintPoints, clearPoint, missLine, planFlight, withFlightPaths, wallHit, arrivalOf, wallArrivalOf } from '../../../scripts/engines/playback/flight-path.mjs';
+import { departureOf, footprintPoints, clearPoint, missLine, planFlight, withFlightPaths, wallHit, arrivalOf, wallArrivalOf, missFlightsOf, MISS_ANGLE, MISS_OVERSHOOT } from '../../../scripts/engines/playback/flight-path.mjs';
 import { sideOf } from '../../../scripts/systems/outcome.mjs';
 import { MEDIA_LANDINGS, RANGE_UNMEASURED } from '../../../data/media-landings.mjs';
 
@@ -382,4 +382,33 @@ test('a fixed flight (an arc from the last target) still sets off when its clip 
   assert.ok(s.departure > 0);
   assert.equal(s.flightFrom, undefined, 'flies as planned');
   assert.equal(arc.departure, undefined, 'the planned stage is not changed');
+});
+
+test('a planned miss keeps its free end: the seeded miss line, wherever a wall stops the shot', () => {
+  const past = planFlight({ from, targetRect: rect, role: 'attack-miss', seed: seedA, gridPx: 100, collides: () => null });
+  assert.deepEqual(past.end, past.to);
+  const walled = planFlight({ from, targetRect: rect, role: 'attack-miss', seed: seedA, gridPx: 100, collides: wallAtX(600) });
+  assert.deepEqual(walled.end, past.end);
+  assert.deepEqual(walled.end, missLine(from, { x: 450, y: 50 }, { seed: seedA, gridPx: 100 }));
+  // a hit has none
+  assert.equal(planFlight({ from, targetRect: rect, role: 'attack-hit', gridPx: 100, collides: () => null }).end, undefined);
+  assert.equal(MISS_ANGLE, 12);
+  assert.equal(MISS_OVERSHOOT, 2);
+});
+
+test('missFlightsOf: each planned miss shot, its path as drawn, its free end and when it reaches the end', () => {
+  const { plan } = withFlightPaths([flight({ delay: 200 }), flight({ stageId: 'other', endpoint: token('t2', 0, 800), destination: token('t2', 0, 800) })],
+    opts({ context: ctx({ outcome: 'criticalFailure' }) }));
+  const [shot] = missFlightsOf(plan);
+  assert.equal(missFlightsOf(plan).length, 2);
+  assert.equal(shot.targetId, 't1');
+  assert.deepEqual(shot.from, { x: 0, y: 0 });
+  assert.equal(shot.to.x, 500); // stopped by the wall at x 500
+  assert.deepEqual(shot.end, missLine({ x: 0, y: 0 }, { x: 1000, y: 0 }, { seed: seedA, gridPx: 100 }));
+  assert.equal(shot.outcome, 'wall');
+  assert.equal(shot.start, 200);
+  assert.equal(shot.arrive, 200 + arrivalOf(plan[0]));
+  // a hit is no miss flight; a preview's flights are not planned with walls
+  assert.deepEqual(missFlightsOf(withFlightPaths([flight()], opts()).plan), []);
+  assert.deepEqual(missFlightsOf([{ kind: 'travel' }, { kind: 'sound' }]), []);
 });

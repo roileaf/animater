@@ -37,7 +37,9 @@ export function clearPoint(from, rect, collides, first = null) {
 
 // A miss's free end: a small angle off the line to the target, on past it. The side follows
 // the seed (the same hash as the dodge), so every client draws the same miss.
-export function missLine(from, to, { seed, gridPx, angle = 12, overshoot = 2 }) {
+export const MISS_ANGLE = 12; // degrees off the line to the target
+export const MISS_OVERSHOOT = 2; // squares past the target
+export function missLine(from, to, { seed, gridPx, angle = MISS_ANGLE, overshoot = MISS_OVERSHOOT }) {
   const theta = Math.atan2(to.y - from.y, to.x - from.x) + sideOf(seed) * angle * Math.PI / 180;
   const length = distance(from, to) + overshoot * gridPx;
   return { x: from.x + Math.cos(theta) * length, y: from.y + Math.sin(theta) * length };
@@ -60,7 +62,8 @@ export function stuckShotsOf(plan = []) {
   return out;
 }
 
-// The path of one flight. role: 'attack-hit' | 'attack-miss' | 'other' | 'fixed'.
+// The path of one flight. role: 'attack-hit' | 'attack-miss' | 'other' | 'fixed'. A miss also keeps its free end
+// (end: the seeded miss line's end, where it would land with no wall in the way).
 export function planFlight({ from, targetRect, to, role, seed, gridPx, collides, shieldBlock }) {
   const aim = to ?? footprintPoints(targetRect)[0];
   const straight = { from, to: aim, outcome: 'target' };
@@ -68,7 +71,7 @@ export function planFlight({ from, targetRect, to, role, seed, gridPx, collides,
   const atWall = (hit) => ({ from, to: point(hit), outcome: 'wall', ...(hit.door ? { wallDoor: true } : {}) });
   if (role === 'attack-miss') {
     const end = missLine(from, aim, { seed, gridPx }), hit = collides(from, end, 'move');
-    return hit ? atWall(hit) : { from, to: end, outcome: 'past' };
+    return hit ? { ...atWall(hit), end } : { from, to: end, outcome: 'past', end };
   }
   const seen = targetRect ? clearPoint(from, targetRect, collides, aim) : collides(from, aim, 'sight') === null ? aim : null;
   if (seen) return { from, to: seen, outcome: 'target' };
@@ -79,6 +82,20 @@ export function planFlight({ from, targetRect, to, role, seed, gridPx, collides,
 }
 
 export const tokenId = (t) => t?.id ?? t?.document?.id;
+
+// The planned miss shots of a plan (pure), as the animation draws them, for a window the shot flies into
+// (main.mjs, engines/props/window-miss.mjs): its target's id, its path from -> to (where it stops: a wall, or its
+// free end), its free end (the seeded miss line's), and when it sets off and reaches its end (ms into the play).
+export function missFlightsOf(plan = []) {
+  const out = [];
+  for (const s of plan) {
+    if (!FLIGHTS.includes(s.kind) || s.flightMiss !== true || !s.flightFrom || !s.flightTo) continue;
+    const start = Math.max(0, Number(s.delay) || 0);
+    out.push({ targetId: tokenId(s.endpoint) ?? null, from: point(s.flightFrom), to: point(s.flightTo), end: point(s.flightEnd ?? s.flightTo),
+      outcome: s.flightOutcome, start, arrive: start + Math.max(0, Number(arrivalOf(s)) || 0) });
+  }
+  return out;
+}
 const isToken = (t) => !!tokenId(t);
 // A token's footprint in scene pixels, around its centre.
 function footprintOf(token, gridPx) {
@@ -177,7 +194,8 @@ export function withFlightPaths(plan, { context = {}, gridPx = 100, collides = n
       return arrival === null && leaves === null ? s : departing(arriving(s, { ...s }, arrival), leaves);
     }
     const path = planFlight({ from, targetRect: footprintOf(s.endpoint, gridPx), to: aim, role, seed, gridPx, collides, shieldBlock: s.shieldBlock });
-    const next = { ...s, flightFrom: path.from, flightTo: path.to, flightOutcome: path.outcome, ...(path.wallDoor ? { wallDoor: true } : {}) };
+    const next = { ...s, flightFrom: path.from, flightTo: path.to, flightOutcome: path.outcome, ...(path.wallDoor ? { wallDoor: true } : {}),
+      ...(role === 'attack-miss' ? { flightMiss: true, ...(path.end ? { flightEnd: path.end } : {}) } : {}) };
     if (path.outcome === 'wall') arriving(s, next, wallArrivalOf(next, { gridPx }));
     if (path.outcome === 'target') arriving(s, next, targetArrivalOf(next, distance(path.from, path.to), { gridPx }));
     departing(next, departureOf(next, distance(path.from, path.to), { gridPx }));

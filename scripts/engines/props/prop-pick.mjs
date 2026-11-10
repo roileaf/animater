@@ -18,8 +18,11 @@ export function propsInArea(tiles, testPoint, grid, damageType) {
   return eligible(tiles, grid, { damageType }).filter(t => testPoint(centre(t)));
 }
 
-// tile bounds overlap (with area) the target footprint grown by one square, centre not on the target itself
-export function propNextToMiss({ attacker, target }, tiles, grid, damageType) {
+// Where a missed swing can land: the frame of the attacker's centre and the target's footprint {x, y, w, h}.
+// ring: the footprint grown by one square; onTarget(p): p lies on the target itself; score(p): {across, toTarget} for a
+// point past the target's near side (how far off the attacker->target line, and from the target's centre), or null for
+// one on the attacker's side, which a missed swing never reaches. Props and windows beside the target share it.
+export function missFrame(attacker, target, grid) {
   const ring = { x: target.x - grid, y: target.y - grid, w: target.w + 2 * grid, h: target.h + 2 * grid };
   const tc = { x: target.x + target.w / 2, y: target.y + target.h / 2 };
   const dx = tc.x - attacker.x, dy = tc.y - attacker.y, len = Math.hypot(dx, dy);
@@ -29,15 +32,27 @@ export function propNextToMiss({ attacker, target }, tiles, grid, damageType) {
   const measure = p => len
     ? { along: ((p.x - attacker.x) * dx + (p.y - attacker.y) * dy) / len, across: Math.abs((p.x - attacker.x) * dy - (p.y - attacker.y) * dx) / len }
     : { along: 0, across: 0 };
-  let best = null, bestD = Infinity, bestT = Infinity;
+  return {
+    ring,
+    onTarget: (p) => p.x >= target.x && p.x <= target.x + target.w && p.y >= target.y && p.y <= target.y + target.h,
+    inRing: (p) => p.x >= ring.x && p.x <= ring.x + ring.w && p.y >= ring.y && p.y <= ring.y + ring.h,
+    score: (p) => { const m = measure(p); return m.along < near ? null : { across: m.across, toTarget: Math.hypot(p.x - tc.x, p.y - tc.y) }; },
+  };
+}
+// Whether score a beats score b (nearer the line, then nearer the target).
+export const missBetter = (a, b) => !!a && (!b || a.across < b.across || (a.across === b.across && a.toTarget < b.toTarget));
+
+// tile bounds overlap (with area) the target footprint grown by one square, centre not on the target itself
+export function propNextToMiss({ attacker, target }, tiles, grid, damageType) {
+  const frame = missFrame(attacker, target, grid), { ring } = frame;
+  let best = null, bestScore = null;
   for (const t of eligible(tiles, grid, { damageType })) {
     const c = centre(t);
-    if (c.x >= target.x && c.x <= target.x + target.w && c.y >= target.y && c.y <= target.y + target.h) continue;
+    if (frame.onTarget(c)) continue;
     if (t.x >= ring.x + ring.w || t.x + t.width <= ring.x || t.y >= ring.y + ring.h || t.y + t.height <= ring.y) continue;
-    const m = measure(c);
-    if (m.along < near) continue; // on the attacker's side of the target: a missed swing never reaches it
-    const d = m.across, toTarget = Math.hypot(c.x - tc.x, c.y - tc.y);
-    if (d < bestD || (d === bestD && toTarget < bestT)) { best = t; bestD = d; bestT = toTarget; }
+    const score = frame.score(c);
+    if (!score) continue; // on the attacker's side of the target: a missed swing never reaches it
+    if (missBetter(score, bestScore)) { best = t; bestScore = score; }
   }
   return best;
 }

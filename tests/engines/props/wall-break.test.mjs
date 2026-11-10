@@ -113,7 +113,7 @@ test("a window's note reads back (glass, none), and Repair restores only its sen
 });
 
 // Task 21 (D1): a Material saved as an array (both groups' selects submitted) still reads as the shown group's choice.
-import { wallMaterialOf, wallBreakFormMerge } from "../../../scripts/engines/props/wall-break.mjs";
+import { wallMaterialOf, wallBreakFormMerge, wallFormDoor } from "../../../scripts/engines/props/wall-break.mjs";
 test("a door saved with Material [metal, glass] is metal; a window with [wood, none] won't break", () => {
   assert.equal(wallTraits(wall(own({ material: ["metal", "glass"] })), scene()).material, "metal");
   assert.equal(wallTraits(wall(own({ material: ["stone", "none"] })), scene(), "pf2e").forceDC, 25);
@@ -154,4 +154,40 @@ test("wallBreakFormMerge: the form's two Material fields become one material by 
   const plain = { material: "stone" };
   assert.equal(wallBreakFormMerge(plain, 1), plain);
   assert.equal(wallBreakFormMerge(undefined, 1), undefined);
+});
+
+test("I2: the Door Type a broken door's config stands for is the door it was (its note's restore), unless the form changes it", () => {
+  const metal = { material: "metal", forceOpen: true };
+  const brokenDoor = wall({ door: 0, ds: 0, move: 0, sight: 0, light: 0, sound: 0, flags: { animater: { breakWall: { ...metal,
+    broken: { seed: 1, cutAngle: 0, from: { x: 0, y: 0 }, kind: "door", material: "metal", mark: "dust", restore: { door: 1, ds: 2, move: 20, sight: 20, light: 20, sound: 20 } } } } } });
+  assert.equal(wallFormDoor(brokenDoor), 1); // the form opens on the door it was
+  assert.equal(wallFormDoor(brokenDoor, undefined), 1); // a save that leaves Door Type alone
+  assert.equal(wallFormDoor(brokenDoor, 0), 1); // the form's select still on the broken wall's own 0
+  assert.equal(wallFormDoor(brokenDoor, "0"), 1);
+  assert.equal(wallFormDoor(brokenDoor, 2), 2); // the GM changes it (a hand edit)
+  // a broken window, an intact door or window, a wall without a note: their own door type
+  const brokenWindow = wall({ door: 0, flags: { animater: { breakWall: { window: true, broken: { seed: 1, cutAngle: 0, from: { x: 0, y: 0 }, kind: "window", material: "glass", mark: "dust", restore: { sight: 20, light: 20, sound: 20 } } } } } });
+  assert.equal(wallFormDoor(brokenWindow), 0);
+  assert.equal(wallFormDoor(wall()), 1);
+  assert.equal(wallFormDoor(wall({ door: 0 }), "1"), 1);
+  assert.equal(wallFormDoor(wall({ door: 2 })), 2);
+});
+
+test("I2: a broken metal door saved unchanged keeps metal, and Repair brings back a locked metal door", () => {
+  const note = { seed: 1, cutAngle: 0, from: { x: 0, y: 0 }, kind: "door", material: "metal", mark: "dust", restore: { door: 1, ds: 2, move: 20, sight: 20, light: 20, sound: 20 } };
+  const broken = wall({ door: 0, ds: 0, move: 0, sight: 0, light: 0, sound: 0, flags: { animater: { breakWall: { material: "metal", forceOpen: true, broken: note } } } });
+  // Foundry sends both groups' fields (the D1 finding) and the diff leaves out door and material
+  const sent = { material: "metal", windowMaterial: "glass", forceOpen: true };
+  const saved = wallBreakFormMerge(sent, wallFormDoor(broken, undefined));
+  assert.equal(saved.material, "metal");
+  assert.equal("windowMaterial" in saved, false);
+  // the shown door group alone (the render fix) submits the same
+  assert.equal(wallBreakFormMerge({ material: "metal", forceOpen: true }, wallFormDoor(broken)).material, "metal");
+  // Repair: the door comes back locked, and still reads as metal
+  const after = { ...broken, flags: { animater: { breakWall: { ...broken.flags.animater.breakWall, ...saved } } } };
+  const fix = wallRestoreUpdate(after);
+  assert.deepEqual({ door: fix.door, ds: fix.ds, move: fix.move }, { door: 1, ds: 2, move: 20 });
+  const repaired = { ...after, ...fix, flags: { animater: { breakWall: { material: saved.material, forceOpen: true } } } };
+  assert.equal(wallTraits(repaired, scene()).material, "metal");
+  assert.equal(wallTraits(repaired, scene()).kind, "door");
 });

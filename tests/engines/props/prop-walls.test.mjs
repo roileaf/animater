@@ -91,3 +91,25 @@ test("wallStop: a clamp from one origin; null walls give the identity", () => {
   assert.ok(Math.abs(stop.share({ x: 500, y: 100 }) - (94 / 300)) < 1e-9);
   assert.equal(stop.share({ x: 450, y: 420 }), 1);
 });
+
+test("M1: a broken door (door 0 now) inside a prop's rectangle is never one of its own walls", () => {
+  const tile = { x: 0, y: 0, width: 200, height: 200, rotation: 0 };
+  const plain = { id: "plain", c: [20, 100, 180, 100], door: 0, move: 20, sight: 20, light: 20, sound: 20, flags: {} };
+  const brokenDoor = { id: "door", c: [100, 20, 100, 180], door: 0, move: 0, sight: 0, light: 0, sound: 0,
+    flags: { animater: { breakWall: { broken: { seed: 1, cutAngle: 0, from: { x: 0, y: 0 }, kind: "door", material: "wood", mark: "dust", restore: { door: 1 } } } } } };
+  assert.deepEqual(ownWalls(tile, [plain, brokenDoor], 100).map((w) => w.id), ["plain"]);
+});
+
+test("M3: a prop whose centre sits on a wall line still throws its pieces off the line (both ways), and stops at the next wall", () => {
+  const on = { id: "on", c: [0, 100, 400, 100], move: 20, sight: 20 }, next = { id: "next", c: [0, 300, 400, 300], move: 20, sight: 20 };
+  const from = { x: 200, y: 100 };
+  assert.deepEqual(stopShort(from, { x: 200, y: 200 }, [on]), { x: 200, y: 200 });
+  assert.deepEqual(stopShort(from, { x: 230, y: 0 }, [on]), { x: 230, y: 0 });
+  // still stopped by a wall further along
+  const s = stopShort(from, { x: 200, y: 400 }, [on, next], 10);
+  assert.ok(Math.abs(s.y - 290) < 1e-9 && s.x === 200);
+  assert.equal(wallStop(from, [on]).share({ x: 260, y: 220 }), 1);
+  // a centre half a pixel off the line counts as on it; one a few pixels off is stopped by it as before
+  assert.deepEqual(stopShort({ x: 200, y: 100.5 }, { x: 200, y: 0 }, [on]), { x: 200, y: 0 });
+  assert.ok(stopShort({ x: 200, y: 110 }, { x: 200, y: 0 }, [on]).y >= 100);
+});

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validBreakRequest, undoUpdates, repairUpdates, breakNoteFor, withDeletes, levelTopOf, cleanCause, wallsToRestore, slamPlausible } from "../../../scripts/engines/props/prop-requests.mjs";
+import { validBreakRequest, mergeWallFixes, undoUpdates, repairUpdates, breakNoteFor, withDeletes, levelTopOf, cleanCause, wallsToRestore, slamPlausible } from "../../../scripts/engines/props/prop-requests.mjs";
 import { ownWalls } from "../../../scripts/engines/props/prop-walls.mjs";
 
 const grid = 100;
@@ -10,10 +10,13 @@ const wall = (id, c, extra = {}) => ({ id, c, door: 0, move: 20, sight: 20, ligh
 const walls = [wall("in", [210, 220, 290, 220]), wall("in2", [220, 210, 220, 290]), wall("out", [500, 500, 600, 500])];
 const target = { x: 300, y: 200, w: 100, h: 100 }; // a token at (3,2)
 const sender = { id: "player", viewedScene: "s" };
-const noteFor = (tile = barrel(), cause = { kind: "area", damageType: "fire", at: { x: 250, y: 250 } }, extra = {}) =>
+// The GM's record of the area an area cause names: the player placed it, it is fresh and covers every tile tested.
+const AREA = "Scene.s.Region.r";
+const covering = (x = {}) => ({ uuid: AREA, sceneId: "s", authorId: "player", authorIsGM: false, ownsOrigin: false, rememberedAt: 1000, testPoint: () => true, levels: [], ...x });
+const noteFor = (tile = barrel(), cause = { kind: "area", areaUuid: AREA, damageType: "fire", at: { x: 250, y: 250 } }, extra = {}) =>
   breakNoteFor({ tile, walls, grid, cause, seed: 42, from: { x: 150, y: 250 }, ...extra });
-const areaReq = (note = noteFor()) => ({ cause: { kind: "area", damageType: "fire", at: { x: 250, y: 250 } }, note });
-const ctx = (extra = {}) => ({ tile: barrel(), walls, scene: scene(), grid, sender, ...extra });
+const areaReq = (note = noteFor()) => ({ cause: { kind: "area", areaUuid: AREA, damageType: "fire", at: { x: 250, y: 250 } }, note });
+const ctx = (extra = {}) => ({ tile: barrel(), walls, scene: scene(), grid, sender, area: covering(), now: 5000, ...extra });
 
 test("a good area request passes and names only the tile's own walls", () => {
   const r = validBreakRequest(areaReq(), ctx());
@@ -31,12 +34,10 @@ test("refused: feature off, already broken, hidden, wrong damage, foreign wall, 
   assert.deepEqual(validBreakRequest(areaReq(note), ctx({ tile: barrel({ flags: { animater: { prop: { broken: note } } } }) })), { ok: false, why: "broken" });
   assert.deepEqual(validBreakRequest(areaReq(note), ctx({ tile: barrel({ hidden: true }) })), { ok: false, why: "hidden" });
   // wood does not break from cold
-  assert.deepEqual(validBreakRequest({ ...areaReq(note), cause: { kind: "area", damageType: "cold", at: { x: 250, y: 250 } } }, ctx()), { ok: false, why: "material" });
+  assert.deepEqual(validBreakRequest({ ...areaReq(note), cause: { kind: "area", areaUuid: AREA, damageType: "cold", at: { x: 250, y: 250 } } }, ctx()), { ok: false, why: "material" });
   // a tile with no prop material never breaks
   assert.deepEqual(validBreakRequest(areaReq(note), ctx({ tile: barrel({ texture: { src: "floor/flagstones.webp" } }) })), { ok: false, why: "material" });
   assert.deepEqual(validBreakRequest(areaReq({ ...note, walls: ["in", "out"] }), ctx()), { ok: false, why: "wall" });
-  assert.deepEqual(validBreakRequest({ ...areaReq(note), cause: { kind: "area", damageType: "fire", at: { x: 250 + 31 * grid, y: 250 } } }, ctx()), { ok: false, why: "far" });
-  assert.equal(validBreakRequest({ ...areaReq(note), cause: { kind: "area", damageType: "fire", at: { x: 250 + 30 * grid, y: 250 } } }, ctx()).ok, true);
   assert.deepEqual(validBreakRequest(areaReq(note), ctx({ tile: null })), { ok: false, why: "missing" });
   assert.deepEqual(validBreakRequest(areaReq({ ...note, pattern: "nonsense" }), ctx()), { ok: false, why: "note" });
   assert.deepEqual(validBreakRequest({ ...areaReq(note), cause: { kind: "wish" } }, ctx()), { ok: false, why: "cause" });
@@ -150,7 +151,7 @@ test("a tile's level top: its first named level in scene order, else the initial
 });
 
 test("a cause from the socket keeps only its known, well-formed fields", () => {
-  assert.deepEqual(cleanCause({ kind: "area", damageType: "fire", at: { x: 1, y: 2, z: 3 }, extra: "x", slam: { size: "big" } }), { kind: "area", damageType: "fire", at: { x: 1, y: 2 } });
+  assert.deepEqual(cleanCause({ kind: "area", areaUuid: AREA, damageType: "fire", at: { x: 1, y: 2, z: 3 }, extra: "x", slam: { size: "big" } }), { kind: "area", areaUuid: AREA, damageType: "fire", at: { x: 1, y: 2 } });
   assert.deepEqual(cleanCause({ kind: "path", slam: { size: 2 }, moverUuid: "Scene.s.Token.m", at: { x: NaN, y: 0 } }), { kind: "path", slam: { size: 2 }, moverUuid: "Scene.s.Token.m" });
   assert.deepEqual(cleanCause({ kind: "path", path: { from: { x: 1, y: 2, z: 9 }, to: { x: 3, y: 4 } } }), { kind: "path", path: { from: { x: 1, y: 2 }, to: { x: 3, y: 4 } } });
   assert.deepEqual(cleanCause({ kind: "path", path: { from: { x: 1, y: Infinity }, to: { x: 3, y: 4 } } }), { kind: "path" });
@@ -269,7 +270,7 @@ test("old notes without lights read as none", () => {
 
 // Burning lamp oil (Task 10)
 test("a lit lantern knocked over catches; the GM's request says fire", () => {
-  const tile = lantern(), hit = { kind: "area", damageType: "bludgeoning", at: { x: 250, y: 250 } };
+  const tile = lantern(), hit = { kind: "area", areaUuid: AREA, damageType: "bludgeoning", at: { x: 250, y: 250 } };
   const req = (t = tile) => ({ cause: hit, note: noteFor(t, hit) });
   const lit = validBreakRequest(req(), ctx({ tile, lights: [lamps({ id: "in", x: 250, y: 250 })] }));
   assert.equal(lit.ok, true);
@@ -311,7 +312,7 @@ test("a Medium slam tips a brazier; its light goes out; area fire still can't to
   assert.deepEqual(r.note.lights, ["fire"]);
   assert.deepEqual(r.lightUpdates, [{ _id: "fire", hidden: true }]);
   assert.equal(r.fire, false, "a brazier holds no lamp oil");
-  const fire = { kind: "area", damageType: "fire", at: { x: 250, y: 250 } };
+  const fire = { kind: "area", areaUuid: AREA, damageType: "fire", at: { x: 250, y: 250 } };
   assert.deepEqual(validBreakRequest({ cause: fire, note: noteFor(tile, fire) }, ctx({ tile, lights })), { ok: false, why: "material" });
   // the requester's note said shatter: the GM decides it tips
   assert.equal(validBreakRequest({ cause: shove(1), note: { ...noteFor(tile, shove(1)), style: "shatter" } }, ctx({ tile, mover: smallMover })).note.style, "tip");
@@ -334,22 +335,22 @@ test("a brazier set not to tip needs a Large slam again, and shatters; a forged 
 });
 test("the requester's note for a brazier slam says tip", () => {
   assert.equal(noteFor(brazier(), shove(1)).style, "tip");
-  assert.equal(noteFor(brazier(), { kind: "area", damageType: "bludgeoning", at: { x: 250, y: 250 } }).style, "shatter");
+  assert.equal(noteFor(brazier(), { kind: "area", areaUuid: AREA, damageType: "bludgeoning", at: { x: 250, y: 250 } }).style, "shatter");
 });
 
 // Powder kegs (Task 12): any break of a keg says whether it explodes, and its note keeps the powder and the burst.
 const powderKeg = (prop = {}) => barrel({ id: "keg", texture: { src: "props/Keg_Powder.webp" }, flags: { animater: { prop } } });
 test("a powder keg broken by fire explodes; by an axe or a shove it spills; the note keeps its burst", () => {
-  const fire = { kind: "area", damageType: "fire", at: { x: 250, y: 250 } };
+  const fire = { kind: "area", areaUuid: AREA, damageType: "fire", at: { x: 250, y: 250 } };
   const r = validBreakRequest({ cause: fire, note: noteFor(powderKeg(), fire) }, ctx({ tile: powderKeg() }));
   assert.equal(r.ok, true);
   assert.equal(r.explode, true);
   assert.equal(r.note.powder, "exploded");
   assert.equal(r.note.burst, 2);
   assert.equal(validBreakRequest({ cause: fire, note: noteFor(powderKeg({ burst: 4 }), fire) }, ctx({ tile: powderKeg({ burst: 4 }) })).note.burst, 4);
-  const zap = { kind: "area", damageType: "electricity", at: { x: 250, y: 250 } };
+  const zap = { kind: "area", areaUuid: AREA, damageType: "electricity", at: { x: 250, y: 250 } };
   assert.equal(validBreakRequest({ cause: zap, note: noteFor(powderKeg(), zap) }, ctx({ tile: powderKeg() })).explode, true);
-  const axe = { kind: "area", damageType: "slashing", at: { x: 250, y: 250 } };
+  const axe = { kind: "area", areaUuid: AREA, damageType: "slashing", at: { x: 250, y: 250 } };
   const spilt = validBreakRequest({ cause: axe, note: noteFor(powderKeg(), axe) }, ctx({ tile: powderKeg() }));
   assert.equal(spilt.ok, true);
   assert.equal(spilt.explode, false);
@@ -366,13 +367,13 @@ test("a powder keg broken by fire explodes; by an axe or a shove it spills; the 
   assert.equal(w.note.powder, undefined);
 });
 test("powder and burst are the GM's: a requester's claim on a crate is dropped, a keg's is rewritten", () => {
-  const fire = { kind: "area", damageType: "fire", at: { x: 250, y: 250 } };
+  const fire = { kind: "area", areaUuid: AREA, damageType: "fire", at: { x: 250, y: 250 } };
   const r = validBreakRequest({ cause: fire, note: { ...noteFor(), powder: "exploded", burst: 4 } }, ctx());
   assert.equal(r.ok, true);
   assert.equal(r.explode, false);
   assert.equal(r.note.powder, undefined);
   assert.equal(r.note.burst, undefined);
-  const axe = { kind: "area", damageType: "slashing", at: { x: 250, y: 250 } };
+  const axe = { kind: "area", areaUuid: AREA, damageType: "slashing", at: { x: 250, y: 250 } };
   const k = validBreakRequest({ cause: axe, note: { ...noteFor(powderKeg(), axe), powder: "exploded", burst: 4 } }, ctx({ tile: powderKeg() }));
   assert.equal(k.note.powder, "spilled");
   assert.equal(k.note.burst, 2);
@@ -386,4 +387,41 @@ test("a player's forged blast is refused before anything else is looked at", () 
   const blast = { kind: "blast", sourceId: "keg" };
   assert.deepEqual(validBreakRequest({ cause: blast, note: noteFor() }, ctx()), { ok: false, why: "sender" });
   assert.deepEqual(validBreakRequest({ cause: blast, note: noteFor() }, ctx({ sender: { ...sender, isGM: false }, source: barrel({ id: "keg", hidden: true }) })), { ok: false, why: "sender" });
+});
+
+test("I1: an area break must name a real area the GM checks: missing, foreign, expired, outside or on another level is refused as area", () => {
+  const note = noteFor();
+  const no = { ok: false, why: "area" };
+  assert.deepEqual(validBreakRequest(areaReq(note), ctx({ area: undefined })), no); // the GM has no such area
+  assert.deepEqual(validBreakRequest({ ...areaReq(note), cause: { kind: "area", damageType: "fire", at: { x: 250, y: 250 } } }, ctx()), no); // names none
+  assert.deepEqual(validBreakRequest(areaReq(note), ctx({ area: covering({ sceneId: "other" }) })), no); // on another scene
+  assert.deepEqual(validBreakRequest(areaReq(note), ctx({ area: covering({ authorId: "someone" }) })), no); // another player's
+  assert.deepEqual(validBreakRequest(areaReq(note), ctx({ now: 1000 + 600001 })), no); // expired
+  // the shape as the GM computes it does not hold the tile's centre (250, 250)
+  const elsewhere = covering({ testPoint: (p) => Math.hypot(p.x - 900, p.y - 900) <= 150 });
+  assert.deepEqual(validBreakRequest(areaReq(note), ctx({ area: elsewhere })), no);
+  // the area is on another level than the tile
+  assert.deepEqual(validBreakRequest(areaReq(note), ctx({ tile: barrel({ levels: ["ground"] }), area: covering({ levels: ["upstairs"] }) })), no);
+  // the tile's own centre is what is tested, not the requester's at
+  const seen = [];
+  validBreakRequest(areaReq(note), ctx({ area: covering({ testPoint: (p) => { seen.push(p); return true; } }) }));
+  assert.deepEqual(seen, [{ x: 250, y: 250 }]);
+  // a GM-placed area, or one whose origin actor the sender owns, is fine
+  assert.equal(validBreakRequest(areaReq(note), ctx({ area: covering({ authorId: "gm", authorIsGM: true }) })).ok, true);
+  assert.equal(validBreakRequest(areaReq(note), ctx({ area: covering({ authorId: "gm", ownsOrigin: true }) })).ok, true);
+});
+
+test("I1: the GM's own area break naming no area keeps its 30-square reach from its centre", () => {
+  const gm = { id: "gm", viewedScene: "s", isGM: true }, note = noteFor();
+  const at = (x) => ({ ...areaReq(note), cause: { kind: "area", damageType: "fire", at: { x, y: 250 } } });
+  assert.equal(validBreakRequest(at(250 + 30 * grid), ctx({ sender: gm, area: undefined })).ok, true);
+  assert.deepEqual(validBreakRequest(at(250 + 31 * grid), ctx({ sender: gm, area: undefined })), { ok: false, why: "far" });
+});
+
+test("M1: Repair's wall batch names each wall once, its door note's restore over a prop's", () => {
+  const merged = mergeWallFixes([{ _id: "a", move: 20, "flags.animater.prop.-=restore": null }, { _id: "b", move: 10 }],
+    [{ _id: "a", door: 1, ds: 2, move: 30, "flags.animater.breakWall.-=broken": null }]);
+  assert.deepEqual(merged, [{ _id: "a", move: 30, "flags.animater.prop.-=restore": null, door: 1, ds: 2, "flags.animater.breakWall.-=broken": null }, { _id: "b", move: 10 }]);
+  assert.deepEqual(mergeWallFixes([], []), []);
+  assert.deepEqual(mergeWallFixes([{ move: 1 }], [{ _id: "c", move: 2 }]), [{ _id: "c", move: 2 }]); // an update without an id is dropped
 });

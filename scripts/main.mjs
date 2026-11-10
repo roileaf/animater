@@ -23,13 +23,14 @@ import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
 import { BURN_MS, burnLightData, fireTimers } from "./engines/props/prop-lights.mjs";
 import { propMaterial } from "./engines/props/prop-material.mjs";
-import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES } from "./engines/props/prop-requests.mjs";
-import { propsInArea, propNextToMiss, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
+import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
+import { propsInArea, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls, blockingWalls, wallStop } from "./engines/props/prop-walls.mjs";
-import { wallMid, readWallNote, wallRepairUpdates, wallTraits, wallBreakFormMerge } from "./engines/props/wall-break.mjs";
+import { wallMid, readWallNote, wallRepairUpdates, wallTraits, wallBreakFormMerge, wallFormDoor } from "./engines/props/wall-break.mjs";
 import { firePatchAt } from "./engines/props/prop-wreck-layout.mjs";
 import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest, handEdited, handEditUpdate, slamSenderOk } from "./engines/props/wall-break-requests.mjs";
-import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, smashFrom, windowOnLine } from "./engines/props/wall-triggers.mjs";
+import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, smashFrom, nextToMiss } from "./engines/props/wall-triggers.mjs";
+import { windowOnFlight, createMissFlights } from "./engines/props/window-miss.mjs";
 import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt, forceOpenWording } from "./engines/props/force-open.mjs";
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
@@ -94,7 +95,7 @@ import { createAreaMarkQueue, registerSpellArsenal } from "./integrations/spell-
 import { wrapRulerHighlight } from "./integrations/walked-path.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName, templateDocument } from "./engines/playback/runtime.mjs";
-import { wallHit } from "./engines/playback/flight-path.mjs";
+import { wallHit, planFlight } from "./engines/playback/flight-path.mjs";
 import { nowPlayingRows } from "./ui/activity-actions.mjs";
 import { createHoverExplain, tokenRows, hoverView, hoverExplainDefault } from "./ui/hover-explain.mjs";
 import { createTokenLooks, panelRows, toggleFlag, normalizeFlags, flaggedText } from "./ui/token-looks.mjs";
@@ -7204,7 +7205,7 @@ async function requestPropBreak(tile, cause, { from } = {}) {
   const note = breakNoteFor({ tile: view, walls, grid, cause: clean, seed: Math.floor(Math.random() * 0x7fffffff), from: from ?? clean.at, scene });
   if (gm.isSelf) return applyPropBreak(scene, doc, clean, note, game.user);
   // Checked here first, then again by the GM. A plain miss waits for the GM's roll; anything else shows at once.
-  const here = validBreakRequest({ cause: clean, note }, { tile: view, walls, scene, grid, sender: game.user, lights, ...await propPlace(clean, scene, grid), roll: 0 });
+  const here = validBreakRequest({ cause: clean, note }, { tile: view, walls, scene, grid, sender: game.user, lights, ...await propPlace(clean, scene, grid), ...areaPlace(clean, game.user), roll: 0 });
   if (!here.ok) return false;
   // A lit lantern's oil catches here too (the same lights the GM reads), so its flames show at once. An ignite only
   // changes an existing wreck's note: nothing to show here before the GM writes it. A powder keg shows here as the GM
@@ -7220,7 +7221,7 @@ async function applyPropBreak(scene, doc, cause, rawNote, user) {
   try {
     const grid = propGrid(scene), walls = scene.walls?.contents ?? [];
     const check = validBreakRequest({ cause, note: rawNote }, { tile: propTileView(doc), walls, scene, grid, sender: user, lights: sceneLights(scene), ...await propPlace(cause, scene, grid),
-      ...blastPlace(cause, scene), roll: Math.random() });
+      ...blastPlace(cause, scene), ...areaPlace(cause, user), roll: Math.random() });
     if (!check.ok) { runtime?.trace("props", `not broken: ${check.why}`); return false; }
     // Spilled powder set off by a fire area: only its note changes (the wreck is already there), then its blast.
     if (check.ignite) {
@@ -7405,10 +7406,10 @@ function settleWallHere(id, refused) {
 async function wallPlace(cause, scene, grid, user) {
   const place = await propPlace(cause, scene, grid);
   if (cause.kind === "miss") {
-    // a ranged miss: the shooter's centre (a token the sender owns, or any for the GM) and the scene's walls, for windowOnLine
+    // a miss: the attacker's footprint (a token the sender owns, or any for the GM) and the scene's walls (window-miss.mjs)
     const a = cause.attackerUuid ? await fromUuid(cause.attackerUuid).catch(() => null) : null;
     const owns = (d) => { try { return user?.isGM || d?.testUserPermission?.(user, "OWNER") === true; } catch { return false; } };
-    const attacker = a?.documentName === "Token" && a.parent === scene && owns(a) ? { x: a.x + (a.width * grid) / 2, y: a.y + (a.height * grid) / 2 } : undefined;
+    const attacker = a?.documentName === "Token" && a.parent === scene && owns(a) ? { x: a.x, y: a.y, w: a.width * grid, h: a.height * grid } : undefined;
     return { ...place, attacker, walls: (scene.walls?.contents ?? []).map(wallView) };
   }
   if (cause.kind === "force-open") return { ...place, ...forceOpenPlace(cause, scene, grid) };
@@ -7444,7 +7445,7 @@ async function requestWallBreak(wall, cause, { from } = {}) {
   const note = wallNoteFor({ wall: view, scene, cause: clean, seed: Math.floor(Math.random() * 0x7fffffff), from: from ?? clean.at ?? clean.path?.from });
   if (gm.isSelf) return applyWallBreak(scene, doc, clean, note, game.user);
   // Checked here first, then again by the GM. A plain miss waits for the GM's roll (roll: 0 here); anything else shows at once.
-  const here = validWallBreakRequest({ cause: clean, note }, { wall: view, scene, grid, sender: game.user, roll: 0, ...await wallPlace(clean, scene, grid, game.user) });
+  const here = validWallBreakRequest({ cause: clean, note }, { wall: view, scene, grid, sender: game.user, roll: 0, ...await wallPlace(clean, scene, grid, game.user), ...areaPlace(clean, game.user) });
   if (!here.ok) return false;
   if (scene === canvas?.scene && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakWallHere(doc, here.note);
   game.socket.emit(`module.${ID}`, { type: WALL_BREAK_MESSAGE, sender: clientId, sceneId: scene.id, wallId: doc.id, cause: clean, note });
@@ -7455,7 +7456,7 @@ async function applyWallBreak(scene, doc, cause, rawNote, user) {
   wallWriting.add(doc.id);
   try {
     const grid = propGrid(scene);
-    const check = validWallBreakRequest({ cause, note: rawNote }, { wall: wallView(doc), scene, grid, sender: user, roll: Math.random(), ...await wallPlace(cause, scene, grid, user), ...blastPlace(cause, scene) });
+    const check = validWallBreakRequest({ cause, note: rawNote }, { wall: wallView(doc), scene, grid, sender: user, roll: Math.random(), ...await wallPlace(cause, scene, grid, user), ...blastPlace(cause, scene), ...areaPlace(cause, user) });
     if (!check.ok) { runtime?.trace("props", `door not broken: ${check.why}`); return false; }
     const { _id, ...update } = check.update;
     await doc.update(update, { animater: { wallBreak: true }, sound: false });
@@ -7489,11 +7490,11 @@ async function undoPropBreak(doc, { deleted = false } = {}) {
 }
 // Repair (GM): every broken tile of the scene unhidden and cleared in one tile batch; its walls, and every broken door
 // put back to its own type, state and restrictions (a locked door stays locked), in one wall batch. Prop walls are never
-// doors, so the two never name the same wall.
+// doors (broken ones included), and the batch names each wall once anyway (mergeWallFixes).
 async function repairAllProps(scene = canvas?.scene) {
   if (!game.user?.isGM || !scene) return 0;
   const walls = scene.walls?.contents ?? [], r = repairUpdates(scene.tiles.contents.map(propTileView), walls, { lights: sceneLights(scene), regions: sceneRegions(scene), grid: propGrid(scene) }), del = propDel();
-  const wallFixes = [...r.walls, ...wallRepairUpdates(walls)];
+  const wallFixes = mergeWallFixes(r.walls, wallRepairUpdates(walls));
   if (r.tiles.length) await scene.updateEmbeddedDocuments("Tile", r.tiles.map((t) => withDeletes(t, del)));
   if (wallFixes.length) await scene.updateEmbeddedDocuments("Wall", wallFixes.map((w) => withDeletes(w, del)), { animater: { wallRepair: true }, sound: false });
   if (r.lights.length) await scene.updateEmbeddedDocuments("AmbientLight", r.lights).catch((e) => runtime?.trace("props", `lights not relit: ${e?.message ?? e}`));
@@ -7535,10 +7536,25 @@ function areaOriginOf(doc) {
   const message = doc.message ?? game.messages?.get(flags.messageId), item = doc.item ?? message?.item;
   return { itemUuid: flags.origin?.uuid ?? item?.uuid ?? null, actorUuid: flags.origin?.actor ?? item?.actor?.uuid ?? null };
 }
-for (const hook of ["createMeasuredTemplate", "createRegion"]) Hooks.on(hook, (doc) => propSafe("area", () => {
+// authorId: the user who placed it (the hook's own), which the GM checks an area cause's sender against (prop-areas.mjs).
+for (const hook of ["createMeasuredTemplate", "createRegion"]) Hooks.on(hook, (doc, _options, userId) => propSafe("area", () => {
   const { itemUuid, actorUuid } = areaOriginOf(doc), at = areaCentreOf(doc);
-  if (itemUuid && actorUuid && at) propAreas.remember({ templateId: doc.uuid, itemUuid, actorUuid, testPoint: areaTestOf(doc), at, scene: doc.parent, levels: [...(doc.levels ?? [])] });
+  if (itemUuid && actorUuid && at) propAreas.remember({ templateId: doc.uuid, itemUuid, actorUuid, authorId: typeof userId === "string" ? userId : null, testPoint: areaTestOf(doc), at, scene: doc.parent, levels: [...(doc.levels ?? [])] });
 }));
+// The placed area an area or ignite cause names, as this screen's own documents hold it (prop-areas.mjs areaRefusal):
+// what this screen remembered when it was placed (who, when, its shape) and the scene its document is on now. The
+// sender may name it when they placed it, a GM did, or they own the actor whose spell placed it.
+function areaPlace(cause, user) {
+  if (cause?.kind !== "area" && cause?.kind !== "ignite") return {};
+  const now = Date.now(), rec = typeof cause.areaUuid === "string" ? propAreas.get(cause.areaUuid) : null;
+  if (!rec) return { now };
+  let doc = null, ownsOrigin = false;
+  try { doc = fromUuidSync(cause.areaUuid); } catch { doc = null; }
+  try { const actor = rec.actorUuid ? fromUuidSync(rec.actorUuid) : null; ownsOrigin = !!user && actor?.testUserPermission?.(user, "OWNER") === true; } catch { ownsOrigin = false; }
+  const levels = doc ? [...(doc.levels ?? [])] : [...(rec.levels ?? [])];
+  return { now, area: { uuid: cause.areaUuid, sceneId: doc?.parent?.id ?? null, authorId: rec.authorId ?? null, authorIsGM: !!(rec.authorId && game.users.get(rec.authorId)?.isGM),
+    ownsOrigin, rememberedAt: rec.rememberedAt, testPoint: rec.testPoint, levels } };
+}
 for (const hook of ["deleteMeasuredTemplate", "deleteRegion"]) Hooks.on(hook, (doc) => propAreas.forget(doc.uuid));
 // A damage roll of this client's for an area still on its scene: each prop inside it the damage can break, and each
 // door whose middle it covers, at the area's impact when its recipe is still playing, else now. Areas break nothing on
@@ -7562,9 +7578,11 @@ function breakAreaProps(message) {
     .filter((t) => propAreas.claim(area.templateId, `ignite:${t.id}`));
   if (!hits.length && !doors.length && !spills.length) return;
   const ask = () => {
-    for (const t of hits) void askProp(scene, t.id, { kind: "area", damageType: d.type, at: area.at }, area.at);
-    for (const w of doors) void askWall(scene, w.id, { kind: "area", damageType: d.type, at: area.at }, area.at);
-    for (const t of spills) void askProp(scene, t.id, { kind: "ignite", damageType: "fire", at: area.at }, area.at);
+    // Each names its area, which the GM checks for itself (prop-areas.mjs).
+    const areaUuid = area.templateId;
+    for (const t of hits) void askProp(scene, t.id, { kind: "area", damageType: d.type, at: area.at, areaUuid }, area.at);
+    for (const w of doors) void askWall(scene, w.id, { kind: "area", damageType: d.type, at: area.at, areaUuid }, area.at);
+    for (const t of spills) void askProp(scene, t.id, { kind: "ignite", damageType: "fire", at: area.at, areaUuid }, area.at);
   };
   const wait = propAreas.delayFor(area);
   if (wait > 0) setTimeout(ask, wait); else ask();
@@ -7689,8 +7707,36 @@ Hooks.once("setup", () => {
     };
   } catch (e) { runtime?.trace("props", `door control: ${e?.message ?? e}`); }
 });
-// A melee strike of this client's that missed (or critically failed) its one target: the prop beside the target
-// nearest the line of the swing, if the weapon's own damage type can break it. The GM rolls a plain miss's chance.
+// The first wall on a line ("sight" or "move"), and whether it is a door, on the shooter's level (Foundry otherwise
+// tests the level this client views): the runtime's flight wall test, and a ranged miss's when it plans its own shot.
+// A failing backend throws, and the runtime plays its flights as before.
+function shotCollides(a, b, type, source) {
+  const levelId = (source?.document ?? source)?.level;
+  const level = typeof levelId === "string" ? canvas.scene?.levels?.get?.(levelId) : undefined;
+  return wallHit(CONFIG.Canvas.polygonBackends[type].testCollision(a, b, { type, mode: "closest", ...(level ? { level } : {}) }), CONST.WALL_DOOR_TYPES.DOOR);
+}
+// The planned miss shots of the plays this client runs (the runtime's host missFlown), by the roll's message, for the
+// window a ranged miss flies into (window-miss.mjs).
+const missFlights = createMissFlights();
+const MISS_FLIGHT_WAIT = 1500; // ms after the dice land for this client's play of the roll to plan its shot
+// A ranged miss's shot as the animation flies it: the play's own planned miss shot at this target (its path, free end and
+// timing), or when no play of it reports one in time (animations off, played elsewhere), the same seeded miss line
+// planned here now (planFlight with the play's seed and wall test), flying at once. {flight, age} or null.
+async function missShotOf(event, attacker, target, grid) {
+  const key = event.messageId ?? event.id;
+  const told = await missFlights.wait(key, MISS_FLIGHT_WAIT);
+  const shot = told?.flights?.find((f) => f.targetId === target.id);
+  if (shot) return { flight: shot, age: told.age };
+  const from = { x: attacker.x + (attacker.width * grid) / 2, y: attacker.y + (attacker.height * grid) / 2 };
+  const rect = { x: target.x, y: target.y, w: target.width * grid, h: target.height * grid };
+  const path = planFlight({ from, targetRect: rect, to: { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 }, role: "attack-miss", seed: key, gridPx: grid,
+    collides: (a, b, type) => { try { return shotCollides(a, b, type, attacker); } catch { return null; } } });
+  return path?.end ? { flight: { ...path, start: 0, arrive: 0 }, age: 0 } : null;
+}
+// A strike of this client's that missed (or critically failed) its one target. Melee: the prop or breakable window
+// beside the target nearest the line of the swing (never on the attacker's side), if the weapon's own damage type can
+// break it. Ranged: the first breakable window the shot's miss path flies into, as it gets there. The GM rolls a plain
+// miss's chance.
 async function breakPropOnMiss(event) {
   const outcome = missOutcome(event?.outcome), ranged = event?.weaponMode === "ranged";
   if (!outcome || event.type !== "attack" || (event.weaponMode !== "melee" && !ranged)) return;
@@ -7702,19 +7748,25 @@ async function breakPropOnMiss(event) {
   const damageType = weaponDamageType(event.item);
   if (target?.documentName !== "Token" || target.parent !== scene || attacker?.parent !== scene || !damageType) return;
   const grid = propGrid(scene), from = { x: attacker.x + (attacker.width * grid) / 2, y: attacker.y + (attacker.height * grid) / 2 };
+  const cause = { kind: "miss", damageType, outcome, targetUuid: target.uuid, attackerUuid: attacker.uuid };
   if (ranged) {
-    // A shot that missed flies on past its target: the first window on the line from the shooter to the target's centre.
-    const centre = { x: target.x + (target.width * grid) / 2, y: target.y + (target.height * grid) / 2 };
-    const glass = windowOnLine(from, centre, (scene.walls?.contents ?? []).map(wallView), scene, target.level);
-    if (!glass) return;
+    // A shot that missed flies on past its target, 12 degrees off the line (the play's own seeded miss line): the first
+    // window on its path breaks as the shot gets there. The GM is sent the miss line to its free end.
     await afterDice(event);
-    await askWall(scene, glass.id, { kind: "miss", damageType, outcome, targetUuid: target.uuid, attackerUuid: attacker.uuid }, from);
+    const shot = await missShotOf(event, attacker, target, grid);
+    const hit = shot && windowOnFlight(shot.flight, (scene.walls?.contents ?? []).map(wallView), scene, target.level);
+    if (!hit) return;
+    const ask = () => askWall(scene, hit.wall.id, { ...cause, path: { from: shot.flight.from, to: shot.flight.end } }, shot.flight.from);
+    const wait = Math.min(5000, Math.max(0, hit.at - shot.age));
+    if (wait > 0) setTimeout(() => void ask(), wait); else await ask();
     return;
   }
-  const tile = propNextToMiss({ attacker: from, target: { x: target.x, y: target.y, w: target.width * grid, h: target.height * grid } }, tilesOnLevel(scene.tiles.contents.map(propTileView), target.level), grid, damageType);
-  if (!tile) return;
+  const pick = nextToMiss({ attacker: from, target: { x: target.x, y: target.y, w: target.width * grid, h: target.height * grid } },
+    { tiles: tilesOnLevel(scene.tiles.contents.map(propTileView), target.level), walls: (scene.walls?.contents ?? []).map(wallView), scene, levels: target.level }, grid, damageType);
+  if (!pick) return;
   await afterDice(event);
-  await askProp(scene, tile.id, { kind: "miss", damageType, outcome, targetUuid: target.uuid }, from);
+  if (pick.type === "wall") await askWall(scene, pick.wall.id, cause, from);
+  else await askProp(scene, pick.tile.id, { kind: "miss", damageType, outcome, targetUuid: target.uuid }, from);
 }
 const propMiss = (event) => { void propSafe("miss", () => breakPropOnMiss(event))?.catch?.((e) => runtime?.trace("props", `miss: ${e?.message ?? e}`)); };
 // A forced move's breakable props: those a mover of its size crosses from a to b (centres, the planned path) that
@@ -9955,12 +10007,13 @@ Hooks.on("renderWallConfig", (app, html) => {
 });
 // Wall configuration: whether and how this door or window breaks (engines/props/wall-break.mjs). The door group shows only
 // while the form's Door Type is Door or Secret, the window group otherwise, and they follow that select as it changes.
+// A broken door (door 0 now) stands for the door it was (wallFormDoor), so its form shows the door group and its Material.
 Hooks.on("renderWallConfig", (app, html) => {
   const root = html instanceof HTMLElement ? html : html?.[0];
   if (!root || root.querySelector("[data-animater-break-wall]")) return;
   const doc = app.document ?? app.object, sceneOn = doc?.parent?.flags?.[ID]?.breakableProps === true;
   const set = document.createElement("fieldset");
-  set.innerHTML = wallBreakFieldsHTML({ door: doc?.door, own: doc?.flags?.[ID]?.breakWall, sceneOn, system: game.system.id });
+  set.innerHTML = wallBreakFieldsHTML({ door: wallFormDoor(doc), own: doc?.flags?.[ID]?.breakWall, sceneOn, system: game.system.id });
   const fieldset = set.firstElementChild;
   appendWallSection(root, fieldset);
   const select = root.querySelector('select[name="door"]'), group = fieldset.querySelector('[data-group="door"]');
@@ -9970,7 +10023,7 @@ Hooks.on("renderWallConfig", (app, html) => {
   doorMaterial?.addEventListener("change", () => { const n = dcField?.dataset?.[`dc${String(doorMaterial.value).replace(/^./, (c) => c.toUpperCase())}`]; if (dcField && n) dcField.placeholder = `Automatic (${n})`; });
   // The group matching Door Type shows; the other's inputs are disabled, so Material submits from one select only.
   const sync = () => {
-    const isDoor = ["1", "2"].includes(String(select?.value ?? doc?.door));
+    const isDoor = [1, 2].includes(wallFormDoor(doc, select?.value));
     for (const [g, hide] of [[group, !isDoor], [windowGroup, isDoor]]) {
       g.hidden = hide;
       for (const el of g.querySelectorAll("input, select")) el.disabled = hide;
@@ -9998,7 +10051,8 @@ const mergeWallBreakForm = (changes, door) => {
     if (merged.material !== undefined) changes[mk] = merged.material;
   }
 };
-Hooks.on("preUpdateWall", (doc, changes) => { try { mergeWallBreakForm(changes, Number(changes?.door ?? doc?.door)); } catch { /* saved as sent */ } });
+// A broken door's save merges as the door it was (wallFormDoor), so its Material is kept for Repair.
+Hooks.on("preUpdateWall", (doc, changes) => { try { mergeWallBreakForm(changes, wallFormDoor(doc, changes?.door)); } catch { /* saved as sent */ } });
 Hooks.on("preCreateWall", (doc, data) => {
   try {
     const bw = data?.flags?.[ID]?.breakWall;
@@ -10624,6 +10678,8 @@ Hooks.once("ready", () => {
     // Shots stop at walls (world setting); on while the setting is not registered.
     projectileWalls: () => { try { return hotSetting("projectileWalls") !== false; } catch { return true; } },
     shotsLanded: shareShots,
+    // A play's planned miss shots, for the window a ranged miss of this client's flies into (breakPropOnMiss).
+    missFlown: (flights, context) => missFlights.flown(context?.messageId ?? context?.id, flights),
     // Harmful plays leave ground marks (world setting).
     groundMarks: () => hotSetting("groundMarks") !== false,
     // Fast motions leave afterimage trails (world setting; off sends every motion as Never).
@@ -10651,13 +10707,8 @@ Hooks.once("ready", () => {
     viewedLevel: () => { const level = canvas?.level; return level?.id ? { level: level.id, elevation: level.elevation?.base } : null; },
     // The scene this client views, for a sound whose token names none.
     viewedScene: () => canvas?.scene?.id ?? null,
-    // The first wall on a line ("sight" or "move"), and whether it is a door, on the shooter's level (Foundry
-    // otherwise tests the level this client views). A failing backend throws, and the runtime plays its flights as before.
-    collides: (a, b, type, source) => {
-      const levelId = (source?.document ?? source)?.level;
-      const level = typeof levelId === "string" ? canvas.scene?.levels?.get?.(levelId) : undefined;
-      return wallHit(CONFIG.Canvas.polygonBackends[type].testCollision(a, b, { type, mode: "closest", ...(level ? { level } : {}) }), CONST.WALL_DOOR_TYPES.DOOR);
-    },
+    // The first wall on a line, on the shooter's level (shotCollides).
+    collides: shotCollides,
     usersFor: (tier) => usersForTier(Array.from(game.users?.contents ?? game.users?.values?.() ?? []), tier),
     soundUsers: () => usersForSound(Array.from(game.users?.contents ?? game.users?.values?.() ?? [])),
     recipes,

@@ -7,6 +7,10 @@ import { PATH_SQUARES } from "../../../scripts/engines/props/prop-requests.mjs";
 const scene = (f = {}) => ({ id: "s", flags: { animater: { breakableProps: true, ...f } } });
 const wall = (extra = {}) => ({ id: "d1", c: [300, 200, 400, 200], door: 1, ds: 0, move: 20, sight: 20, light: 20, sound: 20, levels: [], flags: {}, ...extra });
 const sender = { id: "p", viewedScene: "s", isGM: false };
+// The GM's record of the player's own fresh area, holding every wall middle tested (prop-areas.mjs; I1).
+const AREA = "Scene.s.Region.a";
+const covering = (x = {}) => ({ uuid: AREA, sceneId: "s", authorId: "p", rememberedAt: 1000, testPoint: () => true, levels: [], ...x });
+const placed = { area: covering(), now: 5000 };
 // The wall as the database holds it after an update (a dotted flag key is expanded, "-=" removes).
 function written(w, update) {
   const out = structuredClone(w);
@@ -24,8 +28,8 @@ test("the message type", () => {
 });
 
 test("a good area request breaks the door and the update opens it", () => {
-  const note = wallNoteFor({ wall: wall(), cause: { kind: "area", damageType: "fire", at: { x: 350, y: 100 } }, seed: 7, from: { x: 350, y: 100 } });
-  const r = validWallBreakRequest({ cause: { kind: "area", damageType: "fire", at: { x: 350, y: 100 } }, note }, { wall: wall(), scene: scene(), grid: 100, sender });
+  const note = wallNoteFor({ wall: wall(), cause: { kind: "area", areaUuid: AREA, damageType: "fire", at: { x: 350, y: 100 } }, seed: 7, from: { x: 350, y: 100 } });
+  const r = validWallBreakRequest({ cause: { kind: "area", areaUuid: AREA, damageType: "fire", at: { x: 350, y: 100 } }, note }, { wall: wall(), scene: scene(), grid: 100, sender, ...placed });
   assert.equal(r.ok, true); assert.equal(r.update.door, 0); assert.equal(r.note.material, "wood");
   assert.equal(r.note.kind, "door"); assert.equal(r.note.mark, "scorch"); assert.equal(r.note.seed, 7);
   assert.deepEqual(r.update, { _id: "d1", door: 0, ds: 0, move: 0, sight: 0, light: 0, sound: 0,
@@ -34,14 +38,13 @@ test("a good area request breaks the door and the update opens it", () => {
 
 test("refused, each with its own why", () => {
   const req = (cause) => ({ cause, note: wallNoteFor({ wall: wall(), cause, seed: 7, from: { x: 350, y: 100 } }) });
-  const area = req({ kind: "area", damageType: "fire", at: { x: 350, y: 100 } });
-  const ctx = (x = {}) => ({ wall: wall(), scene: scene(), grid: 100, sender, ...x });
+  const area = req({ kind: "area", areaUuid: AREA, damageType: "fire", at: { x: 350, y: 100 } });
+  const ctx = (x = {}) => ({ wall: wall(), scene: scene(), grid: 100, sender, ...placed, ...x });
   assert.equal(validWallBreakRequest(area, ctx({ scene: { id: "s", flags: {} } })).why, "off");
   assert.equal(validWallBreakRequest(area, ctx({ scene: scene({ breakWalls: false }) })).why, "off");
   assert.equal(validWallBreakRequest(area, ctx({ wall: wall({ flags: { animater: { breakWall: { broken: area.note } } } }) })).why, "broken");
   assert.equal(validWallBreakRequest(area, ctx({ wall: wall({ door: 0 }) })).why, "kind");
-  assert.equal(validWallBreakRequest(req({ kind: "area", damageType: "piercing", at: { x: 350, y: 100 } }), ctx()).why, "material");
-  assert.equal(validWallBreakRequest(req({ kind: "area", damageType: "fire", at: { x: 350 + 31 * 100, y: 100 } }), ctx()).why, "far");
+  assert.equal(validWallBreakRequest(req({ kind: "area", areaUuid: AREA, damageType: "piercing", at: { x: 350, y: 100 } }), ctx()).why, "material");
   assert.equal(validWallBreakRequest(req({ kind: "smash" }), ctx()).why, "sender");
   assert.equal(validWallBreakRequest(req({ kind: "smash" }), ctx({ sender: { ...sender, isGM: true } })).ok, true);
   assert.equal(validWallBreakRequest(area, ctx({ sender: { ...sender, viewedScene: "other" } })).why, "scene");
@@ -57,16 +60,16 @@ test("refused, each with its own why", () => {
 });
 
 test("the GM's note uses its own kind, material and mark; only seed, cut and from are the requester's", () => {
-  const cause = { kind: "area", damageType: "bludgeoning", at: { x: 350, y: 100 } };
+  const cause = { kind: "area", areaUuid: AREA, damageType: "bludgeoning", at: { x: 350, y: 100 } };
   const forged = { seed: 9, cutAngle: 0.5, from: { x: 350, y: 120 }, kind: "door", material: "stone", mark: "scorch" };
-  const r = validWallBreakRequest({ cause, note: forged }, { wall: wall({ flags: { animater: { breakWall: { material: "wood" } } } }), scene: scene(), grid: 100, sender });
+  const r = validWallBreakRequest({ cause, note: forged }, { wall: wall({ flags: { animater: { breakWall: { material: "wood" } } } }), scene: scene(), grid: 100, sender, ...placed });
   assert.equal(r.ok, true);
   assert.deepEqual(r.note, { seed: 9, cutAngle: 0.5, from: { x: 350, y: 120 }, kind: "door", material: "wood", mark: "dust" });
   assert.deepEqual(readWallNote(r.update["flags.animater.breakWall.broken"]).restore, { door: 1, ds: 0, move: 20, sight: 20, light: 20, sound: 20 });
 });
 
 test("wallNoteFor cuts from the blow to the wall's middle and reads kind and material from the scene", () => {
-  const n = wallNoteFor({ wall: wall({ flags: { animater: { breakWall: { material: "metal" } } } }), scene: scene(), cause: { kind: "area", damageType: "force" }, seed: 3, from: { x: 350, y: 100 } });
+  const n = wallNoteFor({ wall: wall({ flags: { animater: { breakWall: { material: "metal" } } } }), scene: scene(), cause: { kind: "area", areaUuid: AREA, damageType: "force" }, seed: 3, from: { x: 350, y: 100 } });
   assert.equal(n.seed, 3); assert.ok(Math.abs(n.cutAngle - Math.PI / 2) < 1e-9);
   assert.deepEqual(n.from, { x: 350, y: 100 }); assert.equal(n.kind, "door"); assert.equal(n.material, "metal"); assert.equal(n.mark, "dust");
   assert.deepEqual(readWallNote(n), n);
@@ -282,9 +285,12 @@ test("a roll from the door: the GM's DC from the wall, never the flag's", () => 
 });
 
 const win = (extra = {}) => wall({ id: "w1", c: [300, 200, 400, 200], door: 0, flags: { animater: { breakWall: { window: true } } }, ...extra });
-const ATT = { x: 350, y: 100 }, TGT = { x: 325, y: 300, w: 50, h: 50 }; // the line from ATT to the target's centre (350, 325) crosses y = 200
-const miss = (outcome = "criticalFailure", damageType = "slashing") => ({ kind: "miss", damageType, outcome, targetUuid: "t" });
-const missReq = (w, cause) => ({ cause, note: wallNoteFor({ wall: w, scene: scene(), cause, seed: 3, from: ATT }) });
+// The shooter's footprint (centre 350, 100) and the target's (centre 350, 325). The miss line (6a) flies 12 degrees off
+// the line to the target's centre, 2 squares past it: it crosses the window at y = 200 near x 371.
+const ATT = { x: 300, y: 50, w: 100, h: 100 }, TGT = { x: 325, y: 300, w: 50, h: 50 };
+const A12 = 12 * Math.PI / 180, LINE = { from: { x: 350, y: 100 }, to: { x: 350 + Math.sin(A12) * 425, y: 100 + Math.cos(A12) * 425 } };
+const miss = (outcome = "criticalFailure", damageType = "slashing", path = LINE) => ({ kind: "miss", damageType, outcome, targetUuid: "t", ...(path ? { path } : {}) });
+const missReq = (w, cause) => ({ cause, note: wallNoteFor({ wall: w, scene: scene(), cause, seed: 3, from: LINE.from }) });
 const missCtx = (w, x = {}) => ({ wall: w, walls: [w], scene: scene(), grid: 100, sender, attacker: ATT, target: TGT, roll: 1, ...x });
 
 test("a ranged miss through a window: crit always, plain miss by the GM's roll, line must cross it", () => {
@@ -304,12 +310,13 @@ test("a ranged miss through a window: crit always, plain miss by the GM's roll, 
   // a crit failure ignores the chance; a hit or success is no miss
   assert.equal(validWallBreakRequest(missReq(w, miss()), missCtx(w, { scene: never, roll: 0.99 })).ok, true);
   assert.equal(validWallBreakRequest(missReq(w, miss("success")), missCtx(w, { roll: 0 })).why, "lucky");
-  // the line must cross this window
-  assert.equal(validWallBreakRequest(missReq(w, miss()), missCtx(w, { attacker: { x: 50, y: 100 } })).why, "far");
+  // the line must start at the attacker and cross this window
+  assert.equal(validWallBreakRequest(missReq(w, miss()), missCtx(w, { attacker: { x: 0, y: 50, w: 100, h: 100 } })).why, "far");
+  assert.equal(validWallBreakRequest(missReq(w, miss("criticalFailure", "slashing", { from: LINE.from, to: { x: 700, y: 100 } })), missCtx(w)).why, "far");
   assert.equal(validWallBreakRequest(missReq(w, miss()), missCtx(w, { attacker: undefined })).why, "far");
   assert.equal(validWallBreakRequest(missReq(w, miss()), missCtx(w, { target: undefined })).why, "far");
   // only the first window on the line: a nearer one shields it
-  const near = win({ id: "n", c: [300, 150, 400, 150] });
+  const near = win({ id: "n", c: [300, 160, 400, 160] });
   assert.equal(validWallBreakRequest(missReq(w, miss()), missCtx(w, { walls: [w, near] })).why, "far");
   assert.equal(validWallBreakRequest(missReq(near, miss()), missCtx(near, { walls: [w, near] })).ok, true);
   // glass rules and Won't break
@@ -387,4 +394,61 @@ test("two blasts reach one door: the second is refused as broken", () => {
 
 test("a blast cause from the socket keeps its source tile", () => {
   assert.deepEqual(cleanWallCause({ kind: "blast", sourceId: "keg", junk: true }), { kind: "blast", sourceId: "keg" });
+});
+
+test("I1: a forged area door break is refused: no area, another scene's, one not covering the door, another player's, an old one, another level", () => {
+  const cause = { kind: "area", areaUuid: AREA, damageType: "force", at: { x: 350, y: 200 } };
+  const req = { cause, note: wallNoteFor({ wall: wall(), cause, seed: 7, from: { x: 350, y: 100 } }) };
+  const ctx = (x = {}) => ({ wall: wall({ ds: 2, flags: { animater: { breakWall: { material: "metal" } } } }), scene: scene(), grid: 100, sender, ...placed, ...x });
+  assert.equal(validWallBreakRequest(req, ctx()).ok, true); // force breaks a locked metal door, from a real area over it
+  // the console forgery: kind "area", force, at the door's middle, but no real area
+  assert.equal(validWallBreakRequest({ ...req, cause: { kind: "area", damageType: "force", at: { x: 350, y: 200 } } }, ctx()).why, "area");
+  assert.equal(validWallBreakRequest(req, ctx({ area: undefined })).why, "area");
+  assert.equal(validWallBreakRequest(req, ctx({ area: covering({ sceneId: "other" }) })).why, "area");
+  assert.equal(validWallBreakRequest(req, ctx({ area: covering({ testPoint: (p) => p.x > 1000 }) })).why, "area");
+  assert.equal(validWallBreakRequest(req, ctx({ area: covering({ authorId: "q" }) })).why, "area");
+  assert.equal(validWallBreakRequest(req, ctx({ now: 1000 + 600001 })).why, "area");
+  // M2: the area is on another level than the door
+  assert.equal(validWallBreakRequest(req, ctx({ wall: wall({ levels: ["ground"] }), area: covering({ levels: ["upstairs"] }) })).why, "area");
+  // the door's own middle (350, 200) is what the GM tests
+  const seen = [];
+  validWallBreakRequest(req, ctx({ area: covering({ testPoint: (p) => { seen.push(p); return true; } }) }));
+  assert.deepEqual(seen, [{ x: 350, y: 200 }]);
+  // the GM's own call naming no area (debug.breakWall) keeps its reach from at
+  const gm = { id: "g", viewedScene: "s", isGM: true }, own = { cause: { kind: "area", damageType: "force", at: { x: 350, y: 100 } }, note: req.note };
+  assert.equal(validWallBreakRequest(own, ctx({ sender: gm, area: undefined })).ok, true);
+  assert.equal(validWallBreakRequest({ ...own, cause: { ...own.cause, at: { x: 350 + 3200, y: 100 } } }, ctx({ sender: gm, area: undefined })).why, "far");
+});
+
+test("cleanWallCause keeps the area a cause names", () => {
+  assert.equal(cleanWallCause({ kind: "area", areaUuid: "Scene.s.Region.r" }).areaUuid, "Scene.s.Region.r");
+  assert.equal(cleanWallCause({ kind: "area", areaUuid: 5 }).areaUuid, undefined);
+});
+
+test("6a: a ranged miss line must fit the shot: from the attacker, near the target, at most the distance plus 3 squares", () => {
+  const w = win();
+  // a forged line from elsewhere, one far from the target, one too long
+  assert.equal(validWallBreakRequest(missReq(w, miss("criticalFailure", "slashing", { from: { x: 350, y: 180 }, to: LINE.to })), missCtx(w)).why, "far");
+  assert.equal(validWallBreakRequest(missReq(w, miss("criticalFailure", "slashing", { from: LINE.from, to: { x: 1000, y: 300 } })), missCtx(w)).why, "far");
+  const long = { from: LINE.from, to: { x: 350 + Math.sin(A12) * 600, y: 100 + Math.cos(A12) * 600 } }; // 225 + 300 = 525 at most
+  assert.equal(validWallBreakRequest(missReq(w, miss("criticalFailure", "slashing", long)), missCtx(w)).why, "far");
+  // the attacker must be known (a token the sender owns)
+  assert.equal(validWallBreakRequest(missReq(w, miss()), missCtx(w, { attacker: { x: 350, y: 100 } })).why, "far");
+});
+
+test("6b: a melee miss breaks a window beside its target, never on the attacker's side, by the same miss rules", () => {
+  // the attacker at (350, 100) swings south at the target (325..375, 300..350); a window just past it at y = 380
+  const past = win({ id: "past", c: [300, 380, 400, 380] }), mine = win({ id: "mine", c: [300, 250, 400, 250] });
+  const swing = (outcome = "criticalFailure") => miss(outcome, "bludgeoning", null);
+  assert.equal(validWallBreakRequest(missReq(past, swing()), missCtx(past)).ok, true);
+  assert.equal(validWallBreakRequest(missReq(mine, swing()), missCtx(mine)).why, "far"); // the attacker's side of the target
+  const away = win({ id: "away", c: [700, 380, 800, 380] });
+  assert.equal(validWallBreakRequest(missReq(away, swing()), missCtx(away)).why, "far"); // more than a square from it
+  // a plain miss by the scene's chance, rolled by the GM; glass rules
+  assert.equal(validWallBreakRequest(missReq(past, swing("miss")), missCtx(past, { roll: 0.1 })).ok, true);
+  assert.equal(validWallBreakRequest(missReq(past, swing("miss")), missCtx(past, { roll: 0.9 })).why, "lucky");
+  assert.equal(validWallBreakRequest(missReq(past, miss("criticalFailure", "poison", null)), missCtx(past)).why, "material");
+  // the target's level
+  const up = win({ id: "up", c: [300, 380, 400, 380], levels: ["ground"] });
+  assert.equal(validWallBreakRequest(missReq(up, swing()), missCtx(up, { target: { ...TGT, level: "upstairs" } })).why, "far");
 });

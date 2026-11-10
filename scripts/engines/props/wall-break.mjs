@@ -52,6 +52,17 @@ export function wallBreakFormMerge(breakWall, door) {
   return out;
 }
 
+// The Door Type a Wall Configuration stands for (which group it shows, how its save merges): the form's own Door Type
+// when it differs from the wall's (the GM changed it), else the wall's. A broken door (door 0 now) stands for the door it
+// was, its note's restore.door, so its form shows and saves the door group and Repair finds the material it had.
+// selected: the form's Door Type (a number or its select's string), undefined when the save leaves it out.
+export function wallFormDoor(wall, selected) {
+  const now = Number(wall?.door), picked = selected === undefined || selected === null || selected === "" ? NaN : Number(selected);
+  if (Number.isFinite(picked) && picked !== now) return picked;
+  const note = readWallNote(wall?.flags?.animater?.breakWall?.broken);
+  return note?.kind === "door" && Number.isInteger(note.restore?.door) ? note.restore.door : now;
+}
+
 // Whether this cause breaks a wall of these traits. A pure damage and slam rule: Force Open and smash have their own rule.
 // A blast breaks any door or window the GM has not set to Won't break.
 export function canBreakWall(traits, cause = {}) {

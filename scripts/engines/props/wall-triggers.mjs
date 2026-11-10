@@ -2,7 +2,7 @@
 // Open roll (force-open.mjs judges it), the GM's smash. Pure: no Foundry globals. Each picks only walls that are breakable, intact and on the
 // cause's own level; the GM checks each again (wall-break-requests.mjs).
 import { wallTraits, canBreakWall, wallMid, crossesWall } from "./wall-break.mjs";
-import { onLevel } from "./prop-pick.mjs";
+import { onLevel, missFrame, missBetter, propNextToMiss } from "./prop-pick.mjs";
 
 const intact = (w) => !w?.flags?.animater?.breakWall?.broken;
 const finite = (p) => Number.isFinite(p?.x) && Number.isFinite(p?.y);
@@ -65,6 +65,42 @@ export function windowOnLine(a, b, walls, scene, levels) {
     if (u < bestU) { best = w; bestU = u; }
   }
   return best;
+}
+
+// A missed swing (melee) and the windows beside its target: attacker {x, y} centre, target {x, y, w, h} footprint.
+// A window counts by its middle: inside the target's footprint grown by a square, not on the target, and past the
+// target's near side (prop-pick missFrame: never on the attacker's side). The GM checks the same (windowBesideMiss).
+export function windowBesideMiss(wall, attacker, target, grid = 100) {
+  if (!finite(attacker) || ![target?.x, target?.y, target?.w, target?.h].every(Number.isFinite) || !Array.isArray(wall?.c)) return false;
+  const frame = missFrame(attacker, target, grid), mid = wallMid(wall);
+  return frame.inRing(mid) && !frame.onTarget(mid) && !!frame.score(mid);
+}
+// The intact breakable window beside a missed target nearest the swing's line, that the weapon's damage breaks, on the
+// given levels: {wall, score}, or null.
+export function windowNextToMiss({ attacker, target }, walls, scene, grid, damageType, levels) {
+  if (!finite(attacker) || ![target?.x, target?.y, target?.w, target?.h].every(Number.isFinite)) return null;
+  const frame = missFrame(attacker, target, grid);
+  let best = null;
+  for (const w of walls ?? []) {
+    if (!reachable(w, scene, levels)) continue;
+    const traits = wallTraits(w, scene);
+    if (traits.kind !== "window" || !canBreakWall(traits, { damageType })) continue;
+    const mid = wallMid(w);
+    if (!frame.inRing(mid) || frame.onTarget(mid)) continue;
+    const score = frame.score(mid);
+    if (score && missBetter(score, best?.score)) best = { wall: w, score };
+  }
+  return best;
+}
+// What a missed swing hits: the prop (propNextToMiss) or window (windowNextToMiss) beside the target nearest its line, a
+// prop on a tie. tiles and walls on the target's level already, or levels to pick them by. {type: "tile", tile},
+// {type: "wall", wall} or null.
+export function nextToMiss({ attacker, target }, { tiles = [], walls = [], scene, levels } = {}, grid = 100, damageType) {
+  const tile = propNextToMiss({ attacker, target }, (tiles ?? []).filter((t) => onLevel(t.levels, levels)), grid, damageType);
+  const win = windowNextToMiss({ attacker, target }, walls, scene, grid, damageType, levels);
+  if (!tile) return win ? { type: "wall", wall: win.wall } : null;
+  const tileScore = missFrame(attacker, target, grid).score({ x: tile.x + tile.width / 2, y: tile.y + tile.height / 2 });
+  return win && missBetter(win.score, tileScore) ? { type: "wall", wall: win.wall } : { type: "tile", tile };
 }
 
 // A Force Open roll, whatever its outcome (the GM compares it with the door's DC): one rolled from a door carries

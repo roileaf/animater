@@ -7,11 +7,11 @@ import { lightsOfProp, lightsInReach, hideLights, unhideLights, oilCatches, fire
 import { segRectDist, headsInto, onLevel, tipsOver } from "./prop-pick.mjs";
 import { explodes, blastFrom, inBurst } from "./prop-blast.mjs";
 import { toppleStrip } from "./prop-topple.mjs";
+import { areaCauseRefusal } from "./prop-areas.mjs";
 
 export const PROP_BREAK_MESSAGE = "prop-break";
 const KINDS = ["area", "miss", "path", "blast", "ignite"];
 const GM_STYLES = new Set(["tip", "topple", "burn", "split"]); // styles only the GM decides (validBreakRequest)
-const AREA_REACH = 30; // squares from the area's centre
 const MISS_CHANCE = 25;
 export const PATH_SQUARES = 12; // the longest planned path a slam may claim
 
@@ -31,9 +31,14 @@ export function cleanCause(c) {
   if (typeof c.outcome === "string") out.outcome = c.outcome.slice(0, 40);
   if (finite(c.at)) out.at = { x: c.at.x, y: c.at.y };
   if (finite(c.path?.from) && finite(c.path?.to)) out.path = { from: { x: c.path.from.x, y: c.path.from.y }, to: { x: c.path.to.x, y: c.path.to.y } };
-  for (const k of ["targetUuid", "moverUuid", "sourceId"]) if (typeof c[k] === "string") out[k] = c[k].slice(0, 200);
+  for (const k of ["targetUuid", "moverUuid", "sourceId", "areaUuid"]) if (typeof c[k] === "string") out[k] = c[k].slice(0, 200);
   return out;
 }
+
+// An area or ignite cause: the placed area it names holds the tile's centre, on the tile's level, and the sender may
+// name it (prop-areas.mjs). Null for any other cause.
+const areaWhy = (cause, tile, grid, ctx) => (cause.kind === "area" || cause.kind === "ignite"
+  ? areaCauseRefusal(cause, centre(tile), tile.levels, { area: ctx.area, sceneId: ctx.scene?.id, sender: ctx.sender, now: ctx.now, grid }) : null);
 
 // The cause has to fit where things stand on the GM's screen.
 // A blast reaches the tile's centre from its source keg (blastFrom: one that exploded), on the blast's levels.
@@ -42,10 +47,7 @@ function plausible(cause, tile, grid, { target, mover, source, levels }) {
     const b = blastFrom(source);
     return !!b && inBurst(centre(tile), b.centre, b.burst, grid) && onLevel(tile.levels, levels ?? source.levels);
   }
-  if (cause.kind === "area" || cause.kind === "ignite") {
-    const c = centre(tile);
-    return finite(cause.at) && Math.hypot(c.x - cause.at.x, c.y - cause.at.y) <= AREA_REACH * grid;
-  }
+  if (cause.kind === "area" || cause.kind === "ignite") return true; // the area it names was checked (areaWhy)
   if (cause.kind === "miss") {
     if (!finite(target) || !Number.isFinite(target.w) || !Number.isFinite(target.h)) return false;
     if (!onLevel(tile.levels, target.level)) return false;
@@ -75,7 +77,9 @@ export function slamPlausible(tile, path, mover, grid = 100) {
 // A blast {kind: "blast", sourceId} is the GM's own (runBlast): source is the GM's view of the keg it names, levels the
 // blast's (the keg's by default). An ignite {kind: "ignite", damageType: "fire", at} sets off a broken keg's spilled powder.
 // explode: the break sets a powder keg off (the GM then runs its blast).
-export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, sender, target, mover, roll = 1, lights = [], source, levels } = {}) {
+// An area or ignite cause names its placed area (cause.areaUuid); area is the GM's own record of it and now the GM's
+// clock (prop-areas.mjs areaRefusal), refused as "area" unless it holds the tile's centre.
+export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, sender, target, mover, roll = 1, lights = [], source, levels, area, now } = {}) {
   const no = (why) => ({ ok: false, why });
   const own = scene?.flags?.animater ?? {};
   if (own.breakableProps !== true) return no("off");
@@ -85,7 +89,7 @@ export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, se
   // the GM's blast may run on a scene the GM is not viewing (a player's break set it off)
   if (!gmBlast && sender.viewedScene !== scene.id) return no("scene");
   if (!tile) return no("missing");
-  if (cause.kind === "ignite") return igniteCheck(cause, tile, grid);
+  if (cause.kind === "ignite") return igniteCheck(cause, tile, grid, { area, scene, sender, now });
   if (propOf(tile).broken) return no("broken");
   if (tile.hidden) return no("hidden");
   if (!KINDS.includes(cause.kind)) return no("cause");
@@ -97,6 +101,8 @@ export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, se
   if (!note) return no("note");
   const mine = ownWalls(tile, walls, grid), ids = new Set(mine.map((w) => w.id));
   if (note.walls.some((id) => !ids.has(id))) return no("wall");
+  const unplaced = areaWhy(cause, tile, grid, { area, scene, sender, now });
+  if (unplaced) return no(unplaced);
   if (!plausible(cause, tile, grid, { target, mover, source, levels })) return no("far");
   const chance = Number(own.propMissChance ?? MISS_CHANCE); // a form may save it as text
   if (cause.kind === "miss" && !missBreaks(cause.outcome, Number.isFinite(chance) ? chance : MISS_CHANCE, roll)) return no("lucky");
@@ -122,14 +128,15 @@ export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, se
 }
 
 // Spilled powder a fire area covers goes off, once: only a broken keg's note with its powder spilled, only fire, and the
-// area plausible. Only the note changes (powder "exploded"); the tile is already hidden and its walls already open.
-function igniteCheck(cause, tile, grid) {
+// area it names holds the spill's centre. Only the note changes (powder "exploded"); the tile is already hidden and its walls already open.
+function igniteCheck(cause, tile, grid, ctx) {
   const no = (why) => ({ ok: false, why });
   if (!propOf(tile).broken) return no("cause");
   const stored = readNote(propOf(tile).broken);
   if (stored?.powder !== "spilled") return no("broken");
   if (cause.damageType !== "fire") return no("material");
-  if (!plausible(cause, tile, grid, {})) return no("far");
+  const unplaced = areaWhy(cause, tile, grid, ctx);
+  if (unplaced) return no(unplaced);
   return { ok: true, note: { ...stored, powder: "exploded" }, ignite: true, explode: true, wallUpdates: [], lightUpdates: [] };
 }
 
@@ -171,6 +178,15 @@ export function repairUpdates(tiles, walls, { lights = [], regions = [], grid = 
   const broken = (tiles ?? []).filter((t) => propOf(t).broken);
   return { tiles: broken.map((t) => ({ _id: t.id, hidden: false, "flags.animater.prop.-=broken": null })), walls: restoreUpdates(walls ?? []), lights: unhideLights(broken.flatMap((t) => ownNamedLights(t, lights, grid)), lights),
     deleteLights: allFires(lights), deleteRegions: (regions ?? []).filter((r) => r?.flags?.animater?.propRubble).map((r) => r.id) };
+}
+
+// Repair's one wall batch: the prop walls' updates and the broken doors' and windows' (wall-break wallRepairUpdates),
+// each wall once. A wall in both (a door adopted by a prop before M1) gets one update, its door note's restore last, so
+// the door comes back as it was. Updates without an id are dropped.
+export function mergeWallFixes(propFixes = [], doorFixes = []) {
+  const byId = new Map();
+  for (const u of [...(propFixes ?? []), ...(doorFixes ?? [])]) if (typeof u?._id === "string") byId.set(u._id, { ...(byId.get(u._id) ?? {}), ...u });
+  return [...byId.values()];
 }
 
 // "a.-=b": null keys as the database's own deletion marker (v14 deprecates the key form); unchanged without one.

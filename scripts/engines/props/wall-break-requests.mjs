@@ -3,16 +3,17 @@
 import { wallTraits, canBreakWall, wallMid, crossesWall, wallNote, wallBreakUpdate } from "./wall-break.mjs";
 import { cleanCause, sizeOf, PATH_SQUARES } from "./prop-requests.mjs";
 import { onLevel } from "./prop-pick.mjs";
-import { forceOpenOf, windowOnLine } from "./wall-triggers.mjs";
+import { forceOpenOf, windowBesideMiss } from "./wall-triggers.mjs";
+import { missPathOk, windowOnMissPath } from "./window-miss.mjs";
 import { closestForcedDoor, forceOpenResult } from "./force-open.mjs";
 import { missBreaks } from "./prop-break.mjs";
 import { blastFrom, inBurst } from "./prop-blast.mjs";
+import { areaCauseRefusal } from "./prop-areas.mjs";
 
 export const WALL_BREAK_MESSAGE = "prop-wall-break";
 const KINDS = ["area", "path", "smash", "force-open", "miss", "blast"];
 const MISS_CHANCE = 25; // percent: a plain ranged miss breaks a window (the scene's propMissChance overrides)
 const OWN_RULE = new Set(["smash", "force-open"]); // R1: no damage type or slam; their own rule (Force Open: the door's DC)
-const AREA_REACH = 30; // squares from the area's centre to the wall's middle
 // Not c: Repair restores no position, so a moved broken door keeps its note (and its originals) as it was.
 const EDIT_KEYS = ["door", "move", "sight", "light", "sound"];
 const SHOVE_REACH = 2; // squares from the slam's start to a token of the sender's
@@ -61,12 +62,17 @@ function plausible(cause, wall, grid, mover, { scene, walls, attacker, target, s
     return !!b && inBurst(mid, b.centre, b.burst, grid) && onLevel(wall.levels, levels ?? source.levels);
   }
   if (cause.kind === "miss") {
-    // the shot's line, attacker to the target's centre, meets this window first (windowOnLine), on the target's level
-    if (!finite(attacker) || ![target?.x, target?.y, target?.w, target?.h].every(Number.isFinite)) return false;
-    const centre = { x: target.x + target.w / 2, y: target.y + target.h / 2 };
-    return windowOnLine(attacker, centre, (walls ?? []).some((w) => w?.id === wall.id) ? walls : [...(walls ?? []), wall], scene, target.level)?.id === wall.id;
+    const box = (r) => [r?.x, r?.y, r?.w, r?.h].every(Number.isFinite);
+    if (!box(attacker) || !box(target) || !onLevel(wall.levels, target.level)) return false;
+    // ranged (a miss line, cause.path): the line fits the shot (window-miss missPathOk) and meets this window first
+    if (cause.path) {
+      const all = (walls ?? []).some((w) => w?.id === wall.id) ? walls : [...(walls ?? []), wall];
+      return missPathOk(cause.path, attacker, target, grid) && windowOnMissPath(cause.path, all, scene, target.level)?.id === wall.id;
+    }
+    // melee: the window stands beside the target, past its near side (never on the attacker's side)
+    return windowBesideMiss(wall, { x: attacker.x + attacker.w / 2, y: attacker.y + attacker.h / 2 }, target, grid);
   }
-  if (cause.kind === "area") return finite(cause.at) && Math.hypot(mid.x - cause.at.x, mid.y - cause.at.y) <= AREA_REACH * grid;
+  if (cause.kind === "area") return true; // the area it names holds the wall's middle (areaCauseRefusal)
   // path: the mover stands within its size of either end, the path is not too long, it goes through the door, and the
   // door is on the mover's level
   const path = cause.path;
@@ -79,13 +85,18 @@ function plausible(cause, wall, grid, mover, { scene, walls, attacker, target, s
 
 // wall: the GM's wall {id, c, door, ds, move, sight, light, sound, levels, flags}; mover: {x, y} centre, size in squares,
 // level and isOwner (the sender owns it); senderTokens: footprints of the sender's own tokens on the scene; levels: the cause's own levels when the GM knows them (a wall on none of them is too far).
-// A ranged miss: attacker {x, y} (the shooter's centre), target {x, y, w, h, level?} (the missed token's footprint), roll in
-// [0, 1) for a plain miss's chance, and walls (the scene's). The window must be the first one on the line (else "far").
+// A miss: attacker {x, y, w, h} (the attacker's footprint: a token the sender owns), target {x, y, w, h, level?} (the
+// missed token's footprint), roll in [0, 1) for a plain miss's chance, and walls (the scene's). A ranged miss names its
+// miss line (cause.path {from, to}: the animation's seeded miss line, to its free end): it must start at the attacker,
+// pass near the target and be no longer than the distance plus 3 squares, and the window must be the first on it. A
+// melee miss names none: the window stands beside the target, never on the attacker's side. Else "far".
 // Force Open: message, the GM's own copy of the chat message the cause names; token, the roller's footprint
 // {x, y, w, h, level, authorOwns} on this scene (authorOwns: the message's author owns that token, and it is the speaker's
 // actor's); walls, the scene's walls; system, game.system.id; used, this GM already broke a door with that message.
 // A blast {kind: "blast", sourceId}: the GM's only (runBlast); source, the GM's view of the keg tile it names.
-export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mover, senderTokens, levels, message, token, walls, attacker, target, roll = 1, source, system, used = false } = {}) {
+// An area {kind: "area", areaUuid}: area, the GM's own record of the placed area it names, and now, the GM's clock
+// (prop-areas.mjs areaRefusal): refused as "area" unless it holds the wall's middle, on the wall's level.
+export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mover, senderTokens, levels, message, token, walls, attacker, target, roll = 1, source, system, used = false, area, now } = {}) {
   const no = (why) => ({ ok: false, why });
   if (scene?.flags?.animater?.breakableProps !== true || scene.flags.animater.breakWalls === false) return no("off");
   if (!sender) return no("sender");
@@ -109,6 +120,10 @@ export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mo
   }
   const raw = req?.note;
   if (!raw || !Number.isFinite(raw.seed) || !Number.isFinite(raw.cutAngle) || !finite(raw.from)) return no("note");
+  if (cause.kind === "area") {
+    const why = areaCauseRefusal(cause, wallMid(wall), wall.levels, { area, sceneId: scene.id, sender, now, grid });
+    if (why) return no(why);
+  }
   if (levels !== undefined && !onLevel(wall.levels, levels)) return no("far");
   if (!plausible(cause, wall, grid, mover, { scene, walls, attacker, target, source, levels })) return no("far");
   if (cause.kind === "miss") {

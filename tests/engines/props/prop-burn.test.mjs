@@ -116,9 +116,12 @@ test("an area of slashing picks webs and vines, not bushes; fire picks all plant
 });
 const scene = { id: "s", flags: { animater: { breakableProps: true } } };
 const sender = { id: "p", viewedScene: "s" };
+// An area cause names the player's own fresh area, holding every tile (prop-areas.mjs; I1).
+const placed = (cause) => (cause.kind === "area" ? { ...cause, areaUuid: "Scene.s.Region.a" } : cause);
+const anyArea = { area: { uuid: "Scene.s.Region.a", sceneId: "s", authorId: "p", rememberedAt: 0, testPoint: () => true, levels: [] }, now: 1 };
 const ask = (t, cause, patch = {}) => {
   const n = { ...breakNoteFor({ tile: t, walls: [], grid: 100, cause, seed: 5, from: cause.at, scene }), ...patch };
-  return { note: n, check: validBreakRequest({ cause, note: n }, { tile: t, walls: [], scene, grid: 100, sender }) };
+  return { note: n, check: validBreakRequest({ cause: placed(cause), note: n }, { tile: t, walls: [], scene, grid: 100, sender, ...anyArea }) };
 };
 test("the GM: fire burns a plant away (ash), a slash splits a web, a slash on a bush is refused", () => {
   const fire = { kind: "area", damageType: "fire", at: { x: 50, y: -100 } }, slash = { kind: "area", damageType: "slashing", at: { x: 50, y: -100 } };

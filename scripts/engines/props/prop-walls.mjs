@@ -1,4 +1,4 @@
-// Walls a prop tile owns (non-door, not a breakable window, both ends inside its rotated bounds) and the updates that open and restore them.
+// Walls a prop tile owns (non-door, not a breakable window, not a broken door or window, both ends inside its rotated bounds) and the updates that open and restore them.
 const KEYS = ["move", "sight", "light", "sound"];
 const saved = w => w.flags?.animater?.prop?.restore;
 
@@ -11,7 +11,8 @@ export function ownWalls(tile, walls, grid) {
     const dx = x - cx, dy = y - cy;
     return Math.abs(dx * cos - dy * sin) <= hw && Math.abs(dx * sin + dy * cos) <= hh;
   };
-  return walls.filter(w => !w.door && w.flags?.animater?.breakWall?.window !== true && inside(w.c[0], w.c[1]) && inside(w.c[2], w.c[3]));
+  // a broken door has door 0 now: its note says it is a door still, which Repair puts back (M1)
+  return walls.filter(w => !w.door && w.flags?.animater?.breakWall?.window !== true && !w.flags?.animater?.breakWall?.broken && inside(w.c[0], w.c[1]) && inside(w.c[2], w.c[3]));
 }
 
 export function openUpdates(walls) {
@@ -36,14 +37,17 @@ export function blockingWalls(walls, excludeIds = []) {
 }
 
 // The share (0-1) of the throw from `from` to `to` before it meets the first wall, or 1 when nothing is in the way.
+// A wall met within ON_LINE px of the start is one the prop's centre sits on (a torch on a wall line): it does not stop
+// the throw, or every piece would land on the centre (M3).
+const ON_LINE = 1;
 function firstHit(from, to, walls) {
-  const dx = to.x - from.x, dy = to.y - from.y;
+  const dx = to.x - from.x, dy = to.y - from.y, len = Math.hypot(dx, dy);
   let best = 1;
   for (const w of walls) {
     const [x1, y1, x2, y2] = w.c, ex = x2 - x1, ey = y2 - y1, den = dx * ey - dy * ex;
     if (!den) continue; // parallel
     const t = ((x1 - from.x) * ey - (y1 - from.y) * ex) / den, u = ((x1 - from.x) * dy - (y1 - from.y) * dx) / den;
-    if (t >= 0 && t <= best && u >= 0 && u <= 1) best = t;
+    if (t * len >= ON_LINE && t <= best && u >= 0 && u <= 1) best = t;
   }
   return best;
 }

@@ -68,9 +68,12 @@ const statue = (extra = {}) => ({ id: "st", x: 200, y: 200, width: 100, height: 
 const barrel = () => statue({ texture: { src: "props/Barrel_Wood.webp" }, width: 100, height: 100 });
 const force = { kind: "area", damageType: "force", at: { x: 250, y: 150 } };
 const sender = { id: "player", viewedScene: "s" };
+// An area cause names the player's own fresh area, holding every tile (prop-areas.mjs; I1).
+const placed = (cause) => (cause.kind === "area" ? { ...cause, areaUuid: "Scene.s.Region.a" } : cause);
+const anyArea = { area: { uuid: "Scene.s.Region.a", sceneId: "s", authorId: "player", rememberedAt: 0, testPoint: () => true, levels: [] }, now: 1 };
 const ask = (tile, sc, cause = force) => {
   const note = breakNoteFor({ tile, walls: [], grid: 100, cause, seed: 7, from: cause.at, scene: sc });
-  return { note, check: validBreakRequest({ cause, note }, { tile, walls: [], scene: sc, grid: 100, sender }) };
+  return { note, check: validBreakRequest({ cause: placed(cause), note }, { tile, walls: [], scene: sc, grid: 100, sender, ...anyArea }) };
 };
 
 test("a toppled statue writes a topple note and, with rubble on, a strip along the hit", () => {
@@ -97,7 +100,7 @@ test("a requester cannot claim topple for a prop that does not topple", () => {
   const sc = scene({ rubbleDifficult: true }), tile = barrel();
   const cause = { kind: "area", damageType: "fire", at: { x: 250, y: 150 } };
   const note = { ...breakNoteFor({ tile, walls: [], grid: 100, cause, seed: 7, from: cause.at, scene: sc }), style: "topple" };
-  const r = validBreakRequest({ cause, note }, { tile, walls: [], scene: sc, grid: 100, sender });
+  const r = validBreakRequest({ cause: placed(cause), note }, { tile, walls: [], scene: sc, grid: 100, sender, ...anyArea });
   assert.equal(r.ok, true);
   assert.equal(r.note.style, "shatter");
   assert.equal(r.rubble, null);

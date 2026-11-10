@@ -182,3 +182,16 @@ test("an area is kept 10 minutes; a roll only an expired area matched is reporte
   w.matchDamage({ itemUuid: "J", actorUuid: "A" }); w.forget("T"); w.matchDamage({ itemUuid: "I", actorUuid: "A" });
   assert.equal(said.length, 1);
 });
+
+test("the GM reads back an area it remembered by its id: who placed it and when, never one it forgot", () => {
+  let t = 5; const w = createAreaWaits({ now: () => t, ttl: 1000 });
+  assert.equal(w.get("T"), null);
+  w.remember({ templateId: "T", itemUuid: "I", actorUuid: "A", authorId: "p", testPoint: () => true });
+  assert.equal(w.get("T").authorId, "p");
+  assert.equal(w.get("T").rememberedAt, 5);
+  w.forget("T");
+  assert.equal(w.get("T"), null);
+  // an expired area is still read back (the GM's area check refuses it by its age)
+  w.remember({ templateId: "U", itemUuid: "I", actorUuid: "A", testPoint: () => true }); t = 2000;
+  assert.equal(w.get("U").rememberedAt, 5);
+});
