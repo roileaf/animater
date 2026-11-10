@@ -224,7 +224,7 @@ import { THUNDER, weatherLevels, weatherIsOurs, thunderOnTopOf, thunderShape, th
 import { createDoorBursts, doorSends, doorPlace, burstTarget, flockPaths, flockSize } from "./engines/motion/door-burst.mjs";
 import { createFloorBlood, hitMarks, bleedStep, standingDrip, splatMarks, scaleMarks, packMark, unpackMark } from "./engines/motion/floor-blood.mjs";
 import { bakeBlood } from "./engines/motion/blood-bake.mjs";
-import { fallWindAngle, stepScale, waterDepthLook, noLifeOnWater, unfitForLife, waterFlows, waterKindOf, activeStep, floodedByStep, paintsOverWater, showsTexture, stepEdge, stepFlags, stepLook, takesSeason, textureFloor, textureStyleOf, castsShadow, overShadowOf, dockStyleOf, showsPosts, caveLook, indoorEdgeOf } from "./engines/motion/region-steps.mjs";
+import { fallWindAngle, stepScale, textureOpacity, waterDepthLook, noLifeOnWater, unfitForLife, waterFlows, waterKindOf, activeStep, floodedByStep, paintsOverWater, showsTexture, stepEdge, stepFlags, stepLook, takesSeason, textureFloor, textureStyleOf, castsShadow, overShadowOf, dockStyleOf, showsPosts, caveLook, indoorEdgeOf } from "./engines/motion/region-steps.mjs";
 import { createFloorLooks, createFloorTextures, skyForFloors } from "./engines/motion/floor-looks.mjs";
 import { createFloorMotion } from "./engines/motion/floor-motion.mjs";
 import { openStepsWindow, refreshStepsWindow } from "./ui/region-steps-ui.mjs";
@@ -2408,7 +2408,7 @@ const syncFloorLooks = () => {
       if (own?.imageRegion?.source?.kind === "tile" && bound?.role !== "floor") continue;
       const floor = plainFloorOf(region);
       if (floor && showsTexture(own, sceneChoice) && !movingIds.has(region.id)) {
-        const spec = { id: region.id, areas: regionAreas(region), floor: textureFloor(own, floor), style: textureStyleOf(own, textureFloor(own, floor)), seconds: stepLook(own, floor).seconds, edge: stepEdge(own), scale: stepScale(own), blades: floorLevel.blades, shine: floorLevel.shine, roofed: roofedRegion(regionAreas(region)) };
+        const spec = { id: region.id, areas: regionAreas(region), floor: textureFloor(own, floor), style: textureStyleOf(own, textureFloor(own, floor)), seconds: stepLook(own, floor).seconds, edge: stepEdge(own), scale: stepScale(own), opacity: textureOpacity(own), blades: floorLevel.blades, shine: floorLevel.shine, roofed: roofedRegion(regionAreas(region)) };
         const home = floorPlaneOf(bound);
         if (home) spec.plane = { ...home, zIndex: MAP_SORT.floorTextures };
         painted.push(spec);

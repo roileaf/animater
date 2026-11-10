@@ -5,7 +5,7 @@
 
 import { FLOOR_CHOICES } from '../engines/motion/movement-feel.mjs';
 import { floorBody } from '../engines/motion/floor-shadows.mjs';
-import { WATER_DEPTHS, WATER_TOWARD, waterFlows, waterKindFlags, waterKindOf, DOCK_STYLES, OVER_DARK, OVER_SOFT, castsShadow, dockStyleOf, overShadowChoices, overShadowOf, showsPosts, STEP_EDGE, STEP_SCALE, STEP_STRENGTH, STEP_SPEEDS, TEXTURE_STYLES, textureFloor, textureStyleOf, activeStep, changeStep, setStepSpeed, setStepStrength, stepEdge, stepMenu, stepScale, CAVE_AMOUNT, CAVE_CHOICES, caveKindFlags, caveMenu, INDOOR_EDGE, indoorEdgeOf } from '../engines/motion/region-steps.mjs';
+import { WATER_DEPTHS, WATER_TOWARD, waterFlows, waterKindFlags, waterKindOf, DOCK_STYLES, OVER_DARK, OVER_SOFT, castsShadow, dockStyleOf, overShadowChoices, overShadowOf, showsPosts, STEP_EDGE, STEP_SCALE, STEP_STRENGTH, STEP_SPEEDS, TEXTURE_STYLES, textureFloor, textureStyleOf, activeStep, changeStep, setStepSpeed, setStepStrength, stepEdge, stepMenu, stepScale, TEXTURE_OPACITY, textureOpacity, CAVE_AMOUNT, CAVE_CHOICES, caveKindFlags, caveMenu, INDOOR_EDGE, indoorEdgeOf } from '../engines/motion/region-steps.mjs';
 import { REGION_ANIMAL_GROUPS, ANIMAL_SIZE, animalSizeOf, MOST_HAWKS, MOST_COUNT, regionAnimalCounts } from '../engines/motion/region-animals.mjs';
 import { SKY_WINDOWS, skyWindowOf, WINDOW_PATTERN, patternScaleOf } from '../engines/motion/wall-shadows.mjs';
 import { keepsOut } from '../engines/motion/wildlife.mjs';
@@ -86,6 +86,8 @@ const ANIMALS_FIRST = { water: ['Water', 'Open ground', 'Farm', 'Town'], ground:
 // The floor's texture style, for the floor the region is on now, and how big its pattern is.
 const styleRow = ({ own, floor, act }) => { const now = textureFloor(own, floor); return row('Texture style', choice(TEXTURE_STYLES[now] ?? [], textureStyleOf(own, now), 'Texture style', (v) => act({ textureStyles: { ...(own.textureStyles ?? {}), [now]: v } }))); };
 const scaleRow = ({ own, act }) => range('Pattern size', STEP_SCALE, stepScale(own), percent, (v) => act({ stepScale: v }), 0.05, 'Smaller for more of it: more panes of glass, more stones.');
+// How much the painted floor covers the map: less lets the map's own picture show through it.
+const opacityRow = ({ own, act }) => range('Texture opacity', TEXTURE_OPACITY, textureOpacity(own), percent, (v) => act({ textureOpacity: v }), 0.05, 'Less lets the map\'s own picture show through the painted floor.');
 const scaleShown = (c) => c.texture(c.own) || stepMenu(c.own, c.floor).strength !== null;
 // Whether it throws a shadow on what is below, which one, and (`fine`, else under a More line) how soft and dark.
 const shadowParts = (c, fine) => {
@@ -132,7 +134,7 @@ export const SECTIONS = {
     parts.push(toggle('Over water', false, (on) => { if (on) c.toFloor(kindFlags('deck', own)); }, OVER_WATER_TIP));
     if (stepMenu(own, floor).grassy) parts.push(toggle('Changes with the seasons', c.season(own), (on) => act({ season: on ? 'on' : 'off' })));
     parts.push(toggle('Floor texture', textured, (on) => act({ texture: on ? 'on' : 'off' }), 'Paint the floor here, over the map.'));
-    if (textured) parts.push(styleRow(c));
+    if (textured) parts.push(styleRow(c), opacityRow(c));
     if (scaleShown(c)) parts.push(scaleRow(c));
     // A raised floor (a stage, a balcony) can throw a shadow too: rarely, so it waits under More.
     parts.push(...c.more('ground', 'More: its shadow…', () => shadowParts(c, true)));
@@ -229,7 +231,7 @@ export const SECTIONS = {
   look(c) {
     const { own, kind, act } = c, groundless = kind !== 'ground' && kind !== 'indoors', parts = [];
     if (groundless && kind !== 'lava') parts.push(toggle('Floor texture', c.texture(own), (on) => act({ texture: on ? 'on' : 'off' }), 'Paint the floor here, over the map.'));
-    if (groundless && c.texture(own)) parts.push(styleRow(c));
+    if (groundless && c.texture(own)) parts.push(styleRow(c), opacityRow(c));
     if (groundless && scaleShown(c)) parts.push(scaleRow(c));
     parts.push(row('Creatures inside', choice([['', 'None'], ...c.presets().map((n) => [n, n])], own[REGION_LOOK_FLAG] ?? '', 'Animater look', (v) => act({ [REGION_LOOK_FLAG]: v })), 'A Tokenshade look every creature inside shows, fading in as they step in: haunted ground, a forge’s warmth, deep water.'));
     if (kind !== 'lava') parts.push(...c.more('look', 'More: soft edge…', () => {

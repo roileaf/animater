@@ -1057,6 +1057,8 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
     if (useBlades && swaysInWind(floor)) { const made = bladesOf(PIXI, areas, box, style, size, mask, mesh.shader.uniforms.uPeak); if (made) { mesh.addChild(made.shadows, made.blades); mesh.animaterBlades = made.blades; mesh.animaterBladeShadows = made.shadows; skyAt = 0; } }
     return mesh;
   };
+  // A painted floor's alpha, its grass blades and their shadows with it.
+  const showAt = (mesh, alpha) => { if (!mesh) return; mesh.shader.uniforms.uAlpha = alpha; if (mesh.animaterBlades) { mesh.animaterBlades.shader.uniforms.uAlpha = alpha; mesh.animaterBladeShadows.shader.uniforms.uAlpha = alpha; } };
   // The sky, shade and lights the last frame used, so a snapshot is lit as the scene is now.
   let lastLight = null, lastShade = null;
   const lightNow = (mesh, roofed) => {
@@ -1077,10 +1079,12 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
         seen.add(spec.id);
         if (spec.roofed) roofed.add(spec.id); else roofed.delete(spec.id);
         const shape = JSON.stringify(spec.areas), edge = spec.edge ?? 1, style = spec.style ?? '', useBlades = spec.blades !== false, shineOn = spec.shine !== false, entry = known.get(spec.id);
+        // How much it covers the map (the region's Texture opacity): what its alpha stands at once faded in.
+        const opacity = Math.min(1, Math.max(0, Number(spec.opacity ?? 1)));
         scaleNow = spec.scale ?? 1;
         const parent = root(spec);
         const held = [entry?.mesh, entry?.old].filter(Boolean);
-        if (entry && held.every((mesh) => mesh.parent === parent) && entry.floor === spec.floor && entry.style === style && entry.shape === shape && entry.edge === edge && entry.useBlades === useBlades && entry.shineOn === shineOn) { for (const mesh of held) mesh.shader.uniforms.uTileSize = (grid() || 100) * 4 * scaleNow; continue; }
+        if (entry && held.every((mesh) => mesh.parent === parent) && entry.floor === spec.floor && entry.style === style && entry.shape === shape && entry.edge === edge && entry.useBlades === useBlades && entry.shineOn === shineOn) { for (const mesh of held) mesh.shader.uniforms.uTileSize = (grid() || 100) * 4 * scaleNow; if (entry.opacity !== opacity) { entry.opacity = opacity; if (!entry.old) showAt(entry.mesh, opacity); } continue; }
         // Not made yet: what is there stays, and it comes when its tiles are ready.
         const wants = surfaceShine(spec.floor, style), base = tileOf(spec.floor, style), surface = !shineOn || !(wants.gloss + wants.glitter + wants.lift + wants.relief > 0) || tileOf(spec.floor, style, true);
         if (!base || !surface) continue;
@@ -1088,11 +1092,10 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
         try { mesh = paint(spec.areas, spec.floor, edge, style, useBlades, shineOn, null, spec); } catch (error) { console.warn('Animater | floor texture', error); }
         if (!mesh) continue;
         const moved = held.some((mesh) => mesh.parent !== parent);
-        if (!entry || moved || entry.shape !== shape || entry.edge !== edge || !(spec.seconds > 0)) { drop(entry?.old); drop(entry?.mesh); known.set(spec.id, { mesh, old: null, floor: spec.floor, style, shape, edge, useBlades, shineOn, seconds: 0 }); continue; }
+        if (!entry || moved || entry.shape !== shape || entry.edge !== edge || !(spec.seconds > 0)) { drop(entry?.old); drop(entry?.mesh); showAt(mesh, opacity); known.set(spec.id, { mesh, old: null, floor: spec.floor, style, shape, edge, useBlades, shineOn, seconds: 0, opacity }); continue; }
         drop(entry.old);
-        mesh.shader.uniforms.uAlpha = 0;
-        if (mesh.animaterBlades) { mesh.animaterBlades.shader.uniforms.uAlpha = 0; mesh.animaterBladeShadows.shader.uniforms.uAlpha = 0; }
-        known.set(spec.id, { mesh, old: entry.mesh, floor: spec.floor, style, shape, edge, useBlades, shineOn, seconds: spec.seconds });
+        showAt(mesh, 0);
+        known.set(spec.id, { mesh, old: entry.mesh, floor: spec.floor, style, shape, edge, useBlades, shineOn, seconds: spec.seconds, opacity });
       }
       for (const [id, entry] of known) if (!seen.has(id)) { drop(entry.old); drop(entry.mesh); known.delete(id); }
     },
@@ -1133,9 +1136,10 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
           }
         }
         if (!entry.old) continue;
-        const u = entry.mesh.shader.uniforms; u.uAlpha = Math.min(1, u.uAlpha + seconds / Math.max(0.01, entry.seconds));
-        if (entry.mesh.animaterBlades) { entry.mesh.animaterBlades.shader.uniforms.uAlpha = u.uAlpha; entry.mesh.animaterBladeShadows.shader.uniforms.uAlpha = u.uAlpha; }
-        if (u.uAlpha >= 1) { drop(entry.old); entry.old = null; }
+        // A new floor fading in, up to the region's opacity.
+        const top = entry.opacity ?? 1, u = entry.mesh.shader.uniforms;
+        showAt(entry.mesh, Math.min(top, u.uAlpha + (top * seconds) / Math.max(0.01, entry.seconds)));
+        if (u.uAlpha >= top) { drop(entry.old); entry.old = null; }
       }
     },
     clear() { for (const entry of known.values()) { drop(entry.old); drop(entry.mesh); } known.clear(); },
@@ -1159,6 +1163,7 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
           scaleNow = spec.scale ?? 1;
           const mesh = paint(spec.areas, spec.floor, spec.edge ?? 1, spec.style ?? '', spec.blades !== false, spec.shine !== false, holder);
           if (!mesh) continue;
+          showAt(mesh, Math.min(1, Math.max(0, Number(spec.opacity ?? 1))));
           meshes.push(mesh); lightNow(mesh, !!spec.roofed);
         }
         target = PIXI.RenderTexture.create({ width: Math.round(width), height: Math.round(height) });
