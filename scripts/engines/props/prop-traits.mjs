@@ -4,10 +4,11 @@ import { MATERIALS, FURNITURE, nameTokens, guessMaterial, propMaterial } from ".
 
 export const STYLES = ["shatter", "collapse", "topple", "tip", "burn", "split"];
 export const STYLE_CHOICES = ["shatter", "collapse"]; // what the "Breaks as" setting offers
-export const CONTENTS = ["none", "water", "wine", "oil", "grain", "goods", "books", "potions"];
+export const CONTENTS = ["none", "water", "wine", "oil", "grain", "goods", "books", "potions", "lampoil"];
 
 const BOOKS = new Set(["book", "books", "bookshelf", "bookshelves", "bookcase", "library"]);
 const POTIONS = new Set(["potion", "potions", "apothecary", "alchemy", "alchemist"]);
+const LAMPS = new Set(["lantern", "lanterns", "lamp", "lamps"]); // they hold lamp oil
 const LEGS = new Set(["table", "tables", "chair", "chairs", "bench", "benches", "stool", "stools", "desk", "desks", "bed", "beds"]);
 
 export function propGuesses(src) {
@@ -15,7 +16,7 @@ export function propGuesses(src) {
   return {
     material: guessMaterial(src),
     style: has(FURNITURE) ? "collapse" : "shatter",
-    contents: has(BOOKS) ? "books" : has(POTIONS) ? "potions" : "none",
+    contents: has(BOOKS) ? "books" : has(POTIONS) ? "potions" : has(LAMPS) ? "lampoil" : "none",
     legs: has(LEGS),
     light: guessLight(src),
   };

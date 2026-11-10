@@ -2,10 +2,12 @@
 // the note alone, so every client and every reload lays the same wreck. The drawing is prop-wreck.mjs.
 import { seededRandom } from "../fragments/fragments.mjs";
 import { readNote } from "./prop-break.mjs";
+import { BURN_MS } from "./prop-lights.mjs";
 import { splatMarks } from "../motion/floor-blood.mjs";
 
 const TAU = Math.PI * 2, lerp = (a, b, u) => a + (b - a) * u;
 export const LIQUIDS = { water: { color: 0x33505c, alpha: 0.7 }, wine: { color: 0x4a0c1a, alpha: 0.92 }, oil: { color: 0x4a3410, alpha: 0.85 } };
+LIQUIDS.lampoil = LIQUIDS.oil; // lamp oil spills like oil (and may catch: burningPatch)
 export const GRAIN_TONES = [0xc8a462, 0xb48f50, 0xd9bc7e, 0x9c7a40];
 export const PAGE_COLOURS = [0xeee3c8, 0xe2d4b0, 0xd8c69e];
 export const POTION_COLOURS = [0x3a8a3a, 0x9a1a1a, 0x2a4ab0, 0xb08a3a];
@@ -71,9 +73,12 @@ function intoFan(m, at, cutAngle) {
 }
 
 // Liquids reuse the floor-blood marks, recoloured: a spill that matches the blood already on the table.
+// A lamp's oil is a small pool run out ahead of it (mock scene 4: three quarters of a square, half a square on).
+const SPILL_SIZE = { lampoil: { push: 0.9, width: 1.5 } }, BARREL = { push: 0.25, width: 3.2 };
 function liquidSpill(kind, c, r, grid, cutAngle, seed, rand) {
-  const at = { x: c.x + Math.cos(cutAngle) * r * 0.25, y: c.y + Math.sin(cutAngle) * r * 0.25 };
-  const marks = splatMarks({ at, width: r * 3.2, grid, seed: `spill-${kind}-${seed}` })
+  const { push, width } = SPILL_SIZE[kind] ?? BARREL;
+  const at = { x: c.x + Math.cos(cutAngle) * r * push, y: c.y + Math.sin(cutAngle) * r * push };
+  const marks = splatMarks({ at, width: r * width, grid, seed: `spill-${kind}-${seed}` })
     .map((m) => (m.art === "slash" || m.art === "blunt" ? { ...m, art: "patch" } : m)) // a spill, not a thrown spray
     .map((m) => intoFan(m, at, cutAngle)) // it runs out the way the hit pushed it
     .filter((m) => m.art !== "drop" || rand() < 0.5)
@@ -164,15 +169,42 @@ function potionsSpill(c, extent, grid, cutAngle, rand) {
   return { kind: "potions", shards, stains };
 }
 
+// Burning lamp oil (mock scene 4): nine flames over the spill's middle, spread along the hit, each catching a little
+// after the break; embers rise from it for the minute it burns (BURN_MS, its last 10 s dying down). Its own seeded
+// stream, so the rest of the wreck lays out as it would without fire. Times in ms from the break.
+export const BURN_DIE_MS = 10000;
+function burningPatch(spill, r, grid, cutAngle, seed) {
+  const rand = seededRandom((seed >>> 0) * 131 + 71), body = spill.marks.filter((m) => m.art !== "drop");
+  const list = body.length ? body : spill.marks;
+  if (!list.length) return null;
+  const at = { x: list.reduce((a, m) => a + m.x, 0) / list.length, y: list.reduce((a, m) => a + m.y, 0) / list.length };
+  const k = r / 50, size = grid / 100, ca = Math.cos(cutAngle), sa = Math.sin(cutAngle);
+  const along = (u, v) => ({ x: at.x + u * ca - v * sa, y: at.y + u * sa + v * ca });
+  const flames = Array.from({ length: 9 }, (_, i) => ({ ...along((rand() - 0.5) * 80 * k, (rand() - 0.5) * 50 * k), s: (14 + rand() * 12) * size, seed: (seed % 100000) * 10 + i, start: 150 + rand() * 350 }));
+  // Embers drift up the screen (as the mock's do), about eight a second until the fire dies down.
+  const embers = Array.from({ length: 400 }, () => {
+    const p = along((rand() - 0.5) * 80 * k, (rand() - 0.5) * 40 * k), life = 700 + rand() * 600;
+    return { x: p.x, y: p.y, vx: (rand() - 0.5) * 30 * size, vy: (-40 - rand() * 60) * size, s: (1 + rand() * 1.2) * size, ph: rand() * 9, at: 300 + rand() * (BURN_MS - BURN_DIE_MS - 300 - life), life };
+  });
+  return { at, flames, embers, r: r * 0.9 };
+}
+
 // rotation: the tile's turn in degrees (where spilled books and bottles start across the hit).
 export function wreckLayout(note, { centre, width, height, grid = 100, contents = "none", rotation = 0 }) {
   const rand = seededRandom(note.seed * 977 + 13), r = Math.max(width, height) / 2, extent = spillExtent(width, height, note.cutAngle, rotation);
-  const mark = groundMark(note.mark, centre, r, rand);
+  const mark = groundMark(note.mark, centre, r, rand); // drawn first even for a fire, so the rest lays out the same
   const spill = Object.hasOwn(LIQUIDS, contents) ? liquidSpill(contents, centre, r, grid, note.cutAngle, note.seed, rand)
     : contents === "grain" || contents === "goods" ? pouredSpill(contents, centre, r, grid, note.cutAngle, rand)
     : contents === "books" ? booksSpill(centre, width, height, extent, grid, note.cutAngle, rand)
     : contents === "potions" ? potionsSpill(centre, extent, grid, note.cutAngle, rand) : null;
-  return { mark, specks: specks(centre, r, rand), spill };
+  const out = { mark, specks: specks(centre, r, rand), spill, fire: null };
+  // A fire note scorches: under the burning patch when the oil spilled (mock: a flattened scorch about a prop's size), else at the prop.
+  if (note.fire) {
+    out.fire = spill?.color !== undefined ? burningPatch(spill, r, grid, note.cutAngle, note.seed) : null;
+    const burnRand = seededRandom((note.seed >>> 0) * 53 + 29);
+    out.mark = out.fire ? flatMark("scorch", { x: out.fire.at.x, y: out.fire.at.y, r, squash: 0.8, angle: note.cutAngle }, burnRand) : groundMark("scorch", centre, r, burnRand);
+  }
+  return out;
 }
 
 // The tiles to draw a wreck for: hidden and carrying a valid note.

@@ -266,3 +266,35 @@ test("old notes without lights read as none", () => {
   const broken = { ...lantern(), flags: { animater: { prop: { broken: old } } } };
   assert.deepEqual(undoUpdates(broken, walls, { lights: [lamps({ id: "in", hidden: true })] }).lights, []);
 });
+
+// Burning lamp oil (Task 10)
+test("a lit lantern knocked over catches; the GM's request says fire", () => {
+  const tile = lantern(), hit = { kind: "area", damageType: "bludgeoning", at: { x: 250, y: 250 } };
+  const req = (t = tile) => ({ cause: hit, note: noteFor(t, hit) });
+  const lit = validBreakRequest(req(), ctx({ tile, lights: [lamps({ id: "in", x: 250, y: 250 })] }));
+  assert.equal(lit.ok, true);
+  assert.equal(lit.fire, true);
+  assert.equal(lit.note.fire, true);
+  // unlit and not fire: the oil only spills
+  const dark = validBreakRequest(req(), ctx({ tile, lights: [lamps({ id: "in", x: 250, y: 250, hidden: true })] }));
+  assert.equal(dark.ok, true);
+  assert.equal(dark.fire, false);
+  assert.equal("fire" in dark.note, false);
+  // fire damage lights it even unlit
+  const burnt = validBreakRequest(areaReq(noteFor(tile)), ctx({ tile, lights: [] }));
+  assert.deepEqual([burnt.fire, burnt.note.fire], [true, true]);
+  // a requester's fire claim counts for nothing: a barrel holds no lamp oil
+  const b = validBreakRequest({ cause: hit, note: { ...noteFor(barrel(), hit), fire: true } }, ctx({ lights: [lamps({ id: "in", x: 250, y: 250 })] }));
+  assert.deepEqual([b.fire, "fire" in b.note], [false, false]);
+  // the GM set its contents to something else
+  const water = lantern({ flags: { animater: { prop: { contents: "water" } } } });
+  assert.equal(validBreakRequest(req(water), ctx({ tile: water, lights: [lamps({ id: "in", x: 250, y: 250 })] })).fire, false);
+});
+test("undo deletes the tile's own fire lights, Repair every one", () => {
+  const fire = (id, tileId) => ({ id, x: 250, y: 250, hidden: false, levels: [], flags: { animater: { propFire: { tileId, until: 1 } } } });
+  const broken = { ...lantern(), hidden: true, flags: { animater: { prop: { broken: { ...noteFor(lantern()), fire: true } } } } };
+  const lights = [fire("f1", "lantern"), fire("f2", "other"), lamps({ id: "lamp", flags: {} })];
+  assert.deepEqual(undoUpdates(broken, walls, { lights }).deleteLights, ["f1"]);
+  assert.deepEqual(repairUpdates([broken], walls, { lights }).deleteLights, ["f1", "f2"]);
+  assert.deepEqual(undoUpdates(broken, walls).deleteLights, []);
+});

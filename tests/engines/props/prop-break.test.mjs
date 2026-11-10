@@ -61,3 +61,16 @@ test("brokenNote always writes style and lights; lights are capped on read", () 
   const again = readNote({ ...n, style: "collapse", lights: ["a"] });
   assert.deepEqual(readNote(again), again);
 });
+
+test("a fire note keeps fire: true; anything else drops it", () => {
+  const look = breakLook({ material: "glass" });
+  const n = brokenNote({ seed: 1, cutAngle: 0, look, from: { x: 0, y: 0 }, walls: [], size: 1 });
+  assert.equal("fire" in n, false);
+  assert.equal(brokenNote({ seed: 1, cutAngle: 0, look, from: { x: 0, y: 0 }, walls: [], size: 1, fire: true }).fire, true);
+  assert.equal("fire" in brokenNote({ seed: 1, cutAngle: 0, look, from: { x: 0, y: 0 }, walls: [], size: 1, fire: "yes" }), false);
+  assert.equal(readNote({ ...n, fire: true }).fire, true);
+  assert.equal("fire" in readNote({ ...n, fire: "true" }), false);
+  assert.equal("fire" in readNote(n), false);
+  const lit = readNote({ ...n, fire: true });
+  assert.deepEqual(readNote(JSON.parse(JSON.stringify(lit))), lit);
+});

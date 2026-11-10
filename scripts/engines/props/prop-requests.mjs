@@ -3,7 +3,7 @@ import { propMaterial, propShape, canBreak } from "./prop-material.mjs";
 import { propTraits, breakStyle } from "./prop-traits.mjs";
 import { breakLook, brokenNote, readNote, missBreaks } from "./prop-break.mjs";
 import { ownWalls, openUpdates, restoreUpdates } from "./prop-walls.mjs";
-import { lightsOfProp, hideLights, unhideLights } from "./prop-lights.mjs";
+import { lightsOfProp, hideLights, unhideLights, oilCatches, firesOf, allFires } from "./prop-lights.mjs";
 import { segRectDist, headsInto, onLevel } from "./prop-pick.mjs";
 
 export const PROP_BREAK_MESSAGE = "prop-break";
@@ -84,8 +84,11 @@ export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, se
   const chance = Number(own.propMissChance ?? MISS_CHANCE); // a form may save it as text
   if (cause.kind === "miss" && !missBreaks(cause.outcome, Number.isFinite(chance) ? chance : MISS_CHANCE, roll)) return no("lucky");
   // The GM decides the walls and the lights: all of the tile's own walls open, the lit lights on it go out, and the note names them.
-  const out = propTraits(tile, grid, scene).light ? lightsOfProp(tile, lights, grid, tile.levels) : [];
-  return { ok: true, note: { ...note, walls: mine.map((w) => w.id), lights: out.map((l) => l.id) }, wallUpdates: openUpdates(mine), lightUpdates: hideLights(out) };
+  // Lamp oil catches when the break is fire or put a lit light out (the GM's own judgement; a requester's fire is dropped).
+  const traits = propTraits(tile, grid, scene), out = traits.light ? lightsOfProp(tile, lights, grid, tile.levels) : [];
+  const { fire: _claimed, ...base } = note, outIds = out.map((l) => l.id); // eslint-disable-line no-unused-vars
+  const fire = oilCatches({ contents: traits.contents, damageType: cause.damageType, lights: outIds });
+  return { ok: true, fire, note: { ...base, walls: mine.map((w) => w.id), lights: outIds, ...(fire ? { fire: true } : {}) }, wallUpdates: openUpdates(mine), lightUpdates: hideLights(out) };
 }
 
 // The requester's note: the tile's own walls, its larger side in squares, cut along the line from the cause.
@@ -107,16 +110,18 @@ export function wallsToRestore(tile, tiles, walls, grid = 100) {
   const own = new Set(ownWalls(tile, walls, grid).map((w) => w.id));
   return walls.filter((w) => ids.has(w.id) && own.has(w.id) && !held.has(w.id));
 }
-// tiles: the scene's tiles (with or without this one).
+// tiles: the scene's tiles (with or without this one). deleteLights: the tile's burning-oil lights.
 export function undoUpdates(tile, walls, { tiles = [], grid = 100, lights = [] } = {}) {
-  return { tile: { _id: tile.id, "flags.animater.prop.-=broken": null }, walls: restoreUpdates(wallsToRestore(tile, tiles, walls, grid)), lights: unhideLights(namedLights(tile), lights) };
+  return { tile: { _id: tile.id, "flags.animater.prop.-=broken": null }, walls: restoreUpdates(wallsToRestore(tile, tiles, walls, grid)), lights: unhideLights(namedLights(tile), lights),
+    deleteLights: firesOf(tile.id, lights) };
 }
 
 // Every broken tile unhidden and cleared in one batch. No broken tile is left, so every opened wall comes back,
-// including any a deleted or copied tile left open.
+// including any a deleted or copied tile left open. Every burning-oil light goes too, whoever's tile it was.
 export function repairUpdates(tiles, walls, { lights = [] } = {}) {
   const broken = (tiles ?? []).filter((t) => propOf(t).broken);
-  return { tiles: broken.map((t) => ({ _id: t.id, hidden: false, "flags.animater.prop.-=broken": null })), walls: restoreUpdates(walls ?? []), lights: unhideLights(broken.flatMap(namedLights), lights) };
+  return { tiles: broken.map((t) => ({ _id: t.id, hidden: false, "flags.animater.prop.-=broken": null })), walls: restoreUpdates(walls ?? []), lights: unhideLights(broken.flatMap(namedLights), lights),
+    deleteLights: allFires(lights) };
 }
 
 // "a.-=b": null keys as the database's own deletion marker (v14 deprecates the key form); unchanged without one.

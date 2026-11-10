@@ -49,5 +49,15 @@ test("breakStyle", () => {
 test("the lists", () => {
   assert.deepEqual(STYLES, ["shatter", "collapse", "topple", "tip", "burn", "split"]);
   assert.deepEqual(STYLE_CHOICES, ["shatter", "collapse"]);
-  assert.deepEqual(CONTENTS, ["none", "water", "wine", "oil", "grain", "goods", "books", "potions"]);
+  assert.deepEqual(CONTENTS, ["none", "water", "wine", "oil", "grain", "goods", "books", "potions", "lampoil"]);
+});
+
+test("lanterns and lamps hold lamp oil; the GM can choose it", () => {
+  for (const s of ["Lantern_A.webp", "Lamp_Oil.webp", "props/Lantern_Hanging.webp"]) assert.equal(propGuesses(s).contents, "lampoil", s);
+  assert.equal(propGuesses("Brazier_Iron.webp").contents, "none");
+  assert.equal(propGuesses("Candle_Stand.webp").contents, "none");
+  const t = (prop) => ({ texture: { src: "Lantern_A.webp" }, width: 100, height: 100, flags: { animater: { prop } } });
+  assert.equal(propTraits(t({}), 100).contents, "lampoil");
+  assert.equal(propTraits(t({ contents: "none" }), 100).contents, "none");
+  assert.equal(propTraits({ texture: { src: "Barrel.webp" }, width: 100, height: 100, flags: { animater: { prop: { contents: "lampoil" } } } }, 100).contents, "lampoil");
 });

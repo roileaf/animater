@@ -86,3 +86,9 @@ test("Light prop select", () => {
   assert.match(propTileFieldsHTML({ src: "Barrel.webp" }), /prop\.light"[\s\S]*Automatic \(no\)/);
   assert.match(propTileFieldsHTML({ src: "Barrel.webp", light: "yes" }), /<option value="yes" selected>Yes</);
 });
+test("Contents offers Lamp oil, and a lantern guesses it", () => {
+  const html = propTileFieldsHTML({ src: "Lantern_A.webp" });
+  assert.match(html, /<option value="lampoil"[^>]*>Lamp oil</);
+  assert.match(html, /Automatic \(Lamp oil\)/);
+  assert.match(propTileFieldsHTML({ src: "Barrel.webp", contents: "lampoil" }), /<option value="lampoil" selected>Lamp oil</);
+});

@@ -28,9 +28,10 @@ export function breakLook({ material, shape, damageType } = {}) {
 }
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-export function brokenNote({ seed, cutAngle, look, from, walls, size, style = "shatter", extra = {} }) {
+// fire: the lamp oil it held caught (the GM decides, validBreakRequest); stored only when true.
+export function brokenNote({ seed, cutAngle, look, from, walls, size, style = "shatter", fire = false, extra = {} }) {
   const { pattern, pieces, spread, spin, tint } = look.stage;
-  return { seed, cutAngle, pattern, pieces, spread: clamp(spread * (size > 0 ? size : 1), 0, 3), spin, tint: tint ?? "none", mark: look.mark, from: { x: from.x, y: from.y }, walls: [...walls], style, lights: [], ...extra };
+  return { seed, cutAngle, pattern, pieces, spread: clamp(spread * (size > 0 ? size : 1), 0, 3), spin, tint: tint ?? "none", mark: look.mark, from: { x: from.x, y: from.y }, walls: [...walls], style, lights: [], ...(fire === true ? { fire: true } : {}), ...extra };
 }
 
 // Validates and clamps a note read from a tile flag or the socket; null when it is not one.
@@ -44,7 +45,7 @@ export function readNote(raw) {
   const [lo, hi] = FRAGMENT_COUNTS[pattern];
   const ids = Array.isArray(walls) ? walls.filter((w) => typeof w === "string" && w.length <= 32).slice(0, 64) : [];
   const lights = Array.isArray(raw.lights) ? raw.lights.filter((w) => typeof w === "string" && w.length <= 32).slice(0, 16) : [];
-  return { seed, cutAngle, pattern, pieces: Math.round(clamp(pieces, lo, hi)), spread: clamp(spread, 0, 3), spin: clamp(spin, 0, 720), tint, mark, from: { x: from.x, y: from.y }, walls: ids, style, lights };
+  return { seed, cutAngle, pattern, pieces: Math.round(clamp(pieces, lo, hi)), spread: clamp(spread, 0, 3), spin: clamp(spin, 0, 720), tint, mark, from: { x: from.x, y: from.y }, walls: ids, style, lights, ...(raw.fire === true ? { fire: true } : {}) };
 }
 
 // A missed swing breaks the prop beside it: always on a critical failure, else by the chance (percent).

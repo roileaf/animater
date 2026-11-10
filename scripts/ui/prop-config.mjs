@@ -5,7 +5,7 @@ import { CONTENTS, STYLE_CHOICES, propGuesses } from "../engines/props/prop-trai
 const ID = "animater";
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const LABELS = { wood: "Wood", glass: "Glass", clay: "Clay", metal: "Metal", stone: "Stone", none: "Won't break" };
-const CONTENT_LABELS = { none: "Nothing", water: "Water", wine: "Wine", oil: "Oil", grain: "Grain", goods: "Loose goods", books: "Books", potions: "Potions" };
+const CONTENT_LABELS = { none: "Nothing", water: "Water", wine: "Wine", oil: "Oil", grain: "Grain", goods: "Loose goods", books: "Books", potions: "Potions", lampoil: "Lamp oil" };
 const STYLE_LABELS = { shatter: "Shatter", collapse: "Collapse" };
 const options = (list, value) => list.map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("");
 

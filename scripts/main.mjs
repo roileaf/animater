@@ -21,6 +21,7 @@ import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs"
 import { createPropWreckage } from "./engines/props/prop-wreck.mjs";
 import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
+import { BURN_MS, burnLightData, staleFires } from "./engines/props/prop-lights.mjs";
 import { propMaterial } from "./engines/props/prop-material.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propNextToMiss, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
@@ -7157,7 +7158,8 @@ async function requestPropBreak(tile, cause, { from } = {}) {
   // Checked here first, then again by the GM. A plain miss waits for the GM's roll; anything else shows at once.
   const here = validBreakRequest({ cause: clean, note }, { tile: view, walls, scene, grid, sender: game.user, lights, ...await propPlace(clean, scene, grid), roll: 0 });
   if (!here.ok) return false;
-  if (scene === canvas?.scene && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakPropHere(doc, note);
+  // A lit lantern's oil catches here too (the same lights the GM reads), so its flames show at once.
+  if (scene === canvas?.scene && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakPropHere(doc, here.fire ? { ...note, fire: true } : note);
   game.socket.emit(`module.${ID}`, { type: PROP_BREAK_MESSAGE, sender: clientId, sceneId: scene.id, tileId: doc.id, cause: clean, note });
   return true;
 }
@@ -7172,9 +7174,34 @@ async function applyPropBreak(scene, doc, cause, rawNote, user) {
     // The tile is already written: a failed wall batch is only reported.
     if (check.wallUpdates.length) await scene.updateEmbeddedDocuments("Wall", check.wallUpdates).catch((e) => runtime?.trace("props", `walls not opened: ${e?.message ?? e}`));
     if (check.lightUpdates?.length) await scene.updateEmbeddedDocuments("AmbientLight", check.lightUpdates).catch((e) => runtime?.trace("props", `lights not put out: ${e?.message ?? e}`));
+    if (check.fire) await lightPropFire(scene, doc);
     return true;
   } finally { propWriting.delete(doc.id); }
 }
+// Burning lamp oil (GM): one temporary fire light at the broken tile (prop-lights.mjs burnLightData: its glow, the
+// fire-pot loop and smoke; the wreck draws the flames), deleted after BURN_MS. A GM who reloads or leaves first leaves
+// it to the next active GM's sweep (ready, canvasReady); undo and Repair delete it sooner.
+const propFires = new Map(); // tile id -> the timer that puts its fire out
+const forgetPropFire = (tileId) => { clearTimeout(propFires.get(tileId)); propFires.delete(tileId); };
+async function deletePropFires(scene, ids) {
+  const have = (ids ?? []).filter((id) => scene?.lights?.get(id));
+  if (have.length) await scene.deleteEmbeddedDocuments("AmbientLight", have).catch((e) => runtime?.trace("props", `fire lights not deleted: ${e?.message ?? e}`));
+}
+async function lightPropFire(scene, doc) {
+  const r = tileRect(doc), data = burnLightData({ centre: { x: r.x + r.width / 2, y: r.y + r.height / 2 }, distance: Number(scene.grid?.distance) || 5,
+    levels: [...(doc.levels ?? [])], elevation: Number(doc.elevation) || 0, tileId: doc.id, now: Date.now() });
+  const [light] = await scene.createEmbeddedDocuments("AmbientLight", [data]).catch((e) => { runtime?.trace("props", `fire light not made: ${e?.message ?? e}`); return []; });
+  if (!light) return;
+  forgetPropFire(doc.id);
+  propFires.set(doc.id, setTimeout(() => { propFires.delete(doc.id); void deletePropFires(scene, [light.id]); }, BURN_MS));
+}
+// Fire lights whose minute has passed (their GM never put them out).
+function sweepPropFires(scenes) {
+  if (!game.users.activeGM?.isSelf) return;
+  for (const scene of scenes) { try { const ids = staleFires(sceneLights(scene), Date.now()); if (ids.length) void deletePropFires(scene, ids); } catch (e) { runtime?.trace("props", `fire sweep: ${e?.message ?? e}`); } }
+}
+Hooks.once("ready", () => { sweepPropFires(game.scenes?.contents ?? []); });
+Hooks.on("canvasReady", () => { if (canvas?.scene) sweepPropFires([canvas.scene]); });
 async function receivePropBreak(data, senderId) {
   if (data?.type !== PROP_BREAK_MESSAGE || !game.users.activeGM?.isSelf) return;
   const user = senderId ? game.users.get(senderId) : null, scene = game.scenes.get(String(data.sceneId ?? ""));
@@ -7289,6 +7316,8 @@ async function undoPropBreak(doc, { deleted = false } = {}) {
   if (!deleted) await scene.updateEmbeddedDocuments("Tile", [withDeletes(u.tile, del)]);
   if (u.walls.length) await scene.updateEmbeddedDocuments("Wall", u.walls.map((w) => withDeletes(w, del)));
   if (u.lights.length) await scene.updateEmbeddedDocuments("AmbientLight", u.lights).catch((e) => runtime?.trace("props", `lights not relit: ${e?.message ?? e}`));
+  forgetPropFire(doc.id);
+  if (u.deleteLights?.length) await deletePropFires(scene, u.deleteLights);
 }
 // Repair (GM): every broken tile of the scene unhidden and cleared in one tile batch; its walls, and every broken door
 // put back to its own type, state and restrictions (a locked door stays locked), in one wall batch. Prop walls are never
@@ -7300,6 +7329,8 @@ async function repairAllProps(scene = canvas?.scene) {
   if (r.tiles.length) await scene.updateEmbeddedDocuments("Tile", r.tiles.map((t) => withDeletes(t, del)));
   if (wallFixes.length) await scene.updateEmbeddedDocuments("Wall", wallFixes.map((w) => withDeletes(w, del)), { animater: { wallRepair: true }, sound: false });
   if (r.lights.length) await scene.updateEmbeddedDocuments("AmbientLight", r.lights).catch((e) => runtime?.trace("props", `lights not relit: ${e?.message ?? e}`));
+  for (const t of r.tiles) forgetPropFire(t._id);
+  if (r.deleteLights?.length) await deletePropFires(scene, r.deleteLights);
   return r.tiles.length;
 }
 // What breaks props (engines/props/prop-triggers.mjs): an area's damage roll, a missed melee strike, a forced path.

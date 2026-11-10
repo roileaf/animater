@@ -1,7 +1,9 @@
 // Draws a broken prop's wreckage: the ground mark, the spill and splinters (from prop-wreck-layout) and the prop's own
 // art cut into pieces that lie where they landed. One Container per wreck, sorted just above the tile.
 import { bloodArt } from "../motion/blood-art.mjs";
-import { wreckLayout, wreckTargets, collapseDust, spillExtent, GRAIN_TONES, SPINE_COLOURS } from "./prop-wreck-layout.mjs";
+import { wreckLayout, wreckTargets, collapseDust, spillExtent, GRAIN_TONES, SPINE_COLOURS, BURN_DIE_MS } from "./prop-wreck-layout.mjs";
+import { BURN_MS } from "./prop-lights.mjs";
+import { createPropFx } from "./prop-fx.mjs";
 import { propTraits, propGuesses } from "./prop-traits.mjs";
 import { collapseLayout } from "./prop-collapse.mjs";
 import { createPosedPieces, tileFrame } from "./prop-pieces.mjs";
@@ -86,6 +88,7 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
   const wrecks = new Map(); // tile id -> { box, handle, stop }
   const artTextures = new Map(), colours = new Map();
   const posed = createPosedPieces({ PIXI });
+  const fx = createPropFx({ PIXI });
 
   const artTexture = (art, n, color) => {
     const key = `${art}:${n}:${color}`;
@@ -118,6 +121,22 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
   };
 
   const groundMark = (mark, held) => paintMark(PIXI, mark, held);
+
+  // Burning lamp oil (mock scene 4): soft soot under the scorch, always; while it burns (a break seen happening), flames
+  // over the spill with a hot core glow and rising embers, catching just after the break and dying down over the last
+  // BURN_DIE_MS of BURN_MS. The wide glow is the GM's temporary fire light; its smoke and its fire-pot loop come with it.
+  const SCORCH_IN_MS = 12000; // the scorch shows through as the flames die
+  const sootUnder = (fire, cutAngle, marks) => fx.glow(marks, fire.at, fire.r * 1.65, 0x0c0806, { alpha: 0.45, flicker: false, add: false, squash: 0.8, angle: cutAngle });
+  const burning = (fire, box) => {
+    const layer = new PIXI.Container(); layer.zIndex = 2; box.addChild(layer); // over the flying pieces (z 1), as the mock's fire layer
+    const core = fx.glow(layer, fire.at, fire.r * 2, 0xffc060, { alpha: 0.5 });
+    const flames = fx.flames(layer, fire.flames, { end: BURN_MS, dieMs: BURN_DIE_MS });
+    const sparks = fx.embers(layer, fire.embers);
+    return {
+      update(t) { flames.update(t); core.level(flames.heat); core.update(t); sparks.update(t); },
+      destroy() { flames.destroy(); core.destroy(); sparks.destroy(); quiet(() => layer.destroy({ children: true })); },
+    };
+  };
 
   // Spilled books, pages and shards: each a small shape going from the prop's line across the hit (where it stood) to
   // where it lies, with a hop and a shadow under it. paint(g, dark) draws it about (0,0); dark is its shadow.
@@ -286,7 +305,7 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     const d = tile.document ?? tile, id = d.id;
     hide(id);
     const rect = tileRect(d), centre = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
-    const box = new PIXI.Container(), entry = { box, handle: null, stop: null, textures: [] };
+    const box = new PIXI.Container(), entry = { box, handle: null, stop: null, fire: null, textures: [] };
     wrecks.set(id, entry);
     box.sortableChildren = true;
     box.elevation = d.elevation ?? 0; box.sort = (d.sort ?? 0) + 1;
@@ -303,7 +322,8 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     // Furniture that collapses folds into its own boards, with leg stubs, over a dust mark (in place of the plain dust).
     const collapse = note.style === "collapse"
       ? collapseLayout(note, { width: d.width, height: d.height, legs: propGuesses(src).legs, rotation: d.rotation ?? 0, box: paintedBox(d, tones) }) : null;
-    if (!collapse || note.mark !== "dust") marks.addChild(groundMark(layout.mark, entry.textures));
+    const soot = layout.fire ? sootUnder(layout.fire, note.cutAngle, marks) : null;
+    const mark = !collapse || note.mark !== "dust" || layout.fire ? marks.addChild(groundMark(layout.mark, entry.textures)) : null;
     if (collapse) {
       const turn = ((d.rotation ?? 0) * Math.PI) / 180;
       const dust = groundMark(collapseDust({ ...collapse.dust, ...tileToWorld(d, centre, collapse.dust), angle: collapse.dust.angle + turn }, note.seed), entry.textures);
@@ -311,6 +331,8 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     }
     const extent = spillExtent(d.width, d.height, note.cutAngle, d.rotation ?? 0);
     const grow = drawSpill(layout.spill, marks, tones, { over, centre, cutAngle: note.cutAngle, extent }), speckG = drawSpecks(layout.specks, marks, tones);
+    // A fire's scorch burns over the oil it fed on (mock scene 4: the stain goes dark), under the splinters.
+    if (layout.fire) for (const top of [soot?.sprite, mark]) if (top) marks.addChildAt(top, marks.getChildIndex(speckG));
 
     // The prop's art stands in as an unseen sprite drawn the way Foundry draws the tile (fit, texture scale, anchor at
     // the tile's x/y); its pieces fly from it.
@@ -336,19 +358,25 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     }
     const frame = (t) => { entry.handle?.update(t); grow(t); speckG.alpha = Math.min(1, t * 1.5); };
     if (!animate) { frame(1); return; }
+    // A break seen burning: the scorch and its soot come in as the flames die; the wreck's own clock runs on to BURN_MS.
+    const fire = layout.fire ? burning(layout.fire, box) : null;
+    const scorchIn = (ms) => { const u = clamp01((ms - (BURN_MS - SCORCH_IN_MS)) / (SCORCH_IN_MS - 1000)); if (mark) mark.alpha = u; if (soot) soot.sprite.alpha = 0.45 * u; };
+    if (fire) entry.fire = fire;
     // Only a break seen happening is heard; a wreck redrawn on load stays silent. The note's seed gives every screen the same pick.
     try {
       const { file, splash } = propSound(materialOf(d), contents, seededRandom(note.seed));
       playSound(file, centre); if (splash) playSound(splash, centre);
     } catch (error) { console.warn("Animater prop wreckage: no sound", error); }
-    const t0 = performance.now(); let raf = 0;
-    entry.stop = () => { cancelAnimationFrame(raf); entry.stop = null; };
+    const t0 = performance.now(), end = fire ? BURN_MS : FLIGHT_MS; let raf = 0;
+    const done = () => { entry.stop = null; if (entry.fire) { entry.fire.destroy(); entry.fire = null; } };
+    entry.stop = () => { cancelAnimationFrame(raf); done(); };
+    const step = (ms) => { frame(Math.min(1, ms / FLIGHT_MS)); if (fire) { fire.update(ms); scorchIn(ms); } };
     const tick = () => {
-      const t = Math.min(1, (performance.now() - t0) / FLIGHT_MS);
-      frame(t);
-      if (t < 1) raf = requestAnimationFrame(tick); else entry.stop = null;
+      const ms = performance.now() - t0;
+      step(Math.min(ms, end));
+      if (ms < end) raf = requestAnimationFrame(tick); else done();
     };
-    frame(0); raf = requestAnimationFrame(tick);
+    step(0); raf = requestAnimationFrame(tick);
   }
 
   // Draws every hidden tile that has a note and removes the rest; a wreck already drawn is left alone.
@@ -366,6 +394,7 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     for (const id of [...wrecks.keys()]) hide(id);
     for (const t of artTextures.values()) if (t) quiet(() => t.destroy(true));
     artTextures.clear();
+    fx.clear();
   }
 
   return { show, hide, sync, clear };

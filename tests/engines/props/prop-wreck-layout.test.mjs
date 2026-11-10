@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { wreckLayout, wreckTargets, SPILL_FAN, POTION_COLOURS, PAGE_COLOURS, SPINE_COLOURS, collapseDust, spillExtent } from "../../../scripts/engines/props/prop-wreck-layout.mjs";
+import { wreckLayout, wreckTargets, LIQUIDS, SPILL_FAN, POTION_COLOURS, PAGE_COLOURS, SPINE_COLOURS, collapseDust, spillExtent } from "../../../scripts/engines/props/prop-wreck-layout.mjs";
 import { tileToWorld } from "../../../scripts/engines/props/prop-wreck.mjs";
+import { propGuesses } from "../../../scripts/engines/props/prop-traits.mjs";
 import { tileRect } from "../../../scripts/engines/props/prop-geometry.mjs";
 
 const note = { seed: 9, cutAngle: 0.4, pattern: "shards", pieces: 10, spread: 0.32, spin: 120, tint: "scorched", mark: "scorch", from: { x: 0, y: 0 }, walls: [] };
@@ -120,4 +121,40 @@ test("a tile-local point lands where the tile is drawn: turned about its anchor,
     const a = tileToWorld(d, { x: 0, y: 0 }, { x: ax * 120, y: ay * 180 });
     assert.ok(Math.abs(a.x - 400) < 1e-9 && Math.abs(a.y - 250) < 1e-9, "the anchor point stays at the tile's x/y");
   }
+});
+
+// Burning lamp oil (Task 10)
+test("lanterns and lamps hold lamp oil; it spills like oil and a fire leaves a scorch", () => {
+  assert.equal(propGuesses("Lantern_A.webp").contents, "lampoil");
+  const s = wreckLayout({ ...note, fire: true, mark: "scorch" }, { ...at, contents: "lampoil" });
+  assert.equal(s.spill.color, 0x4a3410);
+  assert.equal(s.spill.alpha, LIQUIDS.oil.alpha);
+  assert.equal(s.mark.kind, "scorch");
+  // a fire note scorches whatever its mark said; without fire the mark stands
+  assert.equal(wreckLayout({ ...note, fire: true, mark: "dust" }, { ...at, contents: "lampoil" }).mark.kind, "scorch");
+  assert.equal(wreckLayout({ ...note, mark: "dust" }, { ...at, contents: "lampoil" }).mark.kind, "dust");
+});
+test("a fire note lays out flames over the spill; the rest of the wreck is unchanged by it", () => {
+  const lit = { ...note, mark: "dust", fire: true }, plain = { ...note, mark: "dust" };
+  const a = wreckLayout(lit, { ...at, contents: "lampoil" }), b = wreckLayout(plain, { ...at, contents: "lampoil" });
+  assert.equal(b.fire, null);
+  assert.deepEqual(a.spill, b.spill);
+  assert.deepEqual(a.specks, b.specks);
+  assert.deepEqual(a, wreckLayout(lit, { ...at, contents: "lampoil" }), "seeded");
+  const { flames, embers, at: c } = a.fire;
+  assert.equal(flames.length, 9);
+  for (const f of flames) {
+    assert.ok(f.s >= 14 && f.s <= 26);
+    assert.ok(Math.hypot(f.x - c.x, f.y - c.y) <= 60, "on the spill");
+    assert.ok(f.start >= 0 && f.start <= 600);
+  }
+  // the patch burns where the oil ran: ahead of the hit, not behind the prop
+  assert.ok((c.x - 500) * Math.cos(note.cutAngle) + (c.y - 300) * Math.sin(note.cutAngle) > 0);
+  assert.ok(embers.length >= 200 && embers.every((e) => e.at + e.life <= 60000));
+  // its scorch lies under the patch
+  const pts = a.mark.blobs[0].steps[0].polys.flat(), xs = pts.filter((_, i) => i % 2 === 0), ys = pts.filter((_, i) => i % 2 === 1);
+  const mean = (l) => l.reduce((s, v) => s + v, 0) / l.length;
+  assert.ok(Math.hypot(mean(xs) - c.x, mean(ys) - c.y) < 20);
+  // a fire note on a prop with no oil still scorches, with no flames
+  assert.equal(wreckLayout(lit, { ...at, contents: "none" }).fire, null);
 });
