@@ -2406,7 +2406,7 @@ const decorWeatherNow = () => { try { const g = groundOf().now; return `${snowCo
 const syncDecorations = () => {
   if (!canvas?.ready) return;
   const list = [];
-  if (regionStepsOn()) for (const region of regionsHere()) {
+  for (const region of regionsHere()) {
     try {
       let settings = decorSettings(region.flags?.[ID]?.decor);
       // While the brush paints this region, what it has painted shows at once, before it is saved.
@@ -7999,9 +7999,9 @@ const decorRegionOf = (doc) => {
 const decorRegionsOf = (scene, { breaking = false } = {}) => (scene?.regions?.contents ?? []).filter((doc) => !breaking || doc.flags?.[ID]?.decor?.canBreak === true).map((doc) => { try { return decorRegionOf(doc); } catch { return null; } }).filter(Boolean);
 // One memo of each region's placements and views, shared by the triggers, the GM and the wrecks.
 const decorIndex = createDecorIndex();
-// The decorations a cause on these levels can reach (none while decorations are not drawn at all).
+// The decorations a cause on these levels can reach.
 function decorViews(scene, levels) {
-  if (!propsOn(scene) || !regionStepsOn()) return [];
+  if (!propsOn(scene)) return [];
   return tilesOnLevel(decorTargets(decorRegionsOf(scene, { breaking: true }), propGrid(scene), decorIndex, decorDrawnOn(scene)), levels);
 }
 // Whether a decoration is drawn on this scene's map (decorDrawn): an underground crystal while the world draws cave
@@ -8056,7 +8056,7 @@ const forgetDecorLate = (id) => { clearTimeout(decorLateTimers.get(id)); decorLa
 function syncDecorWrecks(animate = false) {
   if (!canvas?.ready) return;
   const wanted = [], regionOfWreck = new Map(), grid = propGrid(canvas.scene);
-  if (regionStepsOn()) for (const doc of regionsHere()) {
+  for (const doc of regionsHere()) {
     try {
       // Nothing stored, nothing to draw: no placements computed (the painter has its own).
       if (!readDecorBroken(doc.flags?.[ID]?.decorBroken).length) continue;
@@ -8088,7 +8088,7 @@ const decorRedraw = createDecorRedraw({ redraw: ({ cave }) => propSafe("decor re
 const decorRedrawSoon = (regionId, doc = canvas?.scene?.regions?.get(regionId)) => decorRedraw.soon(regionId, { cave: doc?.flags?.[ID]?.decor?.where === "cave" });
 // Broken on this screen the moment it is asked: the decoration goes and its wreck plays. It comes back if the GM never writes it.
 function breakDecorHere(regionDoc, view, note) {
-  if (regionDoc?.parent !== canvas?.scene || !regionStepsOn() || !regionsHere().some((r) => r.id === regionDoc.id)) return;
+  if (regionDoc?.parent !== canvas?.scene || !regionsHere().some((r) => r.id === regionDoc.id)) return;
   const region = decorRegionOf(regionDoc);
   if (!region) return;
   const id = view.id;
@@ -8978,9 +8978,6 @@ Hooks.on("deleteRegion", (doc) => { decorIndex.forget(doc.id); propSafe("decor r
 // A decoration region brought back (an undone delete) with its breaks: their wrecks too.
 Hooks.on("createRegion", (doc) => { if (doc.parent === canvas?.scene && doc.flags?.[ID]?.decorBroken) propSafe("decor wrecks", () => syncDecorWrecks(false)); });
 Hooks.on("canvasReady", () => { propSafe("decor wrecks", () => syncDecorWrecks(false)); });
-// Decorations turned off or on (Region steps, here or for the world): their wrecks follow.
-Hooks.on("updateSetting", (setting) => { if (/\.regionSteps(Local)?$/.test(setting?.key ?? "")) propSafe("decor wrecks", () => syncDecorWrecks(false)); });
-Hooks.on("clientSettingChanged", (key) => { if (/\.regionSteps(Local)?$/.test(String(key ?? ""))) propSafe("decor wrecks", () => syncDecorWrecks(false)); });
 Hooks.on("canvasTearDown", () => {
   for (const t of [...decorPendingTimers.values(), ...decorLateTimers.values()]) clearTimeout(t);
   decorPendingTimers.clear(); decorLateTimers.clear();
