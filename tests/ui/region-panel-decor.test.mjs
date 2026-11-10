@@ -23,11 +23,11 @@ test('an unticked kind keeps its size and amount but scatters nothing', () => {
   assert.deepEqual(Object.keys(s.kinds), ['oak']);
 });
 
-test('the panel saves each control into the region\'s decor flag, and offers the brush', () => {
+test('the panel saves where, how dense and how big, and leaves the kinds to the brush (no list, Reshuffle, Brush, Clear by hand or Trunks)', () => {
   const sections = read('scripts/ui/region-panel-sections.mjs');
   assert.match(sections, /decor: decorSection/);
-  for (const saved of ['decor: { where', 'decor: { density', 'decor: { scale', 'decor: { seed', 'decor: { brushed: \\[\\], erased: \\[\\] }', 'decor: { kinds:']) assert.match(sections, new RegExp(saved));
-  assert.match(sections, /c\.brush\(doc\)/);
+  for (const saved of ['decor: { where', 'decor: { density', 'decor: { scale']) assert.match(sections, new RegExp(saved));
+  for (const gone of ["'Reshuffle'", "'Clear by hand'", "button\\('Brush'", "'Trunks block movement", 'an-rp-decor-kinds', 'decorKindRow']) assert.doesNotMatch(sections, new RegExp(gone));
   const main = read('scripts/main.mjs');
   assert.match(main, /createRegionPanel\(\{ brush: \(doc\) => startDecorBrush\(doc\)/);
   assert.match(main, /decorSettings\(region\.flags\?\.\[ID\]\?\.decor\)/);
