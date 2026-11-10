@@ -75,7 +75,7 @@ test('a room fades the weather in at its edge, half a square unless told', async
   const { indoorEdgeOf, INDOOR_EDGE } = await import('../../../scripts/engines/motion/region-steps.mjs');
   assert.equal(indoorEdgeOf({}), 0.5); assert.equal(indoorEdgeOf({ indoorEdge: 0 }), 0, 'a hard line'); assert.equal(indoorEdgeOf({ indoorEdge: 9 }), INDOOR_EDGE.max);
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
-  assert.match(main, /area\.soft = soft; out\.push\(area\)/);
+  assert.match(main, /area\.soft = soft; areas\.push\(area\)/);
   assert.match(main, /indoorSoft: skyIndoors\.map\(\(p\) => p\.soft \?\? 0\)/);
   assert.match(main, /areas: \{ body: unroofed, bodySoft, rooms, roomSoft,/);
 });

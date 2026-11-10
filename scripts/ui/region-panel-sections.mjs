@@ -5,13 +5,15 @@
 
 import { FLOOR_CHOICES } from '../engines/motion/movement-feel.mjs';
 import { floorBody } from '../engines/motion/floor-shadows.mjs';
-import { WATER_DEPTHS, WATER_TOWARD, waterFlows, waterKindFlags, waterKindOf, DOCK_STYLES, OVER_DARK, OVER_SOFT, castsShadow, dockStyleOf, overShadowChoices, overShadowOf, showsPosts, STEP_EDGE, STEP_SCALE, STEP_STRENGTH, STEP_SPEEDS, TEXTURE_STYLES, textureFloor, textureStyleOf, activeStep, changeStep, setStepSpeed, setStepStrength, stepEdge, stepMenu, stepScale, CAVE_AMOUNT, CAVE_CHOICES, caveKindFlags, caveMenu, INDOOR_EDGE, indoorEdgeOf } from '../engines/motion/region-steps.mjs';
+import { WATER_DEPTHS, WATER_TOWARD, waterFlows, waterKindFlags, waterKindOf, DOCK_STYLES, OVER_DARK, OVER_SOFT, castsShadow, dockStyleOf, overShadowChoices, overShadowOf, showsPosts, STEP_EDGE, STEP_SCALE, STEP_STRENGTH, STEP_SPEEDS, TEXTURE_STYLES, textureFloor, textureStyleOf, activeStep, changeStep, setStepSpeed, setStepStrength, stepEdge, stepMenu, stepScale, TEXTURE_OPACITY, textureOpacity, CAVE_AMOUNT, CAVE_CHOICES, caveKindFlags, caveMenu, INDOOR_EDGE, indoorEdgeOf } from '../engines/motion/region-steps.mjs';
 import { REGION_ANIMAL_GROUPS, ANIMAL_SIZE, animalSizeOf, MOST_HAWKS, MOST_COUNT, regionAnimalCounts } from '../engines/motion/region-animals.mjs';
 import { SKY_WINDOWS, skyWindowOf, WINDOW_PATTERN, patternScaleOf } from '../engines/motion/wall-shadows.mjs';
 import { keepsOut } from '../engines/motion/wildlife.mjs';
 import { REGION_LOOK_FLAG } from '../engines/playback/region-looks.mjs';
 import { choice } from './region-steps-ui.mjs';
 import { ROOM_DRESSING, kindFlags } from './region-panel-model.mjs';
+import { DECOR_IDS, DECOR_KINDS } from '../engines/motion/decor-paint.mjs';
+import { DECOR_DEFAULT_KINDS, freshDecor } from '../engines/motion/decor-regions.mjs';
 // Whether the ground here is built out over water (a dock): on, it shows how it is built, its posts and its shadow.
 const OVER_WATER_TIP = 'Built out over water: a deck, a jetty, a bridge. The water goes on under it; what walks here walks on its boards, and it shows how it is built, its posts and its shadow.';
 
@@ -86,6 +88,8 @@ const ANIMALS_FIRST = { water: ['Water', 'Open ground', 'Farm', 'Town'], ground:
 // The floor's texture style, for the floor the region is on now, and how big its pattern is.
 const styleRow = ({ own, floor, act }) => { const now = textureFloor(own, floor); return row('Texture style', choice(TEXTURE_STYLES[now] ?? [], textureStyleOf(own, now), 'Texture style', (v) => act({ textureStyles: { ...(own.textureStyles ?? {}), [now]: v } }))); };
 const scaleRow = ({ own, act }) => range('Pattern size', STEP_SCALE, stepScale(own), percent, (v) => act({ stepScale: v }), 0.05, 'Smaller for more of it: more panes of glass, more stones.');
+// How much the painted floor covers the map: less lets the map's own picture show through it.
+const opacityRow = ({ own, act }) => range('Texture opacity', TEXTURE_OPACITY, textureOpacity(own), percent, (v) => act({ textureOpacity: v }), 0.05, 'Less lets the map\'s own picture show through the painted floor.');
 const scaleShown = (c) => c.texture(c.own) || stepMenu(c.own, c.floor).strength !== null;
 // Whether it throws a shadow on what is below, which one, and (`fine`, else under a More line) how soft and dark.
 const shadowParts = (c, fine) => {
@@ -98,7 +102,43 @@ const shadowParts = (c, fine) => {
   return [...parts, ...(fine ? more() : c.more('deck', 'More: shadow softness, darkness…', more))];
 };
 
+// Decorations (engines/motion/decorations.mjs): painted rocks, trees, puddles and the rest scattered over the region, all saved in
+// its `decor` flag. Each kind a row: ticked or not, its size and how many, against the region's own density and size.
+const DECOR_RANGE = { density: { min: 0, max: 2 }, scale: { min: 0.3, max: 3 }, size: { min: 0.3, max: 3 }, amount: { min: 0, max: 3 } };
+const times = (v) => `${Math.round(v * 100) / 100}x`;
+const decorKindRow = (id, own, act) => {
+  const k = own.decor?.kinds?.[id], on = !!k && k.off !== true, r = element('div', on ? 'an-rp-decor-kind' : 'an-rp-decor-kind an-rp-off');
+  const box = element('input'); box.type = 'checkbox'; box.checked = on; box.setAttribute('aria-label', DECOR_KINDS[id].label);
+  box.addEventListener('change', () => act({ decor: { kinds: { [id]: { size: k?.size ?? 1, amount: k?.amount ?? 1, off: !box.checked } } } }));
+  const slider = (key, label) => { const s = element('input'); s.type = 'range'; s.min = String(DECOR_RANGE[key].min); s.max = String(DECOR_RANGE[key].max); s.step = '0.05'; s.value = String(k?.[key] ?? 1); s.disabled = !on; s.setAttribute('aria-label', `${DECOR_KINDS[id].label}: ${label}`); tip(s, label); s.addEventListener('change', () => act({ decor: { kinds: { [id]: { size: k?.size ?? 1, amount: k?.amount ?? 1, [key]: Number(s.value), off: false } } } })); return s; };
+  const name = element('label', ''); name.append(box, element('span', '', DECOR_KINDS[id].label));
+  r.append(name, slider('size', 'Size'), slider('amount', 'How many'));
+  return r;
+};
+const decorSection = (c) => {
+  const { own, act, doc } = c, decor = own.decor, on = decor?.on === true, parts = [];
+  parts.push(toggle('Decorations', on, (now) => act({ decor: now ? (decor?.kinds ? { on: true } : freshDecor(c.kind === 'cave' ? 'cave' : 'surface', Math.floor(Math.random() * 1e6))) : { on: false } }), 'Scatters painted rocks, trees, bushes, puddles and more over this region, the same on every screen. They cast shadows from the sun, moon and lights, change with the seasons and the weather, and trees open as a creature walks under them.'));
+  if (!on) return parts;
+  const where = decor.where === 'cave' ? 'cave' : 'surface';
+  parts.push(row('Where', seg([['surface', 'Outdoors'], ['cave', 'Underground']], where, (w) => act({ decor: { where: w, kinds: Object.fromEntries(DECOR_DEFAULT_KINDS[w].filter((id) => !decor.kinds?.[id]).map((id) => [id, { size: 1, amount: 1 }])) } }), 'Where'), 'Which kinds fit: trees and flowers outdoors; stalagmites, glowing mushrooms and cave pools underground.'));
+  parts.push(range('How dense', DECOR_RANGE.density, Number(decor.density ?? 0.6), times, (v) => act({ decor: { density: v } }), 0.05, 'How many decorations the region holds, all kinds together.'));
+  parts.push(range('Size', DECOR_RANGE.scale, Number(decor.scale ?? 1), times, (v) => act({ decor: { scale: v } }), 0.05, 'Every decoration bigger or smaller.'));
+  const buttons = element('div', 'an-rp-buttons');
+  buttons.append(
+    tip(button('Reshuffle', '', () => act({ decor: { seed: (Number(decor.seed) || 0) + 1 } })), 'Scatter them again another way.'),
+    ...(c.brush ? [tip(button('Brush', '', () => c.brush(doc)), 'Paint decorations onto this region by hand with the ticked kinds: drag on the map. Shift-drag rubs out. Right-click or Esc to stop.')] : []),
+    tip(button('Clear by hand', '', () => act({ decor: { brushed: [], erased: [] } })), 'Take away the decorations painted by hand and let the scatter fill the rubbed-out places again.'),
+  );
+  parts.push(buttons);
+  const list = element('div', 'an-rp-decor-kinds');
+  list.append(Object.assign(element('div', 'an-rp-decor-head'), { innerHTML: '<span>Kind</span><span>Size</span><span>How many</span>' }));
+  for (const id of DECOR_IDS) { const set = DECOR_KINDS[id].set; if (set === 'both' || set === where) list.append(decorKindRow(id, own, act)); }
+  parts.push(list);
+  return parts;
+};
+
 export const SECTIONS = {
+  decor: decorSection,
   water(c) {
     const { own, act } = c, kind = waterKindOf(own);
     const parts = [row('Kind', seg(WATER_SHORT, kind, (v) => act(waterKindFlags(own, v)), 'Kind of water'), 'How the water engine moves it, and what it sounds like.', true)];
@@ -132,7 +172,7 @@ export const SECTIONS = {
     parts.push(toggle('Over water', false, (on) => { if (on) c.toFloor(kindFlags('deck', own)); }, OVER_WATER_TIP));
     if (stepMenu(own, floor).grassy) parts.push(toggle('Changes with the seasons', c.season(own), (on) => act({ season: on ? 'on' : 'off' })));
     parts.push(toggle('Floor texture', textured, (on) => act({ texture: on ? 'on' : 'off' }), 'Paint the floor here, over the map.'));
-    if (textured) parts.push(styleRow(c));
+    if (textured) parts.push(styleRow(c), opacityRow(c));
     if (scaleShown(c)) parts.push(scaleRow(c));
     // A raised floor (a stage, a balcony) can throw a shadow too: rarely, so it waits under More.
     parts.push(...c.more('ground', 'More: its shadow…', () => shadowParts(c, true)));
@@ -229,7 +269,7 @@ export const SECTIONS = {
   look(c) {
     const { own, kind, act } = c, groundless = kind !== 'ground' && kind !== 'indoors', parts = [];
     if (groundless && kind !== 'lava') parts.push(toggle('Floor texture', c.texture(own), (on) => act({ texture: on ? 'on' : 'off' }), 'Paint the floor here, over the map.'));
-    if (groundless && c.texture(own)) parts.push(styleRow(c));
+    if (groundless && c.texture(own)) parts.push(styleRow(c), opacityRow(c));
     if (groundless && scaleShown(c)) parts.push(scaleRow(c));
     parts.push(row('Creatures inside', choice([['', 'None'], ...c.presets().map((n) => [n, n])], own[REGION_LOOK_FLAG] ?? '', 'Animater look', (v) => act({ [REGION_LOOK_FLAG]: v })), 'A Tokenshade look every creature inside shows, fading in as they step in: haunted ground, a forge’s warmth, deep water.'));
     if (kind !== 'lava') parts.push(...c.more('look', 'More: soft edge…', () => {

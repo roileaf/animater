@@ -24,6 +24,9 @@ export const STEP_EDGE = Object.freeze({ min: 0.1, max: 3, usual: 1 });
 // How big a region's pattern is, its painted floor and its looks, 1 as painted, smaller for more of it: `stepScale` on the region.
 export const STEP_SCALE = Object.freeze({ min: 0.25, max: 3, usual: 1 });
 export const stepScale = (own) => { const v = own?.stepScale; const n = v === undefined || v === null || v === '' ? NaN : Number(v); return Number.isFinite(n) ? Math.min(STEP_SCALE.max, Math.max(STEP_SCALE.min, n)) : STEP_SCALE.usual; };
+// How much the region's painted floor covers the map under it, 1 solid, less to let the map show through: `textureOpacity` on the region.
+export const TEXTURE_OPACITY = Object.freeze({ min: 0.1, max: 1, usual: 1 });
+export const textureOpacity = (own) => { const v = own?.textureOpacity; const n = v === undefined || v === null || v === '' ? NaN : Number(v); return Number.isFinite(n) ? Math.min(TEXTURE_OPACITY.max, Math.max(TEXTURE_OPACITY.min, n)) : TEXTURE_OPACITY.usual; };
 // How much of its look a step puts down, 1 as painted: `strength` on the step.
 export const STEP_STRENGTH = Object.freeze({ min: 0.1, max: 2, usual: 1 });
 export const stepStrength = (step) => { const v = step?.strength; const n = v === undefined || v === null || v === '' ? NaN : Number(v); return Number.isFinite(n) ? Math.min(STEP_STRENGTH.max, Math.max(STEP_STRENGTH.min, n)) : STEP_STRENGTH.usual; };

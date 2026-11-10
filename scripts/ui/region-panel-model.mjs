@@ -74,13 +74,14 @@ export function kindFlags(kind, own = {}) {
 const TITLES = {
   water: ['fa-water', 'Water'], ground: ['fa-seedling', 'Ground'], cavern: ['fa-gem', 'Cavern'], drips: ['fa-droplet', 'Drips'],
   deck: ['fa-seedling', 'Ground'], steps: ['fa-shoe-prints', 'Steps'], animals: ['fa-paw', 'Animals'], air: ['fa-cloud-sun', 'Air'], look: ['fa-palette', 'Look'],
+  decor: ['fa-tree', 'Decorations'],
 };
 const ORDER = {
   none: [],
   water: ['water', 'steps', 'animals', 'air', 'look'],
-  ground: ['ground', 'animals', 'steps', 'air', 'look'],
+  ground: ['ground', 'decor', 'animals', 'steps', 'air', 'look'],
   indoors: ['ground', 'animals', 'air', 'look'],
-  cave: ['cavern', 'drips', 'air', 'animals'],
+  cave: ['cavern', 'decor', 'drips', 'air', 'animals'],
   deck: ['deck', 'steps', 'look'],
   lava: ['steps', 'air', 'look'],
 };
@@ -93,6 +94,7 @@ const IN_USE = {
   look: (own) => ['texture', 'textureStyles', 'tokenshade', 'stepEdgeOff'].some((k) => set(own[k])) || (own.stepEdge !== undefined && own.stepEdge !== null && own.stepEdge !== ''),
   drips: (own) => ['drips', 'dripPace', 'dripDepth'].some((k) => set(own[k])),
   steps: (own) => !!own.stepsEdited || Number(own.step) > 0 || own.stepHidden === true,
+  decor: (own) => own.decor?.on === true,
 };
 // Sections a kind holds inside another of its own (water's drips sit in its water section).
 const HELD = { water: ['drips'] };
@@ -158,6 +160,11 @@ export function summaryOf(id, own = {}, floor) {
       return m.steps.length ? `${m.steps[m.current] ?? m.steps[0]} (${m.current + 1} of ${m.steps.length})${m.hidden ? ' · hidden' : ''}` : 'None';
     }
     case 'air': return own?.regionWeather ? weatherLabel(own.regionWeather) : 'As the scene';
+    case 'decor': {
+      if (own?.decor?.on !== true) return 'None';
+      const kinds = Object.values(own.decor.kinds ?? {}).filter((k) => k && k.off !== true).length, byHand = (own.decor.brushed ?? []).length;
+      return `${own.decor.where === 'cave' ? 'Underground' : 'Outdoors'}, ${kinds} ${kinds === 1 ? 'kind' : 'kinds'}${byHand ? `, ${byHand} by hand` : ''}`;
+    }
     case 'cavern': {
       const m = caveMenu(own, floor);
       if (!m) return 'Bare';

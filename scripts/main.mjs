@@ -40,14 +40,16 @@ import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./
 import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
 import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
 import { streakLayout } from "./engines/motion/afterimages.mjs";
-import { FLOOR_CHOICES, sceneFloor, regionFloor, floorAt, onWhatStandsOver, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive, footstepReach, FOOTSTEP_RANGES, rainFloor, RAIN_SPLASH_GAIN, markedFloor, snowFloor, frozenFloor } from "./engines/motion/movement-feel.mjs";
+import { FLOOR_CHOICES, sceneFloor, regionFloor, floorAt, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive, footstepReach, FOOTSTEP_RANGES, rainFloor, RAIN_SPLASH_GAIN, markedFloor, snowFloor, frozenFloor } from "./engines/motion/movement-feel.mjs";
+import { planesFrom, surfaceAt, regionsForSurface, weatherSheltered, indoorPolygonsOf, sameSource, levelList, regionsWithPicture } from "./engines/regions/image-plane.mjs";
+import { floorSlot, shadowFloor, TILE_SORT_LAYER, MAP_SORT } from "./engines/motion/floor-slot.mjs";
 import { createMovementFeelLayer } from "./engines/motion/movement-feel-render.mjs";
 import { createBurrowSink, poseMesh, drawnBeforeSink } from "./engines/motion/burrow-sink.mjs";
 import {underwaterPose,underwaterTint} from './engines/motion/underwater-appearance.mjs';
 import { creatureGait, creatureBulk, creatureBody, creatureFlight, printShape } from "./engines/motion/creature-gait.mjs";
 import { movementSoundMix, movementContactWeight, resolveMovementSound, createMovementPreview } from "./engines/motion/movement-profile.mjs";
 import { movementSoundsForm, mountMovementSounds } from "./ui/movement-sounds-config.mjs";
-import { movementSound, movementEnvironment, outOfWater, swimOutWaypoints, shadowFall, standingCopyFall } from "./engines/motion/movement-feel.mjs";
+import { movementSound, movementEnvironment, outOfWater, swimOutWaypoints, shadowFall, standingCopyFall, LIGHT_LUX, skyLux } from "./engines/motion/movement-feel.mjs";
 import { createGroundTrails, bloodColor, sceneWeather, isCold } from "./engines/motion/ground-trails.mjs";
 import { BLOOD_TYPES, tableBlood, creatureBloodType, creatureHasHeart } from "./engines/motion/blood-colors.mjs";
 import { bloodColorsMenu, BLOOD_SETTING } from "./ui/blood-colors-settings.mjs";
@@ -242,7 +244,7 @@ import { THUNDER, weatherLevels, weatherIsOurs, thunderOnTopOf, thunderShape, th
 import { createDoorBursts, doorSends, doorPlace, burstTarget, flockPaths, flockSize } from "./engines/motion/door-burst.mjs";
 import { createFloorBlood, hitMarks, bleedStep, standingDrip, splatMarks, scaleMarks, packMark, unpackMark } from "./engines/motion/floor-blood.mjs";
 import { bakeBlood } from "./engines/motion/blood-bake.mjs";
-import { fallWindAngle, stepScale, waterDepthLook, noLifeOnWater, unfitForLife, waterFlows, waterKindOf, activeStep, floodedByStep, paintsOverWater, showsTexture, stepEdge, stepFlags, stepLook, takesSeason, textureFloor, textureStyleOf, castsShadow, overShadowOf, dockStyleOf, showsPosts, caveLook, indoorEdgeOf } from "./engines/motion/region-steps.mjs";
+import { fallWindAngle, stepScale, textureOpacity, waterDepthLook, noLifeOnWater, unfitForLife, waterFlows, waterKindOf, activeStep, floodedByStep, paintsOverWater, showsTexture, stepEdge, stepFlags, stepLook, takesSeason, textureFloor, textureStyleOf, castsShadow, overShadowOf, dockStyleOf, showsPosts, caveLook, indoorEdgeOf } from "./engines/motion/region-steps.mjs";
 import { createFloorLooks, createFloorTextures, skyForFloors } from "./engines/motion/floor-looks.mjs";
 import { createFloorMotion } from "./engines/motion/floor-motion.mjs";
 import { openStepsWindow, refreshStepsWindow } from "./ui/region-steps-ui.mjs";
@@ -265,6 +267,10 @@ import { createLightFlames, flameUnit, fireKindOf, underTile, tileDrawnAt } from
 import { draftField, sceneOpenings, draftStrength, draftPixels, gustDelays, createSmokeAir, MIST_AIR } from "./engines/motion/indoor-air.mjs";
 import { createCavern, fungusTouches, skylightShare } from "./engines/motion/cavern.mjs";
 import { createWebs, webCorners } from "./engines/motion/webs.mjs";
+import { createDecorations } from "./engines/motion/decorations.mjs";
+import { decorSettings, strokeShapes, circleArea as decorCircle } from "./engines/motion/decor-regions.mjs";
+import { openBrushBar, brushChoices } from "./ui/decor-brush-bar.mjs";
+import { DECOR_KINDS, stampDecor } from "./engines/motion/decor-paint.mjs";
 import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, seasonGround, groundInputs, groundStep, groundMoved, iceHours } from "./engines/motion/ambient-life.mjs";
 import { isFireLight, hazesLight, sparksLight, smokesLight, fireHazeTag, hazeAbove } from "./engines/distortion/fire-haze.mjs";
 import { createFireSmoke, fireSize, SMOKE_FIRES, chimneyOf, chimneyPlume } from "./engines/motion/fire-smoke.mjs";
@@ -1178,13 +1184,75 @@ const sceneFloorNow = () => {
     background: canvas.level?.background?.src ?? "",
   });
 };
+// Foundry's testPoint returns false when the point has no elevation.
+const containsPlane = (region, point) => {
+  const doc = region?.doc ?? region;
+  try {
+    const tree = doc?.polygonTree;
+    if (tree?.testPoint) return tree.testPoint({ x: point.x, y: point.y }) === true;
+    const bottom = Number(doc?.elevation?.bottom);
+    const elevation = Number.isFinite(bottom) ? bottom : 0;
+    return doc.testPoint({ x: point.x, y: point.y, elevation }) === true;
+  } catch { return false; }
+};
+// Footsteps ask once per grid cell, so planes and region views are kept until a tile, region, scene or viewed level changes.
+let floorCache = null;
+const forgetPlanes = () => { floorCache = null; };
+const floorCacheHere = () => {
+  const level = canvas?.level?.id ?? "";
+  if (floorCache?.level !== level) floorCache = { level, planes: null, views: null };
+  return floorCache;
+};
+const planesHere = () => {
+  const cache = floorCacheHere();
+  return (cache.planes ??= buildPlanes());
+};
+const buildPlanes = () => {
+  const sceneRect = canvas?.dimensions?.sceneRect;
+  if (!(sceneRect?.width > 0) || !(sceneRect?.height > 0)) return [];
+  const tiles = [];
+  for (const placeable of canvas?.tiles?.placeables ?? []) {
+    const tile = placeable?.document ?? placeable;
+    if (!tile) continue;
+    tiles.push({
+      id: tile.id ?? tile._id,
+      hidden: tile.hidden === true,
+      levels: levelList(tile.levels),
+      x: tile.x, y: tile.y, width: tile.width, height: tile.height, elevation: tile.elevation, rotation: tile.rotation,
+      texture: { src: tile.texture?.src ?? "", scaleX: tile.texture?.scaleX, scaleY: tile.texture?.scaleY, fit: tile.texture?.fit },
+      restrictions: { light: tile.restrictions?.light === true, weather: tile.restrictions?.weather === true },
+    });
+  }
+  try {
+    return planesFrom({ levelId: canvas.level?.id ?? "", sceneRect, backgroundSrc: canvas.level?.background?.src ?? "", tiles });
+  } catch { return []; }
+};
+// The regions drawn on the map: one traced on a tile that was deleted or hidden draws nothing (its look, shadow, over-water cut) until the tile is back.
+const drawnRegions = () => regionsWithPicture(regionsHere(), planesHere());
+const floorViews = () => {
+  const cache = floorCacheHere();
+  return (cache.views ??= buildFloorViews());
+};
+const buildFloorViews = () => regionsHere().map((doc) => {
+  const own = { ...(doc.flags?.[ID] ?? {}) };
+  const floor = regionFloor({ name: doc.name, flag: floorFlagOf(doc) });
+  if (floor) own.floor = floor;
+  else delete own.floor;
+  return {
+    id: doc.id, name: doc.name, levels: levelList(doc.levels),
+    elevation: doc.elevation == null ? null : { bottom: doc.elevation.bottom ?? null, top: doc.elevation.top ?? null },
+    flags: { [ID]: own }, doc,
+  };
+});
 const movementFeelFloor = (point, token) => {
-  const scene = canvas?.scene, base = sceneFloorNow();
-  // (What stands over the water is walked on, whichever region is listed first.)
-  const regions = regionsHere().map((doc) => ({ name: doc.name, flag: floorFlagOf(doc), doc })).sort((a, b) => (a.doc.flags?.[ID]?.overWater === true ? 1 : 0) - (b.doc.flags?.[ID]?.overWater === true ? 1 : 0));
-  const elevation=Math.max(Number(token?.elevation??0),canvas.level?.elevation?.base??0);
-  // (Below what stands over the water and not swimming: on it, whatever the two heights say.)
-  const ground = floorAt(point, { sceneFloor: base, regions, testPoint: (r, p) => { const bottom = Number(r.doc.elevation?.bottom); return r.doc.testPoint({ x: p.x, y: p.y, elevation: token && r.doc.flags?.[ID]?.overWater === true && onWhatStandsOver({ elevation, bottom, action: token.movementAction }) ? bottom : elevation }); } });
+  const base = sceneFloorNow();
+  const elevation = Math.max(Number(token?.elevation ?? 0), canvas.level?.elevation?.base ?? 0);
+  let regions = [];
+  let ground = base;
+  try {
+    regions = regionsForSurface(floorViews(), { elevation, action: token?.movementAction ?? "", present: !!token });
+    ground = surfaceAt(point, { elevation, regions, planes: planesHere(), contains: containsPlane }).floor ?? base;
+  } catch { }
   // "Spells change the floor": frost, acid, fire and blasts left on the ground change what the creature walks on.
   let floor = ground;
   if (movementFeelSettingOn("marksChangeFloor")) {
@@ -1222,14 +1290,9 @@ const sceneWeatherNow = () => {
 let skyOpenRegions = [], skyOpenAreas = [];
 const openToSkyAt = (point, elevation = 0) => skyOpenRegions.some((region) => { try { return region.testPoint({ x: point.x, y: point.y, elevation }); } catch { return false; } });
 const shelteredAt = (point, elevation = 0) => {
-  if (openToSkyAt(point, elevation)) return false;
-  for (const region of regionsHere()) {
-    try {
-      if (!Array.from(region.behaviors ?? []).some((b) => b.type === "suppressWeather" && !b.disabled)) continue;
-      if (region.testPoint({ x: point.x, y: point.y, elevation })) return true;
-    } catch { /* a broken region never breaks the weather */ }
-  }
-  return false;
+  try {
+    return weatherSheltered(point, { elevation, regions: regionsHere(), planes: planesHere(), contains: containsPlane, openToSky: openToSkyAt(point, elevation) });
+  } catch { return false; }
 };
 const weatherAt = (point, elevation) => { const sky = sceneWeatherNow(); return sky && !shelteredAt(point, elevation) ? sky : null; };
 // Ground trails (engines/motion/ground-trails.mjs): feet that walked through water, mud or snow print the next floor
@@ -1316,10 +1379,11 @@ const flierLight = (t) => {
     const reaching = lightsReaching(t, { own: true });
     const lights = reaching.map((l) => { const one = lightAround(t.center, [l], 1); return one && { ...one, key: l.key, flicker: l.flicker }; })
       .filter(Boolean).sort((a, b) => b.shine - a.shine).slice(0, LIGHT_SHADOWS);
-    // Out of the sun: indoors (a region that keeps the weather out, as for snow and rain) wholly; else in a wall's
-    // shade (walls cast shadows in sunlight), standing or flying no higher than the wall.
     const up = ((Number(t.document?.elevation) || 0) - (Number(canvas.level?.elevation?.bottom) || 0)) / (Number(canvas.grid?.distance) || 1);
-    const shade = shelteredAt(t.center, t.document?.elevation ?? 0) ? 1 : wallQuads.length ? shadeAcross(t.center, t.w, wallQuads, { elevation: up }) : 0;
+    const elev = t.document?.elevation ?? 0;
+    let blocked = false;
+    try { blocked = surfaceAt(t.center, { elevation: elev, regions: regionsHere(), planes: planesHere(), contains: containsPlane }).blocksLight === true; } catch { blocked = false; }
+    const shade = shelteredAt(t.center, elev) || blocked ? 1 : wallQuads.length ? shadeAcross(t.center, t.w, wallQuads, { elevation: up }) : 0;
     // In the pool of light under an opening to the sky, the sun or moon casts its shadow, even underground (where no
     // sun reaches anywhere else): as strong as the pool is there, and that light lifts the darkness.
     const opened = skyOpenings.length ? skylightNow(canvas.grid.size) : null, open = opened ? skylightShare(t.center, skyOpenings, opened.shift, { grid: canvas.grid.size, inside: pointInPolygon }) : 0;
@@ -1671,18 +1735,13 @@ const landedOpenings = () => {
     return Object.assign(p.map((v, i) => v + (i % 2 ? s[1] : s[0])), { soft: p.soft, window: p.window });
   });
 };
-const indoorPolygons = () => {
-  const out = [];
-  for (const region of regionsHere()) {
-    try {
-      if (!Array.from(region.behaviors ?? []).some((b) => b.type === "suppressWeather" && !b.disabled)) continue;
-      // Each with how far the weather fades in at its edge.
-      const soft = indoorEdgeOf(region.flags?.[ID]);
-      for (const area of regionAreas(region)) { area.soft = soft; out.push(area); }
-    } catch { /* a broken region never breaks the shadows */ }
-  }
-  return out;
-};
+const indoorPolygons = () => indoorPolygonsOf(regionsHere(), (region) => {
+  // Each with how far the weather fades in at its edge.
+  const soft = indoorEdgeOf(region.flags?.[ID]);
+  const areas = [];
+  for (const area of regionAreas(region)) { area.soft = soft; areas.push(area); }
+  return areas;
+});
 const rebuildWallShadows = () => {
   wallShadowTimer = null;
   try {
@@ -2202,7 +2261,7 @@ const weatherNow = () => {
 };
 // The light past the tiles and over the ground follows the sun as soon as it is known (a calendar ready after the
 // canvas, a new hour), not only when the walls' shadows are next rebuilt.
-const lookSunlit = () => { if (!canvas?.ready) return; try { lookCanopy(); lookSky(); } catch { /* not built yet */ } };
+const lookSunlit = () => { if (!canvas?.ready) return; try { lookCanopy(); lookSky(); } catch { /* not built yet */ } try { syncDecorations(); } catch { /* not built yet */ } };
 const lookCanopy = () => {
   try {
     const weather = weatherNow(), leaves = leavesOn() ? leavesOf({ season: seasonNow(), wind: weather.wind }) : null;
@@ -2224,7 +2283,8 @@ const heightOf = (tiles, usual) => {
 const rebuildCanopy = () => {
   try {
     if (!canvas?.ready || (!canopyOn() && !roofLightOn() && !leavesOn())) { canopyLight.clear(); return; }
-    const { tree, roof } = sunlitTiles(), trees = canopyOn() || leavesOn() ? tree : [], roofs = roofLightOn() && !shadowsOffHere() ? roof : [];
+    // (The decorations' trees with the tiles': the same shade, flecks and falling leaves.)
+    const { tree, roof } = sunlitTiles(), trees = canopyOn() || leavesOn() ? [...tree, ...decorations.trees()] : [], roofs = roofLightOn() && !shadowsOffHere() ? roof : [];
     canopyHeight = heightOf(trees, 3); roofHeight = heightOf(roofs, 4);
     canopySunKey = sunKeyOf(sunNow);
     let water = []; try { water = surfacesHere().water; } catch { /* no flecks kept off */ }
@@ -2283,32 +2343,270 @@ const floorLayer = (key, sortLayer) => {
 const ratRootOf = floorLayer("rats", 660), dripRootOf = floorLayer("drips", 646), smokeRootOf = floorLayer("roomSmoke", 760);
 // A region's steps (engines/motion/region-steps.mjs): the look on its floor, and the GM's menu on a right-click on the map.
 // The floor layers lie on the map under its tiles (tiles sort at 500), so a bush or a tree stands over blood on the ground.
-const floorLooks = createFloorLooks({ PIXI: globalThis.PIXI, root: floorLayer("floorLooks", 410), renderer: () => canvas.app.renderer, grid: () => canvas.grid?.size ?? 100, pixels: (texture) => canvas.app.renderer.extract.pixels(texture), render: (object, renderTexture, clear, transform) => canvas.app.renderer.render(object, { renderTexture, clear, transform }) });
-const floorTextures = createFloorTextures({ PIXI: globalThis.PIXI, root: floorLayer("floorTextures", 400), grid: () => canvas.grid?.size ?? 100, pixels: (texture) => canvas.app.renderer.extract.pixels(texture), render: (object, renderTexture, clear, transform) => canvas.app.renderer.render(object, { renderTexture, clear, transform }), renderer: () => canvas.app.renderer, tileReady: () => { const moving = movingWaterList(); syncMovingWater(moving); syncFloorShadows(moving); }, tileSize: () => floorLevel.tile ?? 1024 });
+const floorTileBoxes = new Map();
+const dropTileBoxes = () => {
+  for (const box of floorTileBoxes.values()) {
+    try { box.parent?.removeChild(box); box.destroy({ children: true }); } catch { /* gone */ }
+  }
+  floorTileBoxes.clear();
+};
+const floorDrawRoot = (kind) => {
+  const map = floorLayer(kind, MAP_SORT[kind]);
+  return (spec) => {
+    const slot = floorSlot(spec?.plane, kind);
+    if (!slot || slot.sortLayer !== TILE_SORT_LAYER) return map();
+    const id = String(spec.plane.id.tileId);
+    let box = floorTileBoxes.get(id);
+    if (!box || box.destroyed) {
+      box = new PIXI.Container();
+      box.eventMode = "none";
+      box.sortableChildren = true;
+      canvas.primary.addChild(box);
+      floorTileBoxes.set(id, box);
+    }
+    box.elevation = slot.elevation;
+    box.sortLayer = slot.sortLayer;
+    box.sort = slot.sort;
+    return box;
+  };
+};
+const floorLooks = createFloorLooks({ PIXI: globalThis.PIXI, root: floorDrawRoot("floorLooks"), renderer: () => canvas.app.renderer, grid: () => canvas.grid?.size ?? 100, pixels: (texture) => canvas.app.renderer.extract.pixels(texture), render: (object, renderTexture, clear, transform) => canvas.app.renderer.render(object, { renderTexture, clear, transform }) });
+const floorTextures = createFloorTextures({ PIXI: globalThis.PIXI, root: floorDrawRoot("floorTextures"), grid: () => canvas.grid?.size ?? 100, pixels: (texture) => canvas.app.renderer.extract.pixels(texture), render: (object, renderTexture, clear, transform) => canvas.app.renderer.render(object, { renderTexture, clear, transform }), renderer: () => canvas.app.renderer, tileReady: () => { const moving = movingWaterList(); syncMovingWater(moving); syncFloorShadows(moving); }, tileSize: () => floorLevel.tile ?? 1024 });
 // Where the creatures are drawn now, for the grass they walk through.
 const tokensOnFloor = () => { const out = []; for (const t of canvas.tokens?.placeables ?? []) { if (!t.visible || !t.actor || t.document?.hidden) continue; const at = t.mesh?.position ?? t.center; out.push({ id: t.id, x: at.x, y: at.y, width: t.w }); } return out; };
 const floorMotion = createFloorMotion({ PIXI: globalThis.PIXI, root: floorLayer("floorMotion", 420), grid: () => canvas.grid?.size ?? 100 });
+// Decorations (engines/motion/decorations.mjs): each region's painted rocks, trees, puddles and the rest (the region's right-click
+// panel → Decorations). Their shadows and they themselves on the ground, over the tiles (a rock on a painted rug) and under the
+// creatures; the trees' crowns over the creatures, opening round one beneath.
+// (Flat ones, moss and a puddle's mud, lie under the sky's lying snow, at 641; the rest stand over it, with their own snow.)
+const decorations = createDecorations({ PIXI: globalThis.PIXI, flat: floorLayer("decorFlat", 641), shadows: floorLayer("decorShadows", 651), ground: floorLayer("decorations", 655), above: floorLayer("decorCrowns", 740), grid: () => canvas.grid?.size ?? 100, render: (object, renderTexture) => canvas.app.renderer.render(object, { renderTexture, clear: true }) });
+// A puddle's water colour: dark, peaty teal (a painted water floor's is a lake's, too pale and clear for a puddle on grass).
+let pondBedTexture = null;
+const decorPondBed = () => { if (!pondBedTexture || pondBedTexture.baseTexture?.destroyed) pondBedTexture = PIXI.Texture.fromBuffer(new Uint8Array([24, 58, 56, 255]), 1, 1); return pondBedTexture; };
+// What a region's decorations look like now: the season, rain and lying snow, night (what glows), underground.
+const decorLook = (settings) => { const soaked = groundOf().now, darkness = Number(canvas.environment?.darknessLevel) || 0; return { season: seasonNow() ?? "summer", wet: wetOn() && soaked.wet > 0.4 ? 1 : 0, snow: snowCoverOn() && settings.where !== "cave" ? Math.round((soaked.snow ?? 0) * 4) / 4 : 0, night: darkness > 0.6 || settings.where === "cave", cave: settings.where === "cave" }; };
+let decorTreesKey = "", decorLampsAt = 0;
+const syncDecorations = () => {
+  if (!canvas?.ready) return;
+  const list = [];
+  if (regionStepsOn()) for (const region of regionsHere()) {
+    try {
+      let settings = decorSettings(region.flags?.[ID]?.decor);
+      // While the brush paints this region, what it has painted shows at once, before it is saved.
+      if (settings && decorBrushing?.id === region.id) settings = { ...settings, brushed: decorBrushing.brushed, erased: decorBrushing.erased };
+      if (settings) list.push({ id: region.id, settings, areas: regionAreas(region), look: decorLook(settings) });
+    } catch { /* a broken region never breaks the rest */ }
+  }
+  // A stroke on open ground, before its region is made: what it has painted, within the circles it has swept.
+  if (decorBrushing?.id === NEW_DECOR_REGION && decorBrushing.circles.length) {
+    const settings = { where: decorBrushing.fresh.where, kinds: {}, density: 0, scale: 1, seed: 1, brushed: decorBrushing.brushed, erased: [] };
+    list.push({ id: NEW_DECOR_REGION, settings, areas: decorBrushing.circles.map(([x, y, r]) => decorCircle(x, y, r)), look: decorLook(settings) });
+  }
+  decorations.sync(list);
+  lightDecorations();
+  // Their trees join the canopy's shade: built again when they change.
+  const key = JSON.stringify(decorations.trees().map((t) => [t.id, t.kind, Math.round(t.x), Math.round(t.y)]));
+  if (key !== decorTreesKey) { decorTreesKey = key; try { canopySoon(); } catch { /* not ready */ } }
+};
+// The decorations brush: paints decorations by hand, each dab a few within its circle, kept off what already stands there.
+// From a region's Decorations section (Brush) it paints that region's ticked kinds into it. From the Decorations tool in
+// Animater's controls it paints the kinds ticked on its bar (ui/decor-brush-bar.mjs): into the region a stroke starts in, when
+// that one has decorations on, or, starting on open ground, into a new region drawn round the stroke as it goes. Shift-drag
+// rubs out (the scatter leaves those places bare). What a stroke paints shows at once and is saved when it ends.
+// [ and ] make the brush smaller or bigger; right-click or Esc stops.
+let decorBrushing = null;
+const NEW_DECOR_REGION = "animater-decor-new";
+const DECOR_BRUSH = { min: 0.5, max: 6, usual: 1.5 };
+const decorBrushTarget = (p) => regionsHere().find((r) => decorSettings(r.flags?.[ID]?.decor) && regionPointIn(p, regionAreas(r)));
+const startDecorBrush = (doc = null) => {
+  stopDecorBrush();
+  if (!canvas?.ready || !game.user?.isGM) return;
+  const view = canvas.app.view, ring = new PIXI.Graphics(), grid = () => canvas.grid.size;
+  // A ghost of what the next click lays, under the ring, following the pointer and changing as the bar's choices change.
+  const ghost = new PIXI.Container(); ghost.eventMode = "none"; ghost.alpha = 0.55;
+  ring.eventMode = "none"; floorLayer("decorBrush", 1102)().addChild(ghost, ring);
+  const state = decorBrushing = { id: null, doc: null, brushed: [], erased: [], circles: [], fresh: null, size: DECOR_BRUSH.usual, down: false, last: null, at: null, seed: Date.now() % 1e6, ring, ghost, ghostKey: null, ghostItems: [], ghostSeed: Date.now() % 1e5, bar: null };
+  // A region's own brush shows the bar too, with only its place and its ticked kinds; either way it paints one kind at a time.
+  const own = doc ? decorSettings(doc.flags?.[ID]?.decor) : null;
+  const region = own ? { name: doc.name, where: own.where, kinds: Object.keys(own.kinds).filter((id) => DECOR_KINDS[id] && (DECOR_KINDS[id].set === "both" || DECOR_KINDS[id].set === own.where)) } : null;
+  state.bar = openBrushBar({ onClose: () => stopDecorBrush(), onChange: () => draw(), region });
+  const sizeNow = () => brushChoices().size;
+  const at = (e) => { const p = canvas.canvasCoordinatesFromClient?.({ x: e.clientX, y: e.clientY }) ?? canvas.stage.toLocal({ x: e.clientX, y: e.clientY }); return { x: p.x, y: p.y }; };
+  // The ghost: one dab's worth laid out round the pointer (the very ones a click puts down), drawn again only when the choices change.
+  const refreshGhost = () => {
+    const radius = (sizeNow() * grid()) / 2, using = paintWith(), key = JSON.stringify([using, radius, state.ghostSeed]);
+    if (key === state.ghostKey) return;
+    state.ghostKey = key;
+    for (const c of ghost.removeChildren()) { try { c.destroy(); } catch { /* gone */ } }
+    const placed = [];
+    for (let i = 0, n = dabCount(using.density); i < n; i++) { const d = stampDecor({ x: 0, y: 0, radius, grid: grid(), kinds: using.kinds, seed: state.ghostSeed * 131 + i * 7919, existing: placed, scale: using.scale }); if (d) placed.push(d); }
+    state.ghostItems = placed;
+    const look = decorLook({ where: brushChoices().where });
+    for (const d of [...placed].sort((a, b) => (DECOR_KINDS[a.kind].flat ? 0 : 1) - (DECOR_KINDS[b.kind].flat ? 0 : 1) || a.size - b.size)) { const s = decorations.sprite(d, look); if (s) ghost.addChild(s); }
+  };
+  const draw = () => {
+    ring.clear();
+    const showGhost = !!state.at && !state.down && !state.erasing; ghost.visible = showGhost;
+    if (!state.at) return;
+    if (showGhost) { refreshGhost(); ghost.position.set(state.at.x, state.at.y); }
+    ring.lineStyle(2, state.erasing ? 0xff7a64 : 0xffffff, 0.9); ring.drawCircle(state.at.x, state.at.y, (sizeNow() * grid()) / 2);
+  };
+  // Where a stroke goes: the region the brush was opened on; else the region it starts in; else a new one round it.
+  const begin = (p) => {
+    const target = doc ?? decorBrushTarget(p);
+    if (target) { const s = decorSettings(target.flags?.[ID]?.decor) ?? { brushed: [], erased: [] }; Object.assign(state, { id: target.id, doc: target, brushed: [...s.brushed], erased: [...s.erased], circles: [], fresh: null }); }
+    else { const c = brushChoices(); Object.assign(state, { id: NEW_DECOR_REGION, doc: null, brushed: [], erased: [], circles: [], fresh: { where: c.where, kinds: Object.fromEntries(c.kinds.map((k) => [k, { size: 1, amount: 1 }])) } }); }
+  };
+  const paintWith = () => {
+    // The kind picked on the bar; into a region, at that kind's own size there and the region's size.
+    const c = brushChoices(), s = decorSettings((state.doc ?? doc)?.flags?.[ID]?.decor);
+    return { kinds: c.kinds.filter((id) => DECOR_KINDS[id]).map((id) => ({ id, size: s?.kinds?.[id]?.size ?? 1, amount: 1 })), density: c.thick, scale: c.scale * (s?.scale ?? 1) };
+  };
+  const dabCount = (density) => Math.max(1, Math.round(sizeNow() * Math.max(0.2, density) * 1.5));
+  const dab = (p, erase, first = false) => {
+    const radius = (sizeNow() * grid()) / 2;
+    if (erase) { state.brushed = state.brushed.filter((b) => (b.x - p.x) ** 2 + (b.y - p.y) ** 2 > radius * radius); if (state.doc) state.erased.push([Math.round(p.x), Math.round(p.y), Math.round(radius)]); }
+    else {
+      if (!state.doc) state.circles.push([Math.round(p.x), Math.round(p.y), Math.round(radius)]);
+      const areas = state.doc ? regionAreas(state.doc) : null, { kinds, density, scale } = paintWith();
+      // A click lays exactly what its ghost showed; then a new ghost is dealt for the next.
+      if (first && state.ghostItems.length) { for (const g of state.ghostItems) { const d = { ...g, x: Math.round(p.x + g.x), y: Math.round(p.y + g.y), seed: (g.seed ^ state.seed++) >>> 0 }; if (!areas || regionPointIn(d, areas)) state.brushed.push(d); } state.ghostSeed++; }
+      else for (let i = 0, n = dabCount(density); i < n; i++) { const d = stampDecor({ x: p.x, y: p.y, radius, grid: grid(), kinds, seed: state.seed++, existing: state.brushed, scale }); if (d && (!areas || regionPointIn(d, areas))) state.brushed.push(d); }
+    }
+    syncDecorations();
+  };
+  const finish = async () => {
+    const { doc: target, brushed, erased, circles, fresh } = state;
+    try {
+      if (target) {
+        // What it held before the stroke, for Ctrl+Z.
+        const before = decorSettings(target.flags?.[ID]?.decor) ?? { brushed: [], erased: [] }, after = { brushed: brushed.slice(-600), erased: erased.slice(-400) };
+        await target.update({ flags: { [ID]: { decor: after } } }, { render: false });
+        rememberDecorStep({ kind: "edit", id: target.id, before: { brushed: before.brushed, erased: before.erased }, after });
+      } else if (circles.length && brushed.length) {
+        const data = { name: "Decorations", color: "#7a9a4a", shapes: strokeShapes(circles), flags: { [ID]: { decor: { on: true, where: fresh.where, density: 0, scale: 1, seed: state.seed, kinds: fresh.kinds, brushed: brushed.slice(-600), erased: [] } } } };
+        const [made] = await canvas.scene.createEmbeddedDocuments("Region", [data]);
+        if (made) rememberDecorStep({ kind: "create", id: made.id, data });
+      }
+    } catch (err) { console.warn("Animater | decorations brush", err); ui.notifications?.warn?.("The decorations could not be saved."); }
+    if (decorBrushing === state) Object.assign(state, { id: null, doc: null, brushed: [], erased: [], circles: [], fresh: null });
+  };
+  // (A right-drag pans the map as ever; only a right-click that stays put stops the brush.)
+  // (Heard on the window before Foundry's canvas hears them, and kept from it while painting, so a stroke never draws
+  // Foundry's drag-select box or selects what it passes over.)
+  const down = (e) => { if (e.target !== view) return; if (e.button === 2) { state.rightAt = { x: e.clientX, y: e.clientY }; return; } if (e.button !== 0) return; e.stopImmediatePropagation(); e.preventDefault(); const p = at(e); begin(p); state.down = true; state.erasing = e.shiftKey; state.last = p; draw(); dab(p, e.shiftKey, true); };
+  const move = (e) => { if (!state.down && e.target !== view) return; const p = at(e); state.at = p; state.erasing = e.shiftKey; draw(); if (!state.down) return; e.stopImmediatePropagation(); if (Math.hypot(p.x - state.last.x, p.y - state.last.y) > sizeNow() * grid() * 0.35) { state.last = p; dab(p, e.shiftKey); } };
+  const up = (e) => { if (!state.down) return; e.stopImmediatePropagation(); state.down = false; draw(); void finish(); };
+  const key = (e) => {
+    if (e.target?.closest?.("input, textarea")) return;
+    // Ctrl+Z takes back the last stroke, Ctrl+Shift+Z or Ctrl+Y puts it back (Foundry's own undo waits while the brush is out).
+    const z = e.key === "z" || e.key === "Z", undo = (e.ctrlKey || e.metaKey) && z && !e.shiftKey, redo = (e.ctrlKey || e.metaKey) && ((z && e.shiftKey) || e.key === "y" || e.key === "Y");
+    if (undo || redo) { e.preventDefault(); e.stopImmediatePropagation(); if (!state.down) void (undo ? undoDecorStep() : redoDecorStep()); return; }
+    if (e.key === "Escape") stopDecorBrush();
+    else if (e.key === "[" || e.key === "]") { const next = Math.min(DECOR_BRUSH.max, Math.max(DECOR_BRUSH.min, sizeNow() + (e.key === "]" ? 0.5 : -0.5))); state.bar?.setSize(next); draw(); }
+  };
+  // The wheel still zooms the map; Ctrl+wheel sets the brush's size and Shift+wheel how thick it lays them (both kept from
+  // Foundry, whose Ctrl or Shift+wheel would turn the selected tokens).
+  const wheel = (e) => {
+    if (e.target !== view || !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey)) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    const up = (e.deltaY || e.deltaX) < 0;
+    if (e.altKey && !(e.ctrlKey || e.metaKey || e.shiftKey)) state.bar?.setScale(brushChoices().scale + (up ? 0.1 : -0.1));
+    else if (e.shiftKey && !(e.ctrlKey || e.metaKey)) { state.bar?.setThick(brushChoices().thick + (up ? 0.1 : -0.1)); }
+    else { const next = Math.min(DECOR_BRUSH.max, Math.max(DECOR_BRUSH.min, sizeNow() + (up ? 0.5 : -0.5))); state.bar?.setSize(next); }
+    draw();
+  };
+  const menu = (e) => { const from = state.rightAt; state.rightAt = null; if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > 6) return; e.preventDefault(); stopDecorBrush(); };
+  window.addEventListener("pointerdown", down, true); window.addEventListener("pointermove", move, true); window.addEventListener("pointerup", up, true); window.addEventListener("keydown", key, true); view.addEventListener("contextmenu", menu, true); window.addEventListener("wheel", wheel, { capture: true, passive: false });
+  state.stop = () => { window.removeEventListener("pointerdown", down, true); window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", key, true); view.removeEventListener("contextmenu", menu, true); window.removeEventListener("wheel", wheel, { capture: true }); try { ring.destroy(); ghost.destroy({ children: true }); } catch { /* gone */ } state.bar?.close(); };
+};
+const stopDecorBrush = () => { const s = decorBrushing; decorBrushing = null; if (s) { s.stop?.(); syncDecorations(); } };
+// The brush's strokes, to take back and put back (this screen, this scene, the last 30): a stroke into a region (what it held
+// before and after) or one that made a new region (taken back, the region goes; put back, it is made again).
+const decorSteps = { undo: [], redo: [] };
+const rememberDecorStep = (step) => { decorSteps.undo.push(step); if (decorSteps.undo.length > 30) decorSteps.undo.shift(); decorSteps.redo = []; };
+const decorRegion = (id) => canvas.scene?.regions?.get(id) ?? null;
+const undoDecorStep = async () => {
+  const step = decorSteps.undo.pop(); if (!step) { ui.notifications?.info?.("No brush stroke to take back."); return; }
+  try {
+    if (step.kind === "edit") await decorRegion(step.id)?.update({ flags: { [ID]: { decor: step.before } } }, { render: false });
+    else await decorRegion(step.id)?.delete();
+    decorSteps.redo.push(step);
+  } catch (err) { console.warn("Animater | decorations undo", err); }
+};
+const redoDecorStep = async () => {
+  const step = decorSteps.redo.pop(); if (!step) return;
+  try {
+    if (step.kind === "edit") await decorRegion(step.id)?.update({ flags: { [ID]: { decor: step.after } } }, { render: false });
+    else { const [made] = await canvas.scene.createEmbeddedDocuments("Region", [step.data]); if (made) step.id = made.id; }
+    decorSteps.undo.push(step);
+  } catch (err) { console.warn("Animater | decorations redo", err); }
+};
+Hooks.on("canvasTearDown", () => { stopDecorBrush(); decorSteps.undo = []; decorSteps.redo = []; });
+const regionPointIn = (p, areas) => areas.some((a) => pointInPolygon(p, a) && !(a.holes ?? []).some((h) => pointInPolygon(p, h)));
+// The sun or moon aims their shadows: away from it, as long as it is low.
+const lightDecorations = () => {
+  if (!decorations.busy) return;
+  const sun = sunNow && !shadowsOffHere() ? { angle: (((Number(sunNow.angle) || 0) + 180) * Math.PI) / 180, length: Math.min(3, 1 / Math.tan((Math.max(6, Number(sunNow.height) || 55) * Math.PI) / 180)), strength: (Number.isFinite(Number(sunNow.strength)) ? Math.max(0, Math.min(1, Number(sunNow.strength))) : 1) * directSun(skyCoverNow) } : null;
+  // (The snow on them is the ground's: as much as lies, lit by the same sun or moon.)
+  let snowAmount = 0; try { snowAmount = snowCoverOn() ? Number(groundOf().now.snow) || 0 : 0; } catch { /* none */ }
+  decorations.light({ sun, treesByCanopy: canopyOn() && !!canopyLight.treeShade, snowAmount: undergroundScene() ? 0 : snowAmount, moon: !!sunNow?.moon });
+};
 // Where the sun and moon reach, for all that answers them.
 const sunReachNow = () => { const r = canvas.dimensions?.sceneRect; return r ? { sunlit: wallShadows.sunlit?.texture ?? globalThis.PIXI.Texture.WHITE, trees: canopyLight.treeShade ?? globalThis.PIXI.Texture.EMPTY, rect: [r.x, r.y, r.width, r.height] } : null; };
 const plainFloorOf = (region) => regionFloor({ name: region.name, flag: plainFloorFlag(region.flags?.[ID] ?? {}) });
 // The lit lights the floors answer: what is out by day is not active, and the scene's overall light is no flame.
-const floorLightSources = () => { const out = []; for (const s of canvas.effects?.lightSources ?? []) { if (!s.active || s.sourceId === "globalLight" || s.isDarkness) continue; out.push({ x: s.x, y: s.y, radius: s.radius || s.data?.dim || 0, color: s.colorRGB ?? null, strength: 1 }); } return out; };
+// The lights the floors, water and snow answer. Each as strong as it really is against the sky there (movement-feel.mjs
+// LIGHT_LUX): a torch is nothing beside the noon sun, shows from dusk and is all the light by night; under a roof, where
+// daylight does not reach, always its whole.
+const lampAgainstSky = (x, y) => { let dark = Number(canvas.environment?.darknessLevel) || 0; try { dark = canvas.effects?.getDarknessLevel?.({ x, y }, canvas.level?.elevation?.base ?? 0) ?? dark; } catch { /* the scene's */ } return LIGHT_LUX.lamp / (LIGHT_LUX.lamp + skyLux(dark)); };
+const floorLightSources = () => { const out = []; for (const s of canvas.effects?.lightSources ?? []) { if (!s.active || s.sourceId === "globalLight" || s.isDarkness) continue; let strength = 1; try { strength = underCeiling({ x: s.x, y: s.y }) ? 1 : lampAgainstSky(s.x, s.y); } catch { /* whole */ } out.push({ x: s.x, y: s.y, radius: s.radius || s.data?.dim || 0, color: s.colorRGB ?? null, strength }); } return out; };
 // Whether a region's middle is under a roof, where the sun and moon don't reach.
 const roofedRegion = (areas) => { let x = 0, y = 0, n = 0; for (const area of areas) for (let i = 0; i + 1 < area.length; i += 2) { x += area[i]; y += area[i + 1]; n++; } return n > 0 && underCeiling({ x: x / n, y: y / n }); };
 // What this screen's quality level (core/quality.mjs) leaves of the floors, kept for the frame's tick.
 let floorLevel = floorDetail("full");
 let fallsWindNow = null;
 const regionStepsOn = () => { try { return hotSetting("regionSteps") !== false && hotSetting("regionStepsLocal") !== false; } catch { return false; } };
+const tileDocumentSort = (tileId) => {
+  const id = String(tileId);
+  for (const placeable of canvas?.tiles?.placeables ?? []) {
+    const tile = placeable?.document ?? placeable;
+    if (String(tile?.id ?? tile?._id ?? "") !== id) continue;
+    const sort = Number(tile.sort);
+    return Number.isFinite(sort) ? sort : 0;
+  }
+  return 0;
+};
+const planeOfRegion = (region) => {
+  const source = region?.flags?.[ID]?.imageRegion?.source;
+  if (!source) return null;
+  return planesHere().find((plane) => sameSource(plane.id, source)) ?? null;
+};
+const withSort = (plane) => {
+  if (!plane || plane.id?.kind !== "tile") return null;
+  return { id: plane.id, role: plane.role, elevation: plane.elevation, sort: tileDocumentSort(plane.id.tileId) };
+};
+const floorPlaneOf = (plane) => (plane?.role === "floor" && plane.id?.kind === "tile" ? withSort(plane) : null);
 const syncFloorLooks = () => {
   if (!canvas?.ready) return;
   floorLevel = floorDetail(localQuality());
+  // (First, so the puddles among them are in the moving water below.)
+  try { syncDecorations(); } catch (err) { console.warn("Animater | decorations", err); }
   const list = [];
   if (floorLevel.show && regionStepsOn()) for (const region of regionsHere()) {
-    try { const own = region.flags?.[ID], floor = plainFloorOf(region); if (floor && Array.isArray(own?.steps)) {
+    try {
+      const own = region.flags?.[ID], bound = planeOfRegion(region);
+      if (own?.imageRegion?.source?.kind === "tile" && bound?.role !== "floor") continue;
+      const floor = plainFloorOf(region);
+      if (floor && Array.isArray(own?.steps)) {
         const flags = stepFlags(own) ?? {}, seaHere = floor === "water" && waterKindOf(flags) === "sea" && !flags.sea && movingWaterOn() && own.seaBeach !== "off";
         // A look on a sea moving water draws stops at its waterline, leaving the shore alone.
-        list.push({ id: region.id, areas: regionAreas(region), roofed: roofedRegion(regionAreas(region)), sheen: floorLevel.sheen, ...stepLook(own, floor), shore: seaHere ? (box) => seaShore(globalThis.PIXI, regionAreas(region), box, canvas.grid.size, canvas.dimensions.sceneRect) : null });
-      } } catch { /* a broken region never breaks the rest */ }
+        const spec = { id: region.id, areas: regionAreas(region), roofed: roofedRegion(regionAreas(region)), sheen: floorLevel.sheen, ...stepLook(own, floor), shore: seaHere ? (box) => seaShore(globalThis.PIXI, regionAreas(region), box, canvas.grid.size, canvas.dimensions.sceneRect) : null };
+        const home = floorPlaneOf(bound);
+        if (home) spec.plane = { ...home, zIndex: MAP_SORT.floorLooks };
+        list.push(spec);
+      }
+    } catch { /* a broken region never breaks the rest */ }
   }
   floorLooks.sync(list);
   // What moves on those looks: as this screen's quality level allows.
@@ -2317,7 +2615,17 @@ const syncFloorLooks = () => {
   const moving = movingWaterList(), movingIds = new Set(moving.map((m) => m.id));
   const painted = [], sceneChoice = canvas.scene?.flags?.[ID]?.floorTextures;
   if (floorLevel.show && regionStepsOn()) for (const region of regionsHere()) {
-    try { const own = region.flags?.[ID] ?? {}, floor = plainFloorOf(region); if (floor && showsTexture(own, sceneChoice) && !movingIds.has(region.id)) painted.push({ id: region.id, areas: regionAreas(region), floor: textureFloor(own, floor), style: textureStyleOf(own, textureFloor(own, floor)), seconds: stepLook(own, floor).seconds, edge: stepEdge(own), scale: stepScale(own), blades: floorLevel.blades, shine: floorLevel.shine, roofed: roofedRegion(regionAreas(region)) }); } catch { /* a broken region never breaks the rest */ }
+    try {
+      const own = region.flags?.[ID] ?? {}, bound = planeOfRegion(region);
+      if (own?.imageRegion?.source?.kind === "tile" && bound?.role !== "floor") continue;
+      const floor = plainFloorOf(region);
+      if (floor && showsTexture(own, sceneChoice) && !movingIds.has(region.id)) {
+        const spec = { id: region.id, areas: regionAreas(region), floor: textureFloor(own, floor), style: textureStyleOf(own, textureFloor(own, floor)), seconds: stepLook(own, floor).seconds, edge: stepEdge(own), scale: stepScale(own), opacity: textureOpacity(own), blades: floorLevel.blades, shine: floorLevel.shine, roofed: roofedRegion(regionAreas(region)) };
+        const home = floorPlaneOf(bound);
+        if (home) spec.plane = { ...home, zIndex: MAP_SORT.floorTextures };
+        painted.push(spec);
+      }
+    } catch { /* a broken region never breaks the rest */ }
   }
   floorTextures.sync(painted);
   syncMovingWater(moving);
@@ -2326,9 +2634,24 @@ const syncFloorLooks = () => {
 // Moving water (engines/motion/water-engine.mjs): every water region's, on every scene, as far as each screen's quality level and the Moving water setting allow.
 const waterEngine = createWaterEngine({ PIXI: globalThis.PIXI, root: floorLayer("waterEngine", 395), grid: () => canvas.grid?.size ?? 100 });
 // What raised floors throw on what is below them: over the painted floors (400), under what lies on them (410).
-const floorShadows = createFloorShadows({ PIXI: globalThis.PIXI, root: floorLayer("floorShadows", 405), edges: floorLayer("floorEdges", 406), grid: () => canvas.grid?.size ?? 100 });
+const floorShadows = createFloorShadows({ PIXI: globalThis.PIXI, root: floorDrawRoot("floorShadows"), edges: floorLayer("floorEdges", 406), grid: () => canvas.grid?.size ?? 100 });
 // Whether two sets of areas have boxes that overlap at all.
 const boxesMeet = (a, b) => { const box = (areas) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const area of areas) for (let i = 0; i + 1 < area.length; i += 2) { x0 = Math.min(x0, area[i]); x1 = Math.max(x1, area[i]); y0 = Math.min(y0, area[i + 1]); y1 = Math.max(y1, area[i + 1]); } return { x0, y0, x1, y1 }; }, p = box(a), q = box(b); return p.x0 < q.x1 && q.x0 < p.x1 && p.y0 < q.y1 && q.y0 < p.y1; };
+const shadowOn = (region, caster) => {
+  const fromTile = caster?.id?.kind === "tile" ? Number(caster.elevation) : NaN;
+  const fromRegion = Number(region?.elevation?.bottom);
+  const elevation = Number.isFinite(fromTile) ? fromTile : (Number.isFinite(fromRegion) ? fromRegion : null);
+  if (elevation == null) return null;
+  const areas = regionAreas(region);
+  const floors = [];
+  for (const plane of planesHere()) {
+    if (plane.role !== "floor" || plane.id.kind !== "tile") continue;
+    const meets = regionsHere().some((other) => other !== region && sameSource(other.flags?.[ID]?.imageRegion?.source, plane.id) && boxesMeet(regionAreas(other), areas));
+    floors.push({ id: plane.id, role: plane.role, elevation: plane.elevation, meets });
+  }
+  const seen = shadowFloor(elevation, caster?.id?.kind === "tile" ? caster.id.tileId : null, floors);
+  return seen ? withSort(seen) : null;
+};
 // Whether moving water is drawn on this screen: its quality level allows it and the Moving water setting (world and player) is on.
 // What lives on its shore (the cut-out shore, the beach animals keep off, the crabs) asks this too, so none of it acts on a sea not drawn.
 const movingWaterOn = () => { try { return !!floorLevel.water && hotSetting("movingWater") !== false && hotSetting("movingWaterLocal") !== false; } catch { return false; } };
@@ -2350,8 +2673,8 @@ const movingWaterList = () => {
   const list = [], sceneChoice = canvas.scene?.flags?.[ID]?.floorTextures;
   const on = movingWaterOn();
   // What stands over the water (a dock, a bridge): its regions are taken out of what moves beneath them; and what casts a shadow shades it, hidden or not.
-  const over = on ? regionsHere().filter((r) => r.flags?.[ID]?.overWater === true || castsShadow(r.flags?.[ID])) : [];
-  if (on) for (const region of regionsHere()) {
+  const over = on ? drawnRegions().filter((r) => r.flags?.[ID]?.overWater === true || castsShadow(r.flags?.[ID])) : [];
+  if (on) for (const region of drawnRegions()) {
     try {
       const own = region.flags?.[ID] ?? {};
       if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water") continue;
@@ -2366,6 +2689,10 @@ const movingWaterList = () => {
       list.push({ id: region.id, areas, watery: true, over: above.map((r) => { const shape = regionAreas(r), xs = shape.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 0)), ys = shape.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 1)); return { areas: shape, ...overShadowOf(r.flags?.[ID], plainFloorOf(r) ?? ""), contact: false, cut: r.flags?.[ID]?.overWater === true, casts: castsShadow(r.flags?.[ID]), painted: !!plainFloorOf(r) && regionStepsOn() && !!floorLevel.show && showsTexture(r.flags?.[ID] ?? {}, sceneChoice), across: Math.max(...xs) - Math.min(...xs) > Math.max(...ys) - Math.min(...ys) }; }), lift: Math.max(0, ...above.filter((r) => castsShadow(r.flags?.[ID])).map((r) => overLiftOf({ above: r.elevation?.bottom, water: region.elevation?.bottom, distance: canvas.dimensions?.distance, grid: canvas.grid.size }))) || undefined, bed, kind, followsWind: toward === "wind", edge: stepEdge(own), depth: waterDepthLook(own.waterDepth), beach: own.seaBeach !== "off", sand: kind === "sea" && own.seaBeach !== "off" ? floorTextures.tile("sand", "beach") : null, map: canvas.dimensions?.sceneRect ? { x: canvas.dimensions.sceneRect.x, y: canvas.dimensions.sceneRect.y, width: canvas.dimensions.sceneRect.width, height: canvas.dimensions.sceneRect.height } : null, waves: kind === "sea" && own.waveTo in WIND_FROM ? ((WIND_FROM[own.waveTo] - 90) * Math.PI) / 180 : null, angle: toward in WIND_FROM ? ((WIND_FROM[toward] - 90) * Math.PI) / 180 : kind === "falls" ? fallWindAngle(skyWindAngle) : null, current: riverCurrent(stepFlags(own)?.current), keeps: !!own.noFreeze, roofed: roofedRegion(areas), hulls: kind === "sea" ? hullsOver(areas) : undefined });
     } catch { /* a broken region never breaks the rest */ }
   }
+  // The decorations' puddles and cave pools: still water in the outline their painted rim goes round, deep, the colour of a painted water floor.
+  if (on) for (const pool of decorations.water()) {
+    try { list.push({ id: pool.id, areas: pool.areas, watery: true, over: [], kind: "still", followsWind: false, edge: 1, depth: pool.deep ? { hold: 1.6, dark: 0.72 } : { hold: 1.35, dark: 0.4 }, bed: { texture: decorPondBed(), key: "decor-pond", edge: 1, colourOnly: true }, beach: false, sand: null, map: canvas.dimensions?.sceneRect ? { x: canvas.dimensions.sceneRect.x, y: canvas.dimensions.sceneRect.y, width: canvas.dimensions.sceneRect.width, height: canvas.dimensions.sceneRect.height } : null, waves: null, angle: null, current: 0, keeps: false, roofed: roofedRegion(pool.areas) }); } catch { /* one pool never breaks the rest */ }
+  }
   return list;
 };
 // What of a raised floor shows from its own painted tile: plain, nothing but the floor; built, what it is built from, with its posts if it shows them, standing in the water or on what is lower.
@@ -2378,16 +2705,31 @@ const floorBodyOf = (region, own, floor, areas, bottom, base) => {
 };
 // What casts a shadow on the ground and floors below it: by how far above them it stands, and never on itself, on what stands as high, or on moving water (the water draws its own).
 const syncFloorShadows = (moving) => {
-  const list = [], on = floorLevel.show && regionStepsOn(), here = regionsHere(), floors = here.filter((r) => plainFloorOf(r)), base = Number(canvas.level?.elevation?.base) || 0, bottomOf = (r) => { const n = Number(r.elevation?.bottom); return Number.isFinite(n) ? n : base; };
+  const list = [], on = floorLevel.show && regionStepsOn(), here = drawnRegions(), floors = here.filter((r) => plainFloorOf(r)), base = Number(canvas.level?.elevation?.base) || 0, bottomOf = (r) => { const n = Number(r.elevation?.bottom); return Number.isFinite(n) ? n : base; };
   if (on) for (const region of here) {
     try {
-      const own = region.flags?.[ID], floor = plainFloorOf(region);
+      const own = region.flags?.[ID], floor = plainFloorOf(region), caster = planeOfRegion(region);
+      if (caster?.role === "overhead") {
+        if (own?.castShadow === false || (own?.castShadow !== true && caster.blocksLight !== true)) continue;
+        const areas = regionAreas(region);
+        if (roofedRegion(areas)) continue;
+        const seen = shadowOn(region, caster);
+        if (!seen) continue;
+        const xs = areas.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 0)), ys = areas.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 1));
+        const heightOf = (other) => { const plane = planeOfRegion(other); const tile = plane?.id?.kind === "tile" ? Number(plane.elevation) : NaN; return Number.isFinite(tile) ? tile : bottomOf(other); };
+        const high = floors.filter((r) => r !== region && heightOf(r) >= caster.elevation).map((r) => regionAreas(r));
+        list.push({ id: region.id, areas, ...overShadowOf(own, ""), across: Math.max(...xs) - Math.min(...xs) > Math.max(...ys) - Math.min(...ys), lift: overLiftOf({ above: caster.elevation, water: seen.elevation, distance: canvas.dimensions?.distance, grid: canvas.grid.size }), blockers: [...high, ...moving.map((m) => m.areas)], above: high, onWater: moving.some((m) => boxesMeet(m.areas, areas)), plane: { ...seen, zIndex: MAP_SORT.floorShadows } });
+        continue;
+      }
       if (!floor || floor === "water" || !castsShadow(own)) continue;
       const areas = regionAreas(region);
       if (roofedRegion(areas)) continue;
       const bottom = bottomOf(region), beneath = floors.filter((r) => r !== region && bottomOf(r) < bottom && boxesMeet(regionAreas(r), areas)).map(bottomOf), xs = areas.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 0)), ys = areas.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 1));
       const high = floors.filter((r) => r !== region && bottomOf(r) >= bottom).map((r) => regionAreas(r));
-      list.push({ id: region.id, areas, ...overShadowOf(own, floor), across: Math.max(...xs) - Math.min(...xs) > Math.max(...ys) - Math.min(...ys), lift: overLiftOf({ above: bottom, water: Math.max(base, ...beneath), distance: canvas.dimensions?.distance, grid: canvas.grid.size }), blockers: [areas, ...high, ...moving.map((m) => m.areas)], above: high, onWater: moving.some((m) => boxesMeet(m.areas, areas)), ...floorBodyOf(region, own, floor, areas, bottom, base) });
+      const seen = shadowOn(region, caster);
+      const spec = { id: region.id, areas, ...overShadowOf(own, floor), across: Math.max(...xs) - Math.min(...xs) > Math.max(...ys) - Math.min(...ys), lift: overLiftOf({ above: bottom, water: Math.max(base, ...beneath), distance: canvas.dimensions?.distance, grid: canvas.grid.size }), blockers: [areas, ...high, ...moving.map((m) => m.areas)], above: high, onWater: moving.some((m) => boxesMeet(m.areas, areas)), ...floorBodyOf(region, own, floor, areas, bottom, base) };
+      if (seen) spec.plane = { ...seen, zIndex: MAP_SORT.floorShadows };
+      list.push(spec);
     } catch { /* a broken region never breaks the rest */ }
   }
   floorShadows.sync(list);
@@ -2398,7 +2740,18 @@ const syncMovingWater = (list) => {
 };
 let floorLooksTimer = null;
 const floorLooksSoon = () => { clearTimeout(floorLooksTimer); floorLooksTimer = setTimeout(syncFloorLooks, 50); };
-for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) floorLooksSoon(); });
+for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) { forgetPlanes(); floorLooksSoon(); } });
+for (const hook of ["createTile", "updateTile"]) Hooks.on(hook, () => { forgetPlanes(); floorLooksSoon(); });
+Hooks.on("deleteTile", (doc) => {
+  forgetPlanes();
+  const id = String(doc?.id ?? doc?._id ?? "");
+  const box = floorTileBoxes.get(id);
+  if (box) {
+    try { box.parent?.removeChild(box); box.destroy({ children: true }); } catch { /* gone */ }
+    floorTileBoxes.delete(id);
+  }
+  floorLooksSoon();
+});
 // A tile the waves break on, placed, moved, turned, hidden or gone: the sea round it again.
 for (const hook of ["createTile", "updateTile", "deleteTile"]) Hooks.on(hook, (doc, change) => { if (doc?.flags?.[ID]?.wavesBreak === true || change?.flags?.[ID]?.wavesBreak !== undefined) floorLooksSoon(); });
 const stepFlagsOf = (doc) => doc.flags?.[ID], saveStepFlags = (doc, flags) => doc.update({ flags: { [ID]: flags } }, { render: false });
@@ -2414,12 +2767,12 @@ const outlinePanelRegion = (doc) => {
   g.eventMode = "none"; canvas.interface.addChild(g); panelOutline = g;
 };
 Hooks.on("canvasTearDown", () => { panelOutline = null; });
-const regionPanel = createRegionPanel({ shows: outlinePanelRegion, flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]), configure: (doc) => doc.sheet?.render({ force: true }), confirm: (text) => foundry.applications.api.DialogV2.confirm({ window: { title: "Animater: None" }, content: `<p>${foundry.utils.escapeHTML?.(text) ?? text}</p>`, rejectClose: false }).then((yes) => yes === true) });
+const regionPanel = createRegionPanel({ brush: (doc) => startDecorBrush(doc), shows: outlinePanelRegion, flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]), configure: (doc) => doc.sheet?.render({ force: true }), confirm: (text) => foundry.applications.api.DialogV2.confirm({ window: { title: "Animater: None" }, content: `<p>${foundry.utils.escapeHTML?.(text) ?? text}</p>`, rejectClose: false }).then((yes) => yes === true) });
 Hooks.on("updateRegion", (doc, change) => { const flags = change?.flags?.[ID]; if (flags && "step" in flags) refreshStepsWindow(doc.id); });
 // The menu stands by the spot it was opened for: when the map moves under it, it goes.
 Hooks.on("canvasPan", () => { regionPanel.close(); });
 Hooks.on("deleteRegion", (doc) => { if (regionPanel.doc === doc) regionPanel.close(); });
-Hooks.on("canvasTearDown", () => { clearTimeout(floorLooksTimer); floorLooks.clear(); floorTextures.clear(); floorMotion.clear(); waterEngine.clear(); floorShadows.clear(); regionPanel.close(); });
+Hooks.on("canvasTearDown", () => { clearTimeout(floorLooksTimer); forgetPlanes(); dropTileBoxes(); floorLooks.clear(); floorTextures.clear(); floorMotion.clear(); waterEngine.clear(); floorShadows.clear(); regionPanel.close(); });
 // The region with a floor under a point, the last listed as the floor's own lookup has it.
 const floorRegionAt = (point) => {
   const elevation = Number(canvas.level?.elevation?.base) || 0, regions = regionsHere();
@@ -3200,6 +3553,13 @@ const weatherPanelKeepUp = () => { if (!weatherPanelApp?.rendered || tuneDragged
 Hooks.on("updateScene", (scene, change) => { if (scene?.id === canvas?.scene?.id && ("weather" in (change ?? {}) || change?.flags?.fxmaster || change?.flags?.[ID])) weatherPanelKeepUp(); });
 Hooks.on("updateSetting", (setting) => { if (setting?.key === "calendaria.currentWeather") weatherPanelKeepUp(); });
 // The Animals panel: the scene's own creature settings, and animals put down by hand, kept with the scene so every screen adds them.
+// How many of each kind a set of layers has now, by the Animals panel's names: the scene's own, or one region's.
+const animalTally = ({ wild, pond, field, town, farm, rats }) => {
+  const w = wild?.counts ?? {}, p = pond?.counts ?? {}, f = field?.counts ?? {}, t = (town?.busy ? town.counts : null) ?? {}, fm = farm?.counts ?? {};
+  const out = { rabbits: w.rabbits, wildBirds: w.songbirds, crows: w.crows, hawks: w.hawks, fish: w.fish, waterBirds: p.ducks, herons: p.herons, gulls: p.gulls, frogs: p.frogs, deer: f.deer, foxes: f.foxes, wolves: f.wolves, squirrels: f.squirrels, snakes: f.snakes, insects: (f.butterflies ?? 0) + (f.dragonflies ?? 0) + (f.fireflies ?? 0), owls: f.owl ? 1 : 0, pigeons: t.pigeons, hens: t.chickens, cats: t.cat, dogs: t.dog, ...fm, rats: rats?.count ?? 0 };
+  for (const [kind, n] of Object.entries(out)) out[kind] = Math.max(0, Math.round(Number(n) || 0));
+  return out;
+};
 const placedShown = new Set();
 // The scene's layers that take animals put down by hand (each takes its own kinds), and give the animal HUD its animals.
 const placedLayers = () => [wildlife, fieldLife, pondLife, townLife, sceneFarm];
@@ -3209,7 +3569,10 @@ const PLACED_IN = { town: ["pigeon", "hen", "dog"], farm: ["cow", "goat", "sheep
 const replacePlaced = (layer) => { if (!canvas?.ready) return; for (const p of placedList(animalFlagsNow().placedAnimals)) if (PLACED_IN[layer].includes(p.kind)) { for (const l of placedLayers()) l.removeAdded(p.id); placedShown.delete(p.id); } syncPlacedAnimals(); };
 const syncPlacedAnimals = () => {
   if (!canvas?.ready) return;
-  const raw = wildHere() ? animalFlagsNow().placedAnimals : [];
+  // Put down by hand (or ordered from the animal HUD, a region's own animal among them), they are there whenever this
+  // screen has Animals in the wild on, as a region's animals are: the scene's Outdoor life is for the ones that come of themselves.
+  const raw = bothSettingsOn("wildlife") ? animalFlagsNow().placedAnimals ?? [] : [];
+  placedGround = !wildHere() && placedList(raw).length ? wildGround(canvas.grid.size, canvas.dimensions.sceneRect) : null;
   const { add, remove } = placedChanges(placedShown, raw);
   const layers = placedLayers();
   for (const id of remove) { for (const layer of layers) layer.removeAdded(id); placedShown.delete(id); }
@@ -3218,7 +3581,7 @@ const syncPlacedAnimals = () => {
   const orders = new Map(placedList(raw).map((p) => [p.id, p.order ?? null]));
   for (const layer of layers) layer.orders(orders);
 };
-Hooks.on("canvasTearDown", () => { placedShown.clear(); });
+Hooks.on("canvasTearDown", () => { placedShown.clear(); placedGround = null; });
 let animalsPanelApp = null, animalAim = null, animalScope = "level";
 const animalsOnLevel = () => severalLevels() && animalScope === "level";
 const saveAnimals = async (changes) => { const target = animalsOnLevel() ? canvas.level : canvas?.scene; if (target) await target.update(Object.fromEntries(Object.entries(changes).map(([k, v]) => [`flags.${ID}.${k}`, v]))); };
@@ -3365,10 +3728,9 @@ const openAnimalsPanel = () => {
     stopAim: stopAnimalAim,
     reshuffle: () => { wildKey = null; lifeSoon(); },
     // How many of each kind the scene has now, for the rows left on Auto.
-    live: () => { try { const w = wildlife.counts, p = pondLife.counts, f = fieldLife.counts ?? {}, t = townLife.counts ?? {}, fm = sceneFarm.counts ?? {};
-      // (the hawks flying over the scene, a region's own among them)
-      let regionHawks = 0; for (const life of regionLife.values()) regionHawks += life?.wild?.counts?.hawks ?? 0;
-      return { rabbits: w.rabbits, wildBirds: w.songbirds, crows: w.crows, hawks: (w.hawks ?? 0) + regionHawks, fish: w.fish, waterBirds: p.ducks, herons: p.herons, gulls: p.gulls, frogs: p.frogs, deer: f.deer, foxes: f.foxes, wolves: f.wolves, squirrels: f.squirrels, snakes: f.snakes, insects: (f.butterflies ?? 0) + (f.dragonflies ?? 0) + (f.fireflies ?? 0), owls: f.owl ? 1 : 0, pigeons: t.pigeons, hens: t.chickens, cats: t.cat, dogs: t.dog, ...fm, rats: vermin.count }; } catch { return {}; } },
+    live: () => { try { return animalTally({ wild: wildlife, pond: pondLife, field: fieldLife, town: townLife, farm: sceneFarm, rats: { count: vermin.count } }); } catch { return {}; } },
+    // How many of each kind the regions' own animals have now (each region asking for some has layers of its own).
+    regionLive: () => { try { const out = {}; for (const life of regionLife.values()) for (const [kind, n] of Object.entries(animalTally(life))) out[kind] = (out[kind] ?? 0) + n; return out; } catch { return {}; } },
     underground: () => undergroundScene(),
     // Any water on the map: its own floor, or a region's (named or set).
     water: () => { try { return sceneFloorNow() === "water" || regionsHere().some((doc) => regionFloor({ name: doc.name, flag: floorFlagOf(doc) }) === "water"); } catch { return true; } },
@@ -3395,6 +3757,8 @@ Hooks.on("getSceneControlButtons", (controls) => {
     const add = (tool) => { tools[tool.name] = tool; };
     controls.animater = { name: "animater", title: "Animater", icon: "fa-solid fa-wand-magic-sparkles", layer: "tokens", order: 50, activeTool: "select", tools,
       onChange: (event, active) => { if (!active || canvas.tokens?.active) return; canvas.tokens?.activate(); void ui.controls?.activate({ control: "animater", tool: "select" }); } };
+    add({ name: "animaterDecorate", title: "Decorations: paint rocks, trees, bushes and more onto the map (into the region you start in, or a new one)", icon: "fa-solid fa-tree", order: order - 1, button: true, visible: toolShown("toolDecorate"),
+      onChange: () => (decorBrushing ? stopDecorBrush() : startDecorBrush()) });
     add({ name: "animaterCaveIn", title: "Cave-in: click where the ceiling comes down", icon: "fa-solid fa-person-falling-burst", order, button: true, visible: toolShown("toolCaveIn"),
       onChange: () => aimCaveIn() });
     add({ name: "animaterEnergyBlast", title: "Energy blast: pick a kind, click where it goes off", icon: "fa-solid fa-explosion", order: order + 3, button: true, visible: toolShown("toolEnergyBlast"),
@@ -3447,6 +3811,7 @@ const openFloorRegionsTool = async () => {
     scene,
     sceneRect,
     levelId,
+    tiles: (canvas.tiles?.placeables ?? []).map((placeable) => placeable.document),
     textures,
     grid: canvas.grid?.size ?? 100,
     tile: (floor, style) => floorTextures.tileImage(floor, style),
@@ -3724,10 +4089,16 @@ const rebuildCavern = () => {
   // Floor, not the solid rock between the rooms: somewhere a lamp lights (as for the rats).
   const floor = (pt) => !lampLights.length || lampLights.some((l) => Array.isArray(l.shape) && l.shape.length >= 6 && pointInPolygon(pt, l.shape));
   skyOpenings = sky.flatMap((p) => p.areas ?? p);
+  // The decorations' glowing kinds underground are the cavern's own: its fungus, crystals and lava, and the webs' cobwebs.
+  let decor = { fungus: [], crystals: [], lava: [], webs: [] };
+  try { syncDecorations(); decor = decorations.cavern(); } catch { /* none */ }
+  if (bothSettingsOn("caveFungus")) fungus.push(...decor.fungus);
+  if (bothSettingsOn("caveCrystals")) crystals.push(...decor.crystals);
+  if (bothSettingsOn("caveLava")) lava.push(...decor.lava);
   cavern.build({ fungus, crystals, lava, mist, sky, walls, grid, seed, isFloor: floor, bounds: canvas.dimensions.sceneRect });
   fillMist();
   lavaPolygons = lava.flatMap((p) => p.areas);
-  const webAreas = of("webs", "caveWebs").flatMap((p) => p.areas);
+  const webAreas = [...of("webs", "caveWebs").flatMap((p) => p.areas), ...(bothSettingsOn("caveWebs") ? decor.webs : [])];
   if (webAreas.length) webs.build({ corners: webCorners({ walls, areas: webAreas, grid, seed, floor }), grid, seed });
   // The underground's wear: wet walls, steam, bad air, soot over the wall torches, the rubble of cave-ins.
   try {
@@ -3875,6 +4246,8 @@ const WILD_FLOORS = new Set(["grass", "dirt", "snow", "mud", "sand"]);
 // Where a region's own animals may stand: any dry floor in it (the GM asked for them there: hens in a barn, a dog on a deck).
 const OWN_FLOORS_NOT = new Set(["water", "lava", "cavern"]);
 let wildOpen = null;
+// The ground animals put down by hand go on when the scene's Outdoor life is off (and so has no wildOpen).
+let placedGround = null;
 const groundWalls = () => {
   const walls = [];
   for (const w of canvas.walls?.placeables ?? []) { const d = w.document; if (!(Number(d?.move) > 0) || (Number(d?.door) > 0 && Number(d?.ds) === 1) || d.flags?.[ID]?.wildlifePasses === true) continue; const [x1, y1, x2, y2] = d.c; walls.push({ x1, y1, x2, y2 }); }
@@ -3917,7 +4290,7 @@ const wildGround = (grid, area, { own = false } = {}) => {
   // Where they may go is the exact floor under that very point, not its square: a square of bank is part river.
   // What stands over the water is no water to swim in, at any height: what swims there would be drawn over it.
   const sceneBase = sceneFloorNow(), regions = regionsHere().map((doc) => ({ name: doc.name, flag: floorFlagOf(doc), doc })).sort((a, b) => (a.doc.flags?.[ID]?.overWater === true ? 1 : 0) - (b.doc.flags?.[ID]?.overWater === true ? 1 : 0)), elevation = canvas.level?.elevation?.base ?? 0;
-  const docks = regionsHere().filter((doc) => doc.flags?.[ID]?.overWater === true).flatMap((doc) => regionAreas(doc)), overDock = (x, y) => docks.some((a) => pointInPolygon({ x, y }, a));
+  const docks = drawnRegions().filter((doc) => doc.flags?.[ID]?.overWater === true).flatMap((doc) => regionAreas(doc)), overDock = (x, y) => docks.some((a) => pointInPolygon({ x, y }, a));
   const testPoint = (r, p) => r.doc.testPoint({ x: p.x, y: p.y, elevation }), floorHere = (x, y) => floorAt({ x, y }, { sceneFloor: sceneBase, regions, testPoint });
   const outside = (x, y) => x >= area.x && y >= area.y && x < area.x + area.width && y < area.y + area.height && !closed(x, y);
   return { cell, closed, flooded, walled, spots, waters: docks.length ? waters.filter((p) => !overDock(p.x, p.y)) : waters, seaAt, share: spots.length / (cols * rows), at: (x, y) => outside(x, y) && !flooded(x, y) && standOn(floorHere(x, y)), inWater: (x, y) => outside(x, y) && !flooded(x, y) && floorHere(x, y) === "water" && !onBeach(x, y) && !overDock(x, y) };
@@ -4049,7 +4422,7 @@ const okOn = (ground, kind, x, y) => {
   if ((kind === "ducks" || kind === "frogs") && ground?.inWater(x, y) && freshFor(ground, kind) && seaHere(ground, x, y)) return false;
   return !!(kind === "fish" || kind === "ducks" || kind === "frogs" ? ground?.inWater(x, y) : ground?.at(x, y)) && !keptOut(kind, { x, y });
 };
-const wildOk = (kind, x, y) => okOn(wildOpen, kind, x, y);
+const wildOk = (kind, x, y) => okOn(wildOpen ?? placedGround, kind, x, y);
 // Heard where they are, the hawk and the crows from far off, by distance for everyone (earsNow).
 const wildCalls = critterVoices({ gaps: WILD_GAPS });
 const WILD_SOUND = { hawkCry: { volume: 0.35, reach: 40, rates: [0.95, 1.05] }, crowCaw: { volume: 0.3, reach: 30, rates: [0.86, 1.14] }, songChirp: { volume: 0.16, reach: 8, rates: [0.95, 1.1] }, wingsUp: { volume: 0.3, reach: 9, rates: [0.9, 1.2] }, rabbitThump: { volume: 0.3, reach: 6, rates: [0.9, 1.1] }, fishSplash: { volume: 0.25, reach: 7, rates: [0.85, 1.25] }, frogPlop: { volume: 0.26, reach: 8, rates: [0.94, 1.18] }, duckQuack: { volume: 0.28, reach: 12, rates: [0.95, 1.08] }, frogCroak: { volume: 0.2, reach: 10, rates: [0.9, 1.1] }, gullCry: { volume: 0.25, reach: 25, rates: [0.92, 1.08] }, owlHoot: { volume: 0.3, reach: 30, rates: [0.95, 1.05] }, cricketChirp: { volume: 0.14, reach: 8, rates: [0.96, 1.06] }, foxBark: { volume: 0.3, reach: 18, rates: [0.92, 1.08] }, wolfHowl: { volume: 0.32, reach: 45, rates: [0.96, 1.04] }, wolfPack: { volume: 0.32, reach: 45, rates: [0.97, 1.03] }, wolfGrowl: { volume: 0.34, reach: 12, rates: [0.93, 1.05] }, dragonBuzz: { volume: 0.16, reach: 5, rates: [0.9, 1.15] }, deerCall: { volume: 0.3, reach: 18, rates: [0.92, 1.08] }, squirrelChatter: { volume: 0.24, reach: 10, rates: [0.94, 1.1] }, snakeHiss: { volume: 0.2, reach: 5, rates: [0.9, 1.1] }, heronCall: { volume: 0.3, reach: 22, rates: [0.92, 1.06] }, crabDive: { volume: 0.18, reach: 5, rates: [0.9, 1.2] }, henCluck: { volume: 0.22, reach: 7, rates: [0.92, 1.1] }, catMeow: { volume: 0.2, reach: 8, rates: [0.95, 1.08] }, dogBark: { volume: 0.32, reach: 22, rates: [0.92, 1.08] }, pigeonCoo: { volume: 0.2, reach: 7, rates: [0.88, 1.14] }, cowCall: { volume: 0.32, reach: 26, rates: [0.86, 1.06] }, goatCall: { volume: 0.26, reach: 14, rates: [0.9, 1.14] }, sheepCall: { volume: 0.26, reach: 14, rates: [0.88, 1.12] }, pigCall: { volume: 0.34, reach: 10, rates: [0.88, 1.1] }, horseCall: { volume: 0.3, reach: 22, rates: [0.9, 1.08] } };
@@ -4111,8 +4484,8 @@ const wildCanopy = (x, y) => {
   }
   return false;
 };
-const wildIndoors = (x, y) => !!wildOpen?.walled(x, y) && !roofOver(x, y);
-const wildBarred = (kind, x, y) => !!wildOpen?.closed(x, y) || keptOut(kind, { x, y });
+const wildIndoors = (x, y) => !!(wildOpen ?? placedGround)?.walled(x, y) && !roofOver(x, y);
+const wildBarred = (kind, x, y) => !!(wildOpen ?? placedGround)?.closed(x, y) || keptOut(kind, { x, y });
 // A creature's shadows out of doors, by the engine every creature's are (movement-feel.mjs shadowFalls): sun or moon as high as it
 // stands and as strong as the sky lets it, each light in reach, the darkness there, none out of the sun in a wall's shade or indoors.
 const BIRD_SHADOW_LIFT = 0.8;
@@ -4232,7 +4605,7 @@ const rebuildWater = () => {
   placeAreas.surf = [...(useSea ? seasHeard : []), ...seaSounds]; placeAreas.waterfall = [...(useFalls ? fallsHeard.map((f) => f.area) : []), ...fallSounds]; placeAreas.waterfallLouds = [...(useFalls ? fallsHeard.map((f) => f.loud) : []), ...fallLouds];
   const useBeaches = bothSettingsOn("coast") && !undergroundScene();
   // What stands over the water (a dock, a bridge): nothing reflects on it, and a creature on it is not wading.
-  const decks = canvas?.ready ? regionsHere().filter((r) => r.flags?.[ID]?.overWater === true).flatMap((r) => regionAreas(r).map((a) => Array.from(a))) : [];
+  const decks = canvas?.ready ? drawnRegions().filter((r) => r.flags?.[ID]?.overWater === true).flatMap((r) => regionAreas(r).map((a) => Array.from(a))) : [];
   const key = JSON.stringify([canvas?.scene?.id, canvas?.level?.id, useSea && seas, useFalls && falls, useMirror && calm, useMirror && decks, useBeaches && beaches]);
   if (key === waterKey) return; waterKey = key;
   coast.clear(); beachLife.clear(); waterfalls.clear(); waterMirror.clear(); calmWater = useMirror ? calm : []; waterLookAt = 0; mirrorTilesAt = 0; mirrorTilesKey = "";
@@ -4326,13 +4699,13 @@ const rebuildSceneFarm = () => {
   replacePlaced("farm");
 };
 // (Ground for one put down by hand when the scene asks for no herd: the open ground as the wild animals have it.)
-const tickSceneFarm = (seconds) => { if (sceneFarm.busy) sceneFarm.tick(seconds, { near: creaturesNow(), ok: (kind, x, y) => !!(sceneFarmGround ?? wildOpen)?.at(x, y) && !keptOut(kind, { x, y }), blocked: wallBlocks, seen: wildSeen, sound: wildVoice, tokenAt: animalTokenAt }); };
+const tickSceneFarm = (seconds) => { if (sceneFarm.busy) sceneFarm.tick(seconds, { near: creaturesNow(), ok: (kind, x, y) => !!(sceneFarmGround ?? wildOpen ?? placedGround)?.at(x, y) && !keptOut(kind, { x, y }), blocked: wallBlocks, seen: wildSeen, sound: wildVoice, tokenAt: animalTokenAt }); };
 Hooks.on("canvasTearDown", () => { sceneFarm.clear(); sceneFarmKey = null; sceneFarmGround = null; });
 const tickTown = (seconds) => {
   const near = creaturesNow(), view = viewNow();
   townLife.setPerches(birdPerches());
   // (One put down by hand on a scene with no town asked for goes on the open ground as the wild animals have it.)
-  townLife.tick(Math.min(seconds, 0.1), { near, view, tokenAt: animalTokenAt, ok: (kind, x, y) => (townOpen ? townOpen.ok(x, y) : !!wildOpen?.at(x, y)) && !keptOut(townKept[kind] ?? kind, { x, y }), blocked: wallBlocks, barred: (kind, x, y) => !!townOpen?.closed(x, y) || keptOut(townKept[kind] ?? kind, { x, y }), day: sunNow ? wildDay() : Math.max(0, Math.min(1, 1 - ((Number(canvas.environment?.darknessLevel) || 0) - 0.55) / 0.2)), night: sunNow ? wildNight() : 0, rain: skyFalling.rain, seen: wildSeen, cast: wildCast, sound: wildVoice });
+  townLife.tick(Math.min(seconds, 0.1), { near, view, tokenAt: animalTokenAt, ok: (kind, x, y) => (townOpen ? townOpen.ok(x, y) : !!(wildOpen ?? placedGround)?.at(x, y)) && !keptOut(townKept[kind] ?? kind, { x, y }), blocked: wallBlocks, barred: (kind, x, y) => !!townOpen?.closed(x, y) || keptOut(townKept[kind] ?? kind, { x, y }), day: sunNow ? wildDay() : Math.max(0, Math.min(1, 1 - ((Number(canvas.environment?.darknessLevel) || 0) - 0.55) / 0.2)), night: sunNow ? wildNight() : 0, rain: skyFalling.rain, seen: wildSeen, cast: wildCast, sound: wildVoice });
 };
 Hooks.on("canvasTearDown", () => { townLife.clear(); townKey = null; townOpen = null; });
 // Animals of a region's own (engines/motion/region-animals.mjs): each region asking for some has its own layers of them,
@@ -4680,6 +5053,7 @@ const tickFireSounds = () => {
 };
 for (const hook of ["createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "canvasReady"]) Hooks.on(hook, () => { fireListAt = 0; });
 Hooks.on("canvasTearDown", () => { for (const voice of fireVoices.values()) stopVoice(voice); fireVoices.clear(); fireList = []; });
+Hooks.on("canvasTearDown", () => { try { decorations.clear(); } catch { /* gone */ } decorTreesKey = ""; });
 const creaturesNow = () => (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.actor).map((t) => ({ id: t.id, x: t.x + t.w / 2, y: t.y + t.h / 2, width: t.w }));
 // Drawn clouds (the Weather panel): just above the rain and the birds, over the roofs; their shadows on the ground, under the creatures.
 let cloudRoot = null;
@@ -5224,6 +5598,12 @@ function skyTick() {
   if (wakeRipples.busy) wakeRipples.tick(seconds);
   if (cavern.busy) tickCavern(seconds, performance.now());
   if (webs.count) webs.tick(seconds, { view: viewNow(), air: airAt });
+  // The decorations' crowns open over the creatures beneath them.
+  if (decorations.busy) {
+    decorations.creatures(tokensOnFloor()); decorations.tick(seconds);
+    // The lights' shadows of them, a few times a second (lights move with the creatures carrying them), as strong as each light is against the sky.
+    decorLampsAt += seconds; if (decorLampsAt >= 0.15) { decorLampsAt = 0; try { decorations.lamps(shadowsOffHere() ? [] : floorLightSources()); } catch { /* no lights now */ } }
+  }
   if (underWanted || mothsSetOn || underLife.busy) tickUnderLife(seconds);
   windowShaftLayer.tick(seconds);
   // Again next frame while a creature's silhouette is still being made.
@@ -8817,6 +9197,7 @@ Hooks.once("init", () => {
   for (const [key,name,hint] of [
     ['toolCaveIn','Show the Cave-in button','In the Animater controls. Hidden, a Region can still bring a ceiling down.'],
     ['toolEnergyBlast','Show the Energy Blast button','In the Animater controls.'],
+    ['toolDecorate','Show the Decorations button','In the Animater controls: a brush for painting rocks, trees, bushes and more onto the map. Hidden, a region\'s Decorations section still has its own Brush.'],
     ['toolClearRubble','Show the Clear rubble button','In the Animater controls.'],
     ['toolRepairProps','Show the Repair broken props button','In the Animater controls, for the GM: unhides every broken prop in the scene and puts its walls, doors and windows back, as the scene configuration\'s Repair button does.'],
     ['toolClearBlood','Show the Clear blood button','In the Animater controls. Blood still fades by itself.'],

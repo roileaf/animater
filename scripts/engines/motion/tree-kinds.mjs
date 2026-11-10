@@ -1,15 +1,17 @@
 // The kinds of tree a tree tile can be, and the shade each throws seen from above: a broadleaf's heavy clumps with its
-// branches in the gaps, a pine's whorls of needles, a palm's combed fronds, a birch's lace, a bare tree's branches, a
-// willow's trailing strands. (The sun coming through the gaps is drawn by the canopy's shader, each kind its own way.) Each pattern is a picture drawn once (white,
+// branches in the gaps, a pine's whorls of needles, a spruce's narrow star, a palm's combed fronds, a birch's lace, a
+// blossom tree's small clusters, a bare tree's branches, a willow's trailing strands. (The sun coming through the gaps is drawn by the canopy's shader, each kind its own way.) Each pattern is a picture drawn once (white,
 // its alpha the shade), laid over the tree's own picture when the shade is baked (canopy-light.mjs).
 
 // [key, name in Tile configuration]; '' picks by the tile's name.
-export const TREE_KINDS = Object.freeze([['', 'Auto (by its name)'], ['broadleaf', 'Broadleaf (oak, maple, elm)'], ['pine', 'Pine or fir'], ['palm', 'Palm'], ['birch', 'Birch, aspen or olive'], ['bare', 'Bare or winter tree'], ['willow', 'Willow']]);
+export const TREE_KINDS = Object.freeze([['', 'Auto (by its name)'], ['broadleaf', 'Broadleaf (oak, maple, elm)'], ['pine', 'Pine'], ['spruce', 'Spruce, fir or cypress'], ['palm', 'Palm'], ['birch', 'Birch, aspen or olive'], ['blossom', 'Blossom or fruit tree'], ['bare', 'Bare or winter tree'], ['willow', 'Willow']]);
 // How dark each one's shade is at its thickest, as the mock had them.
-export const TREE_DARK = Object.freeze({ broadleaf: 0.74, pine: 0.8, palm: 0.7, birch: 0.55, bare: 0.6, willow: 0.62 });
+export const TREE_DARK = Object.freeze({ broadleaf: 0.74, pine: 0.8, spruce: 0.78, palm: 0.7, birch: 0.55, blossom: 0.6, bare: 0.6, willow: 0.62 });
 const NAMES = [
   ['palm', /(?:^|[^a-z])(palms?|coconut|date_?palm)(?=$|[^a-z])/i],
-  ['pine', /(?:^|[^a-z])(pines?|firs?|spruces?|cedars?|conifers?|evergreens?|yews?|larch|hemlock|redwood|sequoia|cypress)(?=$|[^a-z])/i],
+  ['spruce', /(?:^|[^a-z])(spruces?|firs?|cypress(?:es)?|yews?|hemlocks?|junipers?)(?=$|[^a-z])/i],
+  ['blossom', /(?:^|[^a-z])(blossoms?|sakura|cherry|cherries|apples?|orchards?|fruit|plums?|peach(?:es)?|almonds?|pears?)(?=$|[^a-z])/i],
+  ['pine', /(?:^|[^a-z])(pines?|cedars?|conifers?|evergreens?|larch|redwood|sequoia)(?=$|[^a-z])/i],
   ['willow', /(?:^|[^a-z])(willows?)(?=$|[^a-z])/i],
   ['bare', /(?:^|[^a-z])(dead|bare|leafless|winter|withered|snag|skeleton)(?=$|[^a-z])/i],
   ['birch', /(?:^|[^a-z])(birch(?:es)?|aspens?|olives?|acacias?|jacarandas?|poplars?)(?=$|[^a-z])/i],
@@ -50,6 +52,10 @@ export function treeFieldAt(kind, x, y, seed = 1) {
   if (kind === 'birch') return smooth(0.45, 0.6, fbmP(x / 8, y / 8, seed, 32) * 0.6 + fbmP(x / 16, y / 16, seed + 5, 16) * 0.5);
   if (kind === 'willow') return smooth(0.3, 0.7, (0.5 + 0.5 * Math.sin((y / S) * Math.PI * 2 * 12 + fbmP(x / 32, y / 32, seed, 8) * 5)) * 0.7 + fbmP(x / 16, y / 16, seed + 2, 16) * 0.5 - 0.05);
   if (kind === 'pine') return smooth(0.3, 0.62, fbmP(x / 8, y / 8, seed + 3, 32) * 0.8 + 0.12) * 0.85;
+  // A spruce stand: dense, nearly closed, the odd narrow seam between crowns.
+  if (kind === 'spruce') return smooth(0.22, 0.5, fbmP(x / 16, y / 16, seed + 4, 16) * 0.55 + fbmP(x / 4, y / 4, seed + 9, 64) * 0.45 + 0.1) * 0.9;
+  // Blossom: small round clusters, open between.
+  if (kind === 'blossom') return smooth(0.42, 0.56, fbmP(x / 8, y / 8, seed + 6, 32) * 0.55 + fbmP(x / 32, y / 32, seed + 1, 8) * 0.5);
   return null;
 }
 /** The shade inside one kind's crown at (x, y) from its middle, 0–1 (pure): the field kinds; null for the ones made of lines. */
@@ -59,6 +65,10 @@ export function treeShadeAt(kind, x, y, seed = 1) {
   if (kind === 'pine') { const e = edgeOf(a, seed, 0.06); return smooth(e + 4, e - 8, r) * smooth(0.25, 0.55, Math.abs(Math.sin(a * 7 + fbm(r / 26, 1, seed) * 2.4)) * 0.55 + fbm(x / 5, y / 5, seed + 3) * 0.6 - (r / e) * 0.18 + 0.12); }
   if (kind === 'birch') { const e = edgeOf(a, seed, 0.16); return smooth(e + 6, e - 12, r) * smooth(0.45, 0.6, fbm(x / 6, y / 6, seed) * 0.6 + fbm(x / 19, y / 19, seed + 5) * 0.5); }
   if (kind === 'willow') { const e = edgeOf(a, seed, 0.08); return smooth(e + 8, e - 14, r) * smooth(0.3, 0.7, (0.5 + 0.5 * Math.sin(a * 46 + fbm(r / 16, a * 2, seed) * 5)) * 0.7 + fbm(x / 10, y / 10, seed + 2) * 0.5 - 0.05); }
+  // A spruce from above: a narrow star of tiers, its points sharp, nearly solid toward the middle.
+  if (kind === 'spruce') { const e = edgeOf(a, seed, 0.04) * (0.78 + 0.22 * Math.pow(Math.abs(Math.cos(a * 5.5 + fbm(r / 30, 2, seed) * 1.5)), 3)); return smooth(e + 3, e - 6, r) * smooth(0.2, 0.45, 0.6 - (r / e) * 0.35 + fbm(x / 6, y / 6, seed + 4) * 0.45); }
+  // A blossom tree: a small round crown of clusters, lighter, with gaps all through it.
+  if (kind === 'blossom') { const e = edgeOf(a, seed, 0.12) * 0.9; return smooth(e + 5, e - 10, r) * smooth(0.42, 0.56, fbm(x / 9, y / 9, seed + 6) * 0.55 + fbm(x / 24, y / 24, seed + 1) * 0.5); }
   return null;
 }
 // A tree's branches seen from above (pure): segments [x1, y1, x2, y2, width] out from the trunk, forking as they go.
@@ -84,7 +94,7 @@ export function frondsOf(seed, count = 11) {
   return out;
 }
 // How dark each kind's branches are.
-const BRANCHES = { broadleaf: { arms: 6, length: 30, width: 7, depth: 3, alpha: 1 }, birch: { arms: 5, length: 26, width: 4, depth: 3, alpha: 0.8 }, bare: { arms: 6, length: 28, width: 8, depth: 5, alpha: 1 } };
+const BRANCHES = { broadleaf: { arms: 6, length: 30, width: 7, depth: 3, alpha: 1 }, blossom: { arms: 5, length: 24, width: 5, depth: 3, alpha: 0.85 }, birch: { arms: 5, length: 26, width: 4, depth: 3, alpha: 0.8 }, bare: { arms: 6, length: 28, width: 8, depth: 5, alpha: 1 } };
 
 /**
  * The pattern's picture, made once a kind, look and layout and kept: `tiled` a repeating field (TILE_SQUARES of ground),

@@ -146,7 +146,7 @@ float fbm3(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 3; i++) { v += a
 // Two painted steps of light where a field n passes th: a half-lit rim, then a lit core past th + rise.
 float twoSteps(float n, float th, float rise){ const float e = 0.012; return 0.5 * smoothstep(th - e, th + e, n) + 0.5 * smoothstep(th + rise - e, th + rise + e, n); }
 // The sun through the gaps in the leaves (no round spots), each kind of tree its own way (kind as the kind map has it:
-// 1 broadleaf, 2 pine, 3 palm, 4 birch, 5 bare, 6 willow; 0 none, taken as a broadleaf), in two painted steps, more and
+// 1 broadleaf, 2 pine, 3 palm, 4 birch, 5 bare, 6 willow, 7 spruce, 8 blossom; 0 none, taken as a broadleaf), in two painted steps, more and
 // bigger where the crown is thin (cover low), stretched along the light when the sun is low. The crown sways them a
 // little and they slowly open and close as the leaves move.
 float flecks(vec2 src, vec2 px, float t, float cover, float kind){
@@ -161,6 +161,10 @@ float flecks(vec2 src, vec2 px, float t, float cover, float kind){
   if (kind > 1.5 && kind < 2.5) return twoSteps(fbm3(w * 4.2 + vec2(t * 0.08, -t * 0.06)), mix(0.71, 0.62, open), 0.05) * lit;
   // A birch: small bright gaps all through its lace of leaves.
   if (kind > 3.5 && kind < 4.5) return twoSteps(fbm3(w * 3.4 + vec2(t * 0.07, -t * 0.05)), mix(0.63, 0.55, open), 0.05) * lit;
+  // A spruce: closed, a rare pinprick of sun.
+  if (kind > 6.5 && kind < 7.5) return twoSteps(fbm3(w * 5.0 + vec2(t * 0.06, -t * 0.05)), mix(0.78, 0.7, open), 0.04) * lit * 0.8;
+  // A blossom tree: many small gaps between its clusters.
+  if (kind > 7.5) return twoSteps(fbm3(w * 2.8 + vec2(t * 0.06, -t * 0.05)), mix(0.6, 0.52, open), 0.06) * lit;
   // A willow: a few small gaps between its strands (which its shade draws), shifting more in the wind.
   if (kind > 5.5) return twoSteps(fbm3(w * 2.6 + sway / uGrid * 1.5 + vec2(t * 0.09, -t * 0.07)), mix(0.74, 0.66, open), 0.05) * lit * 0.8;
   // A broadleaf: ragged patches of every size between its clumps.
@@ -183,8 +187,12 @@ vec4 fallingLeaves(vec2 px){
     vec2 d = px - pos; d = vec2(cos(turn) * d.x + sin(turn) * d.y, -sin(turn) * d.x + cos(turn) * d.y);
     float shape = 1.0 - smoothstep(0.7, 1.0, length(vec2(d.x / (uGrid * 0.09), d.y / (uGrid * 0.042))));
     float a = shape * smoothstep(0.0, 0.08, age) * (1.0 - smoothstep(0.75, 1.0, age)) * 0.9;
+    // A blossom tree drops petals: pink and white, smaller and rounder than a leaf. (Its kind where its crown's shade lands.)
+    float petal = step(7.5, floor(texture2D(uKinds, clamp((home + uShift) / uSize, 0.0, 1.0)).r * 16.0 + 0.5));
+    a *= mix(1.0, 1.0 - smoothstep(0.55, 0.75, length(vec2(d.x / (uGrid * 0.05), d.y / (uGrid * 0.035)))), petal);
+    vec3 tone = mix(mix(uLeafA, uLeafB, hash(c + 9.1)), mix(vec3(0.93, 0.66, 0.74), vec3(0.98, 0.92, 0.92), hash(c + 9.1)), petal);
     // Catching the light as it turns over.
-    if (a > leaf.a) leaf = vec4(mix(uLeafA, uLeafB, hash(c + 9.1)) * (0.95 + 0.3 * cos(turn)), a);
+    if (a > leaf.a) leaf = vec4(tone * (0.95 + 0.3 * cos(turn)), a);
   }
   return leaf;
 }
@@ -198,7 +206,7 @@ void main(){
   if (cover > 0.01 && uDirect > 0.005) {
     // No fleck under a passing cloud: the sky's own pattern says where its shadow lies now.
     float sunHere = uCloudsOn > 0.5 ? 1.0 - deckShade(cloudDeck(px - uCloudShift, uCloudClock, uCloudRun, uCloudDir, uCloudWind, uGrid), uDeck) : 1.0;
-    if (sunHere > 0.005) fleck = flecks(src, px, t, cover, floor(texture2D(uKinds, clamp(px / uSize, 0.0, 1.0)).r * 8.0 + 0.5)) * uDirect * sunHere;
+    if (sunHere > 0.005) fleck = flecks(src, px, t, cover, floor(texture2D(uKinds, clamp(px / uSize, 0.0, 1.0)).r * 16.0 + 0.5)) * uDirect * sunHere;
   }
   // Roofs: a building's shadow on the open ground beside it; inside, light where the roof above toward the sun has a hole.
   float shadow = 0.0, hole = 0.0;
@@ -220,9 +228,9 @@ void main(){
   }
 }`;
 
-// A tree's kind as the shader reads it (red, in eighths of full): 0 none (a broadleaf's light), then each kind.
-export const KIND_CODES = Object.freeze({ broadleaf: 1, pine: 2, palm: 3, birch: 4, bare: 5, willow: 6 });
-const kindTint = (t) => ((KIND_CODES[t.kind] ?? 1) * 32) << 16;
+// A tree's kind as the shader reads it (red, in sixteenths of full): 0 none (a broadleaf's light), then each kind.
+export const KIND_CODES = Object.freeze({ broadleaf: 1, pine: 2, palm: 3, birch: 4, bare: 5, willow: 6, spruce: 7, blossom: 8 });
+const kindTint = (t) => Math.min(255, (KIND_CODES[t.kind] ?? 1) * 16) << 16;
 
 // The masks are baked this small (a soft shade needs no detail), at most this wide.
 const RESOLUTION = 0.25, MAX_TEXTURE = 2048;
