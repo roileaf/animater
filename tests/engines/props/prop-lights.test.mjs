@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { LIGHT_WORDS, guessLight, lightsOfProp, hideLights, unhideLights, BURN_MS, oilCatches, burnLightData, staleFires, firesOf } from "../../../scripts/engines/props/prop-lights.mjs";
+import { LIGHT_WORDS, guessLight, lightsOfProp, hideLights, unhideLights, BURN_MS, oilCatches, burnLightData, staleFires, firesOf, fireTimers } from "../../../scripts/engines/props/prop-lights.mjs";
 import { repairUpdates, undoUpdates } from "../../../scripts/engines/props/prop-requests.mjs";
 import { propGuesses, propTraits } from "../../../scripts/engines/props/prop-traits.mjs";
 import { guessMaterial } from "../../../scripts/engines/props/prop-material.mjs";
@@ -66,4 +66,15 @@ test("fire lights left past their time are swept; Repair deletes every one", () 
   // undo deletes only its own tile's fire
   const tile = { id: "t1", x: 0, y: 0, width: 100, height: 100, hidden: true, flags: { animater: { prop: { broken: { seed: 1, cutAngle: 0, pattern: "shards", pieces: 10, spread: 0.3, spin: 100, tint: "none", mark: "scorch", from: { x: 0, y: 0 }, walls: [], fire: true } } } } };
   assert.deepEqual(undoUpdates(tile, [], { lights: [f("a", 1), f("b", 1, "t2")] }).deleteLights, ["a"]);
+});
+test("the sweep deletes stale fires and times the rest (a GM reload or handover mid-burn)", () => {
+  // Review Focus 3, fix round 1
+  const f = (id, until, tileId = "t1") => ({ id, flags: { animater: { propFire: { tileId, until } } } });
+  assert.deepEqual(fireTimers([f("a", 500), f("b", 5000, "t2"), f("c", 1000), { id: "lamp", flags: {} }, null], 1000),
+    { deleteNow: ["a", "c"], later: [{ id: "b", tileId: "t2", ms: 4000 }] });
+  // a bad until is put out now rather than left burning
+  assert.deepEqual(fireTimers([f("x", "soon"), f("y", undefined)], 1000).deleteNow, ["x", "y"]);
+  // never longer than a minute, whatever the stored time says
+  assert.deepEqual(fireTimers([f("z", 1e12)], 1000).later, [{ id: "z", tileId: "t1", ms: BURN_MS }]);
+  assert.deepEqual(fireTimers(undefined, 0), { deleteNow: [], later: [] });
 });

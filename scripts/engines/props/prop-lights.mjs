@@ -41,7 +41,20 @@ export function burnLightData({ centre, distance, levels, elevation, tileId, now
 }
 
 const fireOf = (l) => l?.flags?.animater?.propFire;
-// Fire lights whose minute has passed (a GM who reloaded or left never deleted them).
-export const staleFires = (lights, now) => (lights ?? []).filter((l) => { const f = fireOf(l); return f && Number(f.until) <= now; }).map((l) => l.id);
+// Fire lights whose minute has passed (a GM who reloaded or left never deleted them). A bad until counts as passed.
+const stale = (f, now) => !(Number(f.until) > now);
+export const staleFires = (lights, now) => (lights ?? []).filter((l) => { const f = fireOf(l); return f && stale(f, now); }).map((l) => l.id);
+// What the active GM does with the fire lights it finds (on ready, canvasReady, or becoming the active GM): put the
+// stale ones out now, and time the rest for what is left of their minute (never more than BURN_MS).
+export function fireTimers(lights, now) {
+  const deleteNow = [], later = [];
+  for (const l of lights ?? []) {
+    const f = fireOf(l);
+    if (!f) continue;
+    if (stale(f, now)) deleteNow.push(l.id);
+    else later.push({ id: l.id, tileId: f.tileId, ms: Math.min(BURN_MS, Number(f.until) - now) });
+  }
+  return { deleteNow, later };
+}
 export const firesOf = (tileId, lights) => (lights ?? []).filter((l) => fireOf(l)?.tileId === tileId).map((l) => l.id);
 export const allFires = (lights) => (lights ?? []).filter((l) => fireOf(l)).map((l) => l.id);

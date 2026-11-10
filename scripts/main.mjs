@@ -21,7 +21,7 @@ import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs"
 import { createPropWreckage } from "./engines/props/prop-wreck.mjs";
 import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
-import { BURN_MS, burnLightData, staleFires } from "./engines/props/prop-lights.mjs";
+import { BURN_MS, burnLightData, fireTimers } from "./engines/props/prop-lights.mjs";
 import { propMaterial } from "./engines/props/prop-material.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propNextToMiss, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
@@ -7179,29 +7179,56 @@ async function applyPropBreak(scene, doc, cause, rawNote, user) {
   } finally { propWriting.delete(doc.id); }
 }
 // Burning lamp oil (GM): one temporary fire light at the broken tile (prop-lights.mjs burnLightData: its glow, the
-// fire-pot loop and smoke; the wreck draws the flames), deleted after BURN_MS. A GM who reloads or leaves first leaves
-// it to the next active GM's sweep (ready, canvasReady); undo and Repair delete it sooner.
-const propFires = new Map(); // tile id -> the timer that puts its fire out
-const forgetPropFire = (tileId) => { clearTimeout(propFires.get(tileId)); propFires.delete(tileId); };
+// fire-pot loop and smoke; the wreck draws the flames), deleted after BURN_MS. Each GM that becomes the active one
+// (ready, canvasReady, a handover) sweeps: stale fires go now, the rest are timed for what is left of their minute
+// (fireTimers), so a reload or handover mid-burn never leaves one burning. Undo and Repair delete them sooner.
+// Times are the server's clock (game.time.serverTime), so two GMs agree on when a minute is up.
+const propFires = new Map(); // light id -> { timer, tileId }: one timer per fire light
+const propFiresDeleting = new Set(); // light ids whose delete is on its way
+const fireNow = () => game.time?.serverTime ?? Date.now();
+const forgetPropFire = (tileId) => { for (const [id, f] of propFires) if (f.tileId === tileId) { clearTimeout(f.timer); propFires.delete(id); } };
 async function deletePropFires(scene, ids) {
-  const have = (ids ?? []).filter((id) => scene?.lights?.get(id));
-  if (have.length) await scene.deleteEmbeddedDocuments("AmbientLight", have).catch((e) => runtime?.trace("props", `fire lights not deleted: ${e?.message ?? e}`));
+  const have = (ids ?? []).filter((id) => scene?.lights?.get(id) && !propFiresDeleting.has(id));
+  if (!have.length) return;
+  for (const id of have) { clearTimeout(propFires.get(id)?.timer); propFires.delete(id); propFiresDeleting.add(id); }
+  try { await scene.deleteEmbeddedDocuments("AmbientLight", have); }
+  catch (e) { runtime?.trace("props", `fire lights not deleted: ${e?.message ?? e}`); }
+  finally { for (const id of have) propFiresDeleting.delete(id); }
+}
+// Puts a fire light out after ms (replacing any timer it already has), if this GM is still the active one then.
+function timePropFire(scene, id, tileId, ms) {
+  clearTimeout(propFires.get(id)?.timer);
+  propFires.set(id, { tileId, timer: setTimeout(() => { propFires.delete(id); if (game.users.activeGM?.isSelf) void deletePropFires(scene, [id]); }, Math.max(0, ms)) });
 }
 async function lightPropFire(scene, doc) {
   const r = tileRect(doc), data = burnLightData({ centre: { x: r.x + r.width / 2, y: r.y + r.height / 2 }, distance: Number(scene.grid?.distance) || 5,
-    levels: [...(doc.levels ?? [])], elevation: Number(doc.elevation) || 0, tileId: doc.id, now: Date.now() });
+    levels: [...(doc.levels ?? [])], elevation: Number(doc.elevation) || 0, tileId: doc.id, now: fireNow() });
   const [light] = await scene.createEmbeddedDocuments("AmbientLight", [data]).catch((e) => { runtime?.trace("props", `fire light not made: ${e?.message ?? e}`); return []; });
-  if (!light) return;
-  forgetPropFire(doc.id);
-  propFires.set(doc.id, setTimeout(() => { propFires.delete(doc.id); void deletePropFires(scene, [light.id]); }, BURN_MS));
+  if (light) timePropFire(scene, light.id, doc.id, BURN_MS);
 }
-// Fire lights whose minute has passed (their GM never put them out).
 function sweepPropFires(scenes) {
   if (!game.users.activeGM?.isSelf) return;
-  for (const scene of scenes) { try { const ids = staleFires(sceneLights(scene), Date.now()); if (ids.length) void deletePropFires(scene, ids); } catch (e) { runtime?.trace("props", `fire sweep: ${e?.message ?? e}`); } }
+  for (const scene of scenes) {
+    try {
+      const { deleteNow, later } = fireTimers(sceneLights(scene), fireNow());
+      if (deleteNow.length) void deletePropFires(scene, deleteNow);
+      for (const { id, tileId, ms } of later) if (!propFires.has(id)) timePropFire(scene, id, tileId, ms);
+    } catch (e) { runtime?.trace("props", `fire sweep: ${e?.message ?? e}`); }
+  }
 }
-Hooks.once("ready", () => { sweepPropFires(game.scenes?.contents ?? []); });
+// The viewed scene is swept by canvasReady; ready sweeps the others.
+Hooks.once("ready", () => { sweepPropFires((game.scenes?.contents ?? []).filter((sc) => sc !== canvas?.scene)); });
 Hooks.on("canvasReady", () => { if (canvas?.scene) sweepPropFires([canvas.scene]); });
+// A handover: the GM who becomes the active one (another GM left, or this one was made GM) takes over every scene's fires.
+let propFireGm = false;
+const propFireHandover = () => setTimeout(() => {
+  const now = !!game.users?.activeGM?.isSelf, was = propFireGm;
+  propFireGm = now;
+  if (now && !was) sweepPropFires(game.scenes?.contents ?? []);
+}, 0);
+Hooks.once("ready", () => { propFireGm = !!game.users?.activeGM?.isSelf; });
+Hooks.on("userConnected", propFireHandover);
+Hooks.on("updateUser", (user, changes) => { if ("role" in (changes ?? {})) propFireHandover(); });
 async function receivePropBreak(data, senderId) {
   if (data?.type !== PROP_BREAK_MESSAGE || !game.users.activeGM?.isSelf) return;
   const user = senderId ? game.users.get(senderId) : null, scene = game.scenes.get(String(data.sceneId ?? ""));
