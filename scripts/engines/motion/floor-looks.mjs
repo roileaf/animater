@@ -1041,7 +1041,7 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
   };
   let scaleNow = 1;
   const drop = (mesh) => { if (!mesh) return; const mask = mesh.animaterMask; try { mesh.parent?.removeChild(mesh); mesh.destroy({ children: true }); mask?.destroy(true); } catch { /* gone */ } };
-  const paint = (areas, floor, edge, style, useBlades, shineOn, parent = null) => {
+  const paint = (areas, floor, edge, style, useBlades, shineOn, parent = null, spec = null) => {
     const size = grid() || 100, box = boxOf(areas, size * Math.max(1, edge));
     if (!box) return null;
     const mask = maskOf(PIXI, render, areas, box, size, edge);
@@ -1050,7 +1050,9 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
     skyAt = 0;
     const mesh = quadOf(PIXI, box, SHOW_FRAG, { ...sunUniforms(PIXI), uTile: tileOf(floor, style), uTileSize: size * 4 * scaleNow, uGrid: size, uAlpha: 1, uShape: answers ? tileOf(floor, style, true) : PIXI.Texture.WHITE, uTwo: shine.still ? 0 : 1, uToSun: [1, 0], uSunColor: [1, 1, 1], uGlare: [0, 0], uLights: new Float32Array(MOST_FLOOR_LIGHTS * 4), uLightColors: new Float32Array(MOST_FLOOR_LIGHTS * 3), uLightCount: 0, uWet: 0, uRipple: shine.ripple, uSun: 0, uGloss: shine.gloss, uSharp: shine.sharp, uGlitter: shine.glitter, uLift: shine.lift, uRelief: shine.relief, uSway: swaysInWind(floor) ? 1 : 0, uTime: 0, uWind: 0, uWindDir: [1, 0], uMask: mask, uPeak: peakOf(pixels, mask), uTight: edge === 0 ? 2 : floor === 'water' ? 1 : 0, uBox: [box.x, box.y, box.w, box.h] });
     mesh.animaterMask = mask; mesh.animaterWets = !!shine.wets;
-    (parent ?? root()).addChild(mesh);
+    const host = parent ?? root(spec);
+    if (spec?.plane?.zIndex != null) mesh.zIndex = spec.plane.zIndex;
+    host.addChild(mesh);
     // Grass stands up off its ground, blade by blade.
     if (useBlades && swaysInWind(floor)) { const made = bladesOf(PIXI, areas, box, style, size, mask, mesh.shader.uniforms.uPeak); if (made) { mesh.addChild(made.shadows, made.blades); mesh.animaterBlades = made.blades; mesh.animaterBladeShadows = made.shadows; skyAt = 0; } }
     return mesh;
@@ -1076,15 +1078,17 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
         if (spec.roofed) roofed.add(spec.id); else roofed.delete(spec.id);
         const shape = JSON.stringify(spec.areas), edge = spec.edge ?? 1, style = spec.style ?? '', useBlades = spec.blades !== false, shineOn = spec.shine !== false, entry = known.get(spec.id);
         scaleNow = spec.scale ?? 1;
-        if (entry && entry.floor === spec.floor && entry.style === style && entry.shape === shape && entry.edge === edge && entry.useBlades === useBlades && entry.shineOn === shineOn) { for (const mesh of [entry.mesh, entry.old]) if (mesh) mesh.shader.uniforms.uTileSize = (grid() || 100) * 4 * scaleNow; continue; }
+        const parent = root(spec);
+        const held = [entry?.mesh, entry?.old].filter(Boolean);
+        if (entry && held.every((mesh) => mesh.parent === parent) && entry.floor === spec.floor && entry.style === style && entry.shape === shape && entry.edge === edge && entry.useBlades === useBlades && entry.shineOn === shineOn) { for (const mesh of held) mesh.shader.uniforms.uTileSize = (grid() || 100) * 4 * scaleNow; continue; }
         // Not made yet: what is there stays, and it comes when its tiles are ready.
         const wants = surfaceShine(spec.floor, style), base = tileOf(spec.floor, style), surface = !shineOn || !(wants.gloss + wants.glitter + wants.lift + wants.relief > 0) || tileOf(spec.floor, style, true);
         if (!base || !surface) continue;
         let mesh = null;
-        try { mesh = paint(spec.areas, spec.floor, edge, style, useBlades, shineOn); } catch (error) { console.warn('Animater | floor texture', error); }
+        try { mesh = paint(spec.areas, spec.floor, edge, style, useBlades, shineOn, null, spec); } catch (error) { console.warn('Animater | floor texture', error); }
         if (!mesh) continue;
-        // A new shape or edge shows at once; only a new floor fades in.
-        if (!entry || entry.shape !== shape || entry.edge !== edge || !(spec.seconds > 0)) { drop(entry?.old); drop(entry?.mesh); known.set(spec.id, { mesh, old: null, floor: spec.floor, style, shape, edge, useBlades, shineOn, seconds: 0 }); continue; }
+        const moved = held.some((mesh) => mesh.parent !== parent);
+        if (!entry || moved || entry.shape !== shape || entry.edge !== edge || !(spec.seconds > 0)) { drop(entry?.old); drop(entry?.mesh); known.set(spec.id, { mesh, old: null, floor: spec.floor, style, shape, edge, useBlades, shineOn, seconds: 0 }); continue; }
         drop(entry.old);
         mesh.shader.uniforms.uAlpha = 0;
         if (mesh.animaterBlades) { mesh.animaterBlades.shader.uniforms.uAlpha = 0; mesh.animaterBladeShadows.shader.uniforms.uAlpha = 0; }
@@ -1183,7 +1187,7 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
 /**
  * The layer: sync([{ id, areas, look, cover, how, seconds, at, flowTo, edge }]) with every region that has a floor (a region seen
  * for the first time shows its look at once; one that changes runs the change); tick(seconds) while `busy`; clear().
- * `root()` the floor layer; `render(object, renderTexture, clear, transform)` draws into a texture.
+ * `root(spec)` the floor layer for that spec. A root that ignores the argument stays the map layer. `render(object, renderTexture, clear, transform)` draws into a texture.
  * Each look is painted once into an image for its region; a change only blends two images, and a finished one is a plain sprite.
  */
 export function createFloorLooks({ PIXI, root, render, renderer, pixels, grid = () => 100 }) {
@@ -1216,15 +1220,21 @@ export function createFloorLooks({ PIXI, root, render, renderer, pixels, grid = 
     if (!entry.image || entry.image === PIXI.Texture.EMPTY) return;
     const k = entry.image.width / entry.box.w, sprite = new PIXI.Sprite(entry.image);
     sprite.eventMode = 'none'; sprite.position.set(entry.box.x, entry.box.y); sprite.scale.set(1 / k);
-    entry.sprite = sprite; root().addChild(sprite);
+    entry.sprite = sprite;
+    const host = root(entry.spec);
+    if (entry.spec?.plane?.zIndex != null) sprite.zIndex = entry.spec.plane.zIndex;
+    host.addChild(sprite);
     const shine = entry.sheenOn ? lookShine(entry.look) : null;
     if (!shine) return;
     const size = grid() || 100, { x, y, w, h } = entry.box;
     entry.sheen = quadOf(PIXI, entry.box, SHEEN_FRAG, { ...sunUniforms(PIXI), uRelief: shine.relief, uEdge: shine.edge, uLook: entry.image, uBox: [x, y, w, h], uToSun: [1, 0], uGlare: glareAt(entry.box, null), uSunColor: [1, 1, 1], uLights: new Float32Array(MOST_FLOOR_LIGHTS * 4), uLightColors: new Float32Array(MOST_FLOOR_LIGHTS * 3), uLightCount: 0, uSun: 0, uGloss: shine.gloss, uSharp: shine.sharp, uGlitter: shine.glitter, uRipple: shine.ripple, uWind: 0, uTime: 0, uGrid: size });
-    entry.sheen.visible = false; root().addChild(entry.sheen);
+    entry.sheen.visible = false;
+    if (entry.spec?.plane?.zIndex != null) entry.sheen.zIndex = entry.spec.plane.zIndex;
+    host.addChild(entry.sheen);
     skyAt = 0;
   };
   const start = (entry, spec, animate) => {
+    entry.spec = spec;
     // Its shader not made yet: what is showing stays until it is, and nothing stops for it.
     const shader = STEP_LOOKS[spec.look] ? programsFor(PIXI, renderer()).get(lookFrag(STEP_LOOKS[spec.look])) : true;
     entry.pending = shader === null ? { spec, animate } : null;
@@ -1241,7 +1251,8 @@ export function createFloorLooks({ PIXI, root, render, renderer, pixels, grid = 
     dropSprite(entry); entry.old = before;
     entry.uniforms = { uOld: before, uNew: image, uBox: [box.x, box.y, box.w, box.h], uSrc: [origin.x, origin.y], uMix: 0, uReach: origin.reach / (size * 5), uGrid: size, uSeed: seedOf(entry.id), uFade: spec.how === 'fade' ? 1 : 0, uFire: FIRE_LOOKS.has(STEP_LOOKS[spec.look]) ? 1 : 0 };
     entry.mesh = quadOf(PIXI, box, SPREAD_FRAG, entry.uniforms);
-    root().addChild(entry.mesh);
+    if (spec?.plane?.zIndex != null) entry.mesh.zIndex = spec.plane.zIndex;
+    root(spec).addChild(entry.mesh);
     entry.seconds = spec.seconds; entry.mix = 0; entry.running = true;
   };
   const breathing = (entry) => !!(BREATHING[entry.look] && entry.sprite);
@@ -1254,7 +1265,10 @@ export function createFloorLooks({ PIXI, root, render, renderer, pixels, grid = 
         const shape = JSON.stringify(spec.areas), cover = !!spec.cover, edge = spec.edge ?? 1, strength = spec.strength ?? 1, sheenOn = spec.sheen !== false;
         let entry = known.get(spec.id);
         if (!entry) { entry = { id: spec.id, scale: spec.scale ?? 1, clip: !!spec.shore, look: spec.look, shape, cover, edge, strength, sheenOn, mesh: null, sprite: null, image: null, old: null, running: false }; known.set(spec.id, entry); start(entry, spec, false); continue; }
-        if (entry.scale === (spec.scale ?? 1) && entry.clip === !!spec.shore && entry.look === spec.look && entry.shape === shape && entry.cover === cover && entry.edge === edge && entry.strength === strength && entry.sheenOn === sheenOn) continue;
+        entry.spec = spec;
+        const parent = root(spec);
+        const placed = [entry.sprite, entry.sheen, entry.mesh].filter(Boolean);
+        if (placed.every((child) => child.parent === parent) && entry.scale === (spec.scale ?? 1) && entry.clip === !!spec.shore && entry.look === spec.look && entry.shape === shape && entry.cover === cover && entry.edge === edge && entry.strength === strength && entry.sheenOn === sheenOn) continue;
         // Only a new look on the same shape and edge crosses the floor; anything else shows at once.
         const animate = entry.look !== spec.look && entry.shape === shape && entry.edge === edge;
         entry.scale = spec.scale ?? 1; entry.clip = !!spec.shore; entry.look = spec.look; entry.shape = shape; entry.cover = cover; entry.edge = edge; entry.strength = strength; entry.sheenOn = sheenOn;
@@ -1274,7 +1288,7 @@ export function createFloorLooks({ PIXI, root, render, renderer, pixels, grid = 
         if (clock >= lightsAt) { lightsAt = clock + LIGHTS_EVERY; lightsNow = floorLights(lights(), view(), mostLights); }
       }
       for (const [id, entry] of known) {
-        if (entry.pending) start(entry, entry.pending.spec, entry.pending.animate);
+        if (entry.pending) start(entry, entry.spec, entry.pending.animate);
         if (entry.sheen) {
           const w = entry.sheen.shader.uniforms;
           shadeWith(w, shadeNow);

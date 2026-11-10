@@ -2287,16 +2287,16 @@ test("selecting a cave mounts its controls in the inspector and a colour change 
     assert.match(text(host), /Fungus/);
     assert.equal(status.textContent, "Preview. Applies on Save.");
     assert.match(off.textContent, /Fungus is off/);
-    assert.equal(app.drafts.export("area-1"), null, "opening the controls does not mark the area edited");
+    assert.equal(app.areaDrafts.export("area-1"), null, "opening the controls does not mark the area edited");
     const blue = [...walk(host)].find((node) => node.tagName === "BUTTON" && node.textContent === "Blue");
     assert.ok(blue, "fungus colour is in the inspector");
     for (const fn of blue.listeners.click) fn({ target: blue, preventDefault() {}, stopPropagation() {} });
-    assert.equal(app.drafts.export("area-1").flags.cavern, "fungus-blue");
+    assert.equal(app.areaDrafts.export("area-1").flags.cavern, "fungus-blue");
     assert.ok(sets.includes("rgb(128,140,158)"), "the map repaints the new cap colour");
     const plan = planFloorCreate({
       proposals: app.detect.proposals,
       picked: [{ id: "area-1", checked: true, floor: "cavern" }],
-      effects: new Map([["area-1", app.drafts.export("area-1")]]),
+      effects: new Map([["area-1", app.areaDrafts.export("area-1")]]),
       sceneRect: caveRect, imageWidth: 100, imageHeight: 100, levelId: "level-1", regions: [],
     });
     assert.equal(plan.creates[0].flags.animater.floor, "");

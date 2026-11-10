@@ -20,7 +20,9 @@ import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./en
 import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
 import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
 import { streakLayout } from "./engines/motion/afterimages.mjs";
-import { FLOOR_CHOICES, sceneFloor, regionFloor, floorAt, onWhatStandsOver, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive, footstepReach, FOOTSTEP_RANGES, rainFloor, RAIN_SPLASH_GAIN, markedFloor, snowFloor, frozenFloor } from "./engines/motion/movement-feel.mjs";
+import { FLOOR_CHOICES, sceneFloor, regionFloor, floorAt, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive, footstepReach, FOOTSTEP_RANGES, rainFloor, RAIN_SPLASH_GAIN, markedFloor, snowFloor, frozenFloor } from "./engines/motion/movement-feel.mjs";
+import { planesFrom, surfaceAt, regionsForSurface, weatherSheltered, indoorPolygonsOf, sameSource, levelList } from "./engines/regions/image-plane.mjs";
+import { floorSlot, shadowFloor, TILE_SORT_LAYER, MAP_SORT } from "./engines/motion/floor-slot.mjs";
 import { createMovementFeelLayer } from "./engines/motion/movement-feel-render.mjs";
 import { createBurrowSink, poseMesh, drawnBeforeSink } from "./engines/motion/burrow-sink.mjs";
 import {underwaterPose,underwaterTint} from './engines/motion/underwater-appearance.mjs';
@@ -1158,13 +1160,73 @@ const sceneFloorNow = () => {
     background: canvas.level?.background?.src ?? "",
   });
 };
+// Foundry's testPoint returns false when the point has no elevation.
+const containsPlane = (region, point) => {
+  const doc = region?.doc ?? region;
+  try {
+    const tree = doc?.polygonTree;
+    if (tree?.testPoint) return tree.testPoint({ x: point.x, y: point.y }) === true;
+    const bottom = Number(doc?.elevation?.bottom);
+    const elevation = Number.isFinite(bottom) ? bottom : 0;
+    return doc.testPoint({ x: point.x, y: point.y, elevation }) === true;
+  } catch { return false; }
+};
+// Footsteps ask once per grid cell, so planes and region views are kept until a tile, region, scene or viewed level changes.
+let floorCache = null;
+const forgetPlanes = () => { floorCache = null; };
+const floorCacheHere = () => {
+  const level = canvas?.level?.id ?? "";
+  if (floorCache?.level !== level) floorCache = { level, planes: null, views: null };
+  return floorCache;
+};
+const planesHere = () => {
+  const cache = floorCacheHere();
+  return (cache.planes ??= buildPlanes());
+};
+const buildPlanes = () => {
+  const sceneRect = canvas?.dimensions?.sceneRect;
+  if (!(sceneRect?.width > 0) || !(sceneRect?.height > 0)) return [];
+  const tiles = [];
+  for (const placeable of canvas?.tiles?.placeables ?? []) {
+    const tile = placeable?.document ?? placeable;
+    if (!tile) continue;
+    tiles.push({
+      id: tile.id ?? tile._id,
+      hidden: tile.hidden === true,
+      levels: levelList(tile.levels),
+      x: tile.x, y: tile.y, width: tile.width, height: tile.height, elevation: tile.elevation, rotation: tile.rotation,
+      texture: { src: tile.texture?.src ?? "", scaleX: tile.texture?.scaleX, scaleY: tile.texture?.scaleY, fit: tile.texture?.fit },
+      restrictions: { light: tile.restrictions?.light === true, weather: tile.restrictions?.weather === true },
+    });
+  }
+  try {
+    return planesFrom({ levelId: canvas.level?.id ?? "", sceneRect, backgroundSrc: canvas.level?.background?.src ?? "", tiles });
+  } catch { return []; }
+};
+const floorViews = () => {
+  const cache = floorCacheHere();
+  return (cache.views ??= buildFloorViews());
+};
+const buildFloorViews = () => regionsHere().map((doc) => {
+  const own = { ...(doc.flags?.[ID] ?? {}) };
+  const floor = regionFloor({ name: doc.name, flag: floorFlagOf(doc) });
+  if (floor) own.floor = floor;
+  else delete own.floor;
+  return {
+    id: doc.id, name: doc.name, levels: levelList(doc.levels),
+    elevation: doc.elevation == null ? null : { bottom: doc.elevation.bottom ?? null, top: doc.elevation.top ?? null },
+    flags: { [ID]: own }, doc,
+  };
+});
 const movementFeelFloor = (point, token) => {
-  const scene = canvas?.scene, base = sceneFloorNow();
-  // (What stands over the water is walked on, whichever region is listed first.)
-  const regions = regionsHere().map((doc) => ({ name: doc.name, flag: floorFlagOf(doc), doc })).sort((a, b) => (a.doc.flags?.[ID]?.overWater === true ? 1 : 0) - (b.doc.flags?.[ID]?.overWater === true ? 1 : 0));
-  const elevation=Math.max(Number(token?.elevation??0),canvas.level?.elevation?.base??0);
-  // (Below what stands over the water and not swimming: on it, whatever the two heights say.)
-  const ground = floorAt(point, { sceneFloor: base, regions, testPoint: (r, p) => { const bottom = Number(r.doc.elevation?.bottom); return r.doc.testPoint({ x: p.x, y: p.y, elevation: token && r.doc.flags?.[ID]?.overWater === true && onWhatStandsOver({ elevation, bottom, action: token.movementAction }) ? bottom : elevation }); } });
+  const base = sceneFloorNow();
+  const elevation = Math.max(Number(token?.elevation ?? 0), canvas.level?.elevation?.base ?? 0);
+  let regions = [];
+  let ground = base;
+  try {
+    regions = regionsForSurface(floorViews(), { elevation, action: token?.movementAction ?? "", present: !!token });
+    ground = surfaceAt(point, { elevation, regions, planes: planesHere(), contains: containsPlane }).floor ?? base;
+  } catch { }
   // "Spells change the floor": frost, acid, fire and blasts left on the ground change what the creature walks on.
   let floor = ground;
   if (movementFeelSettingOn("marksChangeFloor")) {
@@ -1202,14 +1264,9 @@ const sceneWeatherNow = () => {
 let skyOpenRegions = [], skyOpenAreas = [];
 const openToSkyAt = (point, elevation = 0) => skyOpenRegions.some((region) => { try { return region.testPoint({ x: point.x, y: point.y, elevation }); } catch { return false; } });
 const shelteredAt = (point, elevation = 0) => {
-  if (openToSkyAt(point, elevation)) return false;
-  for (const region of regionsHere()) {
-    try {
-      if (!Array.from(region.behaviors ?? []).some((b) => b.type === "suppressWeather" && !b.disabled)) continue;
-      if (region.testPoint({ x: point.x, y: point.y, elevation })) return true;
-    } catch { /* a broken region never breaks the weather */ }
-  }
-  return false;
+  try {
+    return weatherSheltered(point, { elevation, regions: regionsHere(), planes: planesHere(), contains: containsPlane, openToSky: openToSkyAt(point, elevation) });
+  } catch { return false; }
 };
 const weatherAt = (point, elevation) => { const sky = sceneWeatherNow(); return sky && !shelteredAt(point, elevation) ? sky : null; };
 // Ground trails (engines/motion/ground-trails.mjs): feet that walked through water, mud or snow print the next floor
@@ -1296,10 +1353,11 @@ const flierLight = (t) => {
     const reaching = lightsReaching(t, { own: true });
     const lights = reaching.map((l) => { const one = lightAround(t.center, [l], 1); return one && { ...one, key: l.key, flicker: l.flicker }; })
       .filter(Boolean).sort((a, b) => b.shine - a.shine).slice(0, LIGHT_SHADOWS);
-    // Out of the sun: indoors (a region that keeps the weather out, as for snow and rain) wholly; else in a wall's
-    // shade (walls cast shadows in sunlight), standing or flying no higher than the wall.
     const up = ((Number(t.document?.elevation) || 0) - (Number(canvas.level?.elevation?.bottom) || 0)) / (Number(canvas.grid?.distance) || 1);
-    const shade = shelteredAt(t.center, t.document?.elevation ?? 0) ? 1 : wallQuads.length ? shadeAcross(t.center, t.w, wallQuads, { elevation: up }) : 0;
+    const elev = t.document?.elevation ?? 0;
+    let blocked = false;
+    try { blocked = surfaceAt(t.center, { elevation: elev, regions: regionsHere(), planes: planesHere(), contains: containsPlane }).blocksLight === true; } catch { blocked = false; }
+    const shade = shelteredAt(t.center, elev) || blocked ? 1 : wallQuads.length ? shadeAcross(t.center, t.w, wallQuads, { elevation: up }) : 0;
     // In the pool of light under an opening to the sky, the sun or moon casts its shadow, even underground (where no
     // sun reaches anywhere else): as strong as the pool is there, and that light lifts the darkness.
     const opened = skyOpenings.length ? skylightNow(canvas.grid.size) : null, open = opened ? skylightShare(t.center, skyOpenings, opened.shift, { grid: canvas.grid.size, inside: pointInPolygon }) : 0;
@@ -1651,18 +1709,13 @@ const landedOpenings = () => {
     return Object.assign(p.map((v, i) => v + (i % 2 ? s[1] : s[0])), { soft: p.soft, window: p.window });
   });
 };
-const indoorPolygons = () => {
-  const out = [];
-  for (const region of regionsHere()) {
-    try {
-      if (!Array.from(region.behaviors ?? []).some((b) => b.type === "suppressWeather" && !b.disabled)) continue;
-      // Each with how far the weather fades in at its edge.
-      const soft = indoorEdgeOf(region.flags?.[ID]);
-      for (const area of regionAreas(region)) { area.soft = soft; out.push(area); }
-    } catch { /* a broken region never breaks the shadows */ }
-  }
-  return out;
-};
+const indoorPolygons = () => indoorPolygonsOf(regionsHere(), (region) => {
+  // Each with how far the weather fades in at its edge.
+  const soft = indoorEdgeOf(region.flags?.[ID]);
+  const areas = [];
+  for (const area of regionAreas(region)) { area.soft = soft; areas.push(area); }
+  return areas;
+});
 const rebuildWallShadows = () => {
   wallShadowTimer = null;
   try {
@@ -2261,8 +2314,35 @@ const floorLayer = (key, sortLayer) => {
 const ratRootOf = floorLayer("rats", 660), dripRootOf = floorLayer("drips", 646), smokeRootOf = floorLayer("roomSmoke", 760);
 // A region's steps (engines/motion/region-steps.mjs): the look on its floor, and the GM's menu on a right-click on the map.
 // The floor layers lie on the map under its tiles (tiles sort at 500), so a bush or a tree stands over blood on the ground.
-const floorLooks = createFloorLooks({ PIXI: globalThis.PIXI, root: floorLayer("floorLooks", 410), renderer: () => canvas.app.renderer, grid: () => canvas.grid?.size ?? 100, pixels: (texture) => canvas.app.renderer.extract.pixels(texture), render: (object, renderTexture, clear, transform) => canvas.app.renderer.render(object, { renderTexture, clear, transform }) });
-const floorTextures = createFloorTextures({ PIXI: globalThis.PIXI, root: floorLayer("floorTextures", 400), grid: () => canvas.grid?.size ?? 100, pixels: (texture) => canvas.app.renderer.extract.pixels(texture), render: (object, renderTexture, clear, transform) => canvas.app.renderer.render(object, { renderTexture, clear, transform }), renderer: () => canvas.app.renderer, tileReady: () => { const moving = movingWaterList(); syncMovingWater(moving); syncFloorShadows(moving); }, tileSize: () => floorLevel.tile ?? 1024 });
+const floorTileBoxes = new Map();
+const dropTileBoxes = () => {
+  for (const box of floorTileBoxes.values()) {
+    try { box.parent?.removeChild(box); box.destroy({ children: true }); } catch { /* gone */ }
+  }
+  floorTileBoxes.clear();
+};
+const floorDrawRoot = (kind) => {
+  const map = floorLayer(kind, MAP_SORT[kind]);
+  return (spec) => {
+    const slot = floorSlot(spec?.plane, kind);
+    if (!slot || slot.sortLayer !== TILE_SORT_LAYER) return map();
+    const id = String(spec.plane.id.tileId);
+    let box = floorTileBoxes.get(id);
+    if (!box || box.destroyed) {
+      box = new PIXI.Container();
+      box.eventMode = "none";
+      box.sortableChildren = true;
+      canvas.primary.addChild(box);
+      floorTileBoxes.set(id, box);
+    }
+    box.elevation = slot.elevation;
+    box.sortLayer = slot.sortLayer;
+    box.sort = slot.sort;
+    return box;
+  };
+};
+const floorLooks = createFloorLooks({ PIXI: globalThis.PIXI, root: floorDrawRoot("floorLooks"), renderer: () => canvas.app.renderer, grid: () => canvas.grid?.size ?? 100, pixels: (texture) => canvas.app.renderer.extract.pixels(texture), render: (object, renderTexture, clear, transform) => canvas.app.renderer.render(object, { renderTexture, clear, transform }) });
+const floorTextures = createFloorTextures({ PIXI: globalThis.PIXI, root: floorDrawRoot("floorTextures"), grid: () => canvas.grid?.size ?? 100, pixels: (texture) => canvas.app.renderer.extract.pixels(texture), render: (object, renderTexture, clear, transform) => canvas.app.renderer.render(object, { renderTexture, clear, transform }), renderer: () => canvas.app.renderer, tileReady: () => { const moving = movingWaterList(); syncMovingWater(moving); syncFloorShadows(moving); }, tileSize: () => floorLevel.tile ?? 1024 });
 // Where the creatures are drawn now, for the grass they walk through.
 const tokensOnFloor = () => { const out = []; for (const t of canvas.tokens?.placeables ?? []) { if (!t.visible || !t.actor || t.document?.hidden) continue; const at = t.mesh?.position ?? t.center; out.push({ id: t.id, x: at.x, y: at.y, width: t.w }); } return out; };
 const floorMotion = createFloorMotion({ PIXI: globalThis.PIXI, root: floorLayer("floorMotion", 420), grid: () => canvas.grid?.size ?? 100 });
@@ -2277,16 +2357,44 @@ const roofedRegion = (areas) => { let x = 0, y = 0, n = 0; for (const area of ar
 let floorLevel = floorDetail("full");
 let fallsWindNow = null;
 const regionStepsOn = () => { try { return hotSetting("regionSteps") !== false && hotSetting("regionStepsLocal") !== false; } catch { return false; } };
+const tileDocumentSort = (tileId) => {
+  const id = String(tileId);
+  for (const placeable of canvas?.tiles?.placeables ?? []) {
+    const tile = placeable?.document ?? placeable;
+    if (String(tile?.id ?? tile?._id ?? "") !== id) continue;
+    const sort = Number(tile.sort);
+    return Number.isFinite(sort) ? sort : 0;
+  }
+  return 0;
+};
+const planeOfRegion = (region) => {
+  const source = region?.flags?.[ID]?.imageRegion?.source;
+  if (!source) return null;
+  return planesHere().find((plane) => sameSource(plane.id, source)) ?? null;
+};
+const withSort = (plane) => {
+  if (!plane || plane.id?.kind !== "tile") return null;
+  return { id: plane.id, role: plane.role, elevation: plane.elevation, sort: tileDocumentSort(plane.id.tileId) };
+};
+const floorPlaneOf = (plane) => (plane?.role === "floor" && plane.id?.kind === "tile" ? withSort(plane) : null);
 const syncFloorLooks = () => {
   if (!canvas?.ready) return;
   floorLevel = floorDetail(localQuality());
   const list = [];
   if (floorLevel.show && regionStepsOn()) for (const region of regionsHere()) {
-    try { const own = region.flags?.[ID], floor = plainFloorOf(region); if (floor && Array.isArray(own?.steps)) {
+    try {
+      const own = region.flags?.[ID], bound = planeOfRegion(region);
+      if (own?.imageRegion?.source?.kind === "tile" && bound?.role !== "floor") continue;
+      const floor = plainFloorOf(region);
+      if (floor && Array.isArray(own?.steps)) {
         const flags = stepFlags(own) ?? {}, seaHere = floor === "water" && waterKindOf(flags) === "sea" && !flags.sea && movingWaterOn() && own.seaBeach !== "off";
         // A look on a sea moving water draws stops at its waterline, leaving the shore alone.
-        list.push({ id: region.id, areas: regionAreas(region), roofed: roofedRegion(regionAreas(region)), sheen: floorLevel.sheen, ...stepLook(own, floor), shore: seaHere ? (box) => seaShore(globalThis.PIXI, regionAreas(region), box, canvas.grid.size, canvas.dimensions.sceneRect) : null });
-      } } catch { /* a broken region never breaks the rest */ }
+        const spec = { id: region.id, areas: regionAreas(region), roofed: roofedRegion(regionAreas(region)), sheen: floorLevel.sheen, ...stepLook(own, floor), shore: seaHere ? (box) => seaShore(globalThis.PIXI, regionAreas(region), box, canvas.grid.size, canvas.dimensions.sceneRect) : null };
+        const home = floorPlaneOf(bound);
+        if (home) spec.plane = { ...home, zIndex: MAP_SORT.floorLooks };
+        list.push(spec);
+      }
+    } catch { /* a broken region never breaks the rest */ }
   }
   floorLooks.sync(list);
   // What moves on those looks: as this screen's quality level allows.
@@ -2295,7 +2403,17 @@ const syncFloorLooks = () => {
   const moving = movingWaterList(), movingIds = new Set(moving.map((m) => m.id));
   const painted = [], sceneChoice = canvas.scene?.flags?.[ID]?.floorTextures;
   if (floorLevel.show && regionStepsOn()) for (const region of regionsHere()) {
-    try { const own = region.flags?.[ID] ?? {}, floor = plainFloorOf(region); if (floor && showsTexture(own, sceneChoice) && !movingIds.has(region.id)) painted.push({ id: region.id, areas: regionAreas(region), floor: textureFloor(own, floor), style: textureStyleOf(own, textureFloor(own, floor)), seconds: stepLook(own, floor).seconds, edge: stepEdge(own), scale: stepScale(own), blades: floorLevel.blades, shine: floorLevel.shine, roofed: roofedRegion(regionAreas(region)) }); } catch { /* a broken region never breaks the rest */ }
+    try {
+      const own = region.flags?.[ID] ?? {}, bound = planeOfRegion(region);
+      if (own?.imageRegion?.source?.kind === "tile" && bound?.role !== "floor") continue;
+      const floor = plainFloorOf(region);
+      if (floor && showsTexture(own, sceneChoice) && !movingIds.has(region.id)) {
+        const spec = { id: region.id, areas: regionAreas(region), floor: textureFloor(own, floor), style: textureStyleOf(own, textureFloor(own, floor)), seconds: stepLook(own, floor).seconds, edge: stepEdge(own), scale: stepScale(own), blades: floorLevel.blades, shine: floorLevel.shine, roofed: roofedRegion(regionAreas(region)) };
+        const home = floorPlaneOf(bound);
+        if (home) spec.plane = { ...home, zIndex: MAP_SORT.floorTextures };
+        painted.push(spec);
+      }
+    } catch { /* a broken region never breaks the rest */ }
   }
   floorTextures.sync(painted);
   syncMovingWater(moving);
@@ -2304,9 +2422,24 @@ const syncFloorLooks = () => {
 // Moving water (engines/motion/water-engine.mjs): every water region's, on every scene, as far as each screen's quality level and the Moving water setting allow.
 const waterEngine = createWaterEngine({ PIXI: globalThis.PIXI, root: floorLayer("waterEngine", 395), grid: () => canvas.grid?.size ?? 100 });
 // What raised floors throw on what is below them: over the painted floors (400), under what lies on them (410).
-const floorShadows = createFloorShadows({ PIXI: globalThis.PIXI, root: floorLayer("floorShadows", 405), edges: floorLayer("floorEdges", 406), grid: () => canvas.grid?.size ?? 100 });
+const floorShadows = createFloorShadows({ PIXI: globalThis.PIXI, root: floorDrawRoot("floorShadows"), edges: floorLayer("floorEdges", 406), grid: () => canvas.grid?.size ?? 100 });
 // Whether two sets of areas have boxes that overlap at all.
 const boxesMeet = (a, b) => { const box = (areas) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const area of areas) for (let i = 0; i + 1 < area.length; i += 2) { x0 = Math.min(x0, area[i]); x1 = Math.max(x1, area[i]); y0 = Math.min(y0, area[i + 1]); y1 = Math.max(y1, area[i + 1]); } return { x0, y0, x1, y1 }; }, p = box(a), q = box(b); return p.x0 < q.x1 && q.x0 < p.x1 && p.y0 < q.y1 && q.y0 < p.y1; };
+const shadowOn = (region, caster) => {
+  const fromTile = caster?.id?.kind === "tile" ? Number(caster.elevation) : NaN;
+  const fromRegion = Number(region?.elevation?.bottom);
+  const elevation = Number.isFinite(fromTile) ? fromTile : (Number.isFinite(fromRegion) ? fromRegion : null);
+  if (elevation == null) return null;
+  const areas = regionAreas(region);
+  const floors = [];
+  for (const plane of planesHere()) {
+    if (plane.role !== "floor" || plane.id.kind !== "tile") continue;
+    const meets = regionsHere().some((other) => other !== region && sameSource(other.flags?.[ID]?.imageRegion?.source, plane.id) && boxesMeet(regionAreas(other), areas));
+    floors.push({ id: plane.id, role: plane.role, elevation: plane.elevation, meets });
+  }
+  const seen = shadowFloor(elevation, caster?.id?.kind === "tile" ? caster.id.tileId : null, floors);
+  return seen ? withSort(seen) : null;
+};
 // Whether moving water is drawn on this screen: its quality level allows it and the Moving water setting (world and player) is on.
 // What lives on its shore (the cut-out shore, the beach animals keep off, the crabs) asks this too, so none of it acts on a sea not drawn.
 const movingWaterOn = () => { try { return !!floorLevel.water && hotSetting("movingWater") !== false && hotSetting("movingWaterLocal") !== false; } catch { return false; } };
@@ -2345,13 +2478,28 @@ const syncFloorShadows = (moving) => {
   const list = [], on = floorLevel.show && regionStepsOn(), here = regionsHere(), floors = here.filter((r) => plainFloorOf(r)), base = Number(canvas.level?.elevation?.base) || 0, bottomOf = (r) => { const n = Number(r.elevation?.bottom); return Number.isFinite(n) ? n : base; };
   if (on) for (const region of here) {
     try {
-      const own = region.flags?.[ID], floor = plainFloorOf(region);
+      const own = region.flags?.[ID], floor = plainFloorOf(region), caster = planeOfRegion(region);
+      if (caster?.role === "overhead") {
+        if (own?.castShadow === false || (own?.castShadow !== true && caster.blocksLight !== true)) continue;
+        const areas = regionAreas(region);
+        if (roofedRegion(areas)) continue;
+        const seen = shadowOn(region, caster);
+        if (!seen) continue;
+        const xs = areas.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 0)), ys = areas.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 1));
+        const heightOf = (other) => { const plane = planeOfRegion(other); const tile = plane?.id?.kind === "tile" ? Number(plane.elevation) : NaN; return Number.isFinite(tile) ? tile : bottomOf(other); };
+        const high = floors.filter((r) => r !== region && heightOf(r) >= caster.elevation).map((r) => regionAreas(r));
+        list.push({ id: region.id, areas, ...overShadowOf(own, ""), across: Math.max(...xs) - Math.min(...xs) > Math.max(...ys) - Math.min(...ys), lift: overLiftOf({ above: caster.elevation, water: seen.elevation, distance: canvas.dimensions?.distance, grid: canvas.grid.size }), blockers: [...high, ...moving.map((m) => m.areas)], above: high, onWater: moving.some((m) => boxesMeet(m.areas, areas)), plane: { ...seen, zIndex: MAP_SORT.floorShadows } });
+        continue;
+      }
       if (!floor || floor === "water" || !castsShadow(own)) continue;
       const areas = regionAreas(region);
       if (roofedRegion(areas)) continue;
       const bottom = bottomOf(region), beneath = floors.filter((r) => r !== region && bottomOf(r) < bottom && boxesMeet(regionAreas(r), areas)).map(bottomOf), xs = areas.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 0)), ys = areas.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 1));
       const high = floors.filter((r) => r !== region && bottomOf(r) >= bottom).map((r) => regionAreas(r));
-      list.push({ id: region.id, areas, ...overShadowOf(own, floor), across: Math.max(...xs) - Math.min(...xs) > Math.max(...ys) - Math.min(...ys), lift: overLiftOf({ above: bottom, water: Math.max(base, ...beneath), distance: canvas.dimensions?.distance, grid: canvas.grid.size }), blockers: [areas, ...high, ...moving.map((m) => m.areas)], above: high, onWater: moving.some((m) => boxesMeet(m.areas, areas)), ...floorBodyOf(region, own, floor, areas, bottom, base) });
+      const seen = shadowOn(region, caster);
+      const spec = { id: region.id, areas, ...overShadowOf(own, floor), across: Math.max(...xs) - Math.min(...xs) > Math.max(...ys) - Math.min(...ys), lift: overLiftOf({ above: bottom, water: Math.max(base, ...beneath), distance: canvas.dimensions?.distance, grid: canvas.grid.size }), blockers: [areas, ...high, ...moving.map((m) => m.areas)], above: high, onWater: moving.some((m) => boxesMeet(m.areas, areas)), ...floorBodyOf(region, own, floor, areas, bottom, base) };
+      if (seen) spec.plane = { ...seen, zIndex: MAP_SORT.floorShadows };
+      list.push(spec);
     } catch { /* a broken region never breaks the rest */ }
   }
   floorShadows.sync(list);
@@ -2362,7 +2510,18 @@ const syncMovingWater = (list) => {
 };
 let floorLooksTimer = null;
 const floorLooksSoon = () => { clearTimeout(floorLooksTimer); floorLooksTimer = setTimeout(syncFloorLooks, 50); };
-for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) floorLooksSoon(); });
+for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) { forgetPlanes(); floorLooksSoon(); } });
+for (const hook of ["createTile", "updateTile"]) Hooks.on(hook, () => { forgetPlanes(); floorLooksSoon(); });
+Hooks.on("deleteTile", (doc) => {
+  forgetPlanes();
+  const id = String(doc?.id ?? doc?._id ?? "");
+  const box = floorTileBoxes.get(id);
+  if (box) {
+    try { box.parent?.removeChild(box); box.destroy({ children: true }); } catch { /* gone */ }
+    floorTileBoxes.delete(id);
+  }
+  floorLooksSoon();
+});
 const stepFlagsOf = (doc) => doc.flags?.[ID], saveStepFlags = (doc, flags) => doc.update({ flags: { [ID]: flags } }, { render: false });
 const regionTakesSeason = (own) => takesSeason(own, canvas.scene?.flags?.[ID]?.floorTextures);
 const openSteps = (doc) => openStepsWindow(foundry.applications.api.ApplicationV2, { id: ID, doc, floor: plainFloorOf(doc), flagsOf: stepFlagsOf, save: saveStepFlags, season: regionTakesSeason });
@@ -2381,7 +2540,7 @@ Hooks.on("updateRegion", (doc, change) => { const flags = change?.flags?.[ID]; i
 // The menu stands by the spot it was opened for: when the map moves under it, it goes.
 Hooks.on("canvasPan", () => { regionPanel.close(); });
 Hooks.on("deleteRegion", (doc) => { if (regionPanel.doc === doc) regionPanel.close(); });
-Hooks.on("canvasTearDown", () => { clearTimeout(floorLooksTimer); floorLooks.clear(); floorTextures.clear(); floorMotion.clear(); waterEngine.clear(); floorShadows.clear(); regionPanel.close(); });
+Hooks.on("canvasTearDown", () => { clearTimeout(floorLooksTimer); forgetPlanes(); dropTileBoxes(); floorLooks.clear(); floorTextures.clear(); floorMotion.clear(); waterEngine.clear(); floorShadows.clear(); regionPanel.close(); });
 // The region with a floor under a point, the last listed as the floor's own lookup has it.
 const floorRegionAt = (point) => {
   const elevation = Number(canvas.level?.elevation?.base) || 0, regions = regionsHere();
@@ -3371,6 +3530,7 @@ const openFloorRegionsTool = async () => {
     scene,
     sceneRect,
     levelId,
+    tiles: (canvas.tiles?.placeables ?? []).map((placeable) => placeable.document),
     textures,
     grid: canvas.grid?.size ?? 100,
     effectsOff: () => Object.entries({ Fungus: "caveFungus", Crystals: "caveCrystals", Lava: "caveLava", Mist: "caveMist" }).filter(([, key]) => !bothSettingsOn(key)).map(([label]) => label),
