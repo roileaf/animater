@@ -306,3 +306,25 @@ test('waves keep their pace on a small water, and turn slowly with the wind', as
   assert.ok(Math.abs(Math.hypot(...turned) - 1) < 1e-9, 'a unit length');
   assert.deepEqual(turnedToward([1, 0], [-1, 0], 0.5), [-1, 0], 'never nothing, turned right round');
 });
+
+test('the sea breaks on a tile ticked to take its waves, on the side they come from, and builds again when it moves', async () => {
+  const { hullKey, WATER_SHADERS: S } = await import('../../../scripts/engines/motion/water-engine.mjs');
+  const ship = { id: 'ship', src: 'ship.webp', x: 100, y: 200, width: 400, height: 1200, rotation: 0 };
+  assert.deepEqual(hullKey([ship]), hullKey([{ ...ship, source: {} }]), 'the picture object itself is not in the key');
+  assert.notDeepEqual(hullKey([ship]), hullKey([{ ...ship, x: 160 }]), 'moved');
+  assert.notDeepEqual(hullKey([ship]), hullKey([{ ...ship, rotation: 90 }]), 'turned');
+  assert.notDeepEqual(hullKey([ship]), hullKey([{ ...ship, scaleX: -1 }]), 'mirrored');
+  assert.deepEqual(hullKey(), [], 'no tiles');
+  for (const frag of [S.full, S.simple]) {
+    assert.match(frag, /uniform sampler2D uHull;/);
+    // Facing: the way out from the hull runs against the way the waves go.
+    assert.match(frag, /dot\(normalize\(rise\), uSwellDir\)/);
+    assert.match(frag, /near = max\(near, hullBreak\);/);
+    assert.match(frag, /\(1\.0 - min\(hullHit, 1\.0\)\)/);
+  }
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /hulls: kind === "sea" \? hullsOver\(areas\) : undefined/, 'only a sea');
+  assert.match(main, /flags\?\.\[ID\]\?\.wavesBreak !== true \|\| doc\.hidden/, 'off unless ticked, and not while hidden');
+  assert.match(main, /name="flags\.\$\{ID\}\.wavesBreak"/, 'the tick in the tile configuration');
+  assert.match(main, /\["createTile", "updateTile", "deleteTile"\]\) Hooks\.on\(hook, \(doc, change\) => \{ if \(doc\?\.flags\?\.\[ID\]\?\.wavesBreak === true/);
+});
