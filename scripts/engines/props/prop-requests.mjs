@@ -3,6 +3,7 @@ import { propMaterial, propShape, canBreak } from "./prop-material.mjs";
 import { propTraits, breakStyle } from "./prop-traits.mjs";
 import { breakLook, brokenNote, readNote, missBreaks } from "./prop-break.mjs";
 import { ownWalls, openUpdates, restoreUpdates } from "./prop-walls.mjs";
+import { lightsOfProp, hideLights, unhideLights } from "./prop-lights.mjs";
 import { segRectDist, headsInto, onLevel } from "./prop-pick.mjs";
 
 export const PROP_BREAK_MESSAGE = "prop-break";
@@ -63,7 +64,7 @@ export function slamPlausible(tile, path, mover, grid = 100) {
 
 // target: {x, y, w, h, level?} of the missed token; mover: {x, y, level?} centre and size in squares; roll in [0, 1).
 // A tile on another level than the target or mover (tile.levels) is too far.
-export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, sender, target, mover, roll = 1 } = {}) {
+export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, sender, target, mover, roll = 1, lights = [] } = {}) {
   const no = (why) => ({ ok: false, why });
   const own = scene?.flags?.animater ?? {};
   if (own.breakableProps !== true) return no("off");
@@ -82,8 +83,9 @@ export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, se
   if (!plausible(cause, tile, grid, { target, mover })) return no("far");
   const chance = Number(own.propMissChance ?? MISS_CHANCE); // a form may save it as text
   if (cause.kind === "miss" && !missBreaks(cause.outcome, Number.isFinite(chance) ? chance : MISS_CHANCE, roll)) return no("lucky");
-  // The GM decides the walls: all of the tile's own open, and the note names them.
-  return { ok: true, note: { ...note, walls: mine.map((w) => w.id) }, wallUpdates: openUpdates(mine) };
+  // The GM decides the walls and the lights: all of the tile's own walls open, the lit lights on it go out, and the note names them.
+  const out = propTraits(tile, grid, scene).light ? lightsOfProp(tile, lights, grid, tile.levels) : [];
+  return { ok: true, note: { ...note, walls: mine.map((w) => w.id), lights: out.map((l) => l.id) }, wallUpdates: openUpdates(mine), lightUpdates: hideLights(out) };
 }
 
 // The requester's note: the tile's own walls, its larger side in squares, cut along the line from the cause.
@@ -94,6 +96,7 @@ export function breakNoteFor({ tile, walls = [], grid = 100, cause = {}, seed, f
     walls: ownWalls(tile, walls, grid).map((w) => w.id), size: Math.max(tile.width, tile.height) / grid, style: breakStyle(propTraits(tile, grid, scene), cause) });
 }
 
+const namedLights = (tile) => readNote(propOf(tile).broken)?.lights ?? [];
 const namedIds = (tile) => new Set(readNote(propOf(tile).broken)?.walls ?? []);
 // The walls undoing (or deleting) a broken tile gives back: named in its note (never recomputed) and still its own
 // (a copied tile carries the original's note), less those another broken tile still names.
@@ -105,15 +108,15 @@ export function wallsToRestore(tile, tiles, walls, grid = 100) {
   return walls.filter((w) => ids.has(w.id) && own.has(w.id) && !held.has(w.id));
 }
 // tiles: the scene's tiles (with or without this one).
-export function undoUpdates(tile, walls, { tiles = [], grid = 100 } = {}) {
-  return { tile: { _id: tile.id, "flags.animater.prop.-=broken": null }, walls: restoreUpdates(wallsToRestore(tile, tiles, walls, grid)) };
+export function undoUpdates(tile, walls, { tiles = [], grid = 100, lights = [] } = {}) {
+  return { tile: { _id: tile.id, "flags.animater.prop.-=broken": null }, walls: restoreUpdates(wallsToRestore(tile, tiles, walls, grid)), lights: unhideLights(namedLights(tile), lights) };
 }
 
 // Every broken tile unhidden and cleared in one batch. No broken tile is left, so every opened wall comes back,
 // including any a deleted or copied tile left open.
-export function repairUpdates(tiles, walls) {
+export function repairUpdates(tiles, walls, { lights = [] } = {}) {
   const broken = (tiles ?? []).filter((t) => propOf(t).broken);
-  return { tiles: broken.map((t) => ({ _id: t.id, hidden: false, "flags.animater.prop.-=broken": null })), walls: restoreUpdates(walls ?? []) };
+  return { tiles: broken.map((t) => ({ _id: t.id, hidden: false, "flags.animater.prop.-=broken": null })), walls: restoreUpdates(walls ?? []), lights: unhideLights(broken.flatMap(namedLights), lights) };
 }
 
 // "a.-=b": null keys as the database's own deletion marker (v14 deprecates the key form); unchanged without one.

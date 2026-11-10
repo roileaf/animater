@@ -9,15 +9,18 @@ const CONTENT_LABELS = { none: "Nothing", water: "Water", wine: "Wine", oil: "Oi
 const STYLE_LABELS = { shatter: "Shatter", collapse: "Collapse" };
 const options = (list, value) => list.map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("");
 
-export function propTileFieldsHTML({ src, material = "", contents = "", style = "" } = {}) {
+export function propTileFieldsHTML({ src, material = "", contents = "", style = "", light = "" } = {}) {
   const guesses = propGuesses(src), guess = guesses.material, mat = MATERIALS.includes(material) ? material : "", own = CONTENTS.includes(contents) ? contents : "", sty = STYLE_CHOICES.includes(style) ? style : "";
   const mats = [["", `Automatic (${guess === "none" ? "won't break" : guess})`], ...MATERIALS.map((m) => [m, LABELS[m]])];
   const styles = [["", `Automatic (${guesses.style})`], ...STYLE_CHOICES.map((c) => [c, STYLE_LABELS[c]])];
   const conts = [["", `Automatic (${CONTENT_LABELS[guesses.contents]})`], ...CONTENTS.map((c) => [c, CONTENT_LABELS[c]])];
+  const lit = light === "yes" || light === "no" ? light : "";
+  const lightOpts = [["", `Automatic (${guesses.light ? "yes" : "no"})`], ["yes", "Yes"], ["no", "No"]];
   return `<fieldset data-animater-prop data-src="${esc(src)}"><legend>Breakable prop</legend>
     <div class="form-group"><label>Material</label><div class="form-fields"><select name="flags.${ID}.prop.material">${options(mats, mat)}</select></div><p class="hint">What the prop is made of decides what can break it. Automatic goes by the file name.</p></div>
     <div class="form-group"><label>Breaks as</label><div class="form-fields"><select name="flags.${ID}.prop.style">${options(styles, sty)}</select></div><p class="hint">How it comes apart. Automatic goes by the file name: furniture collapses, everything else shatters.</p></div>
     <div class="form-group"><label>Contents</label><div class="form-fields"><select name="flags.${ID}.prop.contents">${options(conts, own)}</select></div><p class="hint">What spills when it breaks.</p></div>
+    <div class="form-group"><label>Light prop</label><div class="form-fields"><select name="flags.${ID}.prop.light">${options(lightOpts, lit)}</select></div><p class="hint">A lantern, brazier or candelabra puts out the lights on it when it breaks, and Repair lights them again. Automatic goes by the file name.</p></div>
   </fieldset>`;
 }
 

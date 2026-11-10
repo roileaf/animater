@@ -1,4 +1,5 @@
 // What a prop is, read from the tile: the GM's flags win, anything else falls back to a guess from the file name. Pure.
+import { guessLight } from "./prop-lights.mjs";
 import { MATERIALS, FURNITURE, nameTokens, guessMaterial, propMaterial } from "./prop-material.mjs";
 
 export const STYLES = ["shatter", "collapse", "topple", "tip", "burn", "split"];
@@ -16,6 +17,7 @@ export function propGuesses(src) {
     style: has(FURNITURE) ? "collapse" : "shatter",
     contents: has(BOOKS) ? "books" : has(POTIONS) ? "potions" : "none",
     legs: has(LEGS),
+    light: guessLight(src),
   };
 }
 
@@ -26,6 +28,7 @@ export function propTraits(tile, grid, scene = {}) { // eslint-disable-line no-u
     style: STYLES.includes(own.style) ? own.style : guess.style,
     contents: CONTENTS.includes(own.contents) && own.contents !== "" ? own.contents : guess.contents,
     legs: guess.legs,
+    light: own.light === "yes" ? true : own.light === "no" ? false : guess.light,
   };
 }
 

@@ -227,3 +227,42 @@ test("unhiding two broken tiles that share a wall at once gives the shared wall 
   assert.deepEqual(wallsToRestore(A, [A, B], [shared, a1]).map((w) => w.id), ["s", "a1"]);
   assert.deepEqual(wallsToRestore(B, [A, B], [shared, a1]).map((w) => w.id), ["s"]);
 });
+
+// Light props (Task 9)
+const lantern = (extra = {}) => barrel({ id: "lantern", texture: { src: "props/Lantern.webp" }, ...extra });
+const lamps = (extra = {}) => ({ x: 0, y: 0, hidden: false, levels: [], ...extra });
+test("the GM hides the lights it finds and names them in the note", () => {
+  const tile = lantern(), note = { ...noteFor(tile), lights: ["out"] };
+  const lights = [lamps({ id: "in", x: 250, y: 250 }), lamps({ id: "out", x: 600, y: 600 })];
+  const r = validBreakRequest(areaReq(note), ctx({ tile, lights }));
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.note.lights, ["in"]);
+  assert.deepEqual(r.lightUpdates, [{ _id: "in", hidden: true }]);
+  // a barrel is no light prop: nothing goes out whatever the requester says
+  const b = validBreakRequest(areaReq({ ...noteFor(), lights: ["in"] }), ctx({ lights }));
+  assert.deepEqual([b.note.lights, b.lightUpdates], [[], []]);
+  // the GM can say no to a lantern
+  const no = lantern({ flags: { animater: { prop: { light: "no" } } } });
+  assert.deepEqual(validBreakRequest(areaReq(noteFor(no)), ctx({ tile: no, lights })).lightUpdates, []);
+});
+test("undo and Repair unhide only the lights the break hid", () => {
+  const tile = lantern(), lights = [lamps({ id: "in", x: 250, y: 250 }), lamps({ id: "gmHid", x: 260, y: 260 })];
+  const r = validBreakRequest(areaReq(noteFor(tile)), ctx({ tile, lights }));
+  assert.deepEqual(r.note.lights, ["in", "gmHid"]);
+  // the GM had hidden gmHid beforehand: it is not visible, so the break neither hides nor names it
+  const before = [lamps({ id: "in", x: 250, y: 250 }), lamps({ id: "gmHid", x: 260, y: 260, hidden: true })];
+  const r2 = validBreakRequest(areaReq(noteFor(tile)), ctx({ tile, lights: before }));
+  assert.deepEqual(r2.note.lights, ["in"]);
+  const broken = { ...tile, hidden: true, flags: { animater: { prop: { broken: r2.note } } } };
+  const after = [lamps({ id: "in", x: 250, y: 250, hidden: true }), lamps({ id: "gmHid", x: 260, y: 260, hidden: true })];
+  assert.deepEqual(undoUpdates(broken, walls, { tiles: [], grid, lights: after }).lights, [{ _id: "in", hidden: false }]);
+  assert.deepEqual(repairUpdates([broken], walls, { lights: after }).lights, [{ _id: "in", hidden: false }]);
+  // a light the GM deleted or already lit again is skipped
+  assert.deepEqual(repairUpdates([broken], walls, { lights: [lamps({ id: "in", x: 250, y: 250 })] }).lights, []);
+  assert.deepEqual(repairUpdates([broken], walls).lights, []);
+});
+test("old notes without lights read as none", () => {
+  const { lights, ...old } = noteFor(lantern());
+  const broken = { ...lantern(), flags: { animater: { prop: { broken: old } } } };
+  assert.deepEqual(undoUpdates(broken, walls, { lights: [lamps({ id: "in", hidden: true })] }).lights, []);
+});

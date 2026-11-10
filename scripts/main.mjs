@@ -7092,6 +7092,9 @@ const propLate = new Map(); // shown again after PROP_REFUSED_MS: a GM write tha
 let propNoGmTraced = false;
 // v14's deletion marker for the "-=" keys of the pure updates.
 const propDel = () => globalThis._del ?? (foundry.data?.operators?.ForcedDeletion ? new foundry.data.operators.ForcedDeletion() : undefined);
+// The scene's lights as the light-prop rules read them (flags too: a burning-oil light is told apart by its flag).
+const lightView = (doc) => ({ id: doc.id, x: doc.x, y: doc.y, hidden: doc.hidden, levels: [...(doc.levels ?? [])], flags: doc.flags ?? {} });
+const sceneLights = (scene) => (scene?.lights?.contents ?? []).map(lightView);
 const propContents = (doc) => propTraits(propTileView(doc), propGrid(doc.parent), doc.parent).contents;
 // The tile as the prop rules read it: overhead when it stands at or above the top of its level.
 const propTileView = (doc) => {
@@ -7148,10 +7151,11 @@ async function requestPropBreak(tile, cause, { from } = {}) {
   const gm = game.users.activeGM;
   if (!gm) { if (!propNoGmTraced) { propNoGmTraced = true; runtime?.trace("props", "no GM connected"); } return false; }
   const clean = cleanCause(cause), grid = propGrid(scene), view = propTileView(doc), walls = scene.walls?.contents ?? [];
+  const lights = sceneLights(scene);
   const note = breakNoteFor({ tile: view, walls, grid, cause: clean, seed: Math.floor(Math.random() * 0x7fffffff), from: from ?? clean.at, scene });
   if (gm.isSelf) return applyPropBreak(scene, doc, clean, note, game.user);
   // Checked here first, then again by the GM. A plain miss waits for the GM's roll; anything else shows at once.
-  const here = validBreakRequest({ cause: clean, note }, { tile: view, walls, scene, grid, sender: game.user, ...await propPlace(clean, scene, grid), roll: 0 });
+  const here = validBreakRequest({ cause: clean, note }, { tile: view, walls, scene, grid, sender: game.user, lights, ...await propPlace(clean, scene, grid), roll: 0 });
   if (!here.ok) return false;
   if (scene === canvas?.scene && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakPropHere(doc, note);
   game.socket.emit(`module.${ID}`, { type: PROP_BREAK_MESSAGE, sender: clientId, sceneId: scene.id, tileId: doc.id, cause: clean, note });
@@ -7162,11 +7166,12 @@ async function applyPropBreak(scene, doc, cause, rawNote, user) {
   propWriting.add(doc.id);
   try {
     const grid = propGrid(scene), walls = scene.walls?.contents ?? [];
-    const check = validBreakRequest({ cause, note: rawNote }, { tile: propTileView(doc), walls, scene, grid, sender: user, ...await propPlace(cause, scene, grid), roll: Math.random() });
+    const check = validBreakRequest({ cause, note: rawNote }, { tile: propTileView(doc), walls, scene, grid, sender: user, lights: sceneLights(scene), ...await propPlace(cause, scene, grid), roll: Math.random() });
     if (!check.ok) { runtime?.trace("props", `not broken: ${check.why}`); return false; }
     await doc.update({ hidden: true, [`flags.${ID}.prop.broken`]: check.note }, { animater: { propBreak: true } });
     // The tile is already written: a failed wall batch is only reported.
     if (check.wallUpdates.length) await scene.updateEmbeddedDocuments("Wall", check.wallUpdates).catch((e) => runtime?.trace("props", `walls not opened: ${e?.message ?? e}`));
+    if (check.lightUpdates?.length) await scene.updateEmbeddedDocuments("AmbientLight", check.lightUpdates).catch((e) => runtime?.trace("props", `lights not put out: ${e?.message ?? e}`));
     return true;
   } finally { propWriting.delete(doc.id); }
 }
@@ -7280,19 +7285,21 @@ async function undoPropBreak(doc, { deleted = false } = {}) {
   const scene = doc.parent, del = propDel();
   if (!scene) return;
   const tiles = scene.tiles.contents.filter((t) => t.id !== doc.id).map(propTileView);
-  const u = undoUpdates(propTileView(doc), scene.walls?.contents ?? [], { tiles, grid: propGrid(scene) });
+  const u = undoUpdates(propTileView(doc), scene.walls?.contents ?? [], { tiles, grid: propGrid(scene), lights: sceneLights(scene) });
   if (!deleted) await scene.updateEmbeddedDocuments("Tile", [withDeletes(u.tile, del)]);
   if (u.walls.length) await scene.updateEmbeddedDocuments("Wall", u.walls.map((w) => withDeletes(w, del)));
+  if (u.lights.length) await scene.updateEmbeddedDocuments("AmbientLight", u.lights).catch((e) => runtime?.trace("props", `lights not relit: ${e?.message ?? e}`));
 }
 // Repair (GM): every broken tile of the scene unhidden and cleared in one tile batch; its walls, and every broken door
 // put back to its own type, state and restrictions (a locked door stays locked), in one wall batch. Prop walls are never
 // doors, so the two never name the same wall.
 async function repairAllProps(scene = canvas?.scene) {
   if (!game.user?.isGM || !scene) return 0;
-  const walls = scene.walls?.contents ?? [], r = repairUpdates(scene.tiles.contents.map(propTileView), walls), del = propDel();
+  const walls = scene.walls?.contents ?? [], r = repairUpdates(scene.tiles.contents.map(propTileView), walls, { lights: sceneLights(scene) }), del = propDel();
   const wallFixes = [...r.walls, ...wallRepairUpdates(walls)];
   if (r.tiles.length) await scene.updateEmbeddedDocuments("Tile", r.tiles.map((t) => withDeletes(t, del)));
   if (wallFixes.length) await scene.updateEmbeddedDocuments("Wall", wallFixes.map((w) => withDeletes(w, del)), { animater: { wallRepair: true }, sound: false });
+  if (r.lights.length) await scene.updateEmbeddedDocuments("AmbientLight", r.lights).catch((e) => runtime?.trace("props", `lights not relit: ${e?.message ?? e}`));
   return r.tiles.length;
 }
 // What breaks props (engines/props/prop-triggers.mjs): an area's damage roll, a missed melee strike, a forced path.

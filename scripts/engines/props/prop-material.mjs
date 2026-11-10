@@ -2,10 +2,10 @@
 export const MATERIALS = ["wood", "glass", "clay", "metal", "stone", "none"];
 
 const TOKENS = {
-  wood: ["barrel", "crate", "box", "chest","cart", "table", "chair", "bench", "stool", "shelf", "wood", "wooden", "plank", "keg"],
-  glass: ["bottle", "glass", "jar", "vial", "potion", "flask", "window"],
+  wood: ["barrel", "crate", "box", "chest","cart", "table", "chair", "bench", "stool", "shelf", "wood", "wooden", "plank", "keg", "torch"],
+  glass: ["bottle", "glass", "jar", "vial", "potion", "flask", "window", "lantern", "lamp"],
   clay: ["pot", "vase", "urn", "amphora", "ceramic", "clay", "jug"],
-  metal: ["metal", "iron", "steel", "cage", "brazier"],
+  metal: ["metal", "iron", "steel", "cage", "brazier", "candle", "candelabra", "chandelier"],
   stone: ["stone", "statue", "pillar", "column", "rock"],
 };
 // Furniture is wood whatever else the name says ("Shelf_Potions" is a shelf, "Potion_Red" is glass).

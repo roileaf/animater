@@ -80,3 +80,9 @@ test("window fieldset: the hidden group's material select is disabled so one nam
   assert.equal((doorShown.match(/breakWall\.material" disabled/g) ?? []).length, 1);
   assert.equal((wallBreakFieldsHTML({ door: 0 }).match(/breakWall\.material" disabled/g) ?? []).length, 1);
 });
+
+test("Light prop select", () => {
+  assert.match(propTileFieldsHTML({ src: "Lantern.webp" }), /name="flags\.animater\.prop\.light"[\s\S]*Automatic \(yes\)/);
+  assert.match(propTileFieldsHTML({ src: "Barrel.webp" }), /prop\.light"[\s\S]*Automatic \(no\)/);
+  assert.match(propTileFieldsHTML({ src: "Barrel.webp", light: "yes" }), /<option value="yes" selected>Yes</);
+});
