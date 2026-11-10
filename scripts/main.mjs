@@ -3158,6 +3158,9 @@ const syncPlacedAnimals = () => {
   const { add, remove } = placedChanges(placedShown, raw);
   for (const id of remove) { wildlife.removeAdded(id); fieldLife.removeAdded(id); placedShown.delete(id); }
   for (const p of add) if (wildlife.add(p.kind, p) || fieldLife.add(p.kind, p)) placedShown.add(p.id);
+  // Their orders from the animal HUD (animal-orders.mjs), the same on every screen.
+  const orders = new Map(placedList(raw).map((p) => [p.id, p.order ?? null]));
+  wildlife.orders(orders); fieldLife.orders(orders);
 };
 Hooks.on("canvasTearDown", () => { placedShown.clear(); });
 let animalsPanelApp = null, animalAim = null, animalScope = "level";
@@ -3174,9 +3177,6 @@ const startAnimalAim = (kind, done) => {
   if (!game.user?.isGM || !canvas?.ready) return done();
   const down = (e) => {
     if (e.target !== canvas.app.view) return;
-  // Their orders from the animal HUD (animal-orders.mjs), the same on every screen.
-  const orders = new Map(placedList(raw).map((p) => [p.id, p.order ?? null]));
-  wildlife.orders(orders); fieldLife.orders(orders);
     e.stopImmediatePropagation(); e.preventDefault();
     if (e.button !== 0) { stopAnimalAim(); return; }
     const p = canvas.canvasCoordinatesFromClient({ x: e.clientX, y: e.clientY }), scene = canvas.scene, b = canvas.dimensions.sceneRect;
@@ -3190,22 +3190,6 @@ const startAnimalAim = (kind, done) => {
   window.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key, true); window.addEventListener("contextmenu", menu, true);
 };
 Hooks.on("canvasTearDown", () => { stopAnimalAim(); });
-// Why no animal shows, when that is not plain from the panel: the settings, this screen's quality, or a map with no ground
-// they live on (its floor, or all of it roofed or walled in).
-const wildNote = () => {
-  if (undergroundScene()) return "";
-  let quality = 2;
-  try { if (hotSetting("wildlifeLocal") === false) return "Birds, rabbits and fish is off for your screen in the Animater settings, so none will show."; quality = qualityRank(localQuality()); } catch { return ""; }
-  if (quality < 2) return "Your Animater quality is Low or Off, so no animals show on this screen. Balanced or higher shows them.";
-  if (!outdoorLifeHere() || !wildOpen || wildOpen.spots.length || wildOpen.waters.length) return "";
-  const floor = sceneFloorNow();
-  return WILD_FLOORS.has(floor)
-    ? "No open ground here: all of this map is under a roof or walled in. Animals live outdoors."
-    : `No ground here for animals: this map's floor is ${floor}, and they live on grass, dirt, snow, mud or sand. Set Floor in Scene configuration → Animater, or paint ground regions with one of those floors.`;
-};
-const openAnimalsPanel = () => {
-  animalsPanelApp ??= new (animalsPanel(ApplicationV2, {
-    id: ID,
 // The animal HUD (ui/animal-hud.mjs, GM only): right-click an animal for Go here, Follow token, Circle token, Let it go
 // and Remove. An order is kept on the placed animal (animal-orders.mjs); a wild one given an order is put down by hand
 // where it stands, with it, so every screen has it and moves it the same way.
@@ -3280,6 +3264,22 @@ globalThis.window?.addEventListener?.("pointerdown", (e) => {
 }, true);
 globalThis.window?.addEventListener?.("contextmenu", (e) => { if (swallowMenu) { swallowMenu = false; e.preventDefault(); e.stopImmediatePropagation(); } }, true);
 Hooks.on("canvasTearDown", () => { closeAnimalHud(); });
+// Why no animal shows, when that is not plain from the panel: the settings, this screen's quality, or a map with no ground
+// they live on (its floor, or all of it roofed or walled in).
+const wildNote = () => {
+  if (undergroundScene()) return "";
+  let quality = 2;
+  try { if (hotSetting("wildlifeLocal") === false) return "Birds, rabbits and fish is off for your screen in the Animater settings, so none will show."; quality = qualityRank(localQuality()); } catch { return ""; }
+  if (quality < 2) return "Your Animater quality is Low or Off, so no animals show on this screen. Balanced or higher shows them.";
+  if (!outdoorLifeHere() || !wildOpen || wildOpen.spots.length || wildOpen.waters.length) return "";
+  const floor = sceneFloorNow();
+  return WILD_FLOORS.has(floor)
+    ? "No open ground here: all of this map is under a roof or walled in. Animals live outdoors."
+    : `No ground here for animals: this map's floor is ${floor}, and they live on grass, dirt, snow, mud or sand. Set Floor in Scene configuration → Animater, or paint ground regions with one of those floors.`;
+};
+const openAnimalsPanel = () => {
+  animalsPanelApp ??= new (animalsPanel(ApplicationV2, {
+    id: ID,
     flags: () => (animalsOnLevel() ? animalFlagsNow() : canvas?.scene?.flags?.[ID] ?? {}),
     save: saveAnimals,
     scope: () => ({ multi: severalLevels(), mode: animalScope, name: canvas?.level?.name, own: hasOwn(levelOf(canvas?.scene), ANIMAL_KEYS) }),
