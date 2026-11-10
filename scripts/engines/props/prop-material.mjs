@@ -6,7 +6,7 @@ const TOKENS = {
   glass: ["bottle", "glass", "jar", "vial", "potion", "flask", "window", "lantern", "lamp"],
   clay: ["pot", "vase", "urn", "amphora", "ceramic", "clay", "jug"],
   metal: ["metal", "iron", "steel", "cage", "brazier", "candle", "candelabra", "chandelier"],
-  stone: ["stone", "statue", "pillar", "column", "rock"],
+  stone: ["stone", "statue", "pillar", "column", "rock", "obelisk"],
 };
 // Furniture is wood whatever else the name says ("Shelf_Potions" is a shelf, "Potion_Red" is glass).
 export const FURNITURE = new Set(["table", "tables", "chair", "chairs", "bench", "benches", "stool", "stools", "shelf", "shelves", "bookshelf", "bookshelves", "bookcase", "desk", "desks", "bed", "beds", "cabinet", "wardrobe"]);

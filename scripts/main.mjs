@@ -31,6 +31,7 @@ import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest,
 import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, forceOpenDoor, smashFrom, windowOnLine } from "./engines/props/wall-triggers.mjs";
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
+import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
 import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
@@ -7184,7 +7185,15 @@ async function applyPropBreak(scene, doc, cause, rawNote, user) {
       void runBlast(scene, doc, check.note).catch((e) => runtime?.trace("props", `blast: ${e?.message ?? e}`));
       return true;
     }
-    await doc.update({ hidden: true, [`flags.${ID}.prop.broken`]: check.note }, { animater: { propBreak: true } });
+    // A toppled statue's rubble region is made first, so the note that names it is written with the tile. A region that
+    // cannot be made only costs the rubble: the statue still falls.
+    let note = check.note;
+    if (check.rubble) {
+      const region = await makeRubbleRegion(scene, doc, check.rubble);
+      if (region) note = { ...note, region: region.id };
+    }
+    await doc.update({ hidden: true, [`flags.${ID}.prop.broken`]: note }, { animater: { propBreak: true } });
+    if (check.rubble) void whisperTopple(scene, doc, check.rubble).catch((e) => runtime?.trace("props", `topple whisper: ${e?.message ?? e}`));
     // The tile is already written: a failed wall batch is only reported.
     if (check.wallUpdates.length) await scene.updateEmbeddedDocuments("Wall", check.wallUpdates).catch((e) => runtime?.trace("props", `walls not opened: ${e?.message ?? e}`));
     if (check.lightUpdates?.length) await scene.updateEmbeddedDocuments("AmbientLight", check.lightUpdates).catch((e) => runtime?.trace("props", `lights not put out: ${e?.message ?? e}`));
@@ -7194,6 +7203,30 @@ async function applyPropBreak(scene, doc, cause, rawNote, user) {
     return true;
   } finally { propWriting.delete(doc.id); }
 }
+// The rubble a toppled statue leaves (GM): a Region on the statue's level whose walking cost doubles (prop-topple.mjs
+// rubbleRegionData). Null, traced, when it cannot be made.
+async function makeRubbleRegion(scene, doc, strip) {
+  try {
+    const level = (scene.levels?.contents ?? []).find((l) => [...(doc.levels ?? [])].includes(l.id)) ?? scene.initialLevel ?? scene.levels?.contents?.[0];
+    const bottom = Number.isFinite(level?.elevation?.bottom) ? level.elevation.bottom : null, top = Number.isFinite(level?.elevation?.top) ? level.elevation.top : null;
+    const [region] = await scene.createEmbeddedDocuments("Region", [rubbleRegionData({ strip, tileId: doc.id, levels: [...(doc.levels ?? [])], bottom, top })]);
+    return region ?? null;
+  } catch (e) { runtime?.trace("props", `rubble not made: ${e?.message ?? e}`); return null; }
+}
+// The GMs are whispered who stands under a toppling statue; nobody under it, no whisper.
+async function whisperTopple(scene, doc, strip) {
+  const grid = propGrid(scene), tokens = (scene.tokens?.contents ?? []).map((t) => ({ name: t.name, x: t.x, y: t.y, w: t.width * grid, h: t.height * grid, level: t.level }));
+  const html = toppleWhisper(doc.name || "A statue", tokensUnderStrip(tokens, strip, [...(doc.levels ?? [])]));
+  if (!html) return;
+  await ChatMessage.create({ whisper: game.users.filter((u) => u.isGM).map((u) => u.id), speaker: { alias: "Animater" }, content: html });
+}
+// Deletes rubble regions by id, skipping any already gone.
+async function deletePropRegions(scene, ids) {
+  const have = [...new Set(ids ?? [])].filter((id) => scene?.regions?.get(id));
+  if (!have.length) return;
+  await scene.deleteEmbeddedDocuments("Region", have).catch((e) => runtime?.trace("props", `rubble not deleted: ${e?.message ?? e}`));
+}
+const sceneRegions = (scene) => (scene?.regions?.contents ?? []).map((r) => ({ id: r.id, flags: r.flags ?? {} }));
 // A blast's source as the GM's own documents hold it (R15): the keg tile it names on this scene, and its levels.
 function blastPlace(cause, scene) {
   if (cause?.kind !== "blast") return {};
@@ -7395,19 +7428,21 @@ async function undoPropBreak(doc, { deleted = false } = {}) {
   if (u.lights.length) await scene.updateEmbeddedDocuments("AmbientLight", u.lights).catch((e) => runtime?.trace("props", `lights not relit: ${e?.message ?? e}`));
   forgetPropFire(doc.id);
   if (u.deleteLights?.length) await deletePropFires(scene, u.deleteLights);
+  if (u.deleteRegions?.length) await deletePropRegions(scene, u.deleteRegions);
 }
 // Repair (GM): every broken tile of the scene unhidden and cleared in one tile batch; its walls, and every broken door
 // put back to its own type, state and restrictions (a locked door stays locked), in one wall batch. Prop walls are never
 // doors, so the two never name the same wall.
 async function repairAllProps(scene = canvas?.scene) {
   if (!game.user?.isGM || !scene) return 0;
-  const walls = scene.walls?.contents ?? [], r = repairUpdates(scene.tiles.contents.map(propTileView), walls, { lights: sceneLights(scene) }), del = propDel();
+  const walls = scene.walls?.contents ?? [], r = repairUpdates(scene.tiles.contents.map(propTileView), walls, { lights: sceneLights(scene), regions: sceneRegions(scene) }), del = propDel();
   const wallFixes = [...r.walls, ...wallRepairUpdates(walls)];
   if (r.tiles.length) await scene.updateEmbeddedDocuments("Tile", r.tiles.map((t) => withDeletes(t, del)));
   if (wallFixes.length) await scene.updateEmbeddedDocuments("Wall", wallFixes.map((w) => withDeletes(w, del)), { animater: { wallRepair: true }, sound: false });
   if (r.lights.length) await scene.updateEmbeddedDocuments("AmbientLight", r.lights).catch((e) => runtime?.trace("props", `lights not relit: ${e?.message ?? e}`));
   for (const t of r.tiles) forgetPropFire(t._id);
   if (r.deleteLights?.length) await deletePropFires(scene, r.deleteLights);
+  if (r.deleteRegions?.length) await deletePropRegions(scene, r.deleteRegions);
   return r.tiles.length;
 }
 // What breaks props (engines/props/prop-triggers.mjs): an area's damage roll, a missed melee strike, a forced path.
@@ -9672,7 +9707,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
   // Breakable props: the GM's switch for this scene, the miss chance, and Repair (GM only).
   if (!root.querySelector(`[name="flags.${ID}.breakableProps"]`)) {
     const flags = app.document?.flags?.[ID] ?? {}, props = document.createElement("div");
-    props.innerHTML = propSceneFieldsHTML({ on: flags.breakableProps === true, chance: flags.propMissChance, breakWalls: flags.breakWalls });
+    props.innerHTML = propSceneFieldsHTML({ on: flags.breakableProps === true, chance: flags.propMissChance, breakWalls: flags.breakWalls, rubble: flags.rubbleDifficult === true });
     const repair = props.querySelector('[data-action="animater-repair-props"]');
     repair.disabled = !game.user?.isGM;
     repair.addEventListener("click", async (event) => {
@@ -9882,8 +9917,18 @@ Hooks.on("renderTileConfig", (app, html) => {
   const doc = app.document ?? app.object, own = doc?.flags?.[ID]?.prop ?? {};
   const tab = root.querySelector('.tab[data-tab="overhead"]') ?? root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector(".tab.active") ?? root.querySelector("form, .window-content") ?? root;
   tab.insertAdjacentHTML("beforeend", propTileFieldsHTML({ src: doc?.texture?.src, ...own }));
-  // The Burst field shows only while Contents is black powder (picked, or Automatic guessing it); hidden, it does not submit.
+  // The Burst field shows only while Contents is black powder, and the Rubble field only while Breaks as is Topple (picked,
+  // or Automatic guessing it); hidden, they do not submit.
   const set = tab.querySelector("[data-animater-prop]"), contents = set?.querySelector(`[name="flags.${ID}.prop.contents"]`);
+  const style = set?.querySelector(`[name="flags.${ID}.prop.style"]`);
+  style?.addEventListener("change", () => {
+    const topple = (style.value || set.dataset.guessStyle) === "topple";
+    for (const group of set.querySelectorAll('[data-show-for="topple"]')) {
+      group.hidden = !topple;
+      for (const input of group.querySelectorAll("input, select")) input.disabled = !topple;
+    }
+    app.setPosition?.({ height: "auto" });
+  });
   contents?.addEventListener("change", () => {
     const powder = (contents.value || set.dataset.guessContents) === "powder";
     for (const group of set.querySelectorAll('[data-show-for="powder"]')) {

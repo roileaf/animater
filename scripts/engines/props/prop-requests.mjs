@@ -6,6 +6,7 @@ import { ownWalls, openUpdates, restoreUpdates } from "./prop-walls.mjs";
 import { lightsOfProp, hideLights, unhideLights, oilCatches, firesOf, allFires } from "./prop-lights.mjs";
 import { segRectDist, headsInto, onLevel, tipsOver } from "./prop-pick.mjs";
 import { explodes, blastFrom, inBurst } from "./prop-blast.mjs";
+import { toppleStrip } from "./prop-topple.mjs";
 
 export const PROP_BREAK_MESSAGE = "prop-break";
 const KINDS = ["area", "miss", "path", "blast", "ignite"];
@@ -101,13 +102,17 @@ export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, se
   // Lamp oil catches when the break is fire or put a lit light out (the GM's own judgement; a requester's fire is dropped).
   const traits = propTraits(tile, grid, scene), out = traits.light ? lightsOfProp(tile, lights, grid, tile.levels) : [];
   // The GM decides a tip: a slam on a prop that tips over tips it, and no other prop may claim to.
-  if (tips) note.style = "tip"; else if (note.style === "tip") note.style = breakStyle(traits, asked);
+  // Topple is the GM's call too: a prop that topples from this cause topples, and no other may claim to.
+  const style = breakStyle(traits, asked);
+  if (tips) note.style = "tip"; else if (note.style === "tip" || note.style === "topple" || style === "topple") note.style = style;
   // A blast is fire to lamp oil. A powder keg explodes or spills (the GM's call, never the requester's), and keeps its burst.
-  const { fire: _claimed, powder: _powder, burst: _burst, ...base } = note, outIds = out.map((l) => l.id); // eslint-disable-line no-unused-vars
+  const { fire: _claimed, powder: _powder, burst: _burst, region: _region, ...base } = note, outIds = out.map((l) => l.id); // eslint-disable-line no-unused-vars
   const fire = oilCatches({ contents: traits.contents, damageType: cause.kind === "blast" ? "fire" : cause.damageType, lights: outIds });
   const explode = explodes({ contents: traits.contents, damageType: cause.damageType, blast: cause.kind === "blast" });
   const powder = traits.contents === "powder" ? { powder: explode ? "exploded" : "spilled", burst: traits.burst } : {};
-  return { ok: true, fire, explode, note: { ...base, walls: mine.map((w) => w.id), lights: outIds, ...(fire ? { fire: true } : {}), ...powder }, wallUpdates: openUpdates(mine), lightUpdates: hideLights(out) };
+  // A toppled statue with rubble on gets the strip it falls along (the GM then makes its region and names it in the note).
+  const rubble = !tips && note.style === "topple" && traits.rubble ? toppleStrip(tile, note.cutAngle) : null;
+  return { ok: true, fire, explode, rubble, note: { ...base, walls: mine.map((w) => w.id), lights: outIds, ...(fire ? { fire: true } : {}), ...powder }, wallUpdates: openUpdates(mine), lightUpdates: hideLights(out) };
 }
 
 // Spilled powder a fire area covers goes off, once: only a broken keg's note with its powder spilled, only fire, and the
@@ -141,18 +146,21 @@ export function wallsToRestore(tile, tiles, walls, grid = 100) {
   const own = new Set(ownWalls(tile, walls, grid).map((w) => w.id));
   return walls.filter((w) => ids.has(w.id) && own.has(w.id) && !held.has(w.id));
 }
-// tiles: the scene's tiles (with or without this one). deleteLights: the tile's burning-oil lights.
+// tiles: the scene's tiles (with or without this one). deleteLights: the tile's burning-oil lights. deleteRegions: the
+// rubble region its note names (the caller skips one already gone).
+const regionOf = (tile) => readNote(propOf(tile).broken)?.region;
 export function undoUpdates(tile, walls, { tiles = [], grid = 100, lights = [] } = {}) {
   return { tile: { _id: tile.id, "flags.animater.prop.-=broken": null }, walls: restoreUpdates(wallsToRestore(tile, tiles, walls, grid)), lights: unhideLights(namedLights(tile), lights),
-    deleteLights: firesOf(tile.id, lights) };
+    deleteLights: firesOf(tile.id, lights), deleteRegions: regionOf(tile) ? [regionOf(tile)] : [] };
 }
 
 // Every broken tile unhidden and cleared in one batch. No broken tile is left, so every opened wall comes back,
-// including any a deleted or copied tile left open. Every burning-oil light goes too, whoever's tile it was.
-export function repairUpdates(tiles, walls, { lights = [] } = {}) {
+// including any a deleted or copied tile left open. Every burning-oil light goes too, whoever's tile it was,
+// and every rubble region (orphans too).
+export function repairUpdates(tiles, walls, { lights = [], regions = [] } = {}) {
   const broken = (tiles ?? []).filter((t) => propOf(t).broken);
   return { tiles: broken.map((t) => ({ _id: t.id, hidden: false, "flags.animater.prop.-=broken": null })), walls: restoreUpdates(walls ?? []), lights: unhideLights(broken.flatMap(namedLights), lights),
-    deleteLights: allFires(lights) };
+    deleteLights: allFires(lights), deleteRegions: (regions ?? []).filter((r) => r?.flags?.animater?.propRubble).map((r) => r.id) };
 }
 
 // "a.-=b": null keys as the database's own deletion marker (v14 deprecates the key form); unchanged without one.

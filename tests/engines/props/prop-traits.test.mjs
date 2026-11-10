@@ -48,7 +48,7 @@ test("breakStyle", () => {
 });
 test("the lists", () => {
   assert.deepEqual(STYLES, ["shatter", "collapse", "topple", "tip", "burn", "split"]);
-  assert.deepEqual(STYLE_CHOICES, ["shatter", "collapse"]);
+  assert.deepEqual(STYLE_CHOICES, ["shatter", "collapse", "topple"]);
   assert.deepEqual(CONTENTS, ["none", "water", "wine", "oil", "grain", "goods", "books", "potions", "lampoil", "powder"]);
 });
 

@@ -36,7 +36,8 @@ export function brokenNote({ seed, cutAngle, look, from, walls, size, style = "s
 }
 
 // Validates and clamps a note read from a tile flag or the socket; null when it is not one. A powder keg's note keeps
-// its powder and its burst (an integer 1-4); the GM decides both (validBreakRequest).
+// its powder and its burst (an integer 1-4); the GM decides both (validBreakRequest). A toppled statue's note keeps
+// the id of its rubble region (a string of at most 32 characters), which only the GM writes.
 export function readNote(raw) {
   if (!raw || typeof raw !== "object") return null;
   const { seed, cutAngle, pattern, pieces, spread, spin, tint, mark, from, walls } = raw, style = raw.style ?? "shatter";
@@ -48,7 +49,8 @@ export function readNote(raw) {
   const ids = Array.isArray(walls) ? walls.filter((w) => typeof w === "string" && w.length <= 32).slice(0, 64) : [];
   const lights = Array.isArray(raw.lights) ? raw.lights.filter((w) => typeof w === "string" && w.length <= 32).slice(0, 16) : [];
   return { seed, cutAngle, pattern, pieces: Math.round(clamp(pieces, lo, hi)), spread: clamp(spread, 0, 3), spin: clamp(spin, 0, 720), tint, mark, from: { x: from.x, y: from.y }, walls: ids, style, lights, ...(raw.fire === true ? { fire: true } : {}),
-    ...(POWDER.includes(raw.powder) ? { powder: raw.powder } : {}), ...(Number.isInteger(raw.burst) && raw.burst >= 1 && raw.burst <= 4 ? { burst: raw.burst } : {}) };
+    ...(POWDER.includes(raw.powder) ? { powder: raw.powder } : {}), ...(Number.isInteger(raw.burst) && raw.burst >= 1 && raw.burst <= 4 ? { burst: raw.burst } : {}),
+    ...(typeof raw.region === "string" && raw.region && raw.region.length <= 32 ? { region: raw.region } : {}) };
 }
 
 // A missed swing breaks the prop beside it: always on a critical failure, else by the chance (percent).

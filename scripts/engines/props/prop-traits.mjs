@@ -3,7 +3,7 @@ import { guessLight } from "./prop-lights.mjs";
 import { MATERIALS, FURNITURE, nameTokens, guessMaterial, propMaterial } from "./prop-material.mjs";
 
 export const STYLES = ["shatter", "collapse", "topple", "tip", "burn", "split"];
-export const STYLE_CHOICES = ["shatter", "collapse"]; // what the "Breaks as" setting offers
+export const STYLE_CHOICES = ["shatter", "collapse", "topple"]; // what the "Breaks as" setting offers
 export const CONTENTS = ["none", "water", "wine", "oil", "grain", "goods", "books", "potions", "lampoil", "powder"];
 export const BURST_DEFAULT = 2; // a powder keg's burst, in squares (the tile's "Burst (squares)" 1-4)
 
@@ -12,17 +12,19 @@ const POTIONS = new Set(["potion", "potions", "apothecary", "alchemy", "alchemis
 const LAMPS = new Set(["lantern", "lanterns", "lamp", "lamps"]); // they hold lamp oil
 const POWDER = new Set(["powder", "gunpowder", "explosive", "explosives"]);
 const TIPS = new Set(["brazier", "braziers"]); // knocked over whole, never broken by a slam
+const TALL = new Set(["statue", "statues", "pillar", "pillars", "column", "columns", "obelisk", "obelisks"]); // they topple whole
 const LEGS = new Set(["table", "tables", "chair", "chairs", "bench", "benches", "stool", "stools", "desk", "desks", "bed", "beds"]);
 
 export function propGuesses(src) {
-  const tokens = nameTokens(src), has = (set) => tokens.some((t) => set.has(t));
+  const tokens = nameTokens(src), has = (set) => tokens.some((t) => set.has(t)), material = guessMaterial(src), tall = has(TALL);
   return {
-    material: guessMaterial(src),
-    style: has(FURNITURE) ? "collapse" : "shatter",
+    material,
+    style: has(FURNITURE) ? "collapse" : tall && material === "stone" ? "topple" : "shatter",
     contents: has(BOOKS) ? "books" : has(POTIONS) ? "potions" : has(LAMPS) ? "lampoil" : has(POWDER) ? "powder" : "none",
     legs: has(LEGS),
     light: guessLight(src),
     tips: has(TIPS),
+    tall,
   };
 }
 
@@ -32,22 +34,26 @@ export function burstOf(value) {
   return Number.isFinite(n) ? Math.min(4, Math.max(1, Math.round(n))) : BURST_DEFAULT;
 }
 
-export function propTraits(tile, grid, scene = {}) { // eslint-disable-line no-unused-vars
-  const own = tile?.flags?.animater?.prop ?? {}, guess = propGuesses(tile?.texture?.src);
+export function propTraits(tile, grid, scene = {}) {
+  const own = tile?.flags?.animater?.prop ?? {}, guess = propGuesses(tile?.texture?.src), material = propMaterial(tile, grid);
   return {
-    material: propMaterial(tile, grid),
-    style: STYLES.includes(own.style) ? own.style : guess.style,
+    material,
+    // a guessed topple needs stone (the GM may have made the statue wood)
+    style: STYLES.includes(own.style) ? own.style : guess.style === "topple" && material !== "stone" ? "shatter" : guess.style,
     contents: CONTENTS.includes(own.contents) && own.contents !== "" ? own.contents : guess.contents,
     legs: guess.legs,
     light: own.light === "yes" ? true : own.light === "no" ? false : guess.light,
     tips: own.tips === "yes" ? true : own.tips === "no" ? false : guess.tips,
     burst: burstOf(own.burst),
+    // a toppled statue leaves difficult rubble: the tile's choice, else the scene's
+    rubble: own.rubble === "yes" || (own.rubble !== "no" && scene?.flags?.animater?.rubbleDifficult === true),
   };
 }
 
-// The style a break plays: a prop that tips over tips from any slam (checked first); Collapse only when the prop is set
-// (or guessed) to it; otherwise it shatters.
+// The style a break plays: a prop that tips over tips from any slam (checked first); a prop set (or guessed) to topple
+// topples from force or a slam; Collapse only when the prop is set (or guessed) to it; otherwise it shatters.
 export function breakStyle(traits, cause) {
   if (traits?.tips && cause?.slam) return "tip";
+  if (traits?.style === "topple" && (cause?.damageType === "force" || cause?.slam)) return "topple";
   return traits?.style === "collapse" ? "collapse" : "shatter";
 }
