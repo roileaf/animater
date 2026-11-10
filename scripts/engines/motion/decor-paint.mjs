@@ -969,6 +969,8 @@ const INKD = 'rgba(22,14,6,0.95)';
 // A soft round glow (a lamp's warmth on what is round it), inside the picture.
 const glowAt = (g, x, y, r, color, a = 0.5) => { const gg = g.createRadialGradient(x, y, 0, x, y, r); gg.addColorStop(0, `rgba(${color},${a})`); gg.addColorStop(1, `rgba(${color},0)`); g.fillStyle = gg; g.fillRect(x - r, y - r, r * 2, r * 2); };
 const pathOf = (g, pts, sharp) => (sharp ? poly(g, pts) : trace(g, pts));
+// Marks a shape as cloth (on a cloth kind's mask), so only it stirs in the wind: never its poles, frame or the wares beside it.
+const clothMark = (o, pts, sharp = true) => { const m = o.clothMask; if (!m) return; pathOf(m, pts, sharp); m.fillStyle = '#fff'; m.fill(); };
 // The maps' finish on a shape: flat base, shade band, faint lit edge, hatching along `grain` (radians), heavy outline.
 function inked(g, rng, pts, base, o, { sharp = false, grain = null, lines = 0, hatch = 0.22, band = 0.42, lit = 0.05, ink = 1.5, cross = false } = {}) {
   pathOf(g, pts, sharp); g.fillStyle = base; g.fill();
@@ -1505,7 +1507,7 @@ const DRAFTS = {
     // A line strung between two poles with washing pegged along it, shirts and sheets in faded colours, sagging a little.
     const a = (rng() - 0.5) * 0.6, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], p0 = at(-s * 0.88, 0), p1 = at(s * 0.88, 0), mid = at(0, s * 0.06), out = [];
     for (let i = 0; i < 4 + Math.floor(rng() * 3); i++) { const t = 0.12 + (i / 6) * 0.78 + (rng() - 0.5) * 0.05, x = (1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * mid[0] + t * t * p1[0], y = (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * mid[1] + t * t * p1[1], w = s * (0.08 + rng() * 0.07), h = s * (0.14 + rng() * 0.1), cloth = [[x - c * w, y - sn * w], [x + c * w, y + sn * w], [x + c * w * 0.9 - sn * h, y + sn * w * 0.9 + c * h], [x - c * w * 0.9 - sn * h, y - sn * w * 0.9 + c * h]];
-      softShadow(g, cloth, o, 0.35); inked(g, rng, cloth, pick(rng, ['#d8d2c0', '#9aa8b8', '#b88a6a', '#a8b090', '#c8b8a0']), o, { sharp: true, grain: a + 1.57, lines: 6, hatch: 0.25, band: 0.4, ink: 1.1 }); out.push(cloth); }
+      softShadow(g, cloth, o, 0.35); inked(g, rng, cloth, pick(rng, ['#d8d2c0', '#9aa8b8', '#b88a6a', '#a8b090', '#c8b8a0']), o, { sharp: true, grain: a + 1.57, lines: 6, hatch: 0.25, band: 0.4, ink: 1.1 }); clothMark(o, cloth); out.push(cloth); }
     for (const [col, w] of [[INKD, o.ink * 2], ['#c8b890', o.ink * 0.9]]) { g.beginPath(); g.moveTo(...p0); g.quadraticCurveTo(...mid, ...p1); g.strokeStyle = col; g.lineWidth = w; g.stroke(); }
     for (const p of [p0, p1]) { const pole = blob(rng, ...p, s * 0.06, s * 0.06, 10, 0.05); inked(g, rng, pole, '#5a4430', o, { ink: 1.4 }); out.push(pole); }
     return out;
@@ -1571,7 +1573,7 @@ const DRAFTS = {
     for (let i = 0; i < n * 6; i++) { const t = i / (n * 6), q = turn + t * 6.283, k = (i % 6) / 6, rr = R * (0.88 + 0.12 * Math.cos((k - 0.5) * Math.PI) ** 0.5 * (1 - Math.abs(k - 0.5) * 2) + (k === 0 ? 0.12 : 0)); pts.push([Math.cos(q) * rr, Math.sin(q) * rr]); }
     softShadow(g, pts, o, 0.55);
     for (let i = 0; i < n; i++) { const q0 = turn + (i / n) * 6.283, q1 = turn + ((i + 1) / n) * 6.283, panel = [[0, 0]]; for (let k = 0; k <= 6; k++) { const q = q0 + (q1 - q0) * (k / 6), bulge = Math.sin((k / 6) * Math.PI) * 0.1; panel.push([Math.cos(q) * R * (0.9 + bulge), Math.sin(q) * R * (0.9 + bulge)]); }
-      const mid = (q0 + q1) / 2, lit = towardLight(Math.cos(mid), Math.sin(mid), 1); inked(g, rng, panel, shade(col, lit * 0.18 - 0.05), o, { sharp: true, grain: mid, lines: 8, hatch: 0.2, band: 0.3, lit: 0.06, ink: 1.4 }); }
+      const mid = (q0 + q1) / 2, lit = towardLight(Math.cos(mid), Math.sin(mid), 1); inked(g, rng, panel, shade(col, lit * 0.18 - 0.05), o, { sharp: true, grain: mid, lines: 8, hatch: 0.2, band: 0.3, lit: 0.06, ink: 1.4 }); clothMark(o, panel); }
     for (let i = 0; i < n; i++) { const q = turn + (i / n) * 6.283, p = [[0, 0], [Math.cos(q) * R * 0.92, Math.sin(q) * R * 0.92]]; line(g, p, INKD, o.ink * 1.8); line(g, p, shade(col, 0.25), o.ink * 0.6); const peg = [Math.cos(q) * R * 1.08, Math.sin(q) * R * 1.08]; line(g, [[Math.cos(q) * R * 0.92, Math.sin(q) * R * 0.92], peg], 'rgba(40,30,16,0.8)', Math.max(0.7, o.ink * 0.7)); g.beginPath(); g.arc(...peg, Math.max(1.5, s * 0.02), 0, 6.283); g.fillStyle = '#3a2814'; g.fill(); }
     const knot = blob(rng, 0, 0, s * 0.06, s * 0.06, 10, 0.2); inked(g, rng, knot, '#3a2814', o, { ink: 1.4 }); for (let i = 0; i < 8; i++) { const q = rng() * 6.28; line(g, [[0, 0], [Math.cos(q) * s * 0.1, Math.sin(q) * s * 0.1]], INKD, o.ink); }
     if (o.snow > 0) { g.save(); trace(g, pts); g.clip(); snowPatch(g, rng, 0, 0, R * 0.8, R * 0.8, o); g.restore(); }
@@ -1585,7 +1587,7 @@ const DRAFTS = {
     for (let i = 0; i < 3; i++) { const u = -L * 0.6 + i * L * 0.6, crate = boxAt(...at(u, W * 1.12), s * 0.15, s * 0.12, a + (rng() - 0.5) * 0.2); softShadow(g, crate, o, 0.45); inked(g, rng, crate, '#6a4e30', o, { sharp: true, grain: a, lines: 5, hatch: 0.45, ink: 1.5 }); const cc = centre(crate), col = pick(rng, ['#b8402a', '#c89a3a', '#7a8a3a', '#a07a4a']); g.save(); poly(g, boxAt(...cc, s * 0.12, s * 0.09, a)); g.clip(); for (let k = 0; k < 10; k++) { const p = blob(rng, cc[0] + (rng() - 0.5) * s * 0.22, cc[1] + (rng() - 0.5) * s * 0.16, s * 0.035, s * 0.035, 8, 0.1); inked(g, rng, p, shade(col, (rng() - 0.5) * 0.2), o, { band: 0.4, ink: 0.9 }); } g.restore(); }
     // The awning: a pale cloth over the frame, the far edge drawn tight, the near edge sagging in scallops between the poles.
     const cloth = [at(-L, -W)]; for (let k = 0; k <= 8; k++) cloth.push(at(-L + (k / 8) * L * 2, -W - Math.sin((k / 8) * Math.PI * 2) * s * 0.02)); cloth.push(at(L, W)); for (let k = 8; k >= 0; k--) { const u = -L + (k / 8) * L * 2, sag = Math.sin((k % 4) / 4 * Math.PI) * s * 0.06; cloth.push(at(u, W + sag)); }
-    softShadow(g, cloth, o, 0.55); inked(g, rng, cloth, pick(rng, ['#d8ccb0', '#ccc0a2', '#e0d6be']), o, { sharp: true, grain: a + 1.57, lines: 12, hatch: 0.12, band: 0.45, ink: 1.6 });
+    softShadow(g, cloth, o, 0.55); inked(g, rng, cloth, pick(rng, ['#d8ccb0', '#ccc0a2', '#e0d6be']), o, { sharp: true, grain: a + 1.57, lines: 12, hatch: 0.12, band: 0.45, ink: 1.6 }); clothMark(o, cloth);
     for (let k = 0; k < 6; k++) { const u = (rng() - 0.5) * L * 1.8; g.beginPath(); g.moveTo(...at(u, -W)); g.quadraticCurveTo(...at(u + (rng() - 0.5) * L * 0.2, 0), ...at(u + (rng() - 0.5) * L * 0.2, W)); g.strokeStyle = 'rgba(80,66,40,0.35)'; g.lineWidth = Math.max(0.6, o.ink * 0.7); g.stroke(); }
     const fold = [at(-L * 0.95, -W * 0.08), at(L * 0.95, -W * 0.08), at(L * 0.95, W * 0.08), at(-L * 0.95, W * 0.08)]; inked(g, rng, fold, '#efe6d0', o, { sharp: true, band: 0.25, lit: 0.15, ink: 1.1 });
     for (const [u, v] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const pole = blob(rng, ...at(u * L, v * W), s * 0.045, s * 0.045, 8, 0.05); inked(g, rng, pole, '#5a4228', o, { ink: 1.4 }); }
@@ -1614,6 +1616,7 @@ export function paintDecor(kind, seed, px, look = {}, make = defaultCanvas) {
   const unit = look.unit ?? size / k.size;
   const o = { season: 'summer', snow: 0, wet: 0, frozen: false, night: false, ...look, unit, ink: Math.max(1, unit / 60) };
   g.translate(w / 2, w / 2);
+  let mask = null; if (k.cloth) { mask = make(w, w); o.clothMask = mask.getContext('2d'); o.clothMask.translate(w / 2, w / 2); }
   const outlines = k.paint(g, size / 2, rng, o);
   // Rain: wood, cloth, stone and the rest go darker while wet (a tree's leaves and a puddle see to their own), and dry back after.
   if (o.wet > 0 && !k.water && !k.tree && kind !== 'bush') { g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-atop'; g.fillStyle = `rgba(10,14,18,${0.3 * Math.min(1, o.wet)})`; g.fillRect(0, 0, w, w); g.restore(); }
@@ -1625,7 +1628,10 @@ export function paintDecor(kind, seed, px, look = {}, make = defaultCanvas) {
   // A tree's trunk, for the ground under it (tokens walk over it, under the crown).
   let trunk = null;
   if (k.tree) { trunk = make(w, w); const t = trunk.getContext('2d'); t.translate(w / 2, w / 2); paintTrunk(t, seeded(seed + 1), size / 2, o, kind); }
-  return { canvas, shadow, trunk, width: w, height: w };
+  // The cloth's mask, eaten back from its edges and softened: full in the middle of the cloth, nothing where it meets its frame.
+  let cloth = null;
+  if (mask) { cloth = make(w, w); const c = cloth.getContext('2d'), soft = Math.max(1, w * 0.03); c.filter = `blur(${soft}px)`; c.drawImage(mask, 0, 0); c.filter = 'none'; c.globalCompositeOperation = 'destination-in'; c.filter = `blur(${soft}px)`; c.drawImage(mask, 0, 0); c.filter = 'none'; }
+  return { canvas, shadow, trunk, cloth, width: w, height: w };
 }
 const defaultCanvas = (w, h) => { if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h); const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
 
