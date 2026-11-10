@@ -4140,3 +4140,17 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .an-decor-brush .an-db-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 .an-decor-brush .an-db-chip[hidden] { display: none; }
 .an-decor-brush .an-db-chip { padding: 2px 7px; }
+
+/* Animater's own A, as in the window's header, for its buttons: FXMaster uses the wand too. */
+.animater-a-icon::before {
+  content: "A";
+  display: inline-grid;
+  place-items: center;
+  width: 1.25em;
+  height: 1.35em;
+  border-radius: 0.35em;
+  background: linear-gradient(135deg, #d3bdff, #8060cf);
+  color: #1e1239;
+  font: 700 0.95em/1 Georgia, serif;
+  transform: rotate(-5deg);
+}

@@ -3766,7 +3766,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
     // Animater's own group, on the token layer: what it does works on tokens, so they stay selectable with it open. Foundry only moves a layer when a group's onChange asks, and sends a layer that activates back to its own group, so coming from another layer it asks and then returns here.
     const tools = { select: { name: "select", title: "Select Tokens", icon: "fa-solid fa-expand", order: 1, control: true, interaction: true } }, order = 10;
     const add = (tool) => { tools[tool.name] = tool; };
-    controls.animater = { name: "animater", title: "Animater", icon: "fa-solid fa-wand-magic-sparkles", layer: "tokens", order: 50, activeTool: "select", tools,
+    controls.animater = { name: "animater", title: "Animater", icon: "animater-a-icon", layer: "tokens", order: 50, activeTool: "select", tools,
       onChange: (event, active) => { if (!active || canvas.tokens?.active) return; canvas.tokens?.activate(); void ui.controls?.activate({ control: "animater", tool: "select" }); } };
     add({ name: "animaterDecorate", title: "Decorations: paint rocks, trees, bushes and more onto the map (into the region you start in, or a new one)", icon: "fa-solid fa-tree", order: order - 1, button: true, visible: toolShown("toolDecorate"),
       onChange: () => (decorBrushing ? stopDecorBrush() : startDecorBrush()) });
@@ -10237,7 +10237,7 @@ Hooks.once("init", () => {
     name: "Animater workspace",
     label: "Open Animater",
     hint: "Browse assets, build recipes, preview, and configure automatic triggers.",
-    icon: "fas fa-wand-magic-sparkles",
+    icon: "animater-a-icon",
     type: AnimaterApp,
     restricted: true,
   });
@@ -12816,7 +12816,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
     home.tools.animater = {
       name: "animater",
       title: game.user?.isGM ? "Open Animater" : "Animater",
-      icon: "fas fa-wand-magic-sparkles",
+      icon: "animater-a-icon",
       order: 2,
       button: true,
       visible: hotSetting("showControlButton") !== false,
