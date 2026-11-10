@@ -31,16 +31,18 @@ export const DECOR_BREAKS = Object.freeze({
   // its name would read as a lantern's oil to spill, and it spills none.
   lampPost: ENTRY("metal", "topple", { rule: "heavy", contents: "none" }), tableStools: ENTRY("wood", "collapse"), marketStall: ENTRY("wood", "collapse", { boxy: true }),
   stakeFence: ENTRY("wood", "collapse"), strawBed: ENTRY("plant", "burn"),
-  // The indoor and water kinds (spec Amendment 2). A throne or a bathtub breaks as what its picture is painted of (`painted`,
+  // The indoor and water kinds (spec Amendment 2; a rowboat bursts into planks, controller ruling). A throne, a bathtub or a mooring post breaks as what its picture is painted of (`painted`,
   // by decor-paint paintedMaterial): wood shatters or collapses, stone needs force, a copper tub follows metal's rules.
   bookshelf: ENTRY("wood", "collapse", { boxy: true, contents: "books" }), bed: ENTRY("wood", "collapse", { boxy: true }), desk: ENTRY("wood", "collapse", { boxy: true }),
-  counter: ENTRY("wood", "collapse", { boxy: true }), rowboat: ENTRY("wood", "collapse"), strongbox: ENTRY("wood", "shatter", { boxy: true }), mooringPost: ENTRY("wood", "topple"),
+  counter: ENTRY("wood", "collapse", { boxy: true }), rowboat: ENTRY("wood", "shatter", { boxy: true }), strongbox: ENTRY("wood", "shatter", { boxy: true }),
   statue: ENTRY("stone", "topple"), altar: ENTRY("stone", "shatter", { boxy: true, rule: "noSlam" }),
   pottedPlant: ENTRY("clay", "shatter"), rug: ENTRY("plant", "burn"), cattails: ENTRY("plant", "burn"),
   throne: Object.freeze({ painted: Object.freeze({ wood: ENTRY("wood", "collapse", { boxy: true }), stone: ENTRY("stone", "shatter", { boxy: true, rule: "noSlam" }) }) }),
+  // A mooring post is a log post or an iron bollard: the iron one, like a street lamp, needs force or a Large slam to topple.
+  mooringPost: Object.freeze({ painted: Object.freeze({ wood: ENTRY("wood", "topple"), metal: ENTRY("metal", "topple", { rule: "heavy", contents: "none" }) }) }),
   bathtub: Object.freeze({ painted: Object.freeze({ wood: ENTRY("wood", "shatter", { contents: "water" }), stone: ENTRY("stone", "shatter", { contents: "water", rule: "noSlam" }), metal: ENTRY("metal", "shatter", { contents: "water" }) }) }),
 });
-/** How one decoration breaks (pure): its kind's entry, or for a throne or a bathtub the entry of what its picture is painted of; null when it never breaks. */
+/** How one decoration breaks (pure): its kind's entry, or for a throne, a bathtub or a mooring post the entry of what its picture is painted of; null when it never breaks. */
 export function decorBreakOf(d) {
   const b = Object.hasOwn(DECOR_BREAKS, d?.kind) ? DECOR_BREAKS[d.kind] : null;
   return b?.painted ? b.painted[paintedMaterial(d.kind, paintSeedOf(d))] ?? null : b;

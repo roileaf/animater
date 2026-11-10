@@ -323,7 +323,7 @@ What happens to each kind of prop:
 - **Statues** are stone and topple like a stalagmite (force, or a Large or bigger creature). **Altars** are stone too heavy to shove: only force breaks one.
 - **Thrones** and **Bathtubs** break as what each one is painted of: a wooden throne collapses and a wooden tub breaks like a barrel; a stone one needs force. A bathtub spills its water.
 - **Potted plants** break like clay, from almost any damage. **Rugs** burn away, from fire only.
-- On the water: **Rowboats** are wood and collapse into their planks; **Mooring posts** are wood and topple. **Cattails** burn away, from fire only.
+- On the water: **Rowboats** are wood and burst into thrown planks. **Mooring posts** topple as what each is painted of: a log post from anything that breaks wood, an iron bollard only from force or a Large or bigger creature slammed into it. **Cattails** burn away, from fire only.
 - Underground, cobwebs and crystals are drawn by the cave's webs and crystals. A cobweb breaks only where the cave's webs hang a web (in a corner against walls, on floor the scene's placed lights reach). Crystals break only while the world's **Cave crystals** setting is on. This is the same on every screen. Each player's own Quality and their own cave and lamp switches never change what can break; a screen that does not draw a web or a crystal shows no wreck for it either.
 - Every other kind (rocks, boulders, trees, stumps, logs, mushrooms, bones, bones in rubble, broken pillars, mine timbers, wells, paving, anvils, treasure, hearths, dock sections, broken furniture, lily pads, stepping stones, stream rocks, floating debris and the rest) never breaks.
 

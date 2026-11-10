@@ -1849,7 +1849,7 @@ const DRAFTS = {
   } },
   mooringPost: { label: 'Mooring posts', size: 0.9, height: 0.6, paint(g, s, rng, o) {
     // An iron bollard or a stout log post at the water's edge, a mooring rope looped round it and trailing off.
-    const iron = rng() < 0.5, R = s * 0.35, post = blob(rng, 0, 0, R, R, 16, 0.02); softShadow(g, post, o, 0.55);
+    const iron = PAINTED.mooringPost(rng).material === 'metal', R = s * 0.35, post = blob(rng, 0, 0, R, R, 16, 0.02); softShadow(g, post, o, 0.55);
     painted(g, rng, post, iron ? '#4a4844' : '#5a4632', o, { band: 0.45, lit: 0.15, ink: 1.6 });
     if (iron) { g.beginPath(); g.arc(0, 0, R * 0.7, 0, 6.283); g.fillStyle = '#5e5a54'; g.fill(); g.strokeStyle = INKD; g.lineWidth = o.ink; g.stroke(); } else woodEnd(g, rng, 0, 0, R * 0.78, R * 0.78, o);
     g.beginPath(); g.arc(0, 0, R * 1.05, 0.3, 5.9); g.strokeStyle = INKD; g.lineWidth = o.ink * 3; g.stroke(); g.strokeStyle = '#b8a070'; g.lineWidth = o.ink * 1.6; g.stroke();
@@ -1879,14 +1879,15 @@ export const DECOR_IDS = Object.freeze(Object.keys(KINDS));
 // Paints one decoration into a fresh canvas. px: the drawing's full width in pixels; look.unit: pixels per grid square, so leaves and
 // blades keep the map's own scale whatever the object's size. look: { season, snow 0..1, wet 0..1, frozen, night, unit }. Returns
 // { canvas, shadow, width, height }: shadow is its silhouette in white on clear (null for a flat kind), both centred on the object.
-// What a throne or a bathtub is made of: its painter's first draws (its turn, then its material). The prop rules (decor-break.mjs)
+// What a throne, a bathtub or a mooring post is made of: its painter's first draws (a turn, then its material). The prop rules (decor-break.mjs)
 // read the same draws, so each breaks as what it is painted of.
 const PAINTED = {
   throne: (rng) => { const a = rng() * 6.28; return { a, material: rng() < 0.35 ? 'stone' : 'wood' }; },
   bathtub: (rng) => { const a = rng() * 6.28; return { a, material: pick(rng, ['stone', 'metal', 'wood']) }; },
+  mooringPost: (rng) => ({ material: rng() < 0.5 ? 'metal' : 'wood' }),
 };
 const TUB_RIM = { stone: '#8a867e', metal: '#a8643a', wood: '#6a5032' };
-/** What a picture of a throne or a bathtub painted from this seed is made of (pure): 'stone', 'wood' or 'metal'; null for other kinds. */
+/** What a picture of a throne, a bathtub or a mooring post painted from this seed is made of (pure): 'stone', 'wood' or 'metal'; null for other kinds. */
 export const paintedMaterial = (kind, seed) => (Object.hasOwn(PAINTED, kind) ? PAINTED[kind](seeded(seed)).material : null);
 // How many looks a kind has; a decoration's own seed picks one, and the look's picture is painted from paintSeedOf.
 export const DECOR_VARIANTS = 6;

@@ -19,8 +19,8 @@ const what = (v) => [propMaterial(v, grid), traits(v).style, propShape(v.texture
 test("the approved map (Amendment 2): material, style, shape and contents of each indoor and water kind", () => {
   const want = {
     bookshelf: ["wood", "collapse", "boxy", "books"], bed: ["wood", "collapse", "boxy", "none"], desk: ["wood", "collapse", "boxy", "none"],
-    counter: ["wood", "collapse", "boxy", "none"], rowboat: ["wood", "collapse", "round", "none"],
-    strongbox: ["wood", "shatter", "boxy", "none"], mooringPost: ["wood", "topple", "round", "none"],
+    counter: ["wood", "collapse", "boxy", "none"], rowboat: ["wood", "shatter", "boxy", "none"],
+    strongbox: ["wood", "shatter", "boxy", "none"],
     statue: ["stone", "topple", "round", "none"], altar: ["stone", "shatter", "boxy", "none"],
     pottedPlant: ["clay", "shatter", "round", "none"], rug: ["plant", "burn", "round", "none"], cattails: ["plant", "burn", "round", "none"],
   };
@@ -30,16 +30,15 @@ test("the approved map (Amendment 2): material, style, shape and contents of eac
     assert.deepEqual(what(v), map, kind);
     assert.ok(v.texture.src.startsWith(`decor/${kind}`), kind);
   }
-  // A bed and a desk collapse onto their legs; a bookshelf, a counter and a rowboat fall flat.
-  assert.deepEqual(["bed", "desk", "bookshelf", "counter", "rowboat"].map((k) => traits(view(k)).legs), [true, true, false, false, false]);
+  // A bed and a desk collapse onto their legs; a bookshelf and a counter fall flat. A rowboat bursts into thrown planks.
+  assert.deepEqual(["bed", "desk", "bookshelf", "counter"].map((k) => traits(view(k)).legs), [true, true, false, false]);
   assert.equal(DECOR_NAMES.statue, "A statue"); assert.equal(DECOR_NAMES.mooringPost, "A mooring post");
 });
 
 test("indoor and water kinds break by their material's rules, and their own", () => {
   // Wood: a club, a blade, fire or any slam.
-  for (const k of ["bookshelf", "bed", "desk", "counter", "rowboat", "strongbox", "mooringPost"])
+  for (const k of ["bookshelf", "bed", "desk", "counter", "rowboat", "strongbox"])
     assert.deepEqual([breaks(view(k), hit("bludgeoning")), breaks(view(k), hit("fire")), breaks(view(k), { slam: { size: 1 } })], [true, true, true], k);
-  assert.equal(breakStyle(traits(view("mooringPost")), { slam: { size: 1 } }), "topple");
   // A statue: force or a Large slam topples it; a club does not.
   const statue = view("statue");
   assert.deepEqual([breaks(statue, hit("force")), breaks(statue, { slam: { size: 2 } }), breaks(statue, hit("bludgeoning")), breaks(statue, { slam: { size: 1 } })], [true, true, false, false]);
@@ -145,4 +144,29 @@ test("the drag's own update carries the hand breaks: carryDecor says how far, ma
   const hook = main.split(/\r?\n/).find((l) => l.startsWith('Hooks.on("preUpdateRegion", (doc, change) => {'));
   assert.ok(hook, "the drag hook");
   assert.match(hook, /const broken = readDecorBroken\(doc\.flags\?\.\[ID\]\?\.decorBroken\); if \(broken\.length\) foundry\.utils\.setProperty\(change, `flags\.\$\{ID\}\.decorBroken`, carryDecorBroken\(broken, moved\.dx, moved\.dy\)\)/);
+});
+
+test("a mooring post breaks as what its picture is painted of: a log post topples from any shove, an iron bollard only from force or a Large slam", () => {
+  const seen = new Set(), colour = { wood: "#5a4632", metal: "#4a4844" };
+  for (let seed = 0; seed < VARIANTS * 3; seed++) {
+    const d = { kind: "mooringPost", x: 500, y: 500, size: DECOR_KINDS.mooringPost.size, seed, turn: 0, flip: false };
+    const material = paintedMaterial("mooringPost", paintSeedOf(d));
+    // The same on every screen: from the decoration's own seed, whatever look (season, night, snow, rain) it is painted in.
+    for (const look of [{}, { season: "winter", snow: 1 }, { night: true, wet: 1 }]) {
+      const { fills, make } = recorder();
+      paintDecor("mooringPost", paintSeedOf(d), 90, look, make);
+      assert.ok(fills.has(colour[material]), `seed ${seed} ${JSON.stringify(look)} painted as ${material}`);
+      assert.equal(fills.has(colour[material === "wood" ? "metal" : "wood"]), false, `seed ${seed}`);
+    }
+    seen.add(material);
+    const v = view("mooringPost", { seed });
+    assert.equal(propMaterial(v, grid), material, `seed ${seed}`);
+    assert.equal(breakStyle(traits(v), { slam: { size: 2 } }), "topple");
+    if (material === "wood") assert.deepEqual([breaks(v, hit("bludgeoning")), breaks(v, { slam: { size: 1 } })], [true, true], `seed ${seed}`);
+    else {
+      assert.deepEqual([breaks(v, hit("force")), breaks(v, { slam: { size: 2 } }), breaks(v, hit("bludgeoning")), breaks(v, { slam: { size: 1 } })], [true, true, false, false], `seed ${seed}`);
+      assert.equal(traits(v).contents, "none", "an iron bollard spills nothing");
+    }
+  }
+  assert.deepEqual([...seen].sort(), ["metal", "wood"]);
 });
