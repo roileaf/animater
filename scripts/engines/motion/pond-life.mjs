@@ -5,6 +5,7 @@
 
 import { noiseReaching, wayOut, shadowKeeper, overOpen, NOISE_SPEED } from './wildlife.mjs';
 import { rippleDue } from './step-ripples.mjs';
+import { orderAim, orderPrep, orderHandles, orbitStep } from './animal-orders.mjs';
 
 const TAU = Math.PI * 2;
 const between = (random, a, b) => a + random() * (b - a);
@@ -99,6 +100,9 @@ export function duckStep(duck, { dt = 1 / 60, grid = 100, near = [], ok = () => 
   return q;
 }
 
+// Whether there is fresh water for a kind (pure): a spot of water that is not the sea and not kept from it. While there is,
+// the sea is not its water (ducks and frogs); with none, ducks wait on the sea for some.
+export const freshWaterFor = (waters = [], { sea = () => false, kept = () => false } = {}) => waters.some((p) => !sea(p) && !kept(p));
 // How many gulls (pure): only the sea has them, however wide a river or pond is.
 export const gullsOver = (seaSpots = [], many = 1) => (many > 0 && seaSpots.length ? 3 : 0);
 // One step of a gull (pure): glides about over the water in long loose lines and wide uneven turns, now and then hangs on the wind facing into it, and stays over its own stretch of water
@@ -248,14 +252,45 @@ function flying(span, c) {
     x.fillStyle = c.beak; x.beginPath(); x.moveTo(-1.6, -20); x.lineTo(0, -20 - c.bill); x.lineTo(1.6, -20); x.closePath(); x.fill();
   });
 }
-// A duck on the water, facing up: a drake or a mottled hen. feeding: tail up, head under, only the back above the water.
+// A duck tipped up to feed, from above, facing up: head and breast under the water ahead of it (dim through the surface,
+// a bright lip where it went in), the rump round and up toward us under the folded wings, the tail straight up (the
+// drake's white under-tail round its black curl, the hen's short brown fan), orange feet sculling behind. kick 0–1: the
+// feet's stroke (two frames alternate).
+function duckTipped(hen, kick) {
+  return picture(72, 72, (x) => {
+    const ink = 'rgba(25,22,18,0.5)';
+    x.save(); x.filter = 'blur(1.2px)'; x.globalAlpha = 0.5; x.fillStyle = hen ? '#4d4a3a' : '#24433c';
+    x.beginPath(); x.ellipse(0, -7, 6, 7.5, 0, 0, TAU); x.fill(); x.beginPath(); x.ellipse(0, -15, 3.4, 4, 0, 0, TAU); x.fill(); x.restore();
+    for (const s of [-1, 1]) {
+      const k = s > 0 ? kick : 1 - kick;
+      x.save(); x.translate(s * 4.6, 10.5); x.rotate(s * (0.35 + 0.55 * k)); x.fillStyle = '#e07a2a'; x.strokeStyle = ink; x.lineWidth = 0.6;
+      x.beginPath(); x.moveTo(0, 0); x.lineTo(s * 2.4, 6.5); x.quadraticCurveTo(0, 8.4, -s * 1.2, 6.8); x.closePath(); x.fill(); x.stroke(); x.restore();
+    }
+    x.fillStyle = 'rgba(200,225,228,0.28)'; x.beginPath(); x.ellipse(0, -1.5, 8.6, 3.6, 0, 0, TAU); x.fill();
+    x.strokeStyle = 'rgba(235,248,248,0.7)'; x.lineWidth = 1.1; x.beginPath(); x.ellipse(0, -1.5, 8.6, 3.6, 0, Math.PI, TAU); x.stroke();
+    const bg = x.createRadialGradient(-1.5, 3.5, 1, 0, 5, 10); bg.addColorStop(0, hen ? '#c0a27a' : '#d3cdc0'); bg.addColorStop(1, hen ? '#6e5639' : '#7f7a6e');
+    x.fillStyle = bg; x.strokeStyle = ink; x.lineWidth = 0.8; x.beginPath(); x.ellipse(0, 4.5, 8, 8.4, 0, 0, TAU); x.fill(); x.stroke();
+    for (const s of [-1, 1]) {
+      x.fillStyle = hen ? '#5f4a31' : '#6a6559'; x.beginPath(); x.moveTo(s * 2, -2.5); x.quadraticCurveTo(s * 8.4, 3.5, s * 1.6, 11.5); x.quadraticCurveTo(s * 1.2, 4, s * 2, -2.5); x.fill();
+      x.fillStyle = '#2f55a3'; x.beginPath(); x.ellipse(s * 5.6, 3, 1.1, 2.4, s * 0.3, 0, TAU); x.fill();
+    }
+    if (!hen) {
+      x.fillStyle = '#f1eee6'; x.strokeStyle = ink; x.beginPath(); x.ellipse(0, 10.5, 3.9, 3.4, 0, 0, TAU); x.fill(); x.stroke();
+      x.fillStyle = '#141311'; x.beginPath(); x.ellipse(0, 10.8, 2, 1.8, 0, 0, TAU); x.fill();
+      x.strokeStyle = '#141311'; x.lineWidth = 1.1; x.beginPath(); x.arc(0.4, 8.6, 1.4, Math.PI * 0.9, Math.PI * 2.1); x.stroke();
+    } else {
+      x.fillStyle = '#4e3d29'; x.strokeStyle = ink; x.beginPath(); x.moveTo(-3.6, 8.5); x.quadraticCurveTo(0, 15.5, 3.6, 8.5); x.quadraticCurveTo(0, 10.6, -3.6, 8.5); x.fill(); x.stroke();
+    }
+  });
+}
+// A duck on the water, facing up: a drake or a mottled hen (feeding: duckTipped).
 function duckOn(hen, feeding) {
+  if (feeding) return duckTipped(hen, 0.25);
   return picture(72, 72, (x) => {
     x.fillStyle = hen ? '#5a4731' : '#26241f'; x.beginPath(); x.moveTo(-5, 11); x.quadraticCurveTo(0, 22, 5, 11); x.closePath(); x.fill();
     if (!hen) { x.fillStyle = '#e8e6df'; x.beginPath(); x.ellipse(0, 12, 3.4, 3, 0, 0, TAU); x.fill(); }
     const bg = x.createRadialGradient(-2, 0, 1, 0, 2, 14); bg.addColorStop(0, hen ? '#a58a65' : '#b8b2a5'); bg.addColorStop(1, hen ? '#6e5639' : '#7f7a6e'); x.fillStyle = bg; x.beginPath(); x.ellipse(0, 2, 8.6, 13, 0, 0, TAU); x.fill();
     for (const s of [-1, 1]) { x.fillStyle = hen ? '#5f4a31' : '#6a6559'; x.beginPath(); x.moveTo(s * 3, -5); x.quadraticCurveTo(s * 9.5, 3, s * 3.4, 14); x.quadraticCurveTo(s * 1.8, 5, s * 3, -5); x.fill(); x.fillStyle = '#2f55a3'; x.beginPath(); x.ellipse(s * 6.2, 5, 1.1, 2.6, s * 0.3, 0, TAU); x.fill(); }
-    if (feeding) return;
     if (!hen) { x.fillStyle = '#6b3d24'; x.beginPath(); x.ellipse(0, -8, 6.6, 4.8, 0, 0, TAU); x.fill(); x.fillStyle = '#efece4'; x.beginPath(); x.ellipse(0, -12, 3.9, 1.1, 0, 0, TAU); x.fill(); }
     x.fillStyle = hen ? '#7b6243' : '#1f5a3c'; x.beginPath(); x.ellipse(0, -15.5, 4.3, 5, 0, 0, TAU); x.fill();
     x.fillStyle = hen ? '#a07b3a' : '#d0ac39'; x.beginPath(); x.moveTo(-2.1, -19.5); x.quadraticCurveTo(-2.3, -24, 0, -24.6); x.quadraticCurveTo(2.3, -24, 2.1, -19.5); x.closePath(); x.fill();
@@ -336,7 +371,9 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
     const painted = (set) => (restyle ? restyle('pond', set, '') : set);
     return (textures = painted({
       gull: SPANS.map((s) => tex(flying(s, GULL))), heronFly: SPANS.map((s) => tex(flying(s, HERON))), duckFly: SPANS.map((s) => tex(flying(s, DUCK))),
-      duck: [[false, false], [false, true], [true, false], [true, true]].map(([h, u]) => tex(duckOn(h, u))), heron: [false, true].map((s) => tex(heronStanding(s))),
+      duck: [[false, false], [false, true], [true, false], [true, true]].map(([h, u]) => tex(duckOn(h, u))),
+      // Tipped up, the feet's two strokes: drake, then hen.
+      duckUp: [false, true].map((h) => [0.25, 0.8].map((kick) => tex(duckTipped(h, kick)))), heron: [false, true].map((s) => tex(heronStanding(s))),
       frog: FROGS.map((c) => [0, 1, 2, 3].map((p) => tex(frogPicture(p, ...c)))), pad: [0, 2.1, 4.4].map((n) => tex(lilyPad(n))),
       wake: [0, 0.25, 0.5, 0.75].map((u) => tex(wakeFrame(u))), ring: [0.1, 0.25, 0.4, 0.55, 0.7, 0.85].map((u) => tex(ringFrame(u))),
     }));
@@ -353,7 +390,23 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
   };
   const put = (s, tex, x, y, angle, size, alpha) => { s.visible = true; s.texture = tex; s.position.set(x, y); s.rotation = angle; s.scale.set(size); s.alpha = alpha; };
   const newDuck = (t, spot, i, random) => ({ x: spot.x, y: spot.y, a: random() * TAU, turn: 0, wait: random() * 2, hen: i % 2 === 1, mode: 'swim', up: 0, h: 0, phase: random() * 6, shadow: sprite(floor(), t.duck[0], true), body: sprite(floor(), t.duck[0]), ripple: sprite(floor(), t.wake[0]) });
+  // The animal HUD's handles (animal-orders.mjs).
+  const handles = orderHandles(() => [['duck', ducks], ['heron', herons], ['gull', gulls], ['frog', frogs]], { remove: (o) => gone(o.body, o.shadow, o.ripple, o.carry, o.pad) });
   return {
+    ...handles.api,
+    // One put down by hand: `kind` 'duck', 'heron', 'gull' or 'frog', `id` to take it away by. False for any other kind.
+    add(kind, { x, y, id }, random = Math.random) {
+      const t = art();
+      if (kind === 'duck') { ducks.push({ ...newDuck(t, { x, y }, ducks.length, random), placed: id }); return true; }
+      if (kind === 'heron') { herons.push({ x, y, hx: x, hy: y, a: random() * TAU, mode: 'stand', wait: between(random, 2, 6), strike: 0, h: 0, t: 0, vx: 0, vy: 0, phase: random() * 6, placed: id, shadow: sprite(floor(), t.heron[0], true), body: sprite(floor(), t.heron[0]), ripple: sprite(floor(), t.ring[0]) }); return true; }
+      if (kind === 'gull') { gulls.push({ cx: x, cy: y, rx: grid * 2, ry: grid * 2, x, y, way: random() * TAU, mode: 'glide', phase: random() * 6, placed: id, body: sprite(high(), t.gull[0]), shadow: sprite(highShadow(), t.gull[0], true) }); return true; }
+      if (kind === 'frog') { const i = frogs.length; frogs.push({ x, y, hx: x, hy: y, a: between(random, -0.9, 0.9), coat: i % FROGS.length, mode: 'sit', wait: between(random, 1, 6), puff: 0, h: 0, t: 0, placed: id, pad: sprite(floor(), t.pad[i % t.pad.length]), shadow: sprite(floor(), t.frog[0][0], true), body: sprite(floor(), t.frog[0][0]) }); return true; }
+      return false;
+    },
+    removeAdded(id) {
+      const leave = (o) => { if (o.placed !== id) return true; gone(o.body, o.shadow, o.ripple, o.carry, o.pad); return false; };
+      ducks = ducks.filter(leave); herons = herons.filter(leave); gulls = gulls.filter(leave); frogs = frogs.filter(leave);
+    },
     populate({ kept = () => false, waters = [], shore = [], pads = [], ducks: nDucks = 0, herons: nHerons = 0, gulls: nGulls = 0, gullWaters = waters, grid: g = 100, birdSize: bs = 1, frogSize: fs = 1, random = Math.random } = {}) {
       drop(); grid = g; birdSize = bs; frogSize = fs; shown = 0; waterSpots = waters;
       if (!waters.length) return;
@@ -384,9 +437,12 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
     },
     scare() { scared = 0.3; },
     noise({ x, y, radius }) { noises.push({ x, y, r: radius, t: 0 }); },
-    tick(seconds, { kept = () => false, air = null, near = [], ok = () => true, seen = () => true, day = 1, sun = { x: 0.62, y: 0.78 }, view = null, sound = () => {}, blocked = () => false, barred = () => false, indoors = () => false, cast = null, ripple = null, fishing = null, birdBody = 1, liftShadow = () => {} } = {}) {
+    tick(seconds, { kept = () => false, air = null, near = [], ok = () => true, seen = () => true, day = 1, sun = { x: 0.62, y: 0.78 }, view = null, sound = () => {}, blocked = () => false, barred = () => false, indoors = () => false, cast = null, ripple = null, fishing = null, birdBody = 1, liftShadow = () => {}, tokenAt = () => null } = {}) {
       if (!this.busy) return;
       const dt = Math.min(0.05, seconds), k = grid / 100; time += dt; scared = Math.max(0, scared - dt);
+      // An ordered one (animal-orders.mjs) set on its way first, not put off by people; one with its HUD open stays put.
+      const aimOf = (o) => orderAim(o.order, { tokenAt, grid, time, phase: o.orderPhase ?? 0, from: o });
+      const steered = (kind, o) => (o.order ? orderPrep(kind, o, aimOf(o), { grid }) : o), calmOr = (o, v, quiet = null) => (o.order ? quiet : v), held = handles.held;
       if (noises.length) { for (const n of noises) n.t += dt; noises = noises.filter((n) => n.t * NOISE_SPEED * grid < n.r + grid * 3); }
       const heard = (o) => (noises.length ? noiseReaching(noises, o.x, o.y, { grid }) : null);
       const fishNow = fishing?.fishList ?? [];
@@ -399,13 +455,18 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
       ducks = ducks.map((q0) => {
         if (q0.gone) { q0.back = (q0.back ?? between(Math.random, 30, 70)) - dt; if (q0.back > 0 || !waterSpots.length) return q0; const w = waterSpots[Math.floor(Math.random() * waterSpots.length)]; floor().addChild(q0.body); return { ...q0, x: w.x, y: w.y, gone: false, back: undefined, leaving: false, mode: 'swim', h: 0, up: 0, wait: 2 }; }
         if (alpha <= 0.01) { q0.body.visible = q0.shadow.visible = q0.ripple.visible = false; return q0; }
-        const q = duckStep(q0, { dt, grid, near, scare, noise: heard(q0), blocked, barred: (x, y) => barred('ducks', x, y), ok: (x, y) => ok('ducks', x, y) });
+        if (held(q0)) return { ...q0 };
+        const d0 = steered('duck', q0);
+        const q = duckStep(d0, { dt, grid, near: calmOr(d0, near, []), scare: calmOr(d0, scare, false), noise: calmOr(d0, heard(d0)), blocked, barred: (x, y) => barred('ducks', x, y), ok: (x, y) => ok('ducks', x, y) });
+        // Ordered where there is no water to come down on, it keeps over the mark rather than giving up and going.
+        if (q.order && q.gone) { q.gone = false; q.tries = 0; q.leaving = false; }
         if (q.mode === 'fly' && q0.mode === 'swim') { sound('wingsUp', q, true); sound('duckQuack', q, true); sky().addChild(q.body); }
         else if (q.mode === 'swim' && q0.mode === 'fly') { floor().addChild(q.body); }
         else if (q.mode === 'swim' && Math.random() < dt * 0.03) sound('duckQuack', q, false);
         if (q.gone || !can(q, q.x, q.y)) { q.body.visible = q.shadow.visible = q.ripple.visible = false; return q; }
         if (q.mode === 'swim') {
-          const feeding = q.up > 0, tex = t.duck[(q.hen ? 2 : 0) + (feeding ? 1 : 0)], size = 0.85 * k * birdSize;
+          const feeding = q.up > 0, size = 0.85 * k * birdSize;
+          const tex = feeding ? t.duckUp[q.hen ? 1 : 0][Math.floor(time * 5 + q.phase) % 2] : t.duck[q.hen ? 2 : 0];
           if (ripple) {
             q.ripple.visible = false;
             // Paddling, its wake as it goes; tipped up to feed, a ring where it is now and then.
@@ -426,7 +487,9 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
       herons = herons.map((b0) => {
         if (b0.gone) { if (!waterSpots.length) return b0; const w = waterSpots[Math.floor(Math.random() * waterSpots.length)]; return { ...b0, gone: false, leaving: false, hx: w.x, hy: w.y, mode: 'fly', t: 7, h: 1 }; }
         if (alpha <= 0.01) { b0.body.visible = b0.shadow.visible = b0.ripple.visible = false; return b0; }
-        const b = heronStep(b0, { dt, grid, near, scare, noise: heard(b0), blocked, barred: (x, y) => barred('herons', x, y), fish: fishNow });
+        if (held(b0)) return { ...b0 };
+        const h0 = steered('heron', b0);
+        const b = heronStep(h0, { dt, grid, near: calmOr(h0, near, []), scare: calmOr(h0, scare, false), noise: calmOr(h0, heard(h0)), blocked, barred: (x, y) => barred('herons', x, y), fish: fishNow });
         // A croak as it goes up, and a rare one as it stands.
         if (b.mode === 'fly' && b0.mode === 'stand') { sound('wingsUp', b, true); sound('heronCall', b, true); sky().addChild(b.body); }
         else if (b.mode === 'stand' && b0.mode === 'stand' && Math.random() < dt * 0.004) sound('heronCall', b, false);
@@ -450,8 +513,14 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
         }
         return b;
       });
-      gulls = gulls.map((g0) => {
-        const g = gullStep(g0, { dt, grid, fish: alpha > 0.5 ? fishNow.filter((o) => !kept('gulls', o.x, o.y)) : [], air });
+      gulls = gulls.map((q0) => {
+        if (held(q0)) return { ...q0 };
+        // Ordered: round and round close over the spot or the token (animal-orders.mjs orbitStep), fishing nothing meanwhile;
+        // its own stretch of sky goes with it, so let go it carries on from there.
+        const held0 = q0.order ? aimOf(q0) : null, g0 = q0;
+        const g = held0 && g0.mode === 'glide'
+          ? { ...orbitStep(g0, held0.center, { dt, grid, spot: g0.order.type === 'go' }), mode: 'glide', h: 1, hit: false, hang: 0, cx: held0.center.x, cy: held0.center.y, rx: grid * 2, ry: grid * 2, huntIn: Math.max(g0.huntIn ?? 0, 30) }
+          : gullStep(g0, { dt, grid, fish: !g0.order && alpha > 0.5 ? fishNow.filter((o) => !kept('gulls', o.x, o.y)) : [], air });
         const { x, y, angle } = g;
         if (g.mode === 'dive' && g0.mode !== 'dive') sound('gullCry', g, true);
         else if (alpha > 0.5 && Math.random() < dt * 0.1) sound('gullCry', g, false);
@@ -471,8 +540,10 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
         if (g.carry) put(g.carry, g.carry.texture, x + Math.sin(angle) * grid * 0.14, y - Math.cos(angle) * grid * 0.14, angle + Math.PI / 2, 0.42 * k * g.carrySize, alpha * g.open);
         return g;
       });
-      frogs = frogs.map((f0) => {
-        const f = frogStep(f0, { dt, grid, near, scare, noise: heard(f0), ok: (x, y) => ok('frogs', x, y) });
+      frogs = frogs.map((q0) => {
+        if (held(q0)) return { ...q0 };
+        const f0 = steered('frog', q0);
+        const f = frogStep(f0, { dt, grid, near: calmOr(f0, near, []), scare: calmOr(f0, scare, false), noise: calmOr(f0, heard(f0)), ok: (x, y) => ok('frogs', x, y) });
         if (f.puff > 0 && f0.puff <= 0) sound('frogCroak', f, false);
         if (f0.mode === 'leap' && f.mode === 'swim') { sound('frogPlop', f, false); if (ripple) ripple(f.x, f.y, 0.4 * frogSize, false); else plops.push({ x: f.x, y: f.y, t: 0, view: sprite(floor(), t.ring[0]) }); }
         if (ripple && f.mode === 'swim' && (f.x !== f0.x || f.y !== f0.y) && inView(f.x, f.y)) ripple(f.x, f.y, 0.2 * frogSize, true, { x: Math.sin(f.a), y: -Math.cos(f.a) }, f.body);
