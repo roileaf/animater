@@ -40,9 +40,9 @@ import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/pro
 import { DECOR_BREAK_MESSAGE, DECOR_NAMES, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
-import { damageTypesOfItem, areaIdOf, areaOriginRefOf, placedRecordOf, typesBreaking } from "./engines/props/area-damage.mjs";
+import { damageTypesOfItem, areaIdOf, areaOriginRefOf, placedRecordOf, typesBreaking, rollDamageTypes } from "./engines/props/area-damage.mjs";
 import { createPlayWatch, strikeMoment, momentWait } from "./engines/props/play-moments.mjs";
-import { createAreaWaits, AREA_TTL_MS, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
+import { askClaimed, createAreaWaits, AREA_TTL_MS, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
 import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
 import { streakLayout } from "./engines/motion/afterimages.mjs";
 import { FLOOR_CHOICES, sceneFloor, regionFloor, floorAt, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive, footstepReach, FOOTSTEP_RANGES, rainFloor, RAIN_SPLASH_GAIN, markedFloor, snowFloor, frozenFloor } from "./engines/motion/movement-feel.mjs";
@@ -8477,6 +8477,21 @@ function rememberLoadedAreas() {
   }
 }
 Hooks.on("canvasReady", () => { propSafe("area reload", rememberLoadedAreas); });
+// The damage types an area breaks things with, as this screen reads them: its spell's; for a spell whose item names none
+// (chosen at cast, a kineticist impulse), those of the damage roll the cause names, read from this screen's own copy of
+// that message and only when it is a damage roll of the area's own item and caster, by the sender (any, for a GM),
+// within the area's ttl (area-damage.mjs rollDamageTypes).
+function areaPlaceTypes(doc, cause, user, now) {
+  const own = areaDamageTypes(doc);
+  if (own.length || typeof cause?.messageId !== "string") return own;
+  return propSafe("area roll", () => {
+    const message = game.messages?.get(cause.messageId), d = message ? damageFromMessage(message, game.system.id) : null;
+    if (!d) return [];
+    const { itemUuid, actorUuid } = areaOriginOf(doc);
+    const summary = { isDamage: true, itemUuid: d.itemUuid, actorUuid: d.actorUuid ?? uuidOwners(d.itemUuid).actorUuid, authorId: (message.author ?? message.user)?.id ?? null, timestamp: message.timestamp, types: d.types?.length ? d.types : [d.type] };
+    return rollDamageTypes(summary, { itemUuid, actorUuid, sender: { id: user?.id, isGM: user?.isGM === true }, now });
+  }) ?? [];
+}
 // The placed area an area or ignite cause names, as this screen's own documents hold it (prop-areas.mjs areaRefusal):
 // what this screen remembered when it was placed (who, when, its shape), else, for an area placed before this screen
 // loaded, its document's own creation data (area-damage.mjs placedRecordOf); the scene its document is on now; and the
@@ -8496,14 +8511,17 @@ function areaPlace(cause, user) {
   try { const actor = actorUuid ? fromUuidSync(actorUuid) : null; ownsOrigin = !!user && actor?.testUserPermission?.(user, "OWNER") === true; } catch { ownsOrigin = false; }
   const levels = doc ? [...(doc.levels ?? [])] : [...(rec?.levels ?? [])];
   return { now, area: { uuid, sceneId: doc?.parent?.id ?? null, authorId: placed.authorId ?? null, authorIsGM: !!(placed.authorId && game.users.get(placed.authorId)?.isGM),
-    ownsOrigin, rememberedAt: placed.rememberedAt, testPoint: rec?.testPoint ?? (doc ? areaTestOf(doc) : undefined), levels, damageTypes: doc ? areaDamageTypes(doc) : [] } };
+    ownsOrigin, rememberedAt: placed.rememberedAt, testPoint: rec?.testPoint ?? (doc ? areaTestOf(doc) : undefined), levels, damageTypes: doc ? areaPlaceTypes(doc, cause, user, now) : [] } };
 }
 for (const hook of ["deleteMeasuredTemplate", "deleteRegion"]) Hooks.on(hook, (doc) => propAreas.forget(doc.uuid));
 // Everything inside a remembered area on its level that one of the given damage types breaks (the first of them that
 // does): props, doors and windows, decorations, and with fire the powder spilled from a keg broken earlier. Each is
-// asked of the GM once per area (claim), naming the area, which the GM checks for itself (prop-areas.mjs). True when
-// anything was asked for.
-function breakAreaThings(area, types) {
+// asked of the GM once per area (claim), naming the area, which the GM checks for itself (prop-areas.mjs). A claim is
+// held while its request is out and given back when the GM does not write it (askClaimed), so a refused ask from the
+// animation leaves the thing to the damage roll. messageId: the damage roll that set it off, for a spell whose item names
+// no damage type (the GM reads that roll's types itself). True when anything was asked for.
+const CLAIM_SETTLE_MS = PROP_REFUSED_MS + 1500;
+function breakAreaThings(area, types, { messageId } = {}) {
   const scene = area?.scene;
   if (!area || !types?.length || !propsOn(scene) || !game.scenes.get(scene.id)) return false;
   const grid = propGrid(scene), tiles = tilesOnLevel(scene.tiles.contents.map(propTileView), area.levels), walls = (scene.walls?.contents ?? []).map(wallView);
@@ -8514,11 +8532,16 @@ function breakAreaThings(area, types) {
   const spills = !types.includes("fire") ? [] : (propSafe("area powder", () => ignitableInArea(tiles, area.testPoint)) ?? []).filter((t) => propAreas.claim(area.templateId, `ignite:${t.id}`));
   const decorHits = typesBreaking(types, (type) => propsInArea(decor, area.testPoint, grid, type), id).filter(({ thing }) => propAreas.claim(area.templateId, thing.id));
   if (!hits.length && !doors.length && !spills.length && !decorHits.length) return false;
-  const areaUuid = area.templateId, cause = (damageType) => ({ kind: "area", damageType, at: area.at, areaUuid });
-  for (const { thing, type } of hits) void askProp(scene, thing.id, cause(type), area.at);
-  for (const { thing, type } of decorHits) void askDecor(scene, thing, cause(type), area.at);
-  for (const { thing, type } of doors) void askWall(scene, thing.id, cause(type), area.at);
-  for (const t of spills) void askProp(scene, t.id, { kind: "ignite", damageType: "fire", at: area.at, areaUuid }, area.at);
+  const areaUuid = area.templateId, roll = typeof messageId === "string" ? { messageId } : {};
+  const cause = (damageType) => ({ kind: "area", damageType, at: area.at, areaUuid, ...roll });
+  const held = (claimId, ask, written) => void askClaimed({ ask, written, release: () => propAreas.release(areaUuid, claimId), wait: CLAIM_SETTLE_MS });
+  const flagsOf = (doc) => doc?.flags?.[ID];
+  for (const { thing, type } of hits) held(thing.id, () => askProp(scene, thing.id, cause(type), area.at), () => !!flagsOf(scene.tiles.get(thing.id))?.prop?.broken);
+  for (const { thing, type } of decorHits) held(thing.id, () => askDecor(scene, thing, cause(type), area.at),
+    () => (flagsOf(scene.regions?.get(thing.decor?.regionId))?.decorBroken ?? []).some((e) => e?.key === thing.decor?.key));
+  for (const { thing, type } of doors) held(`wall:${thing.id}`, () => askWall(scene, thing.id, cause(type), area.at), () => !!flagsOf(scene.walls?.get(thing.id))?.breakWall?.broken);
+  for (const t of spills) held(`ignite:${t.id}`, () => askProp(scene, t.id, { kind: "ignite", damageType: "fire", at: area.at, areaUuid, ...roll }, area.at),
+    () => flagsOf(scene.tiles.get(t.id))?.prop?.broken?.powder !== "spilled");
   return true;
 }
 // An area's own animation started on this client (the one that placed it): at its impact (impactAt, prop-triggers
@@ -8546,10 +8569,12 @@ function breakAreaProps(message) {
   const area = propAreas.matchDamage({ itemUuid: d.itemUuid, actorUuid: d.actorUuid ?? uuidOwners(d.itemUuid).actorUuid ?? speaker });
   const scene = area?.scene;
   if (!area || !propsOn(scene) || !game.scenes.get(scene.id)) return;
-  // The roll's types the spell itself deals (the GM accepts no other), its largest share first.
-  const spell = area.damageTypes ?? [], types = [...new Set([d.type, ...(d.types ?? [])])].filter((t) => spell.includes(t));
+  // The roll's types the spell itself deals (the GM accepts no other), its largest share first. A spell whose item names
+  // none (chosen at cast, a kineticist impulse) takes the roll's own, naming the roll: the GM reads it again itself.
+  const spell = area.damageTypes ?? [], rolled = [...new Set([d.type, ...(d.types ?? [])])].filter(Boolean);
+  const types = spell.length ? rolled.filter((t) => spell.includes(t)) : rolled, named = spell.length ? {} : { messageId: message.id };
   if (!types.length) return;
-  const ask = () => propSafe("area damage", () => breakAreaThings(propAreas.get(area.templateId) ?? area, types));
+  const ask = () => propSafe("area damage", () => breakAreaThings(propAreas.get(area.templateId) ?? area, types, named));
   const wait = propAreas.delayFor(area);
   if (wait > 0) setTimeout(ask, wait); else ask();
 }

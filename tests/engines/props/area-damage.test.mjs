@@ -95,3 +95,29 @@ test("spilled powder lit by an area needs fire among the spell's types", () => {
   assert.equal(areaRefusal(area(), ask({ kind: "ignite", damageType: "fire" })), null);
   assert.equal(areaRefusal(area({ damageTypes: ["cold"] }), ask({ kind: "ignite", damageType: "fire" })), "area");
 });
+
+// A spell whose damage type is chosen at cast (or a kineticist impulse) names none on its item: the GM reads the area's
+// damage roll from its own copy of the message the cause names.
+import { rollDamageTypes } from "../../../scripts/engines/props/area-damage.mjs";
+const roll = (x = {}) => ({ isDamage: true, itemUuid: "Actor.a.Item.i", actorUuid: "Actor.a", authorId: "p", timestamp: 10000, types: ["cold", "fire"], ...x });
+const origin = { itemUuid: "Actor.a.Item.i", actorUuid: "Actor.a" };
+const player = { id: "p", isGM: false };
+
+test("the damage roll a cause names gives the area its types: the area's own spell, rolled by the sender, lately", () => {
+  assert.deepEqual(rollDamageTypes(roll(), { ...origin, sender: player, now: 12000 }), ["cold", "fire"]);
+  // a GM may name anyone's roll
+  assert.deepEqual(rollDamageTypes(roll({ authorId: "q" }), { ...origin, sender: { id: "gm", isGM: true }, now: 12000 }), ["cold", "fire"]);
+});
+
+test("any other roll gives nothing: not a damage roll, another item or caster, someone else's, too old, from the future, or none", () => {
+  const ok = { ...origin, sender: player, now: 12000 };
+  assert.deepEqual(rollDamageTypes(roll({ isDamage: false }), ok), []);
+  assert.deepEqual(rollDamageTypes(roll({ itemUuid: "Actor.a.Item.other" }), ok), []);
+  assert.deepEqual(rollDamageTypes(roll({ actorUuid: "Actor.b" }), ok), []);
+  assert.deepEqual(rollDamageTypes(roll({ authorId: "q" }), ok), []);
+  assert.deepEqual(rollDamageTypes(roll({ timestamp: 12000 - 600001 }), ok), []);
+  assert.deepEqual(rollDamageTypes(roll({ timestamp: 12000 + 5000 }), ok), []);
+  assert.deepEqual(rollDamageTypes(null, ok), []);
+  assert.deepEqual(rollDamageTypes(roll(), { ...ok, itemUuid: null }), []);
+  assert.deepEqual(rollDamageTypes(roll({ types: undefined }), ok), []);
+});

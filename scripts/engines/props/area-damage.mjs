@@ -3,6 +3,7 @@
 // and again on the GM's (prop-areas.mjs areaRefusal), never from the requester's word.
 import { normalizeDamageType } from "../playback/damage-moments.mjs";
 import { uuidOwners } from "./prop-triggers.mjs";
+import { AREA_TTL_MS } from "./prop-areas.mjs";
 
 // A list from an array, a Set, a Map or Foundry Collection (its values), a {contents} or a plain object (its values).
 const listOf = (v) => (v == null ? [] : typeof v === "string" ? [v] : Array.isArray(v) ? v : typeof v.values === "function" ? [...v.values()]
@@ -91,4 +92,21 @@ export function typesBreaking(types, hitsOf, idOf) {
     out.push({ thing, type });
   }
   return out;
+}
+
+const ROLL_SKEW_MS = 2000;
+/**
+ * The damage types an area takes from its damage roll, for a spell whose item names none (chosen at cast, a kineticist
+ * impulse): the GM's own copy of the roll the cause names, summarized as {isDamage, itemUuid, actorUuid, authorId,
+ * timestamp, types} (damage-moments damageFromMessage). Only a damage roll of the area's own item and caster
+ * (itemUuid, actorUuid: the area's origin), made by the sender (any roll for a GM sender), within ttl of now (a clock up
+ * to 2 s ahead allowed); [] for any other.
+ */
+export function rollDamageTypes(roll, { itemUuid, actorUuid, sender, now, ttl = AREA_TTL_MS } = {}) {
+  if (!roll || roll.isDamage !== true || !itemUuid || roll.itemUuid !== itemUuid) return [];
+  if (actorUuid && roll.actorUuid && roll.actorUuid !== actorUuid) return [];
+  if (sender?.isGM !== true && (!sender?.id || roll.authorId !== sender.id)) return [];
+  const age = Number(now) - Number(roll.timestamp);
+  if (!Number.isFinite(age) || age < -ROLL_SKEW_MS || age > ttl) return [];
+  return typesFrom(listOf(roll.types));
 }

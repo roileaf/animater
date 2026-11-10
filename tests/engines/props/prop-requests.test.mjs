@@ -425,3 +425,8 @@ test("M1: Repair's wall batch names each wall once, its door note's restore over
   assert.deepEqual(mergeWallFixes([], []), []);
   assert.deepEqual(mergeWallFixes([{ move: 1 }], [{ _id: "c", move: 2 }]), [{ _id: "c", move: 2 }]); // an update without an id is dropped
 });
+
+test("an area cause keeps the damage roll it names (a spell whose damage type is chosen at cast)", () => {
+  assert.equal(cleanCause({ kind: "area", areaUuid: "Scene.s.Region.r", messageId: "m1" }).messageId, "m1");
+  assert.equal(cleanCause({ kind: "area", messageId: 5 }).messageId, undefined);
+});

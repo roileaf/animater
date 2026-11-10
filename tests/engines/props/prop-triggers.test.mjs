@@ -205,3 +205,40 @@ test("an area remembered after a reload keeps when it was placed (never later th
   t = 5600;
   assert.equal(w.matchDamage({ itemUuid: "I", actorUuid: "A" })?.templateId, "U"); // T expired at 5500
 });
+
+// Claims are provisional: held while the request is out, released when the GM never writes it.
+import { askClaimed } from "../../../scripts/engines/props/prop-triggers.mjs";
+const settle = () => { const q = []; return { later: (fn) => q.push(fn), run: () => q.splice(0).forEach((f) => f()) }; };
+
+test("a refused animation-path ask frees the thing, so the damage roll asks again and breaks it", async () => {
+  const w = createAreaWaits({ now: () => 0 }), s = settle();
+  w.remember({ templateId: "T", itemUuid: "I", actorUuid: "A", testPoint: () => true });
+  let broken = false, asks = 0;
+  const go = (gmWrites) => w.claim("T", "crate") && askClaimed({ ask: async () => { asks++; if (gmWrites) broken = true; return true; }, written: () => broken, release: () => w.release("T", "crate"), later: s.later, wait: 3500 });
+  const first = go(false); await Promise.resolve(); await Promise.resolve();
+  assert.equal(w.claim("T", "crate"), false); // held while the request is out
+  s.run(); assert.equal(await first, false); // the GM never wrote it: released
+  const second = go(true); await Promise.resolve(); await Promise.resolve(); s.run();
+  assert.equal(await second, true);
+  assert.equal(broken, true); assert.equal(asks, 2);
+});
+
+test("an accepted ask keeps its claim: never asked twice; an ask that cannot be sent frees it at once", async () => {
+  const w = createAreaWaits({ now: () => 0 }), s = settle();
+  w.remember({ templateId: "T", itemUuid: "I", actorUuid: "A", testPoint: () => true });
+  assert.equal(w.claim("T", "door"), true);
+  const p = askClaimed({ ask: async () => true, written: () => true, release: () => w.release("T", "door"), later: s.later, wait: 3500 });
+  await Promise.resolve(); await Promise.resolve(); s.run();
+  assert.equal(await p, true);
+  assert.equal(w.claim("T", "door"), false);
+  // no GM, or this screen's own check refuses it: released without waiting
+  assert.equal(w.claim("T", "keg"), true);
+  assert.equal(await askClaimed({ ask: async () => false, written: () => false, release: () => w.release("T", "keg"), later: s.later, wait: 3500 }), false);
+  assert.equal(w.claim("T", "keg"), true);
+  // an ask that throws counts as not sent
+  w.release("T", "keg");
+  assert.equal(await askClaimed({ ask: async () => { throw new Error("x"); }, written: () => false, release: () => w.release("T", "keg"), later: s.later, wait: 3500 }), false);
+  assert.equal(w.claim("T", "keg"), true);
+  // releasing an unknown area or thing is harmless
+  w.release("nope", "x"); w.release("T", "never");
+});

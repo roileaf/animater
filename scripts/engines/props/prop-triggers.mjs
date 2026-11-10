@@ -53,7 +53,25 @@ export function createAreaWaits({ now = () => Date.now(), ttl = AREA_TTL_MS, tra
       a.claimed.add(tileId);
       return true;
     },
+    // A claim given back (askClaimed: the GM refused it or never wrote it), so the area's next trigger asks again.
+    release(templateId, tileId) { areas.get(templateId)?.claimed.delete(tileId); },
   };
+}
+
+// A claimed thing asked of the GM, its claim held only while the request is out: released at once when it could not be
+// sent (ask() false or throwing: no GM, this screen's own check refused it), else after wait ms unless written() (the
+// GM wrote the break). A refusal from the GM is its silence (the relay only answers with the write), so an animation's
+// refused ask leaves the thing to the damage roll's. Resolves whether it was written.
+export async function askClaimed({ ask, written, release, later = (fn, ms) => setTimeout(fn, ms), wait = 3500 }) {
+  let sent = false;
+  try { sent = (await ask()) === true; } catch { sent = false; }
+  if (!sent) { release(); return false; }
+  return new Promise((resolve) => later(() => {
+    let done = false;
+    try { done = written() === true; } catch { done = false; }
+    if (!done) release();
+    resolve(done);
+  }, wait));
 }
 
 // ms into a play when its area lands: the first area or impact stage, else the first flight's arrival, else 0.

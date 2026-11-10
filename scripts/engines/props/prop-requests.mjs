@@ -31,7 +31,7 @@ export function cleanCause(c) {
   if (typeof c.outcome === "string") out.outcome = c.outcome.slice(0, 40);
   if (finite(c.at)) out.at = { x: c.at.x, y: c.at.y };
   if (finite(c.path?.from) && finite(c.path?.to)) out.path = { from: { x: c.path.from.x, y: c.path.from.y }, to: { x: c.path.to.x, y: c.path.to.y } };
-  for (const k of ["targetUuid", "moverUuid", "sourceId", "areaUuid"]) if (typeof c[k] === "string") out[k] = c[k].slice(0, 200);
+  for (const k of ["targetUuid", "moverUuid", "sourceId", "areaUuid", "messageId"]) if (typeof c[k] === "string") out[k] = c[k].slice(0, 200);
   return out;
 }
 
