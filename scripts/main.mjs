@@ -7193,7 +7193,7 @@ async function applyPropBreak(scene, doc, cause, rawNote, user) {
       if (region) note = { ...note, region: region.id };
     }
     await doc.update({ hidden: true, [`flags.${ID}.prop.broken`]: note }, { animater: { propBreak: true } });
-    if (check.rubble) void whisperTopple(scene, doc, check.rubble).catch((e) => runtime?.trace("props", `topple whisper: ${e?.message ?? e}`));
+    if (check.fall) void whisperTopple(scene, doc, check.fall).catch((e) => runtime?.trace("props", `topple whisper: ${e?.message ?? e}`));
     // The tile is already written: a failed wall batch is only reported.
     if (check.wallUpdates.length) await scene.updateEmbeddedDocuments("Wall", check.wallUpdates).catch((e) => runtime?.trace("props", `walls not opened: ${e?.message ?? e}`));
     if (check.lightUpdates?.length) await scene.updateEmbeddedDocuments("AmbientLight", check.lightUpdates).catch((e) => runtime?.trace("props", `lights not put out: ${e?.message ?? e}`));
@@ -7422,7 +7422,7 @@ async function undoPropBreak(doc, { deleted = false } = {}) {
   const scene = doc.parent, del = propDel();
   if (!scene) return;
   const tiles = scene.tiles.contents.filter((t) => t.id !== doc.id).map(propTileView);
-  const u = undoUpdates(propTileView(doc), scene.walls?.contents ?? [], { tiles, grid: propGrid(scene), lights: sceneLights(scene) });
+  const u = undoUpdates(propTileView(doc), scene.walls?.contents ?? [], { tiles, grid: propGrid(scene), lights: sceneLights(scene), regions: sceneRegions(scene) });
   if (!deleted) await scene.updateEmbeddedDocuments("Tile", [withDeletes(u.tile, del)]);
   if (u.walls.length) await scene.updateEmbeddedDocuments("Wall", u.walls.map((w) => withDeletes(w, del)));
   if (u.lights.length) await scene.updateEmbeddedDocuments("AmbientLight", u.lights).catch((e) => runtime?.trace("props", `lights not relit: ${e?.message ?? e}`));
@@ -7435,7 +7435,7 @@ async function undoPropBreak(doc, { deleted = false } = {}) {
 // doors, so the two never name the same wall.
 async function repairAllProps(scene = canvas?.scene) {
   if (!game.user?.isGM || !scene) return 0;
-  const walls = scene.walls?.contents ?? [], r = repairUpdates(scene.tiles.contents.map(propTileView), walls, { lights: sceneLights(scene), regions: sceneRegions(scene) }), del = propDel();
+  const walls = scene.walls?.contents ?? [], r = repairUpdates(scene.tiles.contents.map(propTileView), walls, { lights: sceneLights(scene), regions: sceneRegions(scene), grid: propGrid(scene) }), del = propDel();
   const wallFixes = [...r.walls, ...wallRepairUpdates(walls)];
   if (r.tiles.length) await scene.updateEmbeddedDocuments("Tile", r.tiles.map((t) => withDeletes(t, del)));
   if (wallFixes.length) await scene.updateEmbeddedDocuments("Wall", wallFixes.map((w) => withDeletes(w, del)), { animater: { wallRepair: true }, sound: false });
@@ -9920,15 +9920,18 @@ Hooks.on("renderTileConfig", (app, html) => {
   // The Burst field shows only while Contents is black powder, and the Rubble field only while Breaks as is Topple (picked,
   // or Automatic guessing it); hidden, they do not submit.
   const set = tab.querySelector("[data-animater-prop]"), contents = set?.querySelector(`[name="flags.${ID}.prop.contents"]`);
-  const style = set?.querySelector(`[name="flags.${ID}.prop.style"]`);
-  style?.addEventListener("change", () => {
-    const topple = (style.value || set.dataset.guessStyle) === "topple";
+  const style = set?.querySelector(`[name="flags.${ID}.prop.style"]`), material = set?.querySelector(`[name="flags.${ID}.prop.material"]`);
+  const toggleTopple = () => {
+    const auto = set.dataset.guessStyle === "topple" && (material?.value || set.dataset.guessMaterial) !== "stone" ? "shatter" : set.dataset.guessStyle;
+    const topple = (style.value || auto) === "topple";
     for (const group of set.querySelectorAll('[data-show-for="topple"]')) {
       group.hidden = !topple;
       for (const input of group.querySelectorAll("input, select")) input.disabled = !topple;
     }
     app.setPosition?.({ height: "auto" });
-  });
+  };
+  style?.addEventListener("change", toggleTopple);
+  material?.addEventListener("change", toggleTopple);
   contents?.addEventListener("change", () => {
     const powder = (contents.value || set.dataset.guessContents) === "powder";
     for (const group of set.querySelectorAll('[data-show-for="powder"]')) {

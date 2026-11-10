@@ -10,8 +10,13 @@ export const guessLight = (src) => nameTokens(src).some((t) => LIGHT_WORDS.inclu
 // The visible lights whose centre lies inside the prop's rect grown by a quarter square, on the given levels; never a
 // burning-oil light (a neighbour's fire is not this prop's own). rect: {x, y, width, height}; lights: {id, x, y, hidden, levels, flags?}[].
 export function lightsOfProp(rect, lights, grid, levels) {
+  return lightsInReach(rect, lights, grid, levels).filter((l) => !l.hidden);
+}
+// Every light (hidden or not) that is this prop's own by place: the same reach as lightsOfProp. Undo and Repair only
+// unhide named lights that are still in reach, so a copied tile's note never relights a light the GM hid elsewhere.
+export function lightsInReach(rect, lights, grid, levels) {
   const m = grid / 4;
-  return (lights ?? []).filter((l) => !l.hidden && !l.flags?.animater?.propFire && Number.isFinite(l.x) && Number.isFinite(l.y)
+  return (lights ?? []).filter((l) => !l.flags?.animater?.propFire && Number.isFinite(l.x) && Number.isFinite(l.y)
     && l.x >= rect.x - m && l.x <= rect.x + rect.width + m && l.y >= rect.y - m && l.y <= rect.y + rect.height + m
     && onLevel(l.levels, levels));
 }

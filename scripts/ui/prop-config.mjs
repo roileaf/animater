@@ -16,16 +16,18 @@ const options = (list, value) => list.map(([v, l]) => `<option value="${v}"${v =
 export function propTileFieldsHTML({ src, material = "", contents = "", style = "", light = "", tips = "", burst, rubble = "" } = {}) {
   const guesses = propGuesses(src), guess = guesses.material, mat = MATERIALS.includes(material) ? material : "", own = CONTENTS.includes(contents) ? contents : "", sty = STYLE_CHOICES.includes(style) ? style : "";
   const mats = [["", `Automatic (${guess === "none" ? "won't break" : guess})`], ...MATERIALS.map((m) => [m, LABELS[m]])];
-  const styles = [["", `Automatic (${guesses.style})`], ...STYLE_CHOICES.map((c) => [c, STYLE_LABELS[c]])];
+  // a tall name is only a statue that topples while it is stone
+  const auto = guesses.style === "topple" && (mat || guesses.material) !== "stone" ? "shatter" : guesses.style;
+  const styles = [["", `Automatic (${auto})`], ...STYLE_CHOICES.map((c) => [c, STYLE_LABELS[c]])];
   const conts = [["", `Automatic (${CONTENT_LABELS[guesses.contents]})`], ...CONTENTS.map((c) => [c, CONTENT_LABELS[c]])];
   const lit = light === "yes" || light === "no" ? light : "";
   const lightOpts = [["", `Automatic (${guesses.light ? "yes" : "no"})`], ["yes", "Yes"], ["no", "No"]];
   const tip = tips === "yes" || tips === "no" ? tips : "";
   const tipOpts = [["", `Automatic (${guesses.tips ? "yes" : "no"})`], ["yes", "Yes"], ["no", "No"]];
-  const powder = (own || guesses.contents) === "powder", topple = (sty || guesses.style) === "topple";
+  const powder = (own || guesses.contents) === "powder", topple = (sty || auto) === "topple";
   const rub = rubble === "yes" || rubble === "no" ? rubble : "";
   const rubbleOpts = [["", "Scene default"], ["yes", "Yes"], ["no", "No"]];
-  return `<fieldset data-animater-prop data-src="${esc(src)}" data-guess-contents="${esc(guesses.contents)}" data-guess-style="${esc(guesses.style)}"><legend>Breakable prop</legend>
+  return `<fieldset data-animater-prop data-src="${esc(src)}" data-guess-contents="${esc(guesses.contents)}" data-guess-style="${esc(guesses.style)}" data-guess-material="${esc(guesses.material)}"><legend>Breakable prop</legend>
     <div class="form-group"><label>Material</label><div class="form-fields"><select name="flags.${ID}.prop.material">${options(mats, mat)}</select></div><p class="hint">What the prop is made of decides what can break it. Automatic goes by the file name.</p></div>
     <div class="form-group"><label>Breaks as</label><div class="form-fields"><select name="flags.${ID}.prop.style">${options(styles, sty)}</select></div><p class="hint">How it comes apart. Automatic goes by the file name: furniture collapses, tall stone statues and pillars topple, everything else shatters. Topple needs force or a heavy slam.</p></div>
     <div class="form-group" data-show-for="topple"${topple ? "" : " hidden"}><label>Rubble is difficult terrain</label><div class="form-fields"><select name="flags.${ID}.prop.rubble"${topple ? "" : " disabled"}>${options(rubbleOpts, rub)}</select></div><p class="hint">Where it falls, the rubble costs double to walk through. Scene default follows the scene's setting.</p></div>

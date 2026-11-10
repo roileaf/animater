@@ -3,7 +3,7 @@ import { propMaterial, propShape, canBreak } from "./prop-material.mjs";
 import { propTraits, breakStyle } from "./prop-traits.mjs";
 import { breakLook, brokenNote, readNote, missBreaks } from "./prop-break.mjs";
 import { ownWalls, openUpdates, restoreUpdates } from "./prop-walls.mjs";
-import { lightsOfProp, hideLights, unhideLights, oilCatches, firesOf, allFires } from "./prop-lights.mjs";
+import { lightsOfProp, lightsInReach, hideLights, unhideLights, oilCatches, firesOf, allFires } from "./prop-lights.mjs";
 import { segRectDist, headsInto, onLevel, tipsOver } from "./prop-pick.mjs";
 import { explodes, blastFrom, inBurst } from "./prop-blast.mjs";
 import { toppleStrip } from "./prop-topple.mjs";
@@ -112,7 +112,8 @@ export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, se
   const powder = traits.contents === "powder" ? { powder: explode ? "exploded" : "spilled", burst: traits.burst } : {};
   // A toppled statue with rubble on gets the strip it falls along (the GM then makes its region and names it in the note).
   const rubble = !tips && note.style === "topple" && traits.rubble ? toppleStrip(tile, note.cutAngle) : null;
-  return { ok: true, fire, explode, rubble, note: { ...base, walls: mine.map((w) => w.id), lights: outIds, ...(fire ? { fire: true } : {}), ...powder }, wallUpdates: openUpdates(mine), lightUpdates: hideLights(out) };
+  const fall = !tips && note.style === "topple" ? toppleStrip(tile, note.cutAngle) : null;
+  return { ok: true, fire, explode, rubble, fall, note: { ...base, walls: mine.map((w) => w.id), lights: outIds, ...(fire ? { fire: true } : {}), ...powder }, wallUpdates: openUpdates(mine), lightUpdates: hideLights(out) };
 }
 
 // Spilled powder a fire area covers goes off, once: only a broken keg's note with its powder spilled, only fire, and the
@@ -146,20 +147,23 @@ export function wallsToRestore(tile, tiles, walls, grid = 100) {
   const own = new Set(ownWalls(tile, walls, grid).map((w) => w.id));
   return walls.filter((w) => ids.has(w.id) && own.has(w.id) && !held.has(w.id));
 }
-// tiles: the scene's tiles (with or without this one). deleteLights: the tile's burning-oil lights. deleteRegions: the
-// rubble region its note names (the caller skips one already gone).
+// tiles: the scene's tiles (with or without this one). deleteLights: the tile's burning-oil lights. regions: the scene's
+// regions {id, flags}; deleteRegions: the rubble region its note names, only if it is that tile's own (flags.animater.propRubble
+// is this tile's id: a copied tile carries the original's note). lights it unhides: only those named and still within its reach.
 const regionOf = (tile) => readNote(propOf(tile).broken)?.region;
-export function undoUpdates(tile, walls, { tiles = [], grid = 100, lights = [] } = {}) {
-  return { tile: { _id: tile.id, "flags.animater.prop.-=broken": null }, walls: restoreUpdates(wallsToRestore(tile, tiles, walls, grid)), lights: unhideLights(namedLights(tile), lights),
-    deleteLights: firesOf(tile.id, lights), deleteRegions: regionOf(tile) ? [regionOf(tile)] : [] };
+const ownRegion = (tile, regions) => { const id = regionOf(tile); return id && (regions ?? []).some((r) => r?.id === id && r.flags?.animater?.propRubble === tile.id) ? [id] : []; };
+const ownNamedLights = (tile, lights, grid) => { const reach = new Set(lightsInReach(tile, lights, grid, tile.levels).map((l) => l.id)); return namedLights(tile).filter((id) => reach.has(id)); };
+export function undoUpdates(tile, walls, { tiles = [], grid = 100, lights = [], regions = [] } = {}) {
+  return { tile: { _id: tile.id, "flags.animater.prop.-=broken": null }, walls: restoreUpdates(wallsToRestore(tile, tiles, walls, grid)), lights: unhideLights(ownNamedLights(tile, lights, grid), lights),
+    deleteLights: firesOf(tile.id, lights), deleteRegions: ownRegion(tile, regions) };
 }
 
 // Every broken tile unhidden and cleared in one batch. No broken tile is left, so every opened wall comes back,
 // including any a deleted or copied tile left open. Every burning-oil light goes too, whoever's tile it was,
 // and every rubble region (orphans too).
-export function repairUpdates(tiles, walls, { lights = [], regions = [] } = {}) {
+export function repairUpdates(tiles, walls, { lights = [], regions = [], grid = 100 } = {}) {
   const broken = (tiles ?? []).filter((t) => propOf(t).broken);
-  return { tiles: broken.map((t) => ({ _id: t.id, hidden: false, "flags.animater.prop.-=broken": null })), walls: restoreUpdates(walls ?? []), lights: unhideLights(broken.flatMap(namedLights), lights),
+  return { tiles: broken.map((t) => ({ _id: t.id, hidden: false, "flags.animater.prop.-=broken": null })), walls: restoreUpdates(walls ?? []), lights: unhideLights(broken.flatMap((t) => ownNamedLights(t, lights, grid)), lights),
     deleteLights: allFires(lights), deleteRegions: (regions ?? []).filter((r) => r?.flags?.animater?.propRubble).map((r) => r.id) };
 }
 

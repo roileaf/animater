@@ -115,16 +115,39 @@ const rubble = (id, tileId) => ({ id, flags: { animater: { propRubble: tileId } 
 test("undo deletes its rubble; Repair deletes every rubble region", () => {
   const a = brokenStatue("A", "r1"), b = brokenStatue("B", "r2"), plain = brokenStatue("C");
   const regions = [rubble("r1", "A"), rubble("r2", "B"), rubble("orphan", "gone"), { id: "gm", flags: {} }];
-  assert.deepEqual(undoUpdates(a, []).deleteRegions, ["r1"]);
-  assert.deepEqual(undoUpdates(plain, []).deleteRegions, []);
-  // the id comes from the tile's own note, never from a region another tile owns
   assert.deepEqual(undoUpdates(a, [], { regions }).deleteRegions, ["r1"]);
+  assert.deepEqual(undoUpdates(plain, [], { regions }).deleteRegions, []);
+  // no regions given: nothing can be shown to be its own
+  assert.deepEqual(undoUpdates(a, []).deleteRegions, []);
+  // a copy of statue A carries A's note (and its region id) but is not A: the region belongs to A
+  const copy = { ...a, id: "A-copy" };
+  assert.deepEqual(undoUpdates(copy, [], { regions }).deleteRegions, []);
+  // a note naming a region the GM made themself (no propRubble flag) is never deleted
+  assert.deepEqual(undoUpdates(brokenStatue("D", "gm"), [], { regions }).deleteRegions, []);
   // mixed battle: a statue with rubble, one without, another with rubble, and a leftover from a deleted statue
   const r = repairUpdates([a, b, plain], [], { regions });
   assert.deepEqual(r.deleteRegions, ["r1", "r2", "orphan"]);
   assert.equal(r.tiles.length, 3);
   assert.deepEqual(repairUpdates([], [], { regions: [{ id: "gm", flags: {} }] }).deleteRegions, []);
   assert.deepEqual(repairUpdates([a], []).deleteRegions, []);
+});
+
+const lamp = (id, x, y, hidden) => ({ id, x, y, hidden, levels: [], flags: {} });
+test("undo and Repair unhide only named lights still in the tile's own reach", () => {
+  const note = ask(statue(), scene()).note, withLights = (id) => statue({ id, hidden: true, flags: { animater: { prop: { broken: { ...note, lights: ["near", "far"] } } } } });
+  const lights = [lamp("near", 250, 250, true), lamp("far", 900, 900, true)];
+  assert.deepEqual(undoUpdates(withLights("st"), [], { lights }).lights, [{ _id: "near", hidden: false }]);
+  assert.deepEqual(repairUpdates([withLights("st")], [], { lights }).lights, [{ _id: "near", hidden: false }]);
+  // a copied tile elsewhere names the same lights: from its own place it reaches neither
+  const copy = { ...withLights("copy"), x: 1200, y: 1200 };
+  assert.deepEqual(undoUpdates(copy, [], { lights }).lights, []);
+  assert.deepEqual(repairUpdates([copy], [], { lights }).lights, []);
+});
+test("a toppled statue always has a fall strip for the whisper, rubble or not", () => {
+  const off = ask(statue(), scene()).check, on = ask(statue(), scene({ rubbleDifficult: true })).check;
+  assert.equal(off.rubble, null);
+  assert.deepEqual(off.fall, on.rubble);
+  assert.equal(ask(barrel(), scene()).check.fall, null);
 });
 
 test("scene and tile Rubble fields", () => {
@@ -139,4 +162,10 @@ test("scene and tile Rubble fields", () => {
   assert.match(propTileFieldsHTML({ src: "Barrel.webp", style: "topple" }), /data-show-for="topple"(?![^>]*hidden)/);
   assert.match(propTileFieldsHTML({ src: "Barrel.webp", rubble: "yes" }), /<option value="yes" selected>/);
   assert.match(tile, /<option value="topple">Topple<\/option>/);
+  // Automatic follows the Material select: a wooden statue does not topple, a stone one does
+  const wood = propTileFieldsHTML({ src: "Statue_Knight.webp", material: "wood" });
+  assert.match(wood, /Automatic \(shatter\)/);
+  assert.match(wood, /data-show-for="topple" hidden/);
+  assert.match(propTileFieldsHTML({ src: "Statue_Knight.webp", material: "stone" }), /Automatic \(topple\)/);
+  assert.match(tile, /data-guess-material="stone"/);
 });
