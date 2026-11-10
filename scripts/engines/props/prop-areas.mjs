@@ -14,7 +14,9 @@ const finite = (p) => Number.isFinite(p?.x) && Number.isFinite(p?.y);
 //   uuid; sceneId: the scene its document is on now (null when the document is gone); authorId: the user who placed
 //   it; authorIsGM: that user is a GM; ownsOrigin: the sender owns the actor whose spell placed it (a PF2e area's
 //   origin); rememberedAt: when this GM's screen saw it placed (the now() clock); testPoint(p): whether the area's shape
-//   holds p, as Foundry computes it on the GM's screen; levels: the area's levels.
+//   holds p, as Foundry computes it on the GM's screen; levels: the area's levels; damageTypes: every damage type the GM
+//   itself reads from the spell that placed it (area-damage.mjs damageTypesOfItem). An area cause's damage type must be
+//   one of them, an ignite's fire: the requester's word for it is never taken, and a spell with none breaks nothing.
 // cause: the cause (its areaUuid must be the area's); sceneId: the target's scene; sender: {id, isGM}; point: the
 // target's tested point (a tile's centre, a wall's middle, a spill's centre); levels: the target's levels.
 export function areaRefusal(area, { cause, sceneId, sender, point, levels, now, ttl = AREA_TTL_MS } = {}) {
@@ -22,6 +24,8 @@ export function areaRefusal(area, { cause, sceneId, sender, point, levels, now, 
   if (!area.sceneId || area.sceneId !== sceneId) return "area";
   const placedBy = sender?.isGM === true || (!!area.authorId && area.authorId === sender?.id) || area.authorIsGM === true || area.ownsOrigin === true;
   if (!placedBy) return "area";
+  const types = Array.isArray(area.damageTypes) ? area.damageTypes : [];
+  if (!types.includes(cause.kind === "ignite" ? "fire" : cause.damageType)) return "area";
   const age = Number(now) - Number(area.rememberedAt);
   if (!Number.isFinite(age) || age < 0 || age > ttl) return "area";
   if (!finite(point) || typeof area.testPoint !== "function") return "area";

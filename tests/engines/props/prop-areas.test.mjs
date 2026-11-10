@@ -5,10 +5,10 @@ import { AREA_TTL_MS as WAIT_TTL } from "../../../scripts/engines/props/prop-tri
 
 // A 2-square burst around (500, 500), placed by the player at t = 1000 on the ground level.
 const circle = (c, r) => (p) => Math.hypot(p.x - c.x, p.y - c.y) <= r;
-const area = (x = {}) => ({ uuid: "Scene.s.Region.r", sceneId: "s", authorId: "p", authorIsGM: false, ownsOrigin: false, rememberedAt: 1000,
+const area = (x = {}) => ({ uuid: "Scene.s.Region.r", sceneId: "s", authorId: "p", authorIsGM: false, ownsOrigin: false, rememberedAt: 1000, damageTypes: ["fire"],
   testPoint: circle({ x: 500, y: 500 }, 200), levels: ["ground"], ...x });
 const player = { id: "p", isGM: false };
-const ask = (x = {}) => ({ cause: { kind: "area", areaUuid: "Scene.s.Region.r" }, sceneId: "s", sender: player, point: { x: 550, y: 520 }, levels: ["ground"], now: 5000, ...x });
+const ask = (x = {}) => ({ cause: { kind: "area", damageType: "fire", areaUuid: "Scene.s.Region.r" }, sceneId: "s", sender: player, point: { x: 550, y: 520 }, levels: ["ground"], now: 5000, ...x });
 
 test("the area wait's ttl is the area check's", () => {
   assert.equal(AREA_TTL_MS, 600000);
@@ -54,7 +54,7 @@ test("the area's age is up to and including the ttl", () => {
 });
 
 test("a cause's area check: the area it names, or for the GM's own call naming none, its centre's old reach", () => {
-  const named = { kind: "area", areaUuid: "Scene.s.Region.r", at: { x: 500, y: 500 } };
+  const named = { kind: "area", damageType: "fire", areaUuid: "Scene.s.Region.r", at: { x: 500, y: 500 } };
   assert.equal(areaCauseRefusal(named, { x: 550, y: 520 }, ["ground"], { area: area(), sceneId: "s", sender: player, now: 5000 }), null);
   assert.equal(areaCauseRefusal(named, { x: 950, y: 520 }, ["ground"], { area: area(), sceneId: "s", sender: player, now: 5000 }), "area");
   // a player naming none, with any at, is refused

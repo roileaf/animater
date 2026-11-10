@@ -221,7 +221,7 @@ const AREA = "Scene.s.Region.fireball";
 const ignite = (damageType = "fire", at = { x: 450, y: 500 }) => ({ cause: { kind: "ignite", damageType, at, areaUuid: AREA } });
 const player = { id: "p", viewedScene: "s", isGM: false };
 // The GM's record of the player's fireball: fresh, on this scene, holding the spill's centre (550, 550).
-const fireball = (x = {}) => ({ uuid: AREA, sceneId: "s", authorId: "p", rememberedAt: 1000, testPoint: (p) => Math.hypot(p.x - 500, p.y - 500) <= 200, levels: [], ...x });
+const fireball = (x = {}) => ({ uuid: AREA, sceneId: "s", authorId: "p", rememberedAt: 1000, damageTypes: ["acid", "bludgeoning", "cold", "electricity", "fire", "force", "piercing", "slashing", "sonic", "vitality", "void", "mental", "poison", "spirit", "bleed"], testPoint: (p) => Math.hypot(p.x - 500, p.y - 500) <= 200, levels: [], ...x });
 const onFire = { area: fireball(), now: 2000 };
 
 test("spilled powder caught by a fire area explodes once", () => {

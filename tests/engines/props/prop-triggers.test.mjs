@@ -195,3 +195,13 @@ test("the GM reads back an area it remembered by its id: who placed it and when,
   w.remember({ templateId: "U", itemUuid: "I", actorUuid: "A", testPoint: () => true }); t = 2000;
   assert.equal(w.get("U").rememberedAt, 5);
 });
+
+test("an area remembered after a reload keeps when it was placed (never later than now), so its ttl still counts from then", () => {
+  let t = 5000; const w = createAreaWaits({ now: () => t, ttl: 1000 });
+  w.remember({ templateId: "T", itemUuid: "I", actorUuid: "A", rememberedAt: 4500, testPoint: () => true });
+  assert.equal(w.get("T").rememberedAt, 4500);
+  w.remember({ templateId: "U", itemUuid: "I", actorUuid: "A", rememberedAt: 9000, testPoint: () => true });
+  assert.equal(w.get("U").rememberedAt, 5000);
+  t = 5600;
+  assert.equal(w.matchDamage({ itemUuid: "I", actorUuid: "A" })?.templateId, "U"); // T expired at 5500
+});

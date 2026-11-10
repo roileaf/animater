@@ -99,7 +99,9 @@ test("break and decoration repair writes skip the generic region rebuilds", () =
   assert.doesNotMatch(main.slice(main.indexOf('Hooks.on("updateRegion", (doc, changes, options) => { propSafe("decor region"'), main.indexOf('Hooks.on("deleteRegion", (doc) => { propSafe("decor region gone"')), /quietSave/);
 });
 test("every trigger asks for decorations too; decorations never free walls", () => {
-  assert.match(main, /propsInArea\(decorViews\(scene, area\.levels\), area\.testPoint/);
+  // an area (breakAreaThings, from its animation or its damage roll) reads the decorations on its levels
+  assert.match(main, /const decor = propSafe\("area decorations", \(\) => decorViews\(scene, area\.levels\)\)/);
+  assert.match(main, /propsInArea\(decor, area\.testPoint, grid, type\)/);
   assert.match(main, /tiles: \[\.\.\.[^\]]*decorViews\(scene, target\.level\)\]/);
   assert.match(main, /pick\.tile\.decor/);
   assert.match(main, /slamProps\(doc, a, b, \{ decor: false \}\)\.filter\(\(t\) => !t\.decor\)/);

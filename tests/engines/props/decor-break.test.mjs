@@ -134,7 +134,7 @@ test("a cobweb is cut; a stalagmite topples from force with rubble when the scen
   assert.equal(fell.entry.note.style, "topple"); assert.ok(fell.rubble && fell.fall);
   assert.equal(validDecorBreakRequest(ask(stal, bash(stal, "force")), ctx(cave)).rubble, null);
   const AREA = "Scene.s.Region.a", cause = { ...bash(stal, "force"), areaUuid: AREA };
-  const area = { uuid: AREA, sceneId: "s", authorId: "p", rememberedAt: 1000, testPoint: () => true, levels: ["L2"] };
+  const area = { uuid: AREA, sceneId: "s", authorId: "p", rememberedAt: 1000, damageTypes: ["acid", "bludgeoning", "cold", "electricity", "fire", "force", "piercing", "slashing", "sonic", "vitality", "void", "mental", "poison", "spirit", "bleed"], testPoint: () => true, levels: ["L2"] };
   assert.deepEqual(validDecorBreakRequest(ask(stal, cause), ctx(cave, { sender: player, area })), { ok: false, why: "area" });
   assert.equal(validDecorBreakRequest(ask(stal, cause), ctx(cave, { sender: player, area: { ...area, levels: ["L1"] } })).ok, true);
 });

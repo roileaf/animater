@@ -118,7 +118,7 @@ const scene = { id: "s", flags: { animater: { breakableProps: true } } };
 const sender = { id: "p", viewedScene: "s" };
 // An area cause names the player's own fresh area, holding every tile (prop-areas.mjs; I1).
 const placed = (cause) => (cause.kind === "area" ? { ...cause, areaUuid: "Scene.s.Region.a" } : cause);
-const anyArea = { area: { uuid: "Scene.s.Region.a", sceneId: "s", authorId: "p", rememberedAt: 0, testPoint: () => true, levels: [] }, now: 1 };
+const anyArea = { area: { uuid: "Scene.s.Region.a", sceneId: "s", authorId: "p", rememberedAt: 0, damageTypes: ["acid", "bludgeoning", "cold", "electricity", "fire", "force", "piercing", "slashing", "sonic", "vitality", "void", "mental", "poison", "spirit", "bleed"], testPoint: () => true, levels: [] }, now: 1 };
 const ask = (t, cause, patch = {}) => {
   const n = { ...breakNoteFor({ tile: t, walls: [], grid: 100, cause, seed: 5, from: cause.at, scene }), ...patch };
   return { note: n, check: validBreakRequest({ cause: placed(cause), note: n }, { tile: t, walls: [], scene, grid: 100, sender, ...anyArea }) };

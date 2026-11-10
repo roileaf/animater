@@ -28,7 +28,9 @@ export function createAreaWaits({ now = () => Date.now(), ttl = AREA_TTL_MS, tra
       if (!area?.templateId) return;
       drop();
       areas.delete(area.templateId);
-      areas.set(area.templateId, { ...area, rememberedAt: now(), impactAt: null, claimed: new Set() });
+      // an area remembered after a reload (rememberedAt: when it was placed) keeps that time, never later than now
+      const at = Number.isFinite(area.rememberedAt) ? Math.min(area.rememberedAt, now()) : now();
+      areas.set(area.templateId, { ...area, rememberedAt: at, impactAt: null, claimed: new Set() });
     },
     matchDamage({ itemUuid, actorUuid } = {}) {
       drop();

@@ -9,7 +9,7 @@ const wall = (extra = {}) => ({ id: "d1", c: [300, 200, 400, 200], door: 1, ds: 
 const sender = { id: "p", viewedScene: "s", isGM: false };
 // The GM's record of the player's own fresh area, holding every wall middle tested (prop-areas.mjs; I1).
 const AREA = "Scene.s.Region.a";
-const covering = (x = {}) => ({ uuid: AREA, sceneId: "s", authorId: "p", rememberedAt: 1000, testPoint: () => true, levels: [], ...x });
+const covering = (x = {}) => ({ uuid: AREA, sceneId: "s", authorId: "p", rememberedAt: 1000, damageTypes: ["acid", "bludgeoning", "cold", "electricity", "fire", "force", "piercing", "slashing", "sonic", "vitality", "void", "mental", "poison", "spirit", "bleed"], testPoint: () => true, levels: [], ...x });
 const placed = { area: covering(), now: 5000 };
 // The wall as the database holds it after an update (a dotted flag key is expanded, "-=" removes).
 function written(w, update) {

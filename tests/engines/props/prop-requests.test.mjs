@@ -12,7 +12,7 @@ const target = { x: 300, y: 200, w: 100, h: 100 }; // a token at (3,2)
 const sender = { id: "player", viewedScene: "s" };
 // The GM's record of the area an area cause names: the player placed it, it is fresh and covers every tile tested.
 const AREA = "Scene.s.Region.r";
-const covering = (x = {}) => ({ uuid: AREA, sceneId: "s", authorId: "player", authorIsGM: false, ownsOrigin: false, rememberedAt: 1000, testPoint: () => true, levels: [], ...x });
+const covering = (x = {}) => ({ uuid: AREA, sceneId: "s", authorId: "player", authorIsGM: false, ownsOrigin: false, rememberedAt: 1000, damageTypes: ["acid", "bludgeoning", "cold", "electricity", "fire", "force", "piercing", "slashing", "sonic", "vitality", "void", "mental", "poison", "spirit", "bleed"], testPoint: () => true, levels: [], ...x });
 const noteFor = (tile = barrel(), cause = { kind: "area", areaUuid: AREA, damageType: "fire", at: { x: 250, y: 250 } }, extra = {}) =>
   breakNoteFor({ tile, walls, grid, cause, seed: 42, from: { x: 150, y: 250 }, ...extra });
 const areaReq = (note = noteFor()) => ({ cause: { kind: "area", areaUuid: AREA, damageType: "fire", at: { x: 250, y: 250 } }, note });
