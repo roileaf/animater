@@ -222,6 +222,14 @@ test("a rotated tile is left out, and a region whose tile is gone stays listed",
   assert.equal(pictures.at(-1).plane.missing, true);
 });
 
+test("a cave whose tile is gone stays a floor; only a region with no floor at all is a cover", () => {
+  const binding = (tileId) => ({ source: { kind: "tile", tileId }, loops: [] });
+  const cave = { id: "cave", flags: { animater: { floor: "", cavern: "fungus-green", imageRegion: binding("gone-cave") } } };
+  const cover = { id: "cover", flags: { animater: { imageRegion: binding("gone-cover") } } };
+  const roles = Object.fromEntries(floorPictures({ levelId, sceneRect, backgroundSrc: "map.png", regions: [cave, cover] }).slice(1).map((picture) => [picture.plane.id.tileId, picture.plane.role]));
+  assert.deepEqual(roles, { "gone-cave": "floor", "gone-cover": "overhead" });
+});
+
 test("switching pictures keeps the other picture's unsaved draft", async () => {
   const loads = [];
   const hull = rgba(4, 4, (set) => { for (const [x, y] of [[1, 1], [2, 1], [1, 2], [2, 2]]) set(x, y, 255); });
@@ -251,12 +259,15 @@ test("switching pictures keeps the other picture's unsaved draft", async () => {
   assert.deepEqual(app.pictures.map((picture) => picture.label), ["Map", "Deck"]);
   assert.deepEqual(app.detect.proposals.map((proposal) => proposal.regionId), ["grass"]);
   app.detect.proposals[0].draftMark = "keep";
+  app.areaDrafts.chooseFloor(app.detect.proposals[0].id, "cavern");
   await app.showPicture("tile:deck");
   assert.equal(app.plane.id.tileId, "deck");
   assert.deepEqual(app.detect.proposals.map((proposal) => proposal.regionId), ["deck-region"]);
   assert.deepEqual(app.detect.proposals[0].loops[0].points, [1, 1, 3, 1, 3, 3, 1, 3]);
+  assert.equal(app.areaDrafts.export(app.detect.proposals[0].id), null, "the map's cave edit stays with the map, though the tile's area has the same id");
   await app.showPicture(`map:${levelId}`);
   assert.equal(app.detect.proposals[0].draftMark, "keep");
+  assert.equal(app.areaDrafts.export(app.detect.proposals[0].id)?.flags.floor, "", "and comes back with it");
   assert.deepEqual(loads, ["map.png", "boat-bg.png"]);
 });
 

@@ -4,7 +4,7 @@
 // Both grow four-connected components, preserve contrasting enclosed objects, and simplify every loop.
 // These colour heuristics need GM review: similar roofs or vegetation can also match.
 
-import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindFlags, caveKindFlags } from "../motion/region-steps.mjs";
+import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindFlags, caveKindFlags, caveHasMenu, stepFlags } from "../motion/region-steps.mjs";
 
 // Every threshold the detector uses. Tuned against map corpora that are no longer in this
 // repository, so the values cannot be re-measured here.
@@ -814,18 +814,37 @@ function foldsBack(points, n, first) {
 export const GENERATED_MARK = "floor-detect";
 const GENERATED_MARKS = new Set([GENERATED_MARK, "water-detect"]);
 // The floors an area can be, and the outline colour and name a new region of each gets.
-export const AREA_FLOORS = Object.freeze(["water", "stone", "pebbles", "wood", "dirt", "grass", "sand", "snow", "ice", "mud", "glass", "metal", "lava"]);
+export const AREA_FLOORS = Object.freeze(["water", "stone", "pebbles", "wood", "dirt", "grass", "sand", "snow", "ice", "mud", "glass", "metal", "cavern", "lava"]);
 const FLOOR_LOOK = Object.freeze({
   water: ["Water", WATER_COLOR], stone: ["Stone", "#8f979e"], pebbles: ["Pebbles", "#a89f8f"], wood: ["Wood", "#a8743f"],
   dirt: ["Dirt", "#80613f"], grass: ["Grass", "#5f9f45"], sand: ["Sand", "#d9bd73"], snow: ["Snow", "#e6eef5"],
-  ice: ["Ice", "#8fd4e6"], mud: ["Mud", "#5f4a32"], glass: ["Glass", "#9fd0e0"], metal: ["Metal", "#76828e"], lava: ["Lava", "#e85a1f"],
+  ice: ["Ice", "#8fd4e6"], mud: ["Mud", "#5f4a32"], glass: ["Glass", "#9fd0e0"], metal: ["Metal", "#76828e"],
+  cavern: ["Cave", "#6b5a73"], lava: ["Lava", "#e85a1f"],
 });
 export const floorName = (floor) => FLOOR_LOOK[floor]?.[0] ?? FLOOR_LOOK.water[0];
 export const floorColour = (floor) => FLOOR_LOOK[floor]?.[1] ?? FLOOR_LOOK.water[1];
 export const isAreaFloor = (floor) => AREA_FLOORS.includes(floor);
-// The flags a floor brings with it beyond `floor`: water its kind and flow, lava its own steps.
+// The creator picks "cavern"; a cave region saves no floor of its own. These two are the only crossings between the two.
+export const savedFloor = (floor) => (floor === "cavern" ? "" : floor);
+export function pickerFloor(own = {}) {
+  if (isAreaFloor(own?.floor)) return own.floor;
+  if (!own?.floor && (caveHasMenu(stepFlags(own ?? {})) || (own?.cavern && own.cavern !== "lava"))) return "cavern";
+  return "water";
+}
+// A Foundry flag patch applied to a plain object: `-=key` deletes that key.
+export function patchFlags(flags, patch) {
+  for (const [key, value] of Object.entries(patch ?? {})) {
+    if (key.startsWith("-=")) delete flags[key.slice(2)];
+    else flags[key] = value;
+  }
+  return flags;
+}
+
+// The flags a floor brings with it beyond `floor`: water its kind and flow, lava its own steps, a cave the growth that
+// makes the rest of Animater read it as a cave (the region panel's Cave starts with the same).
 export function floorFlags(floor, { waterKind = "still", flowTo = "", current = "", waveTo = "", seaBeach = "" } = {}) {
   if (floor === "lava") return caveKindFlags({}, "lava");
+  if (floor === "cavern") return caveKindFlags({}, "fungus");
   if (floor !== "water") return {};
   const kind = WATER_KINDS.some(([value]) => value === waterKind) ? waterKind : "still";
   const flags = waterKindFlags({ flowTo: FLOW.has(flowTo) ? flowTo : "", current }, kind);
@@ -837,7 +856,7 @@ export function floorFlags(floor, { waterKind = "still", flowTo = "", current = 
   return flags;
 }
 
-export function toRegionData(proposal, { sceneRect, imageWidth, imageHeight, levelId, name, floor = "water", waterKind = "still", flowTo = "", current = "", waveTo = "", seaBeach = "", texture = "", pattern = "", edge = "", overWater = false, steps = null } = {}) {
+export function toRegionData(proposal, { sceneRect, imageWidth, imageHeight, levelId, name, floor = "water", waterKind = "still", flowTo = "", current = "", waveTo = "", seaBeach = "", texture = "", pattern = "", edge = "", overWater = false, steps = null, panelFlags = null, roof = null } = {}) {
   if (!(sceneRect?.width > 0) || !(sceneRect?.height > 0)) throw new Error("toRegionData: sceneRect needs a width and a height");
   if (!(imageWidth > 0) || !(imageHeight > 0)) throw new Error("toRegionData: image size is missing");
   const scaleX = sceneRect.width / imageWidth;
@@ -851,7 +870,7 @@ export function toRegionData(proposal, { sceneRect, imageWidth, imageHeight, lev
     shapes.push({ type: "polygon", points, hole: loop.hole === true });
   }
   const area = isAreaFloor(floor) ? floor : "water";
-  const animater = { floor: area, generated: GENERATED_MARK, ...floorFlags(area, { waterKind, flowTo, current, waveTo, seaBeach }) };
+  const animater = { floor: savedFloor(area), generated: GENERATED_MARK, ...floorFlags(area, { waterKind, flowTo, current, waveTo, seaBeach }) };
   if (texture === "on" || texture === "off") animater.texture = texture; // else the scene's floor texture setting decides
   if (pattern) animater.textureStyles = { [area]: pattern };
   // Built out over water (a deck, a jetty): what the region panel calls Dock. Never water or lava itself.
@@ -860,12 +879,15 @@ export function toRegionData(proposal, { sceneRect, imageWidth, imageHeight, lev
   if (steps && typeof steps === "object") Object.assign(animater, steps);
   const soft = edge === "" || edge === undefined || edge === null ? NaN : Number(edge);
   if (Number.isFinite(soft)) { if (soft <= 0) animater.stepEdgeOff = true; else animater.stepEdge = Math.min(3, soft); }
+  patchFlags(animater, panelFlags);
+  if (roof === true) animater.roof = true;
   return {
     name: name || floorName(area),
     color: FLOOR_LOOK[area][1],
     shapes,
     levels: levelId ? [levelId] : [],
     flags: { animater },
+    ...(roof === true ? { behaviors: [{ name: "Roof", type: "suppressWeather" }] } : {}),
   };
 }
 

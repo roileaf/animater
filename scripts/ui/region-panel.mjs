@@ -21,7 +21,7 @@ const FLOOR_ICONS = Object.freeze({ cavern: 'fa-gem', lava: 'fa-fire', water: 'f
 export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, set: setRoof }, texture = () => false, season = () => false, presets = () => [], weathers = () => [], confirm = async () => true, configure = null, shows = () => {} }) {
   let shown = null;
   const tell = (doc) => { if (doc === shown) return; shown = doc; try { shows(doc); } catch { /* an outline never breaks the panel */ } };
-  let box = null, open_ = null, saving = 0, drag = null;
+  let box = null, open_ = null, saving = 0, drag = null, bound = false;
   // Sections opened or shut by hand (id → open), the "More" lines unfolded, and sections added from More sections; all
   // start over with each region shown.
   const folds = new Map(), mores = new Set(), added = new Set();
@@ -31,8 +31,12 @@ export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, 
     tell(null);
     if (!box) return;
     box.remove(); box = null;
-    document.removeEventListener('pointerdown', outside, true); document.removeEventListener('keydown', escape, true);
-    globalThis.window?.removeEventListener?.('resize', place);
+    // The embedded panel never listens on the document. Removing a listener it did not add throws where there is no document.
+    if (bound) {
+      bound = false;
+      document.removeEventListener('pointerdown', outside, true); document.removeEventListener('keydown', escape, true);
+      globalThis.window?.removeEventListener?.('resize', place);
+    }
     stopDrag();
   };
   // Dragged by its heading: it follows the pointer from where it was taken, and keeps that place through redraws.
@@ -50,9 +54,17 @@ export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, 
 
   const draw = () => {
     if (!open_ || !box) return;
+    const target = open_.target ?? null;
+    const embedded = open_.presentation?.kind === 'embedded';
     // A region with no floor of its own shows as its kind's floor, as its summaries do.
-    tell(open_.doc);
-    const { doc } = open_, own = flagsOf(doc) ?? {}, floor = shownFloorOf(own, open_.floor), kind = regionKindOf(own, floor);
+    // The creator's draft is not a live document, so it does not outline a region on the map.
+    if (!target) tell(open_.doc);
+    const read = target ? (target.read() ?? {}) : null;
+    const doc = target ? { name: read.name ?? "" } : open_.doc;
+    const own = target ? (read.own ?? {}) : (flagsOf(doc) ?? {});
+    const floor = shownFloorOf(own, target ? (read.floor ?? open_.floor) : open_.floor);
+    const kind = regionKindOf(own, floor);
+    const roofed = target ? !!read.roofed : !!roof.has(doc);
     // Whatever the save does, draw again from the region as it now is (a refused save puts the controls back, and says so).
     // `then` runs only once the save is taken, before that redraw.
     const run = (work, then) => {
@@ -64,31 +76,42 @@ export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, 
         draw();
       });
     };
-    const act = (flags, then) => run(() => save(doc, flags), then);
+    const act = (flags, then) => {
+      if (target) { target.apply({ kind: 'settings', patch: flags }); then?.(); draw(); return; }
+      return run(() => save(doc, flags), then);
+    };
     // A roof is a behavior on the region, not a flag: `roof` noted in its flags too, so everything that redraws when a
-    // region changes hears of it.
-    const setRoofNow = (on) => run(async () => { await roof.set(doc, on); await save(doc, { roof: on }); });
+    // region changes hears of it. In the creator the draft remembers it until Save.
+    const setRoofNow = (on) => {
+      if (target) { target.apply({ kind: 'roof', enabled: on }); draw(); return; }
+      return run(async () => { await roof.set(doc, on); await save(doc, { roof: on }); });
+    };
     // A save that gives the region another floor: once it is taken, the panel follows it, as the region's floor is what it
     // was opened with. A floor saved empty (none of its own) shows as its kind's: a cave's, or the scene's under Ground.
     const toFloor = (flags) => {
       const was = open_, next = flags.floor === '' ? shownFloorOf({ ...own, ...flags }, undefined) : flags.floor;
-      return act(flags, () => { if (open_ === was && next) open_ = { ...was, floor: next, regions: (was.regions ?? []).map((r) => (r.doc === doc ? { ...r, floor: next } : r)) }; });
+      if (target && next) open_ = { ...open_, floor: next };
+      return act(flags, () => { if (!target && open_ === was && next) open_ = { ...was, floor: next, regions: (was.regions ?? []).map((r) => (r.doc === doc ? { ...r, floor: next } : r)) }; });
     };
     const more = (key, label, build) => {
       const on = mores.has(key), line = button('', 'an-rp-more', () => { if (on) mores.delete(key); else mores.add(key); draw(); });
       line.setAttribute('aria-expanded', String(on)); line.append(icon(on ? 'fa-caret-down' : 'fa-caret-right'), element('span', '', label));
       return on ? [line, ...build()] : [line];
     };
-    const c = { doc, own, floor, kind, at: open_.at ?? null, act, toFloor, roofed: !!roof.has(doc), setRoof: setRoofNow, more, texture, season, presets, weathers, close, edit, saving: () => saving > 0 };
+    const editSteps = target ? null : edit;
+    const c = { doc, own, floor, kind, at: open_.at ?? null, act, toFloor, roofed, setRoof: setRoofNow, more, texture, season, presets, weathers, close, edit: editSteps, stepsNote: embedded && !editSteps ? 'Save first to edit the step list.' : '', saving: () => saving > 0 };
 
-    const head = element('div', 'an-rp-head'), shut = button('', 'an-rp-close', close);
-    shut.setAttribute('aria-label', 'Close'); shut.append(icon('fa-xmark'));
-    head.setAttribute('data-tooltip', 'Drag to move'); head.addEventListener('pointerdown', startDrag);
-    head.append(icon('fa-draw-polygon', 'an-rp-gold'), element('b', '', doc.name || `${titled(floor)} region`));
-    // Roi: Foundry's own region configuration, a click away.
-    if (configure) { const cog = button('', 'an-rp-close an-rp-config', () => { close(); configure(doc); }); cog.setAttribute('aria-label', 'Region configuration'); cog.setAttribute('data-tooltip', 'Foundry\'s region configuration'); cog.append(icon('fa-gear')); head.append(cog); }
-    head.append(shut);
-    const parts = [head];
+    const parts = [];
+    if (!embedded) {
+      const head = element('div', 'an-rp-head'), shut = button('', 'an-rp-close', close);
+      shut.setAttribute('aria-label', 'Close'); shut.append(icon('fa-xmark'));
+      head.setAttribute('data-tooltip', 'Drag to move'); head.addEventListener('pointerdown', startDrag);
+      head.append(icon('fa-draw-polygon', 'an-rp-gold'), element('b', '', doc.name || `${titled(floor)} region`));
+      // Roi: Foundry's own region configuration, a click away.
+      if (configure) { const cog = button('', 'an-rp-close an-rp-config', () => { close(); configure(doc); }); cog.setAttribute('aria-label', 'Region configuration'); cog.setAttribute('data-tooltip', 'Foundry\'s region configuration'); cog.append(icon('fa-gear')); head.append(cog); }
+      head.append(shut);
+      parts.push(head);
+    }
 
     const tabs = stepTabs((open_.regions ?? []).map((r) => ({ ...r, floor: r.doc === doc ? floor : shownFloorOf(flagsOf(r.doc) ?? {}, r.floor) })), open_.first ?? doc);
     if (tabs.length > 1) {
@@ -142,18 +165,28 @@ export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, 
   };
   const place = () => {
     if (!box || !open_) return;
+    if (open_.presentation?.kind === 'embedded') { open_.presentation.onLayout?.(); return; }
     const r = box.getBoundingClientRect(), at = open_.client ?? { x: 6, y: 6 };
     box.style.left = `${Math.max(6, Math.min(at.x, window.innerWidth - r.width - 6))}px`;
     box.style.top = `${Math.max(6, Math.min(at.y, window.innerHeight - r.height - 6))}px`;
   };
   return {
     open(what) {
+      const embedded = what?.presentation?.kind === 'embedded';
       close(); forget();
-      open_ = what; box = element('div', 'an-region-panel'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', 'Region');
-      document.body.append(box);
-      // Its listeners come first, so whatever happens in drawing, close() takes everything away again.
-      document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', escape, true);
-      globalThis.window?.addEventListener?.('resize', place);
+      open_ = what;
+      box = element('div', embedded ? 'an-region-panel an-region-embedded' : 'an-region-panel');
+      if (embedded) {
+        box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'Effects');
+        what.presentation.host?.replaceChildren?.(box);
+      } else {
+        box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', 'Region');
+        document.body.append(box);
+        // Its listeners come first, so whatever happens in drawing, close() takes everything away again.
+        document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', escape, true);
+        globalThis.window?.addEventListener?.('resize', place);
+        bound = true;
+      }
       try { draw(); } catch (error) { console.warn('Animater | region panel', error); close(); }
     },
     close,

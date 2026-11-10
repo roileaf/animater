@@ -185,3 +185,17 @@ function booleanOutlines(left, right, subtract) {
   }
   return loops;
 }
+
+// An area's loops in scene coordinates, as the floor renderer takes a region's: each outer ring with its holes.
+export function worldAreas(loops, rect, width, height) {
+  const kx = rect.width / width, ky = rect.height / height;
+  const world = (points) => Array.from(points, (v, i) => (i % 2 ? rect.y + v * ky : rect.x + v * kx));
+  const inside = (x, y, p) => { let c = false; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > y) !== (p[j + 1] > y) && x < ((p[j] - p[i]) * (y - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) c = !c; return c; };
+  const outers = loops.filter((l) => !l.hole && l.points?.length >= 6).map((l) => Object.assign(world(l.points), { holes: [], raw: l.points }));
+  for (const hole of loops.filter((l) => l.hole && l.points?.length >= 6)) {
+    const owner = outers.find((o) => inside(hole.points[0], hole.points[1], o.raw));
+    if (owner) owner.holes.push(world(hole.points));
+  }
+  for (const o of outers) delete o.raw;
+  return outers;
+}

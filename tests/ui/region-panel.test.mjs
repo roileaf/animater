@@ -631,3 +631,50 @@ test('Roof: one switch puts a roof on the region (Foundry Suppress Weather) or t
   assert.deepEqual(calls, [true, false]);
   t.done();
 });
+
+test('an embedded panel stays in its host, shows the save-first step note, and does not write the region', async () => {
+  const dom = installDom();
+  const { createRegionPanel } = await import('../../scripts/ui/region-panel.mjs');
+  const host = document.createElement('div');
+  const saves = [];
+  let edited = false;
+  let own = { floor: 'water', waterKind: 'still' };
+  const panel = createRegionPanel({
+    flagsOf: () => own,
+    save: (_doc, flags) => { saves.push(flags); return Promise.resolve(); },
+    edit: () => { edited = true; },
+  });
+  panel.open({
+    presentation: { kind: 'embedded', host },
+    floor: 'water',
+    target: {
+      read: () => ({ own, roofed: false, floor: own.floor === '' ? 'cavern' : (own.floor || 'water'), name: 'Pond' }),
+      apply: (change) => {
+        if (change?.kind !== 'settings') return;
+        own = { ...own };
+        for (const [key, value] of Object.entries(change.patch ?? {})) {
+          if (key.startsWith('-=')) delete own[key.slice(2)];
+          else own[key] = value;
+        }
+      },
+    },
+  });
+  assert.equal(dom.docListeners.length, 0);
+  assert.equal([...walk(host)].some((node) => node.attrs?.['aria-label'] === 'Close'), false);
+  const steps = [...walk(host)].find((node) => node.attrs?.['data-section'] === 'steps');
+  fire(steps.children[0], 'click');
+  assert.match(textOf(host), /Save first to edit the step list/);
+  assert.equal([...walk(host)].some((node) => textOf(node).trim() === 'Edit steps…'), false);
+  dom.fireDoc('pointerdown', { target: null });
+  dom.fireDoc('keydown', { key: 'Escape' });
+  assert.equal(panel.isOpen, true);
+  await fire([...walk(host)].find((node) => node.attrs?.['aria-label'] === 'Cave'), 'click');
+  await tick();
+  assert.equal(saves.length, 0);
+  assert.equal(edited, false);
+  assert.match(textOf(host), /Fungus/);
+  assert.equal(own.floor, '');
+  panel.close();
+  assert.equal(dom.docListeners.length, 0);
+  dom.restore();
+});

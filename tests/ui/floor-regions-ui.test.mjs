@@ -6,8 +6,11 @@ import { readFileSync } from "node:fs";
 import { WATER_KINDS, waterKindOf, waterFlows } from "../../scripts/engines/motion/region-steps.mjs";
 import {
   FLOW_OPTIONS, CURRENT_OPTIONS, noneMessage, failureMessage, clickMessage, loadMapRgba, floorWindowHTML, areaRowHTML,
-  floorRegionsWindow, savedAreaProposals, readAreaChoices, planFloorCreate, commitFloorPlan, openFloorRegions, previewPixel, levelMapIsPlain, SMART_CONSENT, loadMapView, paintAreaPreview, VIEW_MAX, waterSummary, saveLabel, areaShade, rowMeta, areaListHTML, paintsTexture, worldAreas, sizeOf, AUTO_FLOOR, NO_FLOOR, learnSaved, floorMemoryStore, FLOOR_MEMORY_SETTING,
+  floorRegionsWindow, savedAreaProposals, readAreaChoices, planFloorCreate, commitFloorPlan, openFloorRegions, previewPixel, levelMapIsPlain, SMART_CONSENT, loadMapView, paintAreaPreview, VIEW_MAX, waterSummary, saveLabel, areaShade, rowMeta, areaListHTML, paintsTexture, sizeOf, AUTO_FLOOR, NO_FLOOR, learnSaved, floorMemoryStore, FLOOR_MEMORY_SETTING,
 } from "../../scripts/ui/floor-regions-ui.mjs";
+import { createAreaDrafts } from "../../scripts/ui/area-draft.mjs";
+import { worldAreas } from "../../scripts/engines/regions/area-outline.mjs";
+import { cachedCavePreview, layoutCavePreview } from "../../scripts/ui/cave-preview.mjs";
 
 const sceneRect = { x: 1000, y: 2000, width: 5000, height: 2500 };
 const square = {
@@ -135,6 +138,7 @@ test("pattern and soft edge: shown while the area paints, saved on new regions, 
   assert.equal(paintsTexture("grass", "", "on"), true);
   assert.equal(paintsTexture("grass", "off", "on"), false);
   assert.equal(paintsTexture("lava", "on", "on"), false, "lava never paints");
+  assert.equal(paintsTexture("cavern", "on", "on"), false, "a cave is bare rock and paints no tile");
   const shown = areaRowHTML({ ...square, floor: "grass" }, { texture: "on", pattern: "clover", edge: "0" });
   assert.match(shown, /data-texture-fields>/);
   assert.match(shown, /<select data-pattern="area-1">[\s\S]*?<option value="clover" selected>Clover/);
@@ -1047,6 +1051,18 @@ function savedRegion(id, x = 100) {
   };
 }
 const editRect = { x: 100, y: 200, width: 200, height: 200 };
+
+test("a saved cave reopens as Cave, and a floorless region with no cave growth does not", () => {
+  const region = savedRegion("cave");
+  region.flags.animater = { generated: "floor-detect", floor: "", cavern: "crystals-quartz" };
+  const [proposal] = savedAreaProposals([region], { levelId: "level-1", sceneRect: editRect, width: 20, height: 20 });
+  assert.equal(proposal.floor, "cavern");
+  assert.equal(proposal.savedChoices.floor, "cavern");
+  assert.equal(proposal.savedFlags.cavern, "crystals-quartz", "its own growth, not the default fungus");
+  assert.match(areaRowHTML(proposal), /<option value="cavern" selected>Cave<\/option>/);
+  region.flags.animater = { generated: "floor-detect", floor: "" };
+  assert.equal(savedAreaProposals([region], { levelId: "level-1", sceneRect: editRect, width: 20, height: 20 })[0].floor, "water");
+});
 
 test("saved water reloads its ID, settings, exact outlines and hole coverage", () => {
   const region = savedRegion("ocean");
@@ -2046,4 +2062,250 @@ test("a part cut out of an area stays out of later selections of that floor, unt
   assert.equal(app.excluded.grass.length, 0, "and no longer kept out");
   assert.match(notes.at(-1), /Put back/);
   await app.close();
+});
+
+const caveLoops = [{ points: [0, 0, 100, 0, 100, 100, 0, 100], hole: false }];
+const caveRect = { x: 0, y: 0, width: 400, height: 400 };
+const caveView = { loops: caveLoops, rect: caveRect, width: 100, height: 100, grid: 100, seed: "cave" };
+
+test("a cave draft keeps water off the region and stays quiet until the GM edits it", () => {
+  const drafts = createAreaDrafts();
+  drafts.seed("area-1", { floor: "water", waterKind: "river", flowTo: "e" });
+  assert.equal(drafts.export("area-1"), null, "loading a region does not count as an edit");
+  drafts.chooseFloor("area-1", "cavern");
+  const fx = drafts.export("area-1");
+  assert.equal(fx.flags.floor, "");
+  assert.equal(fx.flags.cavern, "fungus-green");
+  assert.equal(fx.flags.waterKind, undefined);
+  assert.ok(fx.deleted.includes("waterKind"));
+  drafts.chooseFloor("area-1", "grass");
+  const back = drafts.export("area-1");
+  assert.equal(back.flags.floor, "grass");
+  assert.equal(back.flags.cavern, "");
+});
+
+test("saving a cave writes its flags and roof, and a later edit writes only what changed", async () => {
+  const drafts = createAreaDrafts();
+  drafts.chooseFloor("area-1", "cavern");
+  drafts.setRoof("area-1", true);
+  const made = planFloorCreate({
+    proposals: [{ ...square, floor: "cavern", loops: caveLoops }],
+    picked: [{ id: "area-1", checked: true, floor: "cavern" }],
+    effects: new Map([["area-1", drafts.export("area-1")]]),
+    sceneRect, imageWidth: 10, imageHeight: 5, levelId: "level-1", regions: [],
+  });
+  const own = made.creates[0].flags.animater;
+  assert.equal(made.creates[0].name, "Cave");
+  assert.equal(own.floor, "");
+  assert.equal(own.cavern, "fungus-green");
+  assert.equal(own.waterKind, undefined);
+  assert.equal(own.roof, true);
+  assert.equal(made.creates[0].behaviors[0].type, "suppressWeather");
+  assert.equal(made.roofs, undefined, "a new region's roof travels in the create");
+
+  const region = savedRegion("cave");
+  region.flags.animater = { generated: "floor-detect", floor: "", cavern: "fungus-green" };
+  const [proposal] = savedAreaProposals([region], { levelId: "level-1", sceneRect: editRect, width: 20, height: 20 });
+  const saved = createAreaDrafts();
+  saved.seed(proposal.id, proposal.savedFlags, { roofed: false });
+  saved.apply(proposal.id, { caveAmount: 0.2 });
+  saved.setRoof(proposal.id, true);
+  const plan = planFloorCreate({
+    proposals: [proposal],
+    picked: [{ id: proposal.id, checked: true, ...proposal.savedChoices }],
+    effects: new Map([[proposal.id, saved.export(proposal.id)]]),
+    regions: [region], levelId: "level-1", sceneRect: editRect, imageWidth: 20, imageHeight: 20,
+  });
+  assert.deepEqual(plan.updates, [{ _id: "cave", "flags.animater.caveAmount": 0.2 }]);
+  assert.deepEqual(plan.roofs, [{ regionId: "cave", enabled: true }]);
+  const scene = fakeScene([region]);
+  const roofs = [];
+  const result = await commitFloorPlan(plan, { scene, roof: async (doc, on) => { roofs.push([doc.id, on]); } });
+  assert.deepEqual(roofs, [["cave", true]]);
+  assert.deepEqual(result, { created: 0, updated: 1 });
+  assert.equal(scene.calls.at(-1)[2][0]["flags.animater.roof"], true);
+});
+
+test("picking a floor for an area Auto didn't know keeps its Over water tick", () => {
+  const drafts = createAreaDrafts();
+  drafts.seed("area-1", {});
+  drafts.chooseFloor("area-1", "wood");
+  assert.equal(drafts.read("area-1").own.overWater, undefined, "an unknown floor is not a cave, so nothing is cleared");
+  const plan = planFloorCreate({
+    proposals: [{ ...square, floor: "wood" }],
+    picked: [{ id: "area-1", checked: true, floor: "wood", overWater: true }],
+    effects: new Map([["area-1", drafts.export("area-1")]]),
+    sceneRect, imageWidth: 10, imageHeight: 5, levelId: "level-1", regions: [],
+  });
+  assert.equal(plan.creates[0].flags.animater.overWater, true);
+});
+
+test("a cave turned to stone keeps the row's Over water tick over the panel's", () => {
+  const drafts = createAreaDrafts();
+  drafts.seed("area-1", { floor: "", cavern: "fungus-green" });
+  drafts.chooseFloor("area-1", "stone");
+  assert.equal(drafts.read("area-1").own.overWater, false, "leaving a cave clears it in the draft");
+  const plan = planFloorCreate({
+    proposals: [{ ...square, floor: "stone" }],
+    picked: [{ id: "area-1", checked: true, floor: "stone", overWater: true }],
+    effects: new Map([["area-1", drafts.export("area-1")]]),
+    sceneRect, imageWidth: 10, imageHeight: 5, levelId: "level-1", regions: [],
+  });
+  assert.equal(plan.creates[0].flags.animater.overWater, true);
+  assert.equal(plan.creates[0].flags.animater.cavern, "");
+});
+
+test("a cave's fungus does not replace the area's outline", () => {
+  const area = { id: "area-1", floor: "cavern", loops: caveLoops, pixels: Int32Array.from([0]) };
+  const layout = layoutCavePreview({ ...caveView, flags: { floor: "", cavern: "fungus-green" } });
+  let path = [];
+  const strokes = [];
+  const ctx = new Proxy({}, {
+    get: (target, key) => key in target ? target[key]
+      : key === "beginPath" ? () => { path = []; }
+      : ["moveTo", "lineTo", "arc"].includes(key) ? (...args) => path.push([key, ...args])
+      : key === "stroke" ? () => strokes.push(path)
+      : () => {},
+    set: (target, key, value) => { target[key] = value; return true; },
+  });
+  paintAreaPreview(ctx, null, 100, 100, [area], "", new Map([["area-1", "cavern"]]), { sceneRect: caveRect, effects: new Map([["area-1", layout]]) });
+  assert.ok(layout.fungus.length > 0);
+  assert.deepEqual(strokes[0][0], ["moveTo", 0, 0], "the outline is the area's loop");
+  assert.ok(!strokes[0].some(([op]) => op === "arc"), "not the last fungus cap");
+});
+
+test("the preview recomputes when an outline moves, and reads walls only for crystals", () => {
+  const holder = {};
+  let reads = 0;
+  const walls = () => { reads++; return []; };
+  const first = cachedCavePreview(holder, { ...caveView, flags: { floor: "", cavern: "fungus-green" }, walls });
+  assert.equal(cachedCavePreview(holder, { ...caveView, flags: { floor: "", cavern: "fungus-green" }, walls }), first);
+  const moved = [{ points: [0, 0, 100, 0, 100, 60, 0, 60], hole: false }];
+  assert.notEqual(cachedCavePreview(holder, { ...caveView, loops: moved, flags: { floor: "", cavern: "fungus-green" }, walls }), first);
+  assert.equal(reads, 0, "fungus does not read the scene's walls");
+  cachedCavePreview(holder, { ...caveView, flags: { floor: "", cavern: "crystals-amethyst" }, walls });
+  assert.ok(reads > 0);
+});
+
+test("Effects shows on a cave row only, and an area with no floor yet shows none", () => {
+  assert.match(areaRowHTML({ ...square, floor: "cavern" }), /<div data-effects-field>/);
+  assert.match(areaRowHTML({ ...square, floor: "grass" }), /<div data-effects-field hidden>/);
+  assert.match(areaRowHTML({ ...square, floor: NO_FLOOR }), /<div data-effects-field hidden>/);
+});
+
+test("the map preview places fewer fungus clusters when the amount drops, and names effects it does not draw", () => {
+  const full = layoutCavePreview({ ...caveView, flags: { floor: "", cavern: "fungus-green" } });
+  const thin = layoutCavePreview({ ...caveView, flags: { floor: "", cavern: "fungus-green", caveAmount: 0.2 } });
+  const dormant = layoutCavePreview({ ...caveView, flags: { floor: "", cavern: "fungus-green", caveStep: 0 } });
+  const blue = layoutCavePreview({ ...caveView, flags: { floor: "", cavern: "fungus-blue" } });
+  assert.equal(full.fungus.length, 4);
+  assert.equal(thin.fungus.length, 1);
+  assert.equal(dormant.fungus.length, 2);
+  assert.deepEqual(blue.fungus.map((cluster) => [cluster.x, cluster.y]), full.fungus.map((cluster) => [cluster.x, cluster.y]), "colour does not move the clusters");
+  const holder = {};
+  const again = cachedCavePreview(holder, { ...caveView, flags: { floor: "", cavern: "fungus-green" } });
+  const same = cachedCavePreview(holder, { ...caveView, flags: { floor: "", cavern: "fungus-green" } });
+  assert.equal(again.fungus.length, same.fungus.length);
+  assert.equal(again.fungus[0].x, same.fungus[0].x);
+  const mist = layoutCavePreview({ ...caveView, flags: { floor: "", cavern: "mist", roof: true } });
+  assert.equal(mist.fungus.length, 0);
+  assert.ok(mist.badges.includes("Mist"));
+  assert.ok(mist.badges.includes("Roof"));
+});
+
+test("a painted area still draws its fungus, and a colour change uses the other cap", () => {
+  const area = { id: "area-1", floor: "cavern", loops: caveLoops, pixels: Int32Array.from([0]) };
+  const green = layoutCavePreview({ ...caveView, flags: { floor: "", cavern: "fungus-green" } });
+  const blue = layoutCavePreview({ ...caveView, flags: { floor: "", cavern: "fungus-blue" } });
+  const paint = (layout, { painted = false } = {}) => {
+    const sets = [];
+    const state = {};
+    const ctx = new Proxy(state, {
+      get: (target, key) => (key in target ? target[key] : (..._args) => {}),
+      set: (target, key, value) => { if (key === "fillStyle") sets.push(value); target[key] = value; return true; },
+    });
+    paintAreaPreview(ctx, null, 100, 100, [area], "", new Map([["area-1", "cavern"]]), {
+      sceneRect: caveRect,
+      effects: new Map([["area-1", layout]]),
+      ...(painted ? { painted: { ids: new Set(["area-1"]) } } : {}),
+    });
+    return sets;
+  };
+  assert.ok(paint(green, { painted: true }).includes("rgb(140,153,117)"), "the fast path still paints the caps");
+  assert.ok(paint(blue).includes("rgb(128,140,158)"));
+  assert.equal(paint(green).includes("rgb(128,140,158)"), false);
+});
+
+test("selecting a cave mounts its controls in the inspector and a colour change repaints the map", async () => {
+  const saved = { document: globalThis.document, window: globalThis.window };
+  const docListeners = [];
+  const make = (tag) => ({
+    tagName: tag.toUpperCase(), className: "", textContent: "", children: [], attrs: {}, listeners: {}, style: {}, parent: null, value: "", type: "",
+    append(...kids) { for (const kid of kids) { if (typeof kid !== "object" || !kid) continue; kid.parent = this; this.children.push(kid); } },
+    replaceChildren(...kids) { this.children = []; this.append(...kids); },
+    remove() { if (this.parent) this.parent.children = this.parent.children.filter((child) => child !== this); this.parent = null; },
+    setAttribute(key, value) { this.attrs[key] = String(value); }, getAttribute(key) { return this.attrs[key] ?? null; },
+    addEventListener(type, fn) { (this.listeners[type] ??= []).push(fn); },
+    getBoundingClientRect: () => ({ width: 280, height: 40, left: 0, top: 0 }),
+  });
+  globalThis.document = {
+    createElement: make, body: make("body"),
+    addEventListener: (type, fn) => docListeners.push({ type, fn }),
+    removeEventListener() {},
+  };
+  globalThis.window = { innerWidth: 1200, innerHeight: 800 };
+  const walk = function* (node) { yield node; for (const child of node.children ?? []) yield* walk(child); };
+  const text = (node) => [...walk(node)].map((item) => item.textContent ?? "").join(" ");
+  try {
+    const host = make("div"), status = make("p"), off = make("p");
+    const floor = { value: "cavern" };
+    const row = make("div");
+    row.dataset = { id: "area-1" };
+    row.classList = { toggle() {} };
+    row.querySelector = (selector) => ({ "[data-effects-host]": host, "[data-effects-status]": status, "[data-effects-off]": off, "[data-floor]": floor, "[data-pick]": { checked: true } })[selector] ?? null;
+    const sets = [];
+    const canvas = {
+      width: 100, height: 100,
+      getBoundingClientRect: () => ({ width: 100, height: 100 }),
+      getContext: () => new Proxy({}, {
+        get: (_target, key) => (..._args) => key,
+        set: (_target, key, value) => { if (key === "fillStyle") sets.push(value); return true; },
+      }),
+    };
+    const element = {
+      querySelector: (selector) => selector === "canvas.an-floors-preview" ? canvas : selector === `.an-floors-row[data-id="area-1"]` ? row : null,
+      querySelectorAll: (selector) => selector === ".an-floors-row" || selector === "[data-id]" ? [row] : [],
+    };
+    const Window = floorRegionsWindow(class { async close() {} }, { effectsOff: () => ["Fungus"] });
+    const app = new Window();
+    const proposal = { id: "area-1", floor: "cavern", loops: caveLoops, pixels: Int32Array.from([5050]), savedFlags: { floor: "", cavern: "fungus-green" }, share: 0.2, vertices: 4 };
+    app.detect = { proposals: [proposal], sceneRect: caveRect, width: 100, height: 100, grid: 100, rgba: null, scene: { id: "s", regions: { contents: [] } }, levelId: "level-1" };
+    app.element = element;
+    app.select("area-1");
+    assert.equal(docListeners.length, 0, "the embedded panel does not dismiss on an outside click");
+    assert.match(text(host), /Cavern/);
+    assert.match(text(host), /Fungus/);
+    assert.equal(status.textContent, "Preview. Applies on Save.");
+    assert.match(off.textContent, /Fungus is off/);
+    assert.equal(app.areaDrafts.export("area-1"), null, "opening the controls does not mark the area edited");
+    const blue = [...walk(host)].find((node) => node.tagName === "BUTTON" && node.textContent === "Blue");
+    assert.ok(blue, "fungus colour is in the inspector");
+    for (const fn of blue.listeners.click) fn({ target: blue, preventDefault() {}, stopPropagation() {} });
+    assert.equal(app.areaDrafts.export("area-1").flags.cavern, "fungus-blue");
+    assert.ok(sets.includes("rgb(128,140,158)"), "the map repaints the new cap colour");
+    const plan = planFloorCreate({
+      proposals: app.detect.proposals,
+      picked: [{ id: "area-1", checked: true, floor: "cavern" }],
+      effects: new Map([["area-1", app.areaDrafts.export("area-1")]]),
+      sceneRect: caveRect, imageWidth: 100, imageHeight: 100, levelId: "level-1", regions: [],
+    });
+    assert.equal(plan.creates[0].flags.animater.floor, "");
+    assert.equal(plan.creates[0].flags.animater.cavern, "fungus-blue");
+    assert.equal(plan.creates[0].name, "Cave");
+    await app.close({ force: true });
+    assert.equal(docListeners.length, 0);
+  } finally {
+    globalThis.document = saved.document;
+    globalThis.window = saved.window;
+  }
 });

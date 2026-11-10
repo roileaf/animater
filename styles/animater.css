@@ -3954,6 +3954,9 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .an-region-panel .an-rp-more:hover { color: var(--rp-gold); }
 .an-region-panel .an-rp-add-sections { padding: 0 10px 8px; }
 .an-region-panel .an-rp-add button { display: inline-flex; align-items: center; gap: 5px; }
+/* In the floor creator the same panel sits in the inspector. It does not float, and six kinds fit the row. */
+.an-region-panel.an-region-embedded { position: static; z-index: auto; width: auto; max-height: 240px; overflow: auto; box-shadow: none; }
+.an-region-embedded .an-rp-kinds { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 
 /* A blast of the GM's own: the JB2A animation it plays, previewed at the top, and the list to pick it from. */
 .animater-blast-edit .animater-blast-preview { display: block; width: 100%; height: 130px; margin: 0 0 8px; object-fit: contain; background: #1b1c20; border-radius: 6px; }
@@ -3973,18 +3976,18 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .an-floors-workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(320px, 25%, 380px); }
 
 /* Shared controls */
-.animater-floors .an-floors button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: auto; height: 30px; min-height: 0; margin: 0; padding: 0 10px; border: 1px solid var(--fl-line-2); border-radius: 6px; background: var(--fl-raised); color: var(--fl-text); font-size: 12px; line-height: 1; box-shadow: none; cursor: pointer; white-space: nowrap; }
-.animater-floors .an-floors button:hover:not(:disabled) { background: var(--fl-hover); border-color: var(--fl-line-2); box-shadow: none; }
-.animater-floors .an-floors button:disabled { opacity: .4; cursor: default; }
-.animater-floors .an-floors button i { font-size: 11px; color: var(--fl-muted); }
-.animater-floors .an-floors button[aria-pressed="true"] { border-color: var(--fl-accent); color: var(--fl-accent); background: color-mix(in srgb, var(--fl-accent) 16%, transparent); }
-.animater-floors .an-floors button[aria-pressed="true"] i { color: var(--fl-accent); }
+.animater-floors .an-floors button:not(.an-region-embedded *) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: auto; height: 30px; min-height: 0; margin: 0; padding: 0 10px; border: 1px solid var(--fl-line-2); border-radius: 6px; background: var(--fl-raised); color: var(--fl-text); font-size: 12px; line-height: 1; box-shadow: none; cursor: pointer; white-space: nowrap; }
+.animater-floors .an-floors button:not(.an-region-embedded *):hover:not(:disabled) { background: var(--fl-hover); border-color: var(--fl-line-2); box-shadow: none; }
+.animater-floors .an-floors button:not(.an-region-embedded *):disabled { opacity: .4; cursor: default; }
+.animater-floors .an-floors button:not(.an-region-embedded *) i { font-size: 11px; color: var(--fl-muted); }
+.animater-floors .an-floors button:not(.an-region-embedded *)[aria-pressed="true"] { border-color: var(--fl-accent); color: var(--fl-accent); background: color-mix(in srgb, var(--fl-accent) 16%, transparent); }
+.animater-floors .an-floors button:not(.an-region-embedded *)[aria-pressed="true"] i { color: var(--fl-accent); }
 .animater-floors .an-floors button.an-primary { height: 34px; padding: 0 16px; border: 0; background: var(--fl-accent); color: var(--fl-ink); font-weight: 600; box-shadow: inset 0 1px 0 rgba(255,255,255,.25); }
 .animater-floors .an-floors button.an-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--fl-accent) 88%, #fff); }
 .animater-floors .an-floors button.an-secondary { height: 34px; padding: 0 14px; }
 .animater-floors .an-floors button.an-ghost { height: 32px; border-color: transparent; background: transparent; color: var(--fl-muted); }
 .animater-floors .an-floors button.an-ghost:hover:not(:disabled) { color: var(--fl-text); }
-.animater-floors .an-floors select { width: 100%; height: 30px; min-height: 0; margin: 0; padding: 0 8px; border: 1px solid var(--fl-line-2); border-radius: 6px; background: var(--fl-bg); color: var(--fl-text); font-size: 12px; }
+.animater-floors .an-floors select:not(.an-region-embedded *) { width: 100%; height: 30px; min-height: 0; margin: 0; padding: 0 8px; border: 1px solid var(--fl-line-2); border-radius: 6px; background: var(--fl-bg); color: var(--fl-text); font-size: 12px; }
 .animater-floors .an-floors label { margin: 0; min-width: 0; font-size: 11px; line-height: 1.4; color: var(--fl-muted); }
 .an-tool-label { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--fl-muted); }
 .an-tool-divider { flex: none; width: 1px; height: 22px; background: var(--fl-line); }
@@ -4091,6 +4094,9 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-floors .an-floors .an-insp-tools .an-floors-remove { margin-left: auto; width: 30px; padding: 0; color: #f08a8a; border-color: color-mix(in srgb, #f08a8a 30%, var(--fl-line-2)); }
 .animater-floors .an-floors .an-insp-tools .an-floors-remove i { color: inherit; }
 .an-floors-warn { margin: 0; font-size: 12px; color: var(--fl-accent); }
+.an-effects { min-width: 0; }
+.an-effects-status { margin: 0; font-size: 11px; color: var(--fl-muted); }
+.an-effects-off { margin: 0; font-size: 11px; color: var(--fl-accent); }
 
 /* Footer */
 .an-floors-foot { flex: none; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--fl-line); background: var(--fl-panel); }
