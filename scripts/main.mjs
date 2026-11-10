@@ -25,6 +25,9 @@ import { propMaterial } from "./engines/props/prop-material.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propNextToMiss, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls } from "./engines/props/prop-walls.mjs";
+import { wallMid, readWallNote, wallRepairUpdates } from "./engines/props/wall-break.mjs";
+import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest, handEdited, handEditUpdate } from "./engines/props/wall-break-requests.mjs";
+import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
 import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
@@ -7172,6 +7175,72 @@ async function receivePropBreak(data, senderId) {
   if (!user || !doc) return;
   await applyPropBreak(scene, doc, cleanCause(data.cause), data.note, user);
 }
+// Breakable doors (engines/props/wall-break-requests.mjs): asked of the active GM the same way, who writes the wall
+// open with its note (the restrictions it had kept for Repair). Every screen draws the wreck of a wall with a note.
+const wallWreckage = createWallWreckage({ PIXI: globalThis.PIXI, layer: () => canvas.primary, grid: () => canvas?.grid?.size ?? 100,
+  playSound: (file, at) => { void playUnder("propBreak", at, { file, volume: 0.8, reach: 20, rate: 0.95 + Math.random() * 0.1, walls: true, gmAlways: true, room: 0.8 }); } });
+const wallPending = new Map(), wallLate = new Map(), wallWriting = new Set(); // as propPending, propLate, propWriting
+// The wall as the door rules read it.
+const wallView = (doc) => ({ id: doc.id, c: [...(doc.c ?? [])], door: doc.door, ds: doc.ds, move: doc.move, sight: doc.sight, light: doc.light, sound: doc.sound,
+  levels: [...(doc.levels ?? [])], flags: doc.flags ?? {} });
+const wallViewed = (doc) => onLevel(doc?.levels, canvas?.level?.id);
+// Draws (or removes) a wall's wreck from what the wall holds now.
+const drawWallWreck = (doc, animate) => {
+  const note = doc && wallViewed(doc) ? readWallNote(doc.flags?.[ID]?.breakWall?.broken) : null;
+  if (note) wallWreckage.show(doc, note, { animate }); else if (doc?.id) wallWreckage.hide(doc.id);
+};
+function breakWallHere(doc, note) {
+  if (!wallViewed(doc)) return;
+  wallWreckage.show(doc, note, { animate: true });
+  clearTimeout(wallPending.get(doc.id)?.timer);
+  wallPending.set(doc.id, { seed: note.seed, timer: setTimeout(() => settleWallHere(doc.id, true), PROP_REFUSED_MS) });
+}
+function forgetLateWall(id) { clearTimeout(wallLate.get(id)?.timer); wallLate.delete(id); }
+function settleWallHere(id, refused) {
+  const waiting = wallPending.get(id);
+  if (!waiting) return;
+  clearTimeout(waiting.timer); wallPending.delete(id);
+  if (!refused) return;
+  const doc = canvas?.scene?.walls?.get(id);
+  if (doc) drawWallWreck(doc, false); else wallWreckage.hide(id);
+  forgetLateWall(id);
+  wallLate.set(id, { seed: waiting.seed, timer: setTimeout(() => wallLate.delete(id), PROP_LATE_MS) });
+}
+// Breaks a door for a cause {kind: "area"|"path"|"smash", damageType?, slam?, at?, path?, moverUuid?, ...}; from: where
+// the blow came from (the area's centre, the path's start). True once it is asked of (or written by) the GM.
+async function requestWallBreak(wall, cause, { from } = {}) {
+  const doc = wall?.document ?? wall, scene = doc?.parent;
+  if (doc?.documentName !== "Wall" || scene?.flags?.[ID]?.breakableProps !== true) return false;
+  const gm = game.users.activeGM;
+  if (!gm) { if (!propNoGmTraced) { propNoGmTraced = true; runtime?.trace("props", "no GM connected"); } return false; }
+  const clean = cleanWallCause(cause), grid = propGrid(scene), view = wallView(doc);
+  const note = wallNoteFor({ wall: view, scene, cause: clean, seed: Math.floor(Math.random() * 0x7fffffff), from: from ?? clean.at ?? clean.path?.from });
+  if (gm.isSelf) return applyWallBreak(scene, doc, clean, note, game.user);
+  const here = validWallBreakRequest({ cause: clean, note }, { wall: view, scene, grid, sender: game.user, ...await propPlace(clean, scene, grid) });
+  if (!here.ok) return false;
+  if (scene === canvas?.scene && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakWallHere(doc, here.note);
+  game.socket.emit(`module.${ID}`, { type: WALL_BREAK_MESSAGE, sender: clientId, sceneId: scene.id, wallId: doc.id, cause: clean, note });
+  return true;
+}
+async function applyWallBreak(scene, doc, cause, rawNote, user) {
+  if (!game.users.activeGM?.isSelf || !scene || !doc || wallWriting.has(doc.id)) return false;
+  wallWriting.add(doc.id);
+  try {
+    const grid = propGrid(scene);
+    const check = validWallBreakRequest({ cause, note: rawNote }, { wall: wallView(doc), scene, grid, sender: user, ...await propPlace(cause, scene, grid) });
+    if (!check.ok) { runtime?.trace("props", `door not broken: ${check.why}`); return false; }
+    const { _id, ...update } = check.update;
+    await doc.update(update, { animater: { wallBreak: true }, sound: false });
+    return true;
+  } finally { wallWriting.delete(doc.id); }
+}
+async function receiveWallBreak(data, senderId) {
+  if (data?.type !== WALL_BREAK_MESSAGE || !game.users.activeGM?.isSelf) return;
+  const user = senderId ? game.users.get(senderId) : null, scene = game.scenes.get(String(data.sceneId ?? ""));
+  const doc = scene?.walls?.get(String(data.wallId ?? ""));
+  if (!user || !doc) return;
+  await applyWallBreak(scene, doc, cleanWallCause(data.cause), data.note, user);
+}
 // Unhiding a broken tile undoes it: its note goes and the walls the note names are restored (wallsToRestore).
 // Deleting one gives its walls back too (deleted: no tile left to write).
 async function undoPropBreak(doc, { deleted = false } = {}) {
@@ -7182,12 +7251,15 @@ async function undoPropBreak(doc, { deleted = false } = {}) {
   if (!deleted) await scene.updateEmbeddedDocuments("Tile", [withDeletes(u.tile, del)]);
   if (u.walls.length) await scene.updateEmbeddedDocuments("Wall", u.walls.map((w) => withDeletes(w, del)));
 }
-// Repair (GM): every broken tile of the scene unhidden and cleared in one tile batch, its walls in one wall batch.
+// Repair (GM): every broken tile of the scene unhidden and cleared in one tile batch; its walls, and every broken door
+// put back to its own type, state and restrictions (a locked door stays locked), in one wall batch. Prop walls are never
+// doors, so the two never name the same wall.
 async function repairAllProps(scene = canvas?.scene) {
   if (!game.user?.isGM || !scene) return 0;
-  const r = repairUpdates(scene.tiles.contents.map(propTileView), scene.walls?.contents ?? []), del = propDel();
+  const walls = scene.walls?.contents ?? [], r = repairUpdates(scene.tiles.contents.map(propTileView), walls), del = propDel();
+  const wallFixes = [...r.walls, ...wallRepairUpdates(walls)];
   if (r.tiles.length) await scene.updateEmbeddedDocuments("Tile", r.tiles.map((t) => withDeletes(t, del)));
-  if (r.walls.length) await scene.updateEmbeddedDocuments("Wall", r.walls.map((w) => withDeletes(w, del)));
+  if (wallFixes.length) await scene.updateEmbeddedDocuments("Wall", wallFixes.map((w) => withDeletes(w, del)), { animater: { wallRepair: true }, sound: false });
   return r.tiles.length;
 }
 // What breaks props (engines/props/prop-triggers.mjs): an area's damage roll, a missed melee strike, a forced path.
@@ -7338,6 +7410,33 @@ Hooks.on("canvasReady", () => { propWreckage.sync((canvas.tiles?.placeables ?? [
 Hooks.on("canvasTearDown", () => {
   for (const w of [...propPending.values(), ...propLate.values()]) clearTimeout(w.timer);
   propPending.clear(); propLate.clear(); propWreckage.clear();
+});
+// A broken door: the GM's break write is drawn on every screen (once: not again where it was asked). The GM's own edit
+// of its door type or restrictions forgets its note, so its wreck goes and Repair never undoes that edit.
+Hooks.on("updateWall", (doc, changes, options) => {
+  if (doc.flags?.[ID]?.breakWall?.broken && handEdited(changes, options)) {
+    const clear = handEditUpdate(doc);
+    if (clear && game.users.activeGM?.isSelf) void doc.update(withDeletes(clear, propDel())).catch((e) => console.warn("Animater props: edited door", e));
+    settleWallHere(doc.id, false); forgetLateWall(doc.id); wallWreckage.hide(doc.id);
+    return;
+  }
+  if (doc.parent !== canvas?.scene) return;
+  if (options?.animater?.wallBreak) {
+    const seed = readWallNote(doc.flags?.[ID]?.breakWall?.broken)?.seed;
+    const mine = wallPending.get(doc.id)?.seed === seed, late = !mine && wallLate.get(doc.id)?.seed === seed;
+    settleWallHere(doc.id, false); forgetLateWall(doc.id);
+    if (!mine) drawWallWreck(doc, !late);
+    return;
+  }
+  // Repair, a moved wall, a changed level or note redraws it (or takes it away).
+  if ("c" in changes || "levels" in changes || changes.flags?.[ID]) drawWallWreck(doc, false);
+});
+Hooks.on("createWall", (doc) => { if (doc.parent === canvas?.scene) drawWallWreck(doc, false); });
+Hooks.on("deleteWall", (doc) => { settleWallHere(doc.id, false); forgetLateWall(doc.id); wallWreckage.hide(doc.id); });
+Hooks.on("canvasReady", () => { wallWreckage.sync((canvas.walls?.placeables ?? []).map((w) => w.document).filter(wallViewed)); });
+Hooks.on("canvasTearDown", () => {
+  for (const w of [...wallPending.values(), ...wallLate.values()]) clearTimeout(w.timer);
+  wallPending.clear(); wallLate.clear(); wallWreckage.clear();
 });
 // Every built-in catalog of this system: turn them all on at once (exclusions and your own
 // recipes stay), as each catalog's own "Use the catalog" button does.
@@ -9345,7 +9444,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
     repair.disabled = !game.user?.isGM;
     repair.addEventListener("click", async (event) => {
       event.preventDefault();
-      if (!await foundry.applications.api.DialogV2.confirm({ window: { title: "Repair broken props" }, content: "<p>Unhide every broken prop in this scene and put its walls back?</p>", rejectClose: false })) return;
+      if (!await foundry.applications.api.DialogV2.confirm({ window: { title: "Repair broken props" }, content: "<p>Unhide every broken prop in this scene and put its walls, doors and windows back?</p>", rejectClose: false })) return;
       await repairAllProps(app.document);
     });
     tab.append(...props.children);
@@ -9983,6 +10082,7 @@ Hooks.once("ready", () => {
   game.socket?.on(`module.${ID}`, (data, senderId) => {
     if (data?.type === WINDOW_MESSAGE) { const asked = game.users.get(senderId); const wall = canvas?.scene?.walls?.get(data.wallId); if (game.users.activeGM?.isSelf && data.sceneId === canvas?.scene?.id && wall && asked && mayUseWindow({ canDoors: asked.can("WALL_DOORS"), paused: game.paused, inReach: windowReachedBy(asked, wall) }) && windowClick({ locked: wall.flags?.[ID]?.windowLocked === true }) === "toggle") void toggleWindow(wall); return; }
     if (data?.type === PROP_BREAK_MESSAGE) { void receivePropBreak(data, senderId).catch((e) => console.warn("Animater props:", e?.message ?? e)); return; }
+    if (data?.type === WALL_BREAK_MESSAGE) { void receiveWallBreak(data, senderId).catch((e) => console.warn("Animater props (door):", e?.message ?? e)); return; }
     if (data?.type === BLAST_MESSAGE) { if (data.blast?.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) playBlast(data.blast); return; }
     if (data?.type === SHOTS_MESSAGE) { shotsHeard(data); return; }
     if (data?.type === CLEAR_BLOOD_MESSAGE) { if (data.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) { floorBlood.clear(data.level ?? null); bloodLoaded = bloodElsewhere(bloodLoaded.map(packMark), data.level ?? null).map(unpackMark); } return; }
@@ -10386,6 +10486,15 @@ Hooks.once("ready", () => {
         if (!game.user?.isGM || !doc) return false;
         const r = tileRect(doc);
         return requestPropBreak(doc, { kind: "area", damageType: "bludgeoning", at: { x: r.x + r.width / 2, y: r.y + r.height / 2 }, ...cause });
+      },
+      // GM: break a door of this scene, by default as a bludgeoning area centred half a square off its left-hand side
+      // (cause.kind "smash" breaks any material, as the GM's own).
+      breakWall: (wallId, cause = {}) => {
+        const doc = canvas?.scene?.walls?.get(wallId);
+        if (!game.user?.isGM || !doc) return false;
+        const mid = wallMid(doc), [x1, y1, x2, y2] = doc.c, len = Math.hypot(x2 - x1, y2 - y1) || 1, half = (canvas.grid?.size ?? 100) / 2;
+        const side = { x: mid.x + ((y2 - y1) / len) * half, y: mid.y - ((x2 - x1) / len) * half };
+        return requestWallBreak(doc, { kind: "area", damageType: "bludgeoning", at: side, ...cause }, { from: cause.at ?? side });
       },
       repairProps: () => repairAllProps(canvas?.scene),
       // The Tokenshade looks on a token, by their key (region:, nature:, lit:, weather:, a lasting state's...).

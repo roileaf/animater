@@ -14,7 +14,7 @@ export const PATH_SQUARES = 12; // the longest planned path a slam may claim
 const propOf = (t) => t?.flags?.animater?.prop ?? {};
 const centre = (t) => ({ x: t.x + t.width / 2, y: t.y + t.height / 2 });
 const finite = (p) => Number.isFinite(p?.x) && Number.isFinite(p?.y);
-const sizeOf = (s) => (Number.isFinite(s) && s > 0 ? Math.min(s, 10) : 1);
+export const sizeOf = (s) => (Number.isFinite(s) && s > 0 ? Math.min(s, 10) : 1);
 // what canBreak is asked: the slam uses the mover's own size when the GM knows it
 const breakCause = (cause, mover) => (cause.kind === "path" ? { slam: { size: sizeOf(mover?.size ?? cause.slam?.size) } } : { damageType: cause.damageType });
 
