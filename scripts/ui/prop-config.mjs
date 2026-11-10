@@ -2,7 +2,7 @@
 import { MATERIALS } from "../engines/props/prop-material.mjs";
 import { CONTENTS, STYLE_CHOICES, propGuesses, burstOf } from "../engines/props/prop-traits.mjs";
 import { defaultForceDC, ownForceDC, forceOpenWording } from "../engines/props/force-open.mjs";
-import { wallMaterialOf } from "../engines/props/wall-break.mjs";
+import { wallMaterialOf, GLASS_PANES } from "../engines/props/wall-break.mjs";
 
 const ID = "animater";
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -71,7 +71,7 @@ export function propSceneFieldsHTML({ on = false, chance = 25, breakWalls, rubbl
 // Foundry submits disabled inputs too: so the window group's Material is its own field (breakWall.windowMaterial) and
 // the wall hooks merge the two into one material by the Door Type saved (wall-break wallBreakFormMerge). system: game.system.id, for the door's Force open DC (blank = Automatic, by material; the
 // field carries each material's automatic DC in data-dc-*, so the wall config hook can follow the Material select).
-export function wallBreakFieldsHTML({ door, own = {}, sceneOn = false, system } = {}) {
+export function wallBreakFieldsHTML({ door, own = {}, sceneOn = false, system, windowKind } = {}) {
   const isDoor = door === 1 || door === 2, off = (hidden) => (hidden ? " disabled" : "");
   const mat = wallMaterialOf(own.material, "door");
   const pane = wallMaterialOf(["glass", "none"].includes(own.windowMaterial) ? own.windowMaterial : own.material, "window");
@@ -86,7 +86,7 @@ export function wallBreakFieldsHTML({ door, own = {}, sceneOn = false, system } 
       ${forceDCField({ own, mat, system, disabled: !isDoor })}
     </div>
     <div data-group="window"${isDoor ? " hidden" : ""}>
-      <div class="form-group"><label>Window</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.breakWall.window"${own.window === true ? " checked" : ""}${off(isDoor)}></div><p class="hint">${sceneOn ? "This scene has Breakable props on." : "Needs Breakable props on in the scene."} Tick it to make this wall a window that can break. It is separate from the light a window lets through.</p></div>
+      <div class="form-group"><label>Window</label><div class="form-fields"><select name="flags.${ID}.breakWall.window"${off(isDoor)}>${options([["", `Automatic (${GLASS_PANES.includes(windowKind) ? "yes: a glass window" : "no"})`], ["yes", "Yes"], ["no", "No"]], own.window === true ? "yes" : own.window === false ? "no" : ["yes", "no"].includes(own.window) ? own.window : "")}</select></div><p class="hint">${sceneOn ? "This scene has Breakable props on." : "Needs Breakable props on in the scene."} Whether this wall is a window that can break. Automatic: yes when its Animater window (below) is glass, leaded, mosaic, rose or frosted. When it breaks it opens: a glass window becomes an open one, shutters stand open. Repair puts it back.</p></div>
       <div class="form-group"><label>Material</label><div class="form-fields"><select name="flags.${ID}.breakWall.windowMaterial"${off(isDoor)}>${options(panes, pane)}</select></div><p class="hint">Glass breaks to most blows, cold, fire and any shove, and a shot that misses can shatter it. Won't break keeps it whole. A broken window lets sight, light and sound through but still blocks movement.</p></div>
     </div>
   </fieldset>`;

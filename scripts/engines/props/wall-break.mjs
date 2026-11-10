@@ -2,6 +2,7 @@
 // Foundry v14 numbers, hard-coded to keep this module pure: door type NONE 0 / DOOR 1 / SECRET 2; the sense and movement
 // types are NONE 0 when the passage is open.
 import { canBreak } from "./prop-material.mjs";
+import { closesWindow } from "../motion/window-state.mjs";
 import { forceDCOf } from "./force-open.mjs"; // a cycle of function declarations only (force-open reads wallTraits)
 
 const KINDS = ["door", "window"];
@@ -21,12 +22,23 @@ export function wallTraits(wall, scene, system) {
   const sf = scene?.flags?.animater ?? {}, own = wall?.flags?.animater?.breakWall ?? {};
   const on = sf.breakableProps === true && sf.breakWalls !== false;
   const door = on && (wall?.door === 1 || wall?.door === 2) && own.door !== "never";
-  if (!door && on && wall?.door === 0 && own.window === true) {
+  if (!door && on && wall?.door === 0 && windowOn(wall)) {
     const pane = PANES.includes(own.windowMaterial) ? own.windowMaterial : own.material;
     return { kind: "window", material: wallMaterialOf(pane, "window"), forceOpen: false, forceDC: null };
   }
   const material = wallMaterialOf(own.material, "door");
   return { kind: door ? "door" : null, material, forceOpen: own.forceOpen !== false, forceDC: forceDCOf(own, material, system) };
+}
+
+// Whether a wall is a breakable window (its door type aside): the GM's Window choice, Yes or No (true/false from before
+// Automatic existed), else Automatic: on when Animater's own window on the wall is a glass one (the light it lets
+// through: glass, leaded, mosaic, rose or frosted panes), off otherwise.
+export const GLASS_PANES = Object.freeze(["glass", "leaded", "mosaic", "rose", "frosted"]);
+export function windowOn(wall) {
+  const choice = wall?.flags?.animater?.breakWall?.window;
+  if (choice === true || choice === "yes") return true;
+  if (choice === false || choice === "no") return false;
+  return GLASS_PANES.includes(wall?.flags?.animater?.window);
 }
 
 // A wall's stored material for a door (wood, metal or stone; wood when unknown) or a window (glass or none). A list
@@ -106,6 +118,15 @@ export function readWallNote(raw) {
       if (!Number.isInteger(restore[k])) return null;
       kept[k] = restore[k];
     }
+    // A broken window's Animater window as it was: its kind (null: it had none) or whether it stood open.
+    if (restore.windowKind !== undefined) {
+      if (restore.windowKind !== null && (typeof restore.windowKind !== "string" || restore.windowKind.length > 32)) return null;
+      kept.windowKind = restore.windowKind;
+    }
+    if (restore.windowOpen !== undefined) {
+      if (typeof restore.windowOpen !== "boolean") return null;
+      kept.windowOpen = restore.windowOpen;
+    }
     note.restore = kept;
   }
   return note;
@@ -114,9 +135,14 @@ export function readWallNote(raw) {
 // Open the passage, keeping what the wall was so Repair can put it back.
 export function wallBreakUpdate(wall, note) {
   if (note?.kind === "window") {
-    const restore = {};
+    const restore = {}, up = { _id: wall.id, sight: 0, light: 0, sound: 0 };
     for (const k of WINDOW_RESTORE_KEYS) restore[k] = wall[k];
-    return { _id: wall.id, sight: 0, light: 0, sound: 0, "flags.animater.breakWall.broken": { ...note, restore } };
+    // It opens: a window that opens and closes is left its kind and stood open; anything else becomes an open window
+    // (the light comes through it unfiltered). Repair puts back what it was.
+    const kind = wall?.flags?.animater?.window;
+    if (closesWindow(kind)) { restore.windowOpen = wall.flags.animater.windowOpen === true; up["flags.animater.windowOpen"] = true; }
+    else { restore.windowKind = typeof kind === "string" && kind ? kind : null; up["flags.animater.window"] = "open"; }
+    return { ...up, "flags.animater.breakWall.broken": { ...note, restore } };
   }
   const restore = {};
   for (const k of RESTORE_KEYS) restore[k] = wall[k];
@@ -126,7 +152,10 @@ export function wallBreakUpdate(wall, note) {
 export function wallRestoreUpdate(wall) {
   const note = readWallNote(wall?.flags?.animater?.breakWall?.broken);
   if (!note?.restore) return null;
-  return { _id: wall.id, ...note.restore, "flags.animater.breakWall.-=broken": null };
+  const { windowKind, windowOpen, ...fields } = note.restore, up = { _id: wall.id, ...fields };
+  if (windowKind !== undefined) { if (windowKind === null) up["flags.animater.-=window"] = null; else up["flags.animater.window"] = windowKind; }
+  if (windowOpen !== undefined) up["flags.animater.windowOpen"] = windowOpen;
+  return { ...up, "flags.animater.breakWall.-=broken": null };
 }
 
 export function wallRepairUpdates(walls) {

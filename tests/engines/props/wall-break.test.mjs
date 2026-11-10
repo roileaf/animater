@@ -82,7 +82,8 @@ const noneWin = () => win({ flags: { animater: { breakWall: { window: true, mate
 test("only a wall marked Window is a window; glass unless Won't break", () => {
   assert.deepEqual(wallTraits(win(), scene()), { kind: "window", material: "glass", forceOpen: false, forceDC: null });
   assert.equal(wallTraits(wall({ door: 0 }), scene()).kind, null);
-  assert.equal(wallTraits(wall({ door: 0, flags: { animater: { window: "glass" } } }), scene()).kind, null); // the light kind alone is not breakable
+  assert.equal(wallTraits(wall({ door: 0, flags: { animater: { window: "glass" } } }), scene()).kind, "window"); // a glass window is breakable by itself (Automatic)
+  assert.equal(wallTraits(wall({ door: 0, flags: { animater: { window: "curtained" } } }), scene()).kind, null); // a window without glass is not
   assert.equal(wallTraits(win(), scene({ breakWalls: false })).kind, null);
   assert.equal(wallTraits(win(), { id: "s", flags: {} }).kind, null);
   assert.equal(wallTraits(noneWin(), scene()).material, "none");
@@ -101,7 +102,9 @@ test("a broken window lets sight, light and sound through but still blocks movem
   const n = wallNote({ seed: 1, cutAngle: 0, from: { x: 350, y: 100 }, kind: "window", material: "glass" });
   const u = wallBreakUpdate(win(), n);
   assert.deepEqual([u.sight, u.light, u.sound, "move" in u, "door" in u], [0, 0, 0, false, false]);
-  assert.deepEqual(u["flags.animater.breakWall.broken"].restore, { sight: 20, light: 20, sound: 20 });
+  // it also opens (an open window), remembering it had no Animater window of its own
+  assert.deepEqual(u["flags.animater.breakWall.broken"].restore, { sight: 20, light: 20, sound: 20, windowKind: null });
+  assert.equal(u["flags.animater.window"], "open");
 });
 test("a window's note reads back (glass, none), and Repair restores only its senses", () => {
   const n = wallNote({ seed: 1, cutAngle: 0, from: { x: 350, y: 100 }, kind: "window", material: "glass" });
@@ -190,4 +193,42 @@ test("I2: a broken metal door saved unchanged keeps metal, and Repair brings bac
   const repaired = { ...after, ...fix, flags: { animater: { breakWall: { material: saved.material, forceOpen: true } } } };
   assert.equal(wallTraits(repaired, scene()).material, "metal");
   assert.equal(wallTraits(repaired, scene()).kind, "door");
+});
+
+test("a wall with Animater's glass window kind is a breakable window unless the GM says No", () => {
+  const glassWall = (kind, bw) => wall({ door: 0, flags: { animater: { window: kind, ...(bw ? { breakWall: bw } : {}) } } });
+  for (const kind of ["glass", "leaded", "mosaic", "rose", "frosted"]) assert.equal(wallTraits(glassWall(kind), scene()).kind, "window", kind);
+  for (const kind of ["open", "curtained", "bars", "slit", "woodWindow", undefined]) assert.equal(wallTraits(glassWall(kind), scene()).kind, null, String(kind));
+  assert.equal(wallTraits(glassWall("glass", { window: "no" }), scene()).kind, null);
+  assert.equal(wallTraits(glassWall("glass", { window: false }), scene()).kind, null);
+  assert.equal(wallTraits(glassWall("bars", { window: "yes" }), scene()).kind, "window");
+  assert.equal(wallTraits(glassWall(undefined, { window: true }), scene()).kind, "window"); // ticked before Automatic existed
+  assert.equal(wallTraits(glassWall("glass"), { id: "s", flags: { animater: { breakableProps: false } } }).kind, null);
+});
+
+test("a window that breaks opens: a glass pane becomes an open window, a shutter stands open; Repair puts both back", () => {
+  const note = { seed: 1, cutAngle: 0, from: { x: 0, y: 0 }, kind: "window", material: "glass", mark: "dust" };
+  const pane = { id: "w1", door: 0, sight: 20, light: 20, sound: 20, flags: { animater: { window: "leaded" } } };
+  const up = wallBreakUpdate(pane, note);
+  assert.equal(up["flags.animater.window"], "open");
+  assert.equal(up["flags.animater.breakWall.broken"].restore.windowKind, "leaded");
+  const broken = { ...pane, flags: { animater: { window: "open", breakWall: { broken: up["flags.animater.breakWall.broken"] } } } };
+  const back = wallRestoreUpdate(broken);
+  assert.equal(back["flags.animater.window"], "leaded");
+  assert.equal(back.sight, 20);
+  // a shutter (a window that opens and closes) is left its kind and set open; Repair shuts it again
+  const shutter = { id: "w2", door: 0, sight: 20, light: 20, sound: 20, flags: { animater: { window: "shutterWindow", windowOpen: false } } };
+  const su = wallBreakUpdate(shutter, note);
+  assert.equal(su["flags.animater.windowOpen"], true);
+  assert.equal(su["flags.animater.window"], undefined);
+  const sb = wallRestoreUpdate({ ...shutter, flags: { animater: { window: "shutterWindow", windowOpen: true, breakWall: { broken: su["flags.animater.breakWall.broken"] } } } });
+  assert.equal(sb["flags.animater.windowOpen"], false);
+  // a ticked wall with no Animater window kind: it opens to an open window, and Repair takes the kind away again
+  const plain = { id: "w3", door: 0, sight: 20, light: 20, sound: 20, flags: { animater: { breakWall: { window: true } } } };
+  const pu = wallBreakUpdate(plain, note);
+  assert.equal(pu["flags.animater.window"], "open");
+  const pb = wallRestoreUpdate({ ...plain, flags: { animater: { window: "open", breakWall: { window: true, broken: pu["flags.animater.breakWall.broken"] } } } });
+  assert.equal(pb["flags.animater.-=window"], null);
+  // a note with junk in its window restore is refused
+  assert.equal(readWallNote({ ...note, restore: { sight: 20, windowKind: 5 } }), null);
 });

@@ -88,9 +88,11 @@ test("scene: Doors and windows break is on unless turned off", () => {
   assert.match(propSceneFieldsHTML({}), /Doors and windows break/);
   assert.doesNotMatch(propSceneFieldsHTML({ breakWalls: false }), /breakWalls"[^>]*checked/);
 });
-test("window fieldset: off by default, glass by default", () => {
+test("window fieldset: Automatic by default (yes for a glass window), glass by default", () => {
   const html = wallBreakFieldsHTML({ door: 0 });
-  assert.doesNotMatch(html, /breakWall\.window"[^>]*checked/);
+  assert.ok(html.includes('<option value="" selected>Automatic (no)</option>'));
+  assert.ok(wallBreakFieldsHTML({ door: 0, windowKind: "leaded" }).includes('<option value="" selected>Automatic (yes: a glass window)</option>'));
+  assert.ok(wallBreakFieldsHTML({ door: 0, own: { window: "no" }, windowKind: "glass" }).includes('<option value="no" selected>No</option>'));
   assert.match(html, /data-group="window"[\s\S]*<option value="glass" selected>Glass</);
   assert.match(html, /<option value="none">Won't break</);
   // door 0 shows the window group and hides the door group; a door does the reverse
@@ -98,7 +100,7 @@ test("window fieldset: off by default, glass by default", () => {
   assert.doesNotMatch(html, /data-group="window" hidden/);
   assert.match(wallBreakFieldsHTML({ door: 1 }), /data-group="window" hidden/);
   assert.doesNotMatch(wallBreakFieldsHTML({ door: 1 }), /data-group="door" hidden/);
-  assert.match(wallBreakFieldsHTML({ door: 0, own: { window: true, material: "none" } }), /breakWall\.window"[^>]*checked[\s\S]*<option value="none" selected>Won't break</);
+  assert.match(wallBreakFieldsHTML({ door: 0, own: { window: true, material: "none" } }), /<option value="yes" selected>Yes<[\s\S]*<option value="none" selected>Won't break</);
 });
 test("window fieldset: the hidden group's material select is disabled (and has its own name)", () => {
   assert.match(wallBreakFieldsHTML({ door: 0 }), /data-group="door" hidden[\s\S]*?<select name="flags\.animater\.breakWall\.material" disabled>/);

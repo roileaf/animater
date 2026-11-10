@@ -10947,7 +10947,7 @@ Hooks.on("renderWallConfig", (app, html) => {
   if (!root || root.querySelector("[data-animater-break-wall]")) return;
   const doc = app.document ?? app.object, sceneOn = doc?.parent?.flags?.[ID]?.breakableProps === true;
   const set = document.createElement("fieldset");
-  set.innerHTML = wallBreakFieldsHTML({ door: wallFormDoor(doc), own: doc?.flags?.[ID]?.breakWall, sceneOn, system: game.system.id });
+  set.innerHTML = wallBreakFieldsHTML({ door: wallFormDoor(doc), own: doc?.flags?.[ID]?.breakWall, windowKind: doc?.flags?.[ID]?.window, sceneOn, system: game.system.id });
   const fieldset = set.firstElementChild;
   appendWallSection(root, fieldset);
   const select = root.querySelector('select[name="door"]'), group = fieldset.querySelector('[data-group="door"]');

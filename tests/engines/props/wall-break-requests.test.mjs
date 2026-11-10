@@ -299,7 +299,7 @@ test("a ranged miss through a window: crit always, plain miss by the GM's roll, 
   assert.equal(crit.ok, true);
   assert.equal(crit.note.kind, "window"); assert.equal(crit.note.material, "glass");
   assert.deepEqual([crit.update.sight, crit.update.light, crit.update.sound, "move" in crit.update, "door" in crit.update], [0, 0, 0, false, false]);
-  assert.deepEqual(crit.update["flags.animater.breakWall.broken"].restore, { sight: 20, light: 20, sound: 20 });
+  assert.deepEqual(crit.update["flags.animater.breakWall.broken"].restore, { sight: 20, light: 20, sound: 20, windowKind: null });
   // a plain miss: the default chance is 25 (roll 0.1 breaks, 0.9 does not)
   assert.equal(validWallBreakRequest(missReq(w, miss("miss")), missCtx(w, { roll: 0.1 })).ok, true);
   assert.equal(validWallBreakRequest(missReq(w, miss("miss")), missCtx(w, { roll: 0.9 })).why, "lucky");
