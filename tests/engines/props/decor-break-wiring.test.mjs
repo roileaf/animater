@@ -52,9 +52,10 @@ test("the GM's write is fed validated adds over the parsed stored breaks (Task 2
   assert.match(main, /stored = readDecorBroken\(region\.broken\)/);
   assert.match(main, /decorBrokenAfter\(stored, adds\.filter\(\(a\) => keys\.has\(a\.key\)\), keys\)/);
 });
-test("invisible decorations neither break nor draw wrecks (D7)", () => {
-  assert.match(body("decorViews"), /!propsOn\(scene\) \|\| !regionStepsOn\(\)/);
-  assert.match(body("syncDecorWrecks"), /regionStepsOn\(\)/);
+test("decorations break and leave wrecks whatever Region steps says: they are drawn regardless", () => {
+  assert.match(body("decorViews"), /if \(!propsOn\(scene\)\) return \[\];/);
+  assert.doesNotMatch(body("decorViews") + body("syncDecorWrecks") + body("breakDecorHere"), /regionStepsOn/);
+  assert.doesNotMatch(main, /const syncDecorations = \(\) => \{\s*if \(!canvas\?\.ready\) return;\s*const list = \[\];\s*if \(regionStepsOn\(\)\)/);
 });
 test("the wreck is cut from the painter's own picture (Task 3 ruling)", () => {
   assert.match(main, /const decorArtLook = \(settings\) => \(\{ \.\.\.decorLook\(settings\), snow: 0 \}\)/);
