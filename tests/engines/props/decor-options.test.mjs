@@ -168,3 +168,63 @@ test("a decoration set to Light prop puts its lights out; one set to No keeps th
   assert.deepEqual(decorLightList("R1", placements, placements, {}).map((l) => l.x), [100, 700]);
   assert.deepEqual(decorLightList("R1", placements, shown, { light: "no" }).map((l) => l.x), [100, 700]);
 });
+
+// ---- spilled powder set off later (as a keg tile's) ----
+import { decorSpilled, decorBrokenAfter, decorIgnites, decorBrokenViews } from "../../../scripts/engines/props/decor-break.mjs";
+
+test("a decoration's spilled powder goes off once from a later fire area, and its blast chains", () => {
+  const keg = { ...hand, prop: { contents: "powder" } }, next = { ...hand, x: 420, y: 300, seed: 9, prop: { contents: "powder" } };
+  const r = on({ brushed: [keg, next] }), a = viewOf(r, "barrel:300:300:h"), b = viewOf(r, "barrel:420:300:h");
+  // An axe spills it.
+  const spilt = validDecorBreakRequest(ask(a, hit(a, "slashing")), ctx(r));
+  assert.equal(spilt.explode, false); assert.equal(spilt.entry.note.powder, "spilled");
+  const stored = { ...r, broken: [spilt.entry] };
+  assert.deepEqual(decorSpilled([stored], grid, index).map((v) => v.id), [a.id]);
+  assert.deepEqual(decorSpilled([{ ...stored, settings: { ...stored.settings, canBreak: false } }], grid, index), [], "switched off: nothing to set off");
+  assert.equal(decorSourceView(stored, a.id, grid, index), null, "spilled is no blast yet");
+  // A fire area over it sets it off: the entry comes back exploded, and the GM runs its blast.
+  const fire = { kind: "ignite", damageType: "fire", at: { x: 300, y: 300 } };
+  const lit = validDecorBreakRequest({ key: a.decor.key, cause: fire, note: spilt.entry.note }, ctx(stored));
+  assert.equal(lit.ok, true); assert.equal(lit.ignite, true); assert.equal(lit.explode, true);
+  assert.equal(lit.entry.note.powder, "exploded"); assert.equal(lit.entry.note.seed, spilt.entry.note.seed, "the same wreck, now blown up");
+  // The write lets that one rewrite through, and nothing else.
+  const after = decorBrokenAfter(stored.broken, [lit.entry], index(r, grid).keys);
+  assert.equal(after.length, 1); assert.equal(after[0].note.powder, "exploded");
+  assert.equal(decorBrokenAfter(after, [{ ...lit.entry, note: { ...lit.entry.note, powder: "spilled" } }], index(r, grid).keys)[0].note.powder, "exploded");
+  assert.equal(decorBrokenAfter(stored.broken, [{ ...spilt.entry, note: { ...spilt.entry.note, style: "burn" } }], index(r, grid).keys)[0].note.style, spilt.entry.note.style);
+  // Once: set off, it is no longer spilled.
+  const blown = { ...r, broken: after };
+  assert.deepEqual(validDecorBreakRequest({ key: a.decor.key, cause: fire, note: lit.entry.note }, ctx(blown)), { ok: false, why: "broken" });
+  assert.deepEqual(decorSpilled([blown], grid, index), []);
+  // Its blast chains: the source reads the rewritten entry, the neighbour goes off in turn.
+  const source = decorSourceView(blown, a.id, grid, index);
+  assert.deepEqual(blastFrom(source), { centre: { x: 300, y: 300 }, burst: 2 });
+  assert.equal(validDecorBreakRequest(ask(b, { kind: "blast", sourceId: a.id }), ctx(blown, { source, levels: ["L1"] })).explode, true);
+  assert.equal(decorBrokenViews(blown, grid, index)[0].flags.animater.prop.broken.powder, "exploded");
+});
+
+test("a forged or wrong ignite is refused: not fire, not spilled, a player with no area, an area that does not hold it", () => {
+  const keg = { ...hand, prop: { contents: "powder" } }, r = on({ brushed: [keg] }), a = viewOf(r, "barrel:300:300:h");
+  const spilt = validDecorBreakRequest(ask(a, hit(a, "slashing")), ctx(r)), stored = { ...r, broken: [spilt.entry] };
+  const ignite = (cause, x = {}) => validDecorBreakRequest({ key: a.decor.key, cause: { kind: "ignite", at: { x: 300, y: 300 }, ...cause }, note: spilt.entry.note }, ctx(stored, x));
+  assert.deepEqual(ignite({ damageType: "cold" }), { ok: false, why: "material" });
+  assert.deepEqual(ignite({ damageType: "fire" }, { region: r }), { ok: false, why: "cause" }, "never broken: nothing spilled to set off");
+  const water = on({ brushed: [hand] }), plain = viewOf(water, "barrel:300:300:h"), wet = validDecorBreakRequest(ask(plain, hit(plain, "slashing")), ctx(water));
+  assert.deepEqual(validDecorBreakRequest({ key: plain.decor.key, cause: { kind: "ignite", damageType: "fire" }, note: wet.entry.note }, ctx({ ...water, broken: [wet.entry] })), { ok: false, why: "broken" }, "a barrel of water has no powder");
+  assert.equal(ignite({ damageType: "fire" }, { sender: player }).ok, false, "a player must name a placed area");
+  const AREA = "Scene.s.Region.a", area = { uuid: AREA, sceneId: "s", authorId: "p", rememberedAt: 1000, damageTypes: ["fire"], testPoint: () => false, levels: ["L1"] };
+  assert.deepEqual(ignite({ damageType: "fire", areaUuid: AREA }, { sender: player, area }), { ok: false, why: "area" });
+  assert.equal(ignite({ damageType: "fire", areaUuid: AREA }, { sender: player, area: { ...area, testPoint: () => true } }).ok, true);
+  assert.deepEqual(validDecorBreakRequest({ key: a.decor.key, cause: { kind: "ignite", damageType: "fire" }, note: spilt.entry.note }, ctx({ ...stored, settings: { ...stored.settings, canBreak: false } })), { ok: false, why: "off" });
+});
+
+test("every screen plays the ignite over the spilled wreck it drew; a fire area looks for spilled decorations, a cold one does not", () => {
+  const shown = new Map([["d1", 5], ["d2", 6], ["d3", 7]]), powders = new Map([["d1", "spilled"], ["d2", "exploded"], ["d3", "spilled"]]);
+  assert.deepEqual(decorIgnites([{ id: "d1", note: { seed: 5, powder: "exploded" } }, { id: "d2", note: { seed: 6, powder: "exploded" } }, { id: "d3", note: { seed: 7, powder: "spilled" } }, { id: "d4", note: { seed: 1, powder: "exploded" } }], shown, powders), ["d1"]);
+  const main = read("scripts/main.mjs"), area = main.slice(main.indexOf("function breakAreaThings"), main.indexOf("function breakAreaOnPlay"));
+  assert.match(area, /const decorSpills = !types\.includes\("fire"\) \? \[\] : \(propSafe\("area decoration powder", \(\) => ignitableInArea\(tilesOnLevel\(decorSpilled\(decorRegionsOf\(scene, \{ breaking: true \}\), grid, decorIndex\), area\.levels\), area\.testPoint\)\) \?\? \[\]\)\.filter\(\(v\) => propAreas\.claim\(area\.templateId, `ignite:\$\{v\.id\}`\)\);/);
+  assert.match(area, /askDecor\(scene, v, \{ kind: "ignite", damageType: "fire", at: area\.at, areaUuid, \.\.\.roll \}, area\.at\)/);
+  const apply = main.slice(main.indexOf("async function applyDecorBreak"), main.indexOf("async function receiveDecorBreak"));
+  assert.match(apply, /if \(view && check\.explode\) void runBlastAt\(/);
+  assert.match(main, /for \(const id of decorIgnites\(wanted, decorWrecksShown, decorWreckPowder\)\)/);
+});

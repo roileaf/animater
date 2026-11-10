@@ -242,6 +242,7 @@ export function validDecorBreakRequest({ key, cause, note } = {}, { region, scen
   const no = (why) => ({ ok: false, why });
   if (scene?.flags?.animater?.breakableProps !== true) return no("off");
   if (region?.settings?.canBreak !== true) return no("off");
+  if (cause?.kind === "ignite") return decorIgniteCheck({ key, cause, note }, { region, scene, grid, sender, area, now, index });
   const { keys, views } = index(region, grid), view = views.find((v) => v.decor.key === key);
   if (!view) return no("missing");
   if (drawn && !drawn(view)) return no("undrawn");
@@ -253,6 +254,38 @@ export function validDecorBreakRequest({ key, cause, note } = {}, { region, scen
     explode: out.explode === true, fire: out.fire === true, lightUpdates: out.lightUpdates ?? [] };
 }
 
+/**
+ * Spilled powder a fire area covers goes off, once, as a keg tile's does (prop-requests igniteCheck): only a decoration whose stored
+ * break says its powder spilled, only fire, and only an area that holds it (the GM's own record of the area). The entry comes back
+ * rewritten with its powder exploded (decorBrokenAfter lets that one rewrite through) and `explode`, so its blast runs and chains.
+ */
+function decorIgniteCheck({ key, cause, note }, { region, scene, grid, sender, area, now, index }) {
+  const view = decorBrokenViews(region, grid, index).find((v) => v.decor.key === key);
+  if (!view) return { ok: false, why: "cause" };
+  const out = validBreakRequest({ cause, note }, { tile: view, walls: [], scene, grid, sender, area, now });
+  if (!out.ok) return out;
+  const { d } = view.decor;
+  return { ok: true, ignite: true, explode: true, fire: false, lightUpdates: [], entry: { key, kind: d.kind, x: Math.round(d.x), y: Math.round(d.y), note: out.note } };
+}
+/**
+ * The broken decorations of a region (pure): each live stored break's view, carrying its stored note as a broken tile carries its
+ * own (flags.animater.prop.broken), for the blast and ignite rules that read a broken keg.
+ */
+export function decorBrokenViews(region, grid, index = decorIndex) {
+  const stored = readDecorBroken(region?.broken);
+  if (!stored.length) return [];
+  const { keys, views } = index(region, grid), byKey = new Map(views.map((v) => [v.decor.key, v]));
+  return liveBroken(stored, keys).map((e) => { const v = byKey.get(e.key); return v ? { ...v, flags: { animater: { prop: { ...v.flags.animater.prop, broken: e.note } } } } : null; }).filter(Boolean);
+}
+/** The broken decorations whose powder lies spilled (pure), in switched-on regions: what a later fire area can set off. */
+export function decorSpilled(regions, grid, index = decorIndex) {
+  return (regions ?? []).filter((r) => r?.settings?.canBreak === true).flatMap((r) => decorBrokenViews(r, grid, index)).filter((v) => v.flags.animater.prop.broken.powder === "spilled");
+}
+/**
+ * Which drawn wrecks to set off (pure): those `wanted` ([{ id, note }]) whose wreck is drawn with the same seed (`shown`) and
+ * whose powder was drawn spilled (`powders`, Map<id, powder>) but is now stored exploded.
+ */
+export const decorIgnites = (wanted, shown, powders) => (wanted ?? []).filter(({ id, note }) => shown?.get(id) === note?.seed && powders?.get(id) === "spilled" && note?.powder === "exploded").map((w) => w.id);
 /** A decoration view's id ("decor:<regionId>:<key>") taken apart (pure); null for any other id. */
 export function decorIdParts(id) {
   const m = /^decor:([^:]+):(.+)$/.exec(String(id ?? ""));
@@ -265,18 +298,23 @@ export function decorIdParts(id) {
 export function decorSourceView(region, id, grid, index = decorIndex) {
   const parts = decorIdParts(id);
   if (!parts || parts.regionId !== region?.id) return null;
-  const { keys, views } = index(region, grid), view = views.find((v) => v.decor.key === parts.key);
-  const entry = view ? liveBroken(readDecorBroken(region.broken), keys).find((e) => e.key === parts.key) : null;
-  if (!entry || entry.note?.powder !== "exploded") return null;
-  return { ...view, flags: { animater: { prop: { ...view.flags.animater.prop, broken: entry.note } } } };
+  const view = decorBrokenViews(region, grid, index).find((v) => v.decor.key === parts.key);
+  return view?.flags.animater.prop.broken.powder === "exploded" ? view : null;
 }
 /** The lights a region's stored breaks put out (pure): the ids their notes name, each once. Repair lights them again. */
 export const decorNamedLights = (entries) => [...new Set((entries ?? []).flatMap((e) => (Array.isArray(e?.note?.lights) ? e.note.lights : [])))];
 
-/** The region's stored breaks after a write (pure): the live ones, then each add whose key is not already there. */
+/**
+ * The region's stored breaks after a write (pure): the live ones, then each add whose key is not already there. The one rewrite
+ * let through: spilled powder set off (an add with its powder exploded over a stored one whose powder spilled).
+ */
 export function decorBrokenAfter(entries, adds, keys) {
   const out = liveBroken(entries, keys), seen = new Set(out.map((e) => e.key));
-  for (const a of adds ?? []) if (!seen.has(a.key)) { seen.add(a.key); out.push(a); }
+  for (const a of adds ?? []) {
+    if (!seen.has(a.key)) { seen.add(a.key); out.push(a); continue; }
+    const i = out.findIndex((e) => e.key === a.key);
+    if (out[i]?.note?.powder === "spilled" && a.note?.powder === "exploded") out[i] = a;
+  }
   return out;
 }
 

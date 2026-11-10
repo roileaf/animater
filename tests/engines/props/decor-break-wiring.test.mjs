@@ -153,7 +153,8 @@ test("only drawn decorations break (D1): the cavern records what it drew; the tr
 });
 test("a wreck spills what its decoration held", () => {
   assert.match(main, /const decorContents = \(view\) => view\?\.flags\?\.animater\?\.prop\?\.contents \?\? "none";/);
-  assert.equal((main.match(/decorWreckage\.show\(tile, note, decorContents\(view\)/g) ?? []).length, 2);
+  // (drawn as stored, broken here, and an ignite played over a spilled wreck)
+  assert.equal((main.match(/decorWreckage\.show\(tile, note, decorContents\(view\)/g) ?? []).length, 3);
   assert.doesNotMatch(main, /decorWreckage\.show\(tile, note, "none"/);
   const wreck = readFileSync(new URL("../../../scripts/engines/props/prop-wreck.mjs", import.meta.url), "utf8");
   assert.match(wreck, /cutApart\(\{ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate, contents \}\)/);

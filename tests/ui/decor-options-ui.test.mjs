@@ -22,11 +22,13 @@ test('the region popup: the six options under Decorations can break, only while 
   const c = (decor) => ({ own: { decor: { on: true, kinds: {}, ...decor } }, act: (f) => acts.push(f), doc, repairDecor: () => {} });
   assert.equal(control(SECTIONS.decor(c({})), 'Material'), undefined, 'off: none shown');
   const parts = SECTIONS.decor(c({ canBreak: true }));
-  for (const label of ['Material', 'Breaks as', 'Contents', 'Light prop', 'Tips over instead of breaking']) {
+  for (const label of ['Material', 'Breaks as', 'Contents', 'Light prop', 'Tips over']) {
     const sel = control(parts, label); assert.ok(sel, label);
     assert.equal(sel.children[0].textContent, 'Automatic (by kind)', label); assert.equal(sel.children[0].selected, true, label);
   }
   assert.equal(control(parts, 'Burst (squares)'), undefined, 'Burst only for Black powder');
+  // The narrow column takes the short name; the long one leads its hint.
+  assert.match(all(parts, (n) => n.attrs?.['data-tooltip']?.startsWith('Tips over instead of breaking: '))[0].attrs['data-tooltip'], /Knocked over whole/);
   // Under the switch, before Repair decorations.
   const order = all(parts, (n) => n.attrs?.['aria-label'] === 'Decorations can break' || n.attrs?.['aria-label'] === 'Material' || n.textContent === 'Repair decorations');
   assert.deepEqual(order.map((n) => n.attrs['aria-label'] ?? n.textContent), ['Decorations can break', 'Material', 'Repair decorations']);

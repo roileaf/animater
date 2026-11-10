@@ -13,7 +13,7 @@ import { REGION_LOOK_FLAG } from '../engines/playback/region-looks.mjs';
 import { choice } from './region-steps-ui.mjs';
 import { ROOM_DRESSING, kindFlags } from './region-panel-model.mjs';
 import { DECOR_DEFAULT_KINDS, freshDecor } from '../engines/motion/decor-regions.mjs';
-import { decorPropRows } from './decor-prop-options.mjs';
+import { decorPropRows, DECOR_PROP_SHORT } from './decor-prop-options.mjs';
 // Whether the ground here is built out over water (a dock): on, it shows how it is built, its posts and its shadow.
 const OVER_WATER_TIP = 'Built out over water: a deck, a jetty, a bridge. The water goes on under it; what walks here walks on its boards, and it shows how it is built, its posts and its shadow.';
 
@@ -124,7 +124,8 @@ const decorSection = (c) => {
   parts.push(toggle('Decorations can break', decor.canBreak === true, (now) => act({ decor: { canBreak: now } }), 'Crates, barrels, crystals, bushes, ferns, spiky plants, reeds, cobwebs, stalagmites and rock columns here break like breakable props, and so do town and dungeon things: sacks, urns, carts, fences, benches, tables, market stalls, braziers, candles, street lamps, gravestones, coffins and more, and indoor and water things: bookshelves, beds, desks, chests, thrones, statues, altars, potted plants, rugs, bathtubs, rowboats, mooring posts and cattails. They break from area damage, missed swings beside the target, shoves and blasts. Needs the scene\'s Breakable props on.'));
   if (decor.canBreak === true && doc?.parent?.flags?.animater?.breakableProps !== true) parts.push(element('div', 'an-rp-note', 'Breakable props is off for this scene: nothing breaks until it is on.'));
   // How they break: the tile's Breakable prop options, one of each for the region, for every decoration whose own is Automatic.
-  if (decor.canBreak === true) parts.push(...decorPropRows(null, decor.prop ?? {}).map((r) => row(r.label, propControl(r, (v) => act({ decor: { prop: { [r.key]: v } } })), r.hint)));
+  // (The panel's narrow label column takes the short names: "Tips over", its long name in the hint.)
+  if (decor.canBreak === true) parts.push(...decorPropRows(null, decor.prop ?? {}).map((r) => { const shown = { ...r, label: DECOR_PROP_SHORT[r.key] ?? r.label }; return row(shown.label, propControl(shown, (v) => act({ decor: { prop: { [r.key]: v } } })), DECOR_PROP_SHORT[r.key] ? `${r.label}: ${r.hint}` : r.hint); }));
   // Only breaking and its repair here: decorations are laid with the Decorations brush in the toolbar.
   if (c.repairDecor && (decor.canBreak === true || own.decorBroken?.length > 0)) {
     const buttons = element('div', 'an-rp-buttons');

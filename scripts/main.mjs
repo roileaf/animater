@@ -37,7 +37,7 @@ import { DOOR_ATTACK_SYSTEMS, doorStats, doorCracked, doorHpLine, strikeReaches,
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
-import { DECOR_BREAK_MESSAGE, DECOR_NAMES, decorSourceView, decorIdParts, decorNamedLights, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
+import { DECOR_BREAK_MESSAGE, DECOR_NAMES, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
 import { bulkBreakableUpdates } from "./engines/props/wall-break-bulk.mjs";
@@ -8090,6 +8090,8 @@ const decorWreckage = createPropWreckage({ PIXI: globalThis.PIXI, layer: floorLa
 // Wreck id ("decor:<regionId>:<key>") -> seed: drawn and stored; broken here, waiting on the GM; shown again after
 // PROP_REFUSED_MS (a GM write that still comes is drawn at rest). Named apart from decorations.mjs's decorShown.
 const decorWrecksShown = new Map(), decorPending = new Map(), decorLate = new Map();
+// Wreck id -> the powder its drawn note had: a stored note that turns spilled to exploded plays the ignite over it.
+const decorWreckPowder = new Map();
 const decorPendingTimers = new Map(), decorLateTimers = new Map();
 // Region id|key being checked and written by the GM: held from the check until its region write resolves.
 const decorWriting = new Set();
@@ -8119,8 +8121,15 @@ function syncDecorWrecks(animate = false) {
       }
     } catch (e) { runtime?.trace("props", `decor wrecks: ${e?.message ?? e}`); }
   }
+  // Spilled powder a fire area set off (decor-break decorIgnites): the explosion plays over the wreck already lying there.
+  for (const id of decorIgnites(wanted, decorWrecksShown, decorWreckPowder)) {
+    const { note, view } = wanted.find((w) => w.id === id), tile = decorWreckOf(view, regionOfWreck.get(id).settings);
+    decorWreckPowder.set(id, note.powder);
+    if (tile) void decorWreckage.show(tile, note, decorContents(view), { animate, ignite: true });
+  }
+  for (const { id, note } of wanted) if (decorWrecksShown.get(id) === note?.seed || !decorWrecksShown.has(id)) decorWreckPowder.set(id, note?.powder);
   const { show, hide, settle } = decorWreckChanges({ shown: decorWrecksShown, wanted, pending: decorPending, late: decorLate, animate });
-  for (const id of hide) { decorWrecksShown.delete(id); decorWreckage.hide(id); }
+  for (const id of hide) { decorWrecksShown.delete(id); decorWreckPowder.delete(id); decorWreckage.hide(id); }
   // Stored as it was shown here: it is already lying there.
   for (const id of settle) { decorWrecksShown.set(id, decorPending.get(id)); forgetDecorPending(id); forgetDecorLate(id); }
   for (const { id, note, view, animate: playing } of show) {
@@ -8594,7 +8603,9 @@ function breakAreaThings(area, types, { messageId } = {}) {
     .filter(({ thing }) => propAreas.claim(area.templateId, `wall:${thing.id}`));
   const spills = !types.includes("fire") ? [] : (propSafe("area powder", () => ignitableInArea(tiles, area.testPoint)) ?? []).filter((t) => propAreas.claim(area.templateId, `ignite:${t.id}`));
   const decorHits = typesBreaking(types, (type) => propsInArea(decor, area.testPoint, grid, type), id).filter(({ thing }) => propAreas.claim(area.templateId, thing.id));
-  if (!hits.length && !doors.length && !spills.length && !decorHits.length) return false;
+  // Decorations whose powder spilled earlier: a fire area sets them off, once, as it does a keg tile's.
+  const decorSpills = !types.includes("fire") ? [] : (propSafe("area decoration powder", () => ignitableInArea(tilesOnLevel(decorSpilled(decorRegionsOf(scene, { breaking: true }), grid, decorIndex), area.levels), area.testPoint)) ?? []).filter((v) => propAreas.claim(area.templateId, `ignite:${v.id}`));
+  if (!hits.length && !doors.length && !spills.length && !decorHits.length && !decorSpills.length) return false;
   const areaUuid = area.templateId, roll = typeof messageId === "string" ? { messageId } : {};
   const cause = (damageType) => ({ kind: "area", damageType, at: area.at, areaUuid, ...roll });
   const held = (claimId, ask, written) => void askClaimed({ ask, written, release: () => propAreas.release(areaUuid, claimId), wait: CLAIM_SETTLE_MS });
@@ -8605,6 +8616,8 @@ function breakAreaThings(area, types, { messageId } = {}) {
   for (const { thing, type } of doors) held(`wall:${thing.id}`, () => askWall(scene, thing.id, cause(type), area.at), () => !!flagsOf(scene.walls?.get(thing.id))?.breakWall?.broken);
   for (const t of spills) held(`ignite:${t.id}`, () => askProp(scene, t.id, { kind: "ignite", damageType: "fire", at: area.at, areaUuid, ...roll }, area.at),
     () => flagsOf(scene.tiles.get(t.id))?.prop?.broken?.powder !== "spilled");
+  for (const v of decorSpills) held(`ignite:${v.id}`, () => askDecor(scene, v, { kind: "ignite", damageType: "fire", at: area.at, areaUuid, ...roll }, area.at),
+    () => (flagsOf(scene.regions?.get(v.decor?.regionId))?.decorBroken ?? []).find((e) => e?.key === v.decor?.key)?.note?.powder !== "spilled");
   return true;
 }
 // An area's own animation started on this client (the one that placed it): at its impact (impactAt, prop-triggers

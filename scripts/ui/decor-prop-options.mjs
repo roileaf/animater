@@ -8,6 +8,8 @@ import { decorDefaultsOf } from '../engines/props/decor-break.mjs';
 import { MATERIAL_LABELS, CONTENT_LABELS, STYLE_LABELS } from './prop-config.mjs';
 
 export const DECOR_PROP_LABELS = Object.freeze({ material: 'Material', style: 'Breaks as', contents: 'Contents', burst: 'Burst (squares)', light: 'Light prop', tips: 'Tips over instead of breaking' });
+// Shorter names where a label column is narrow (the region panel).
+export const DECOR_PROP_SHORT = Object.freeze({ tips: 'Tips over' });
 export const DECOR_PROP_HINTS = Object.freeze({
   material: 'What it is made of decides what can break it: wood gives way to blows and fire, stone and metal only to force or a heavy slam, plants only burn.',
   style: 'How it comes apart. Topple needs force or a heavy slam; Burn away needs fire.',
