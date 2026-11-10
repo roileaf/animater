@@ -139,7 +139,7 @@ export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mo
   let hit = null;
   if (cause.kind === "attack") {
     if (!damage || damage.id !== cause.messageId) return no("roll");
-    hit = doorAttackCheck({ wall, scene, grid, gridDistance, sender, attack, damage, token, strike, sight, system, used });
+    hit = doorAttackCheck({ wall, scene, grid, gridDistance, sender, attack, damage, token, strike, sight, system, used, walls });
     if (!hit.ok) return no(hit.why);
     if (!hit.broken) return no("hp");
   }

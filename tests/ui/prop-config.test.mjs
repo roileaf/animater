@@ -198,6 +198,9 @@ test("door fieldset (PF2e): AC, Hardness, HP and Broken Threshold, blank = Autom
   assert.match(html, /data-group="door"[\s\S]*breakWall\.maxHp[\s\S]*data-group="window"/);
   assert.match(wallBreakFieldsHTML({ door: 0, system: "pf2e" }), /breakWall\.maxHp"[^>]*disabled/);
   assert.match(html, /Attack the door/);
+  // AC and HP need at least 1 (0 would read as Automatic); Hardness and BT may be 0
+  assert.match(html, /breakWall.ac" min="1"/); assert.match(html, /breakWall.maxHp" min="1"/);
+  assert.match(html, /breakWall.hardness" min="0"/); assert.match(html, /breakWall.bt" min="0"/);
   // a hit door says how much it has left
   assert.match(wallBreakFieldsHTML({ door: 1, system: "pf2e", own: { hp: 7 } }), /7 of 20 HP left/);
   assert.doesNotMatch(html, /HP left/);

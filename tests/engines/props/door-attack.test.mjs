@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   DOOR_ATTACK_SYSTEMS, defaultDoorStats, ownDoorStat, doorStats, doorHp, doorDamage, doorCracked, doorHpLine,
   strikeReaches, strikeIdentifier, doorAttackOf, attackDegree, doorAttackCheck, doorAttackRoller, doorHitUpdate, HITS_KEPT,
+  strikeHasAmmo, pickDoorStamp,
 } from "../../../scripts/engines/props/door-attack.mjs";
 
 const scene = (f = {}) => ({ id: "s", flags: { animater: { breakableProps: true, ...f } } });
@@ -122,7 +123,7 @@ test("door attack flag read from a message", () => {
   assert.equal(doorAttackOf({ flags: { animater: { doorAttack: { wallId: "d", tokenId: "" } } } }), null);
 });
 
-test("attack degree: the GM's own reading of the d20 against the door's AC", () => {
+test("attack degree: the GM's own reading of the roll total (a natural 20 or 1 a step) against the door's AC", () => {
   assert.equal(attackDegree(attackMsg({ total: 10 }), 10), 2);
   assert.equal(attackDegree(attackMsg({ total: 9 }), 10), 1);
   assert.equal(attackDegree(attackMsg({ total: 20 }), 10), 3);
@@ -225,4 +226,88 @@ test("who attacks from the door: the one selected token, else the only owned one
   assert.deepEqual(doorAttackRoller({ controlled: [], owned: [{ id: "c" }] }), { tokenId: "c" });
   assert.deepEqual(doorAttackRoller({ controlled: [], owned: [{ id: "c" }, { id: "d" }] }), { why: "many" });
   assert.deepEqual(doorAttackRoller({}), { why: "none" });
+});
+
+test("GM check: only a door Strike's damage, never one rolled at a target", () => {
+  const targeted = damageMsg();
+  targeted.flags.pf2e.context.target = { actor: "Scene.s.Token.g.Actor.g", token: "Scene.s.Token.g" };
+  assert.equal(doorAttackCheck(okArgs({ damage: targeted })).why, "target");
+  const t2 = damageMsg();
+  t2.flags.pf2e.target = { actor: "a", token: "t" };
+  assert.equal(doorAttackCheck(okArgs({ damage: t2 })).why, "target");
+  const at = attackMsg();
+  at.flags.pf2e.context.target = { actor: "a", token: "t" };
+  assert.equal(doorAttackCheck(okArgs({ attack: at })).why, "target");
+  const none = damageMsg();
+  none.flags.pf2e.context.target = null;
+  assert.equal(doorAttackCheck(okArgs({ damage: none })).ok, true);
+});
+
+test("GM check: an attack or damage roll already applied to any door of the scene is refused", () => {
+  const other = door({ hits: ["a1"] }, { id: "d2" });
+  assert.equal(doorAttackCheck(okArgs({ walls: [door(), other] })).why, "used");
+  const other2 = door({ hits: ["m1"] }, { id: "d2" });
+  assert.equal(doorAttackCheck(okArgs({ walls: [other2] })).why, "used");
+  assert.equal(doorAttackCheck(okArgs({ walls: [door({}, { id: "d2" })] })).ok, true);
+});
+
+test("a door remembers many applied rolls", () => {
+  assert.ok(HITS_KEPT >= 200);
+});
+
+test("ammunition: a Strike that needs ammunition it lacks is not offered (as PF2e refuses to roll it)", () => {
+  assert.equal(strikeHasAmmo({ expend: 0 }), true); // a sword
+  assert.equal(strikeHasAmmo({}), true);
+  assert.equal(strikeHasAmmo({ expend: 1, builtIn: true }), true); // built-in ammunition
+  assert.equal(strikeHasAmmo({ expend: 1, ammo: null }), false); // a bow with no arrows
+  assert.equal(strikeHasAmmo({ expend: 1, ammo: { isAmmo: true, usesMax: 1, quantity: 0 } }), false);
+  assert.equal(strikeHasAmmo({ expend: 1, ammo: { isAmmo: true, usesMax: 1, quantity: 12 } }), true);
+  assert.equal(strikeHasAmmo({ expend: 1, ammo: { isAmmo: true, usesMax: 10, usesValue: 0, quantity: 1 } }), false); // an empty magazine
+  assert.equal(strikeHasAmmo({ expend: 2, ammo: { isAmmo: true, usesMax: 10, usesValue: 1, quantity: 1 } }), false);
+  assert.equal(strikeHasAmmo({ expend: 1, ammo: { isAmmo: false, quantity: 3 } }), true); // a weapon loaded as ammunition
+});
+
+// The stamps this client puts on its next door Strike messages: an attack stamp, then after a hit a damage stamp.
+const actorId = "act1";
+const atkDoc = (extra = {}) => ({ speaker: { actor: actorId }, flags: { pf2e: { context: { type: "attack-roll", dc: { value: 10 }, identifier: "item1.longsword.melee", target: null, ...extra } } } });
+const dmgDoc = (extra = {}, origin = "Actor.act1.Item.item1") => ({ speaker: { actor: actorId }, flags: { pf2e: { context: { type: "damage-roll", sourceType: "attack", target: null, ...extra }, origin: { uuid: origin } } } });
+const attackStamp = { kind: "attack", actorId, itemId: "item1", ac: 10, flag: { wallId: "d1", tokenId: "t1" }, until: 1000 };
+const damageStamp = { kind: "damage", actorId, itemId: "item1", flag: { wallId: "d1", tokenId: "t1", attackId: "a1" }, until: 1000 };
+
+test("stamps: the door attack roll takes the attack stamp", () => {
+  const r = pickDoorStamp([attackStamp], atkDoc(), 10);
+  assert.equal(r.use, attackStamp);
+  assert.deepEqual(r.keep, []);
+  assert.equal(pickDoorStamp([attackStamp], atkDoc({ dc: { value: 16 } }), 10).use, null); // not rolled at the door's AC
+  assert.equal(pickDoorStamp([attackStamp], atkDoc({ identifier: "item9.club.melee" }), 10).use, null);
+});
+
+test("stamps: the door damage takes the damage stamp; damage at a target never does", () => {
+  assert.equal(pickDoorStamp([damageStamp], dmgDoc(), 10).use, damageStamp);
+  const aimed = pickDoorStamp([damageStamp], dmgDoc({ target: { actor: "x", token: "y" } }), 10);
+  assert.equal(aimed.use, null);
+  assert.deepEqual(aimed.keep, [damageStamp]);
+  assert.equal(pickDoorStamp([damageStamp], dmgDoc({}, "Actor.act1.Item.item9"), 10).use, null); // another weapon
+  assert.equal(pickDoorStamp([damageStamp], { ...dmgDoc(), speaker: { actor: "other" } }, 10).use, null);
+});
+
+test("stamps: any new attack roll by that actor drops its door damage stamp", () => {
+  const atGoblin = atkDoc({ dc: { value: 16 }, target: { actor: "g", token: "g" } });
+  const r = pickDoorStamp([damageStamp], atGoblin, 10);
+  assert.equal(r.use, null);
+  assert.deepEqual(r.keep, []);
+  // so the goblin's damage after it is not the door's
+  assert.equal(pickDoorStamp(r.keep, dmgDoc(), 10).use, null);
+  // another actor's attack leaves it
+  assert.deepEqual(pickDoorStamp([damageStamp], { ...atGoblin, speaker: { actor: "other" } }, 10).keep, [damageStamp]);
+  // a new door attack replaces the old damage stamp with its own attack stamp's use
+  const again = pickDoorStamp([damageStamp, attackStamp], atkDoc(), 10);
+  assert.equal(again.use, attackStamp);
+  assert.deepEqual(again.keep, []);
+});
+
+test("stamps: expired ones are dropped", () => {
+  const r = pickDoorStamp([damageStamp], dmgDoc(), 2000);
+  assert.equal(r.use, null);
+  assert.deepEqual(r.keep, []);
 });

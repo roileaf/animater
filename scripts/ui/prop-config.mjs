@@ -53,7 +53,7 @@ function doorStatFields({ own, mat, system, disabled }) {
   const auto = defaultDoorStats(mat), stats = doorStats(own, mat), hp = doorHp(own, stats);
   const fields = DOOR_STAT_KEYS.map((k) => {
     const data = DOOR_MATERIALS.map((m) => `data-auto-${m}="${defaultDoorStats(m)[k]}"`).join(" "), value = ownDoorStat(own, k) ?? "";
-    return `<div class="form-group"><label>${STAT_LABELS[k]}</label><div class="form-fields"><input type="number" name="flags.${ID}.breakWall.${k}" min="0" max="999" step="1" value="${value}" placeholder="Automatic (${auto[k]})" ${data}${disabled ? " disabled" : ""}></div></div>`;
+    return `<div class="form-group"><label>${STAT_LABELS[k]}</label><div class="form-fields"><input type="number" name="flags.${ID}.breakWall.${k}" min="${k === "ac" || k === "maxHp" ? 1 : 0}" max="999" step="1" value="${value}" placeholder="Automatic (${auto[k]})" ${data}${disabled ? " disabled" : ""}></div></div>`;
   }).join("");
   const left = hp < stats.maxHp ? ` This door has ${hp} of ${stats.maxHp} HP left; Repair restores it.` : "";
   return `${fields}<p class="hint">Attack the door: right-click the closed door and pick one of your token's Strikes in reach, or in range with line of sight. A hit takes the damage less Hardness off its HP; at the Broken Threshold it cracks, at 0 it breaks. Blank goes by material.${left}</p>`;

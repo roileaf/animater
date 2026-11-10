@@ -530,6 +530,8 @@ test("attack: a hit that leaves HP, a refused hit, a window or another system do
   assert.equal(ask(wall()).why, "hp"); // 20 - (20 - 5) = 5 left
   assert.equal(ask(wall({ flags: { animater: { breakWall: { hp: 6 } } } }), {}, { token: { x: 300, y: 600, w: 100, h: 100, authorOwns: true, actorId: "act" } }).why, "far");
   assert.equal(ask(wall({ flags: { animater: { breakWall: { hp: 6, hits: ["m1"] } } } })).why, "used");
+  // a roll already applied to another door of the scene
+  assert.equal(ask(wall({ flags: { animater: { breakWall: { hp: 6 } } } }), { walls: [wall({ id: "d2", flags: { animater: { breakWall: { hits: ["a1"] } } } })] }).why, "used");
   assert.equal(ask(wall({ flags: { animater: { breakWall: { hp: 6 } } } }), { system: "dnd5e" }).why, "system");
   assert.equal(ask(wall({ door: 0, flags: { animater: { breakWall: { window: true, hp: 6 } } } })).why, "kind");
   // a whole door breaks from one huge hit

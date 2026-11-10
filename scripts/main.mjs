@@ -33,7 +33,7 @@ import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, smashFrom, ne
 import { windowOnFlight, createMissFlights, missFlies } from "./engines/props/window-miss.mjs";
 import { hitOutcome, windowThrough, throughAt } from "./engines/props/window-through.mjs";
 import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt, forceOpenWording, showForceDC } from "./engines/props/force-open.mjs";
-import { DOOR_ATTACK_SYSTEMS, doorStats, doorCracked, doorHpLine, strikeReaches, strikeIdentifier, doorAttackOf, doorAttackCheck, doorAttackRoller, doorHitUpdate } from "./engines/props/door-attack.mjs";
+import { DOOR_ATTACK_SYSTEMS, doorStats, doorCracked, doorHpLine, strikeReaches, strikeIdentifier, doorAttackOf, doorAttackCheck, doorAttackRoller, doorHitUpdate, strikeHasAmmo, pickDoorStamp } from "./engines/props/door-attack.mjs";
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
@@ -8248,7 +8248,7 @@ const drawWallWreck = (doc, animate) => {
 function drawDoorCracks(doc, may = true) {
   if (!doc?.id) return;
   const own = doc.flags?.[ID]?.breakWall ?? {}, traits = may ? wallTraits(wallView(doc), doc.parent) : null;
-  if (traits?.kind === "door" && doorCracked(own, doorStats(own, traits.material))) wallWreckage.showCracks(doc, traits.material);
+  if (traits?.kind === "door" && doc.ds !== 1 && doorCracked(own, doorStats(own, traits.material))) wallWreckage.showCracks(doc, traits.material);
   else wallWreckage.hideCracks(doc.id);
 }
 function breakWallHere(doc, note) {
@@ -8614,12 +8614,18 @@ function doorStrikes(actor) {
   for (const a of actor?.system?.actions ?? []) {
     if (a?.type !== "strike" || a.ready === false || a.canAttack === false || !a.item) continue;
     for (const [s, alt] of [[a, false], ...(a.altUsages ?? []).map((u) => [u, true])]) {
-      if (typeof s?.variants?.[0]?.roll !== "function") continue;
+      if (typeof s?.variants?.[0]?.roll !== "function" || !strikeHasAmmo(ammoOf(s.item))) continue;
       const shape = strikeShape(actor, s);
       out.push({ strike: s, shape, label: `${s.label ?? s.item?.name ?? "Strike"}${alt ? (shape.ranged ? " (thrown)" : " (melee)") : ""}` });
     }
   }
   return out;
+}
+// A weapon's ammunition as PF2e's Strike reads it (door-attack.mjs strikeHasAmmo): PF2e refuses to roll one short of it.
+function ammoOf(item) {
+  const a = item?.ammo;
+  return { expend: Number(item?.system?.expend ?? 0), builtIn: !!item?.system?.ammo?.builtIn,
+    ammo: a ? { isAmmo: !!a.isOfType?.("ammo"), usesMax: a.uses?.max, usesValue: a.uses?.value, quantity: a.quantity } : null };
 }
 function strikeShape(actor, s) {
   const item = s?.item, ranged = !!item?.isRanged;
@@ -8662,34 +8668,32 @@ async function attackDoorFromDoor(doc, scene, stats) {
   if (s) await rollDoorStrike(tokenDoc, doc, s, stats.ac);
 }
 // The Strike's attack and damage messages carry flags.animater.doorAttack {wallId, tokenId, sceneId, attackId?}: PF2e
-// takes no message data, so the next matching message this client creates for that actor is stamped (once; each
-// stamp lapses after DOOR_STAMP_MS).
+// takes no message data, so the next matching message this client creates for that actor is stamped (door-attack.mjs
+// pickDoorStamp: once each; any new attack roll by the actor ends its door damage; damage at a target is never the
+// door's; each lapses after DOOR_STAMP_MS).
 const DOOR_STAMP_MS = 600000; // ten minutes: the damage may wait on the roll dialog or the card's button
-const doorStamps = []; // {actorId, flag, match(doc), until}
-const stampDoor = (actor, flag, match) => { const s = { actorId: actor.id, flag, match, until: Date.now() + DOOR_STAMP_MS }; doorStamps.push(s); return s; };
-const unstampDoor = (s) => { const i = doorStamps.indexOf(s); if (i >= 0) doorStamps.splice(i, 1); };
+let doorStamps = []; // {kind, actorId, itemId, ac?, flag, until}
+const stampDoor = (s) => { const out = { ...s, until: Date.now() + DOOR_STAMP_MS }; doorStamps.push(out); return out; };
+const unstampDoor = (s) => { doorStamps = doorStamps.filter((x) => x !== s); };
 Hooks.on("preCreateChatMessage", (doc, _data, _options, userId) => propSafe("door attack stamp", () => {
   if (userId !== game.user.id || !doorStamps.length) return;
-  const now = Date.now();
-  for (const s of [...doorStamps]) if (now > s.until) unstampDoor(s);
-  const s = doorStamps.find((x) => doc?.speaker?.actor === x.actorId && x.match(doc));
-  if (!s) return;
-  doc.updateSource({ [`flags.${ID}.doorAttack`]: s.flag });
-  unstampDoor(s);
+  const { use, keep } = pickDoorStamp(doorStamps, doc, Date.now());
+  doorStamps = keep;
+  if (use) doc.updateSource({ [`flags.${ID}.doorAttack`]: use.flag });
 }));
 // The Strike against the door's AC (the AC as the roll's DC, so PF2e shows the degree of success); on a hit, the damage
-// (critical on a critical hit) from a prompt here or the attack card's own button.
+// (critical on a critical hit) from a prompt here or the attack card's own button. Declining the prompt ends it.
 async function rollDoorStrike(tokenDoc, wallDoc, s, ac) {
   const actor = tokenDoc.actor, itemId = s.strike.item?.id, flag = { wallId: wallDoc.id, tokenId: tokenDoc.id, sceneId: wallDoc.parent.id };
-  const ctxOf = (doc) => doc?.flags?.pf2e?.context;
-  const stamp = stampDoor(actor, flag, (doc) => { const c = ctxOf(doc); return c?.type === "attack-roll" && Number(c?.dc?.value) === ac && strikeIdentifier(c.identifier)?.itemId === itemId; });
+  const stamp = stampDoor({ kind: "attack", actorId: actor.id, itemId, ac, flag });
   const rolled = await s.strike.variants[0].roll({ dc: { value: ac, label: "Door" }, target: DOOR_NO_TARGET, callback: (_roll, outcome, message) => {
     unstampDoor(stamp);
     if ((outcome !== "success" && outcome !== "criticalSuccess") || !message?.id) return;
-    stampDoor(actor, { ...flag, attackId: message.id }, (doc) => { const c = ctxOf(doc); return c?.type === "damage-roll" && c.sourceType === "attack" && String(doc.flags?.pf2e?.origin?.uuid ?? "").endsWith(`Item.${itemId}`); });
+    const dmg = stampDoor({ kind: "damage", actorId: actor.id, itemId, flag: { ...flag, attackId: message.id } });
     void (async () => {
       const ok = await foundry.applications.api.DialogV2.confirm({ window: { title: `Attack the door: ${tokenDoc.name}` }, content: `<p>${outcome === "criticalSuccess" ? "A critical hit!" : "A hit!"} Roll damage against the door?</p>`, rejectClose: false });
-      if (ok) await (outcome === "criticalSuccess" ? s.strike.critical : s.strike.damage)?.({ target: DOOR_NO_TARGET });
+      if (!ok) { unstampDoor(dmg); return; }
+      await (outcome === "criticalSuccess" ? s.strike.critical : s.strike.damage)?.({ target: DOOR_NO_TARGET });
     })().catch((e) => runtime?.trace("props", `door damage: ${e?.message ?? e}`));
   } });
   if (!rolled) unstampDoor(stamp);
@@ -8707,7 +8711,7 @@ function doorAttackPlace(scene, damageId) {
   const s = t?.actor && attack ? doorStrikeOf(t.actor, attack.flags?.pf2e?.context?.identifier) : null, strike = s ? strikeShape(t.actor, s) : undefined;
   return { attack: attack ?? undefined, damage: damage ?? undefined, strike, system: game.system.id, gridDistance: Number(scene.grid?.distance) || 5,
     token: t ? { x: t.x, y: t.y, w: t.width * grid, h: t.height * grid, level: t.level, authorOwns, actorId: t.actorId } : undefined,
-    sight: t && wallDoc && strike?.ranged ? doorInSight(t, wallDoc) : true, used: !!damageId && doorHitsUsed.has(damageId) };
+    sight: t && wallDoc && strike?.ranged ? doorInSight(t, wallDoc) : true, used: !!damageId && doorHitsUsed.has(damageId), walls: (scene.walls?.contents ?? []).map(wallView) };
 }
 // The GM's line on each hit, whispered to the GMs.
 function postDoorLine(hit) {

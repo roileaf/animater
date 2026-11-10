@@ -15,8 +15,10 @@ const STATS = {
 };
 export const DOOR_STAT_KEYS = ["ac", "hardness", "maxHp", "bt"];
 const MIN = { ac: 1, hardness: 0, maxHp: 1, bt: 0 }, MAX = 999;
-export const HITS_KEPT = 20; // the attack and damage message ids a door remembers, so each is applied once
+export const HITS_KEPT = 200; // the attack and damage message ids a door remembers, so each is applied once
 const WINS = ["success", "criticalSuccess"];
+// Whether a PF2e roll message was rolled at a target (its context's or its own target).
+const targeted = (m) => { const c = m?.flags?.pf2e?.context; return !!(c?.target || m?.flags?.pf2e?.target); };
 const footprint = (t) => [t?.x, t?.y, t?.w, t?.h].every(Number.isFinite);
 const str = (v) => (typeof v === "string" && v ? v.slice(0, 64) : null);
 
@@ -105,8 +107,10 @@ export function attackDegree(message, ac) {
 // attack, damage: the GM's copies of the attack and damage messages; token: the striker's footprint {x, y, w, h, level,
 // authorOwns, actorId} on this scene (authorOwns: the messages' author owns it); strike: {ranged, feet} as the GM reads
 // the Strike from the actor (undefined when it is not there); sight: the GM's line-of-sight test; used: this GM applied
-// that damage already. The AC, Hardness and HP are the GM's own, read from the wall.
-export function doorAttackCheck({ wall, scene, grid = 100, gridDistance = 5, sender, attack, damage, token, strike, sight, system, used = false } = {}) {
+// that damage already; walls: the scene's walls (a roll applied to any door of the scene is spent). Neither roll may
+// have a target: a door Strike is rolled at no one, so damage rolled at a creature is never the door's. The AC, Hardness
+// and HP are the GM's own, read from the wall.
+export function doorAttackCheck({ wall, scene, grid = 100, gridDistance = 5, sender, attack, damage, token, strike, sight, system, used = false, walls = [] } = {}) {
   const no = (why) => ({ ok: false, why });
   if (scene?.flags?.animater?.breakableProps !== true || scene.flags.animater.breakWalls === false) return no("off");
   if (!DOOR_ATTACK_SYSTEMS.has(system)) return no("system");
@@ -123,12 +127,14 @@ export function doorAttackCheck({ wall, scene, grid = 100, gridDistance = 5, sen
   if (A.authorId !== sender.id || D.authorId !== sender.id) return no("sender");
   const actx = attack.flags?.pf2e?.context, dctx = damage.flags?.pf2e?.context;
   if (actx?.type !== "attack-roll" || dctx?.type !== "damage-roll" || dctx.sourceType !== "attack") return no("roll");
+  if (targeted(attack) || targeted(damage)) return no("target");
   if (A.wallId !== wall.id || D.wallId !== wall.id) return no("kind");
   if (D.attackId !== attack.id || D.tokenId !== A.tokenId) return no("roll");
   const sid = strikeIdentifier(actx.identifier), origin = damage.flags?.pf2e?.origin?.uuid;
   if (!sid || !actx.actor || dctx.actor !== actx.actor || typeof origin !== "string" || !origin.endsWith(`Item.${sid.itemId}`)) return no("roll");
   const hits = Array.isArray(own.hits) ? own.hits.filter((h) => typeof h === "string") : [];
-  if (used === true || hits.includes(attack.id) || hits.includes(damage.id)) return no("used");
+  const spent = (w) => { const h = w?.flags?.animater?.breakWall?.hits; return Array.isArray(h) && (h.includes(attack.id) || h.includes(damage.id)); };
+  if (used === true || hits.includes(attack.id) || hits.includes(damage.id) || (walls ?? []).some(spent)) return no("used");
   if (!footprint(token)) return no("far");
   if ((sender.isGM !== true && token.authorOwns !== true) || token.actorId !== actx.actor) return no("sender");
   if (!strike) return no("roll");
@@ -160,4 +166,32 @@ export function doorAttackRoller({ controlled = [], owned = [] } = {}) {
   const o = owned ?? [];
   if (o.length === 1) return { tokenId: o[0].id };
   return { why: o.length ? "many" : "none" };
+}
+
+// Whether a Strike's weapon has the ammunition PF2e needs to roll it (PF2e's own test: nothing to spend, built-in
+// ammunition, or enough loaded: an ammunition item's uses when it has several, else its quantity).
+// {expend, builtIn, ammo: {isAmmo, usesMax, usesValue, quantity} | null}.
+export function strikeHasAmmo({ expend = 0, builtIn = false, ammo = null } = {}) {
+  const need = Number(expend) || 0;
+  if (need <= 0 || builtIn) return true;
+  const have = ammo ? (ammo.isAmmo ? (Number(ammo.usesMax) > 1 ? Number(ammo.usesValue) : Number(ammo.quantity)) : Number(ammo.quantity)) : 0;
+  return (Number.isFinite(have) ? have : 0) >= need;
+}
+
+// Which stamp, if any, a chat message this client is creating takes (doc: its data), and the stamps kept.
+// stamps: [{kind: "attack", actorId, itemId, ac, flag, until} | {kind: "damage", actorId, itemId, flag, until}]; now: ms.
+// Expired stamps go. Any attack roll by an actor drops that actor's damage stamps (a later Strike at a goblin ends the
+// door hit's damage). An attack stamp takes that actor's attack roll with that weapon at the door's AC; a damage stamp
+// takes that actor's damage roll from that weapon with no target. A stamp is used once.
+export function pickDoorStamp(stamps, doc, now) {
+  const ctx = doc?.flags?.pf2e?.context, actor = doc?.speaker?.actor, attackRoll = ctx?.type === "attack-roll";
+  let keep = (stamps ?? []).filter((s) => now <= s.until && !(attackRoll && s.kind === "damage" && s.actorId === actor));
+  const fits = (s) => {
+    if (s.actorId !== actor) return false;
+    if (s.kind === "attack") return attackRoll && Number(ctx?.dc?.value) === s.ac && strikeIdentifier(ctx.identifier)?.itemId === s.itemId;
+    return ctx?.type === "damage-roll" && ctx.sourceType === "attack" && !targeted(doc) && String(doc?.flags?.pf2e?.origin?.uuid ?? "").endsWith(`Item.${s.itemId}`);
+  };
+  const use = keep.find(fits) ?? null;
+  if (use) keep = keep.filter((s) => s !== use);
+  return { use, keep };
 }
