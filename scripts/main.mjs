@@ -21,7 +21,7 @@ import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs"
 import { createPropWreckage, WALL_GAP } from "./engines/props/prop-wreck.mjs";
 import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
-import { BURN_MS, burnLightData, fireTimers } from "./engines/props/prop-lights.mjs";
+import { BURN_MS, burnLightData, fireTimers, unhideLights } from "./engines/props/prop-lights.mjs";
 import { propMaterial } from "./engines/props/prop-material.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
@@ -37,7 +37,7 @@ import { DOOR_ATTACK_SYSTEMS, doorStats, doorCracked, doorHpLine, strikeReaches,
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
-import { DECOR_BREAK_MESSAGE, DECOR_NAMES, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
+import { DECOR_BREAK_MESSAGE, DECOR_NAMES, decorSourceView, decorIdParts, decorNamedLights, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
 import { damageTypesOfItem, areaIdOf, areaOriginRefOf, placedRecordOf, typesBreaking, rollDamageTypes } from "./engines/props/area-damage.mjs";
@@ -2485,6 +2485,8 @@ const startDecorBrush = (doc = null) => {
     return { kinds: c.kinds.filter((id) => DECOR_KINDS[id]).map((id) => ({ id, size: 1, amount: 1 })), density: c.thick, scale: c.scale, turn: c.turn };
   };
   const dabCount = (density) => Math.max(1, Math.round(sizeNow() * Math.max(0.2, density) * 1.5));
+  // How it breaks, as picked on the bar for the kind (decor-options.mjs): saved on each one laid, never moving where it stands.
+  const withProp = (d) => { const prop = brushChoices().prop; return d && Object.keys(prop ?? {}).length ? { ...d, prop } : d; };
   const dab = (p, erase, first = false) => {
     const radius = (sizeNow() * grid()) / 2;
     if (erase) { state.brushed = state.brushed.filter((b) => (b.x - p.x) ** 2 + (b.y - p.y) ** 2 > radius * radius); if (state.doc) state.erased.push([Math.round(p.x), Math.round(p.y), Math.round(radius)]); }
@@ -2492,8 +2494,8 @@ const startDecorBrush = (doc = null) => {
       if (!state.doc) state.circles.push([Math.round(p.x), Math.round(p.y), Math.round(radius)]);
       const areas = state.doc ? regionAreas(state.doc) : null, { kinds, density, scale, turn } = paintWith();
       // A click lays exactly what its ghost showed; then a new ghost is dealt for the next.
-      if (first && state.ghostItems.length) { for (const g of state.ghostItems) { const d = { ...g, x: Math.round(p.x + g.x), y: Math.round(p.y + g.y), seed: (g.seed ^ state.seed++) >>> 0 }; if (!areas || regionPointIn(d, areas)) state.brushed.push(d); } state.ghostSeed++; }
-      else for (let i = 0, n = dabCount(density); i < n; i++) { const d = stampDecor({ x: p.x, y: p.y, radius, grid: grid(), kinds, seed: state.seed++, existing: state.brushed, scale, turn }); if (d && (!areas || regionPointIn(d, areas))) state.brushed.push(d); }
+      if (first && state.ghostItems.length) { for (const g of state.ghostItems) { const d = withProp({ ...g, x: Math.round(p.x + g.x), y: Math.round(p.y + g.y), seed: (g.seed ^ state.seed++) >>> 0 }); if (!areas || regionPointIn(d, areas)) state.brushed.push(d); } state.ghostSeed++; }
+      else for (let i = 0, n = dabCount(density); i < n; i++) { const d = withProp(stampDecor({ x: p.x, y: p.y, radius, grid: grid(), kinds, seed: state.seed++, existing: state.brushed, scale, turn })); if (d && (!areas || regionPointIn(d, areas))) state.brushed.push(d); }
     }
     syncDecorations();
   };
@@ -7896,6 +7898,12 @@ const sceneRegions = (scene) => (scene?.regions?.contents ?? []).map((r) => ({ i
 // A blast's source as the GM's own documents hold it (R15): the keg tile it names on this scene, and its levels.
 function blastPlace(cause, scene) {
   if (cause?.kind !== "blast") return {};
+  // A decoration that went off (decor-break decorSourceView): its region's view of it, with the break the GM stored.
+  const decor = decorIdParts(cause.sourceId);
+  if (decor) {
+    const region = decorRegionOf(scene.regions?.get(decor.regionId)), source = region ? decorSourceView(region, cause.sourceId, propGrid(scene), decorIndex) : null;
+    return source ? { source, levels: [...(source.levels ?? [])] } : {};
+  }
   const src = cause.sourceId ? scene.tiles?.get(cause.sourceId) : null;
   return src ? { source: propTileView(src), levels: [...(src.levels ?? [])] } : {};
 }
@@ -7906,13 +7914,19 @@ async function runBlast(scene, doc, note) {
   if (!game.users.activeGM?.isSelf || !scene || !doc) return;
   const grid = propGrid(scene), r = tileRect(doc), centre = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
   const burst = note?.burst ?? propTraits(propTileView(doc), grid, scene).burst, levels = [...(doc.levels ?? [])];
+  return runBlastAt(scene, { centre, burst, levels, sourceId: doc.id });
+}
+// A blast from wherever it went off: a keg tile, or a decoration (its view id is the source the targets' checks read).
+async function runBlastAt(scene, { centre, burst, levels, sourceId }) {
+  if (!game.users.activeGM?.isSelf || !scene) return;
+  const grid = propGrid(scene);
   const tokens = (scene.tokens?.contents ?? []).map((t) => ({ name: t.name, x: t.x, y: t.y, w: t.width * grid, h: t.height * grid, level: t.level }));
   const gms = game.users.filter((u) => u.isGM).map((u) => u.id);
   await ChatMessage.create({ whisper: gms, speaker: { alias: "Animater" }, content: blastWhisper(burst, tokensInBurst(tokens, centre, burst, grid, levels)) })
     .catch((e) => runtime?.trace("props", `blast whisper: ${e?.message ?? e}`));
-  const cause = { kind: "blast", sourceId: doc.id }, look = { ...cause, damageType: "fire" }; // the wreck's look is scorched
-  const targets = blastTargets({ centre, burst, grid, tiles: scene.tiles.contents.map(propTileView), walls: (scene.walls?.contents ?? []).map(wallView), scene, levels, sourceId: doc.id });
-  const decorSeen = decorViews(scene, levels), decorHit = blastTargets({ centre, burst, grid, tiles: decorSeen, walls: [], scene, levels, sourceId: doc.id });
+  const cause = { kind: "blast", sourceId }, look = { ...cause, damageType: "fire" }; // the wreck's look is scorched
+  const targets = blastTargets({ centre, burst, grid, tiles: scene.tiles.contents.map(propTileView), walls: (scene.walls?.contents ?? []).map(wallView), scene, levels, sourceId });
+  const decorSeen = decorViews(scene, levels), decorHit = blastTargets({ centre, burst, grid, tiles: decorSeen, walls: [], scene, levels, sourceId });
   for (const hit of decorHit) setTimeout(() => propSafe("blast decoration", () => {
     const view = decorSeen.find((v) => v.id === hit.id), region = view && scene.regions.get(view.decor.regionId);
     if (!region) return;
@@ -8166,7 +8180,7 @@ async function requestDecorBreak(regionDoc, key, cause, { from } = {}) {
   // Checked here first (one already broken here counts as queued), then again by the GM. A plain miss waits for the
   // GM's roll; anything else shows at once.
   const waiting = decorBrokenKeys(regionDoc);
-  const here = validDecorBreakRequest({ key, cause: clean, note }, { region, scene, grid, sender: game.user, ...await propPlace(clean, scene, grid), ...areaPlace(clean, game.user),
+  const here = validDecorBreakRequest({ key, cause: clean, note }, { region, scene, grid, sender: game.user, lights: sceneLights(scene), ...await propPlace(clean, scene, grid), ...areaPlace(clean, game.user),
     roll: 0, queued: waiting, index: decorIndex, drawn: decorDrawnOn(scene) });
   if (!here.ok) return false;
   if (scene === canvas?.scene && clean.kind !== "ignite" && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakDecorHere(regionDoc, view, here.entry.note);
@@ -8182,7 +8196,7 @@ async function applyDecorBreak(scene, regionDoc, key, cause, rawNote, user) {
     const grid = propGrid(scene), place = await propPlace(cause, scene, grid);
     // Read after the wait: the region as it stands now, with the breaks queued or in flight for it.
     const region = decorRegionOf(regionDoc);
-    const check = validDecorBreakRequest({ key, cause, note: rawNote }, { region, scene, grid, sender: user, ...place, ...blastPlace(cause, scene), ...areaPlace(cause, user),
+    const check = validDecorBreakRequest({ key, cause, note: rawNote }, { region, scene, grid, sender: user, lights: sceneLights(scene), ...place, ...blastPlace(cause, scene), ...areaPlace(cause, user),
       roll: Math.random(), queued: queuedDecorKeys(regionDoc.id), index: decorIndex, drawn: decorDrawnOn(scene) });
     if (!check.ok) { runtime?.trace("props", `decoration not broken: ${check.why}`); return false; }
     // A toppled stalagmite's rubble is made first, so the entry that names it is written with the break. A region that
@@ -8199,8 +8213,33 @@ async function applyDecorBreak(scene, regionDoc, key, cause, rawNote, user) {
     // An edit that landed while the write was in flight left its toppled entries to it (final review M7).
     void pruneToppledDecor(regionDoc).catch((e) => runtime?.trace("props", `decor prune: ${e?.message ?? e}`));
     if (check.fall) void whisperTopple(scene, { name: DECOR_NAMES[entry.kind], levels: [...region.levels] }, check.fall).catch((e) => runtime?.trace("props", `topple whisper: ${e?.message ?? e}`));
+    // As a tile's (applyPropBreak): its Light prop puts the lights on it out, its lamp oil catches, its black powder goes off.
+    // Written broken first, so a blast that reaches back here is refused as broken and a chain ends.
+    if (check.lightUpdates?.length) await scene.updateEmbeddedDocuments("AmbientLight", check.lightUpdates).catch((e) => runtime?.trace("props", `lights not put out: ${e?.message ?? e}`));
+    const view = decorIndex(region, grid).views.find((v) => v.decor.key === key);
+    if (view && check.fire) await lightDecorFire(scene, view, entry.note);
+    if (view && check.explode) void runBlastAt(scene, { centre: { x: view.decor.d.x, y: view.decor.d.y }, burst: entry.note.burst ?? view.flags.animater.prop.burst, levels: [...region.levels], sourceId: view.id })
+      .catch((e) => runtime?.trace("props", `decoration blast: ${e?.message ?? e}`));
     return true;
   } finally { decorWriting.delete(held); }
+}
+// A decoration's burning lamp oil (GM): a tile's fire light (lightPropFire), on the patch where its oil stopped, named by the
+// decoration's view id so Repair finds it.
+async function lightDecorFire(scene, view, note) {
+  const grid = propGrid(scene), centre = { x: view.decor.d.x, y: view.decor.d.y };
+  let at = centre;
+  try { at = firePatchAt(note, { centre, width: view.width, height: view.height, grid, contents: decorContents(view), rotation: 0, stop: wallStop(centre, decorStopWalls(view), WALL_GAP * grid) }); } catch { at = centre; }
+  const data = burnLightData({ centre: at, distance: Number(scene.grid?.distance) || 5, levels: [...(view.levels ?? [])], elevation: 0, tileId: view.id, now: fireNow() });
+  const [light] = await scene.createEmbeddedDocuments("AmbientLight", [data]).catch((e) => { runtime?.trace("props", `fire light not made: ${e?.message ?? e}`); return []; });
+  if (light) timePropFire(scene, light.id, view.id, BURN_MS);
+}
+// Repair (GM): the lights these regions' stored breaks put out lit again, and their burning oil put out.
+async function relightDecor(scene, regionDocs) {
+  const lights = sceneLights(scene), ids = decorNamedLights(regionDocs.flatMap((r) => readDecorBroken(r.flags?.[ID]?.decorBroken)));
+  const relit = unhideLights(ids, lights), prefixes = regionDocs.map((r) => decorIdPrefix(r.id));
+  if (relit.length) await scene.updateEmbeddedDocuments("AmbientLight", relit).catch((e) => runtime?.trace("props", `lights not relit: ${e?.message ?? e}`));
+  const fires = lights.filter((l) => prefixes.some((p) => String(l.flags?.[ID]?.propFire?.tileId ?? "").startsWith(p))).map((l) => l.id);
+  if (fires.length) await deletePropFires(scene, fires);
 }
 async function receiveDecorBreak(data, senderId) {
   if (data?.type !== DECOR_BREAK_MESSAGE || !game.users.activeGM?.isSelf) return;
@@ -8216,6 +8255,7 @@ async function repairDecorRegion(regionDoc) {
   return holdDecorWrites(async () => {
     const stored = regionDoc.flags?.[ID]?.decorBroken, cleared = Array.isArray(stored) ? stored.length : 0;
     const { update, deleteRegions } = decorRegionRepair({ id: regionDoc.id, flags: regionDoc.flags ?? {} }, sceneRegions(scene));
+    await relightDecor(scene, [regionDoc]);
     if (update) { const { _id, ...change } = withDeletes(update, propDel()); await regionDoc.update(change, { animater: { decorRepair: true } }); }
     if (deleteRegions.length) await deletePropRegions(scene, deleteRegions);
     return cleared;
@@ -8399,6 +8439,7 @@ async function repairAllProps(scene = canvas?.scene) {
   // Every region's broken decorations too, in one region batch (their rubble goes with every prop's, below).
   await holdDecorWrites(async () => {
     const decorFixes = decorRepairUpdates(sceneRegions(scene));
+    await relightDecor(scene, (scene.regions?.contents ?? []).filter((r) => decorFixes.some((u) => u._id === r.id)));
     if (decorFixes.length) await scene.updateEmbeddedDocuments("Region", decorFixes.map((u) => withDeletes(u, del)), { animater: { decorRepair: true } });
   });
   if (wallFixes.length) await scene.updateEmbeddedDocuments("Wall", wallFixes.map((w) => withDeletes(w, del)), { animater: { wallRepair: true }, sound: false });

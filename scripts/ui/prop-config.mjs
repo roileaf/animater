@@ -7,9 +7,9 @@ import { DOOR_ATTACK_SYSTEMS, DOOR_STAT_KEYS, defaultDoorStats, ownDoorStat, doo
 
 const ID = "animater";
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-const LABELS = { wood: "Wood", glass: "Glass", clay: "Clay", metal: "Metal", stone: "Stone", plant: "Plant", none: "Won't break" };
-const CONTENT_LABELS = { none: "Nothing", water: "Water", wine: "Wine", oil: "Oil", grain: "Grain", goods: "Loose goods", books: "Books", potions: "Potions", lampoil: "Lamp oil", powder: "Black powder" };
-const STYLE_LABELS = { shatter: "Shatter", collapse: "Collapse", topple: "Topple", burn: "Burn away" };
+export const MATERIAL_LABELS = { wood: "Wood", glass: "Glass", clay: "Clay", metal: "Metal", stone: "Stone", plant: "Plant", none: "Won't break" };
+export const CONTENT_LABELS = { none: "Nothing", water: "Water", wine: "Wine", oil: "Oil", grain: "Grain", goods: "Loose goods", books: "Books", potions: "Potions", lampoil: "Lamp oil", powder: "Black powder" };
+export const STYLE_LABELS = { shatter: "Shatter", collapse: "Collapse", topple: "Topple", burn: "Burn away" };
 const options = (list, value) => list.map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("");
 
 // Groups marked data-show-for="powder" show only while Contents resolves to black powder (the GM's pick, else the
@@ -18,7 +18,7 @@ const options = (list, value) => list.map(([v, l]) => `<option value="${v}"${v =
 // when Contents or Breaks as changes.
 export function propTileFieldsHTML({ src, material = "", contents = "", style = "", light = "", tips = "", burst, rubble = "" } = {}) {
   const guesses = propGuesses(src), guess = guesses.material, mat = MATERIALS.includes(material) ? material : "", own = CONTENTS.includes(contents) ? contents : "", sty = STYLE_CHOICES.includes(style) ? style : "";
-  const mats = [["", `Automatic (${guess === "none" ? "won't break" : guess})`], ...MATERIALS.map((m) => [m, LABELS[m]])];
+  const mats = [["", `Automatic (${guess === "none" ? "won't break" : guess})`], ...MATERIALS.map((m) => [m, MATERIAL_LABELS[m]])];
   // a tall name is only a statue that topples while it is stone, a plant name only burns away while it is a plant
   const resolved = mat || guesses.material;
   const auto = (guesses.style === "topple" && resolved !== "stone") || (guesses.style === "burn" && resolved !== "plant") ? "shatter" : guesses.style;

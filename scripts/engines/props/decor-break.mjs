@@ -7,6 +7,7 @@ import { DECOR_KINDS, hashText, paintedMaterial, paintSeedOf } from "../motion/d
 import { webCorners } from "../motion/webs.mjs";
 import { readNote } from "./prop-break.mjs";
 import { validBreakRequest } from "./prop-requests.mjs";
+import { resolveDecorProp, decorPropFlags, decorPropDefaults } from "./decor-options.mjs";
 
 // Each kind that breaks: its material and style as the prop rules read them, and where the rules need more than the kind's
 // name: `boxy` (breaks as a box, not round), `contents` (what spills), `tips` (knocked over whole, as a brazier) and
@@ -14,7 +15,8 @@ import { validBreakRequest } from "./prop-requests.mjs";
 // signpost, candles, beehive, nest) are still drafts the painter does not offer yet; they break as listed once taken in.
 const ENTRY = (material, style, extra = {}) => Object.freeze({ material, style, ...extra });
 export const DECOR_BREAKS = Object.freeze({
-  crate: ENTRY("wood", "shatter"), barrel: ENTRY("wood", "shatter"), crystals: ENTRY("glass", "shatter"),
+  // What a crate and a barrel hold by default (spec Amendment 3): loose goods and water.
+  crate: ENTRY("wood", "shatter", { contents: "goods" }), barrel: ENTRY("wood", "shatter", { contents: "water" }), crystals: ENTRY("glass", "shatter"),
   bush: ENTRY("plant", "burn"), fern: ENTRY("plant", "burn"), agave: ENTRY("plant", "burn"), reeds: ENTRY("plant", "burn"), cobweb: ENTRY("plant", "burn"),
   stalagmite: ENTRY("stone", "topple"), column: ENTRY("stone", "topple"),
   // The town and dungeon kinds (spec amendment).
@@ -47,6 +49,19 @@ export function decorBreakOf(d) {
   const b = Object.hasOwn(DECOR_BREAKS, d?.kind) ? DECOR_BREAKS[d.kind] : null;
   return b?.painted ? b.painted[paintedMaterial(d.kind, paintSeedOf(d))] ?? null : b;
 }
+/**
+ * A kind's defaults as the panel and the brush name them (pure): { material, style, contents, light, tips }, material and
+ * style null for a kind that breaks as what its picture is painted of (a throne, a bathtub, a mooring post); null when it never breaks.
+ */
+export function decorDefaultsOf(kind) {
+  const b = Object.hasOwn(DECOR_BREAKS, kind) ? DECOR_BREAKS[kind] : null;
+  if (!b) return null;
+  if (!b.painted) return decorPropDefaults(kind, b);
+  const each = Object.values(b.painted), same = (key) => (each.every((e) => (e[key] ?? null) === (each[0][key] ?? null)) ? each[0][key] ?? null : null);
+  return { ...decorPropDefaults(kind, { contents: same("contents") ?? undefined, tips: each[0].tips }), material: null, style: same("style") };
+}
+/** Whether a broken decoration's own light goes out (pure): its Light prop, by its own choice, its region's, then its kind's. */
+export const decorLightOut = (d, regionProp) => resolveDecorProp(d?.kind, decorBreakOf(d), d?.prop, regionProp).light;
 /** What the topple whisper calls a toppled decoration. */
 export const DECOR_NAMES = Object.freeze({ stalagmite: "A stalagmite", column: "A rock column", signpost: "A signpost", tombstone: "A gravestone", lampPost: "A street lamp", statue: "A statue", mooringPost: "A mooring post" });
 
@@ -72,20 +87,19 @@ export function decorKeyed(region, grid) {
 }
 
 /**
- * A decoration dressed as a prop tile (pure); null when its kind does not break. `region` is { id, levels, where }.
- * Its picture's name says what the name rules read (a boxy one is named a box); its flags the material, style, contents
- * and tipping; `decor.rule` what breaks it where its material's rules say otherwise.
+ * A decoration dressed as a prop tile (pure); null when its kind does not break. `region` is { id, levels, where, prop }.
+ * Its picture's name says what the name rules read (a boxy one is named a box); its flags every option spelled out
+ * (decor-options resolveDecorProp: its own brushed choice, then the region's `prop`, then the kind's), so no name is ever
+ * guessed from; `decor.rule` what breaks it where its material's rules say otherwise (only while it is its kind's material).
  */
 export function decorView({ d, key }, region, grid) {
   const b = decorBreakOf(d); if (!b) return null;
-  const s = d.size * grid, prop = { material: b.material, style: b.style };
-  if (b.contents) prop.contents = b.contents;
-  if (b.tips) prop.tips = "yes";
+  const s = d.size * grid, r = resolveDecorProp(d.kind, b, d.prop, region?.prop), prop = decorPropFlags(r);
   return {
     id: `decor:${region.id}:${key}`, x: d.x - s / 2, y: d.y - s / 2, width: s, height: s, rotation: 0, hidden: false,
     levels: [...(region.levels ?? [])], texture: { src: `decor/${d.kind}${b.boxy ? "-box" : ""}.webp` },
     flags: { animater: { prop } },
-    decor: { regionId: region.id, key, kind: d.kind, d, where: region.where ?? "surface", ...(b.rule ? { rule: b.rule } : {}) },
+    decor: { regionId: region.id, key, kind: d.kind, d, where: region.where ?? "surface", ...(r.rule ? { rule: r.rule } : {}) },
   };
 }
 
@@ -188,7 +202,7 @@ export function createDecorIndex() {
     const { canBreak: _off, ...moves } = region.settings ?? {};
     const sig = JSON.stringify([moves, areasOf(region.areas), grid, region.levels]);
     const hit = memo.get(region.id); if (hit?.sig === sig) return hit.value;
-    const keyed = decorKeyed(region, grid), at = { id: region.id, levels: region.levels, where: region.settings?.where ?? "surface" };
+    const keyed = decorKeyed(region, grid), at = { id: region.id, levels: region.levels, where: region.settings?.where ?? "surface", prop: region.settings?.prop };
     const value = { keyed, keys: new Set(keyed.map((k) => k.key)), views: keyed.map((k) => decorView(k, at, grid)).filter(Boolean) };
     memo.set(region.id, { sig, value });
     return value;
@@ -224,7 +238,7 @@ const decorIndex = createDecorIndex();
  * broken but not yet stored; `drawn` (decorDrawn) refuses one not drawn on the map. Refusals: off, missing, undrawn,
  * broken, then validBreakRequest's own.
  */
-export function validDecorBreakRequest({ key, cause, note } = {}, { region, scene, grid, sender, target, mover, roll, source, levels, area, now, queued = [], index = decorIndex, drawn = null } = {}) {
+export function validDecorBreakRequest({ key, cause, note } = {}, { region, scene, grid, sender, target, mover, roll, source, levels, area, now, lights = [], queued = [], index = decorIndex, drawn = null } = {}) {
   const no = (why) => ({ ok: false, why });
   if (scene?.flags?.animater?.breakableProps !== true) return no("off");
   if (region?.settings?.canBreak !== true) return no("off");
@@ -232,11 +246,32 @@ export function validDecorBreakRequest({ key, cause, note } = {}, { region, scen
   if (!view) return no("missing");
   if (drawn && !drawn(view)) return no("undrawn");
   if (liveBroken(readDecorBroken(region.broken), keys).some((e) => e.key === key) || (queued ?? []).includes(key)) return no("broken");
-  const out = validBreakRequest({ cause, note }, { tile: view, walls: [], scene, grid, sender, target, mover, roll, lights: [], source, levels, area, now });
+  const out = validBreakRequest({ cause, note }, { tile: view, walls: [], scene, grid, sender, target, mover, roll, lights, source, levels, area, now });
   if (!out.ok) return out;
   const { d } = view.decor;
-  return { ok: true, entry: { key, kind: d.kind, x: Math.round(d.x), y: Math.round(d.y), note: out.note }, rubble: out.rubble, fall: out.fall };
+  return { ok: true, entry: { key, kind: d.kind, x: Math.round(d.x), y: Math.round(d.y), note: out.note }, rubble: out.rubble, fall: out.fall,
+    explode: out.explode === true, fire: out.fire === true, lightUpdates: out.lightUpdates ?? [] };
 }
+
+/** A decoration view's id ("decor:<regionId>:<key>") taken apart (pure); null for any other id. */
+export function decorIdParts(id) {
+  const m = /^decor:([^:]+):(.+)$/.exec(String(id ?? ""));
+  return m ? { regionId: m[1], key: m[2] } : null;
+}
+/**
+ * A blast's source when it is a decoration (pure): the region's view of it with its stored break as its note, as blastFrom reads
+ * a keg tile; null unless `id` names one of this region's decorations and its stored break is there.
+ */
+export function decorSourceView(region, id, grid, index = decorIndex) {
+  const parts = decorIdParts(id);
+  if (!parts || parts.regionId !== region?.id) return null;
+  const { keys, views } = index(region, grid), view = views.find((v) => v.decor.key === parts.key);
+  const entry = view ? liveBroken(readDecorBroken(region.broken), keys).find((e) => e.key === parts.key) : null;
+  if (!entry || entry.note?.powder !== "exploded") return null;
+  return { ...view, flags: { animater: { prop: { ...view.flags.animater.prop, broken: entry.note } } } };
+}
+/** The lights a region's stored breaks put out (pure): the ids their notes name, each once. Repair lights them again. */
+export const decorNamedLights = (entries) => [...new Set((entries ?? []).flatMap((e) => (Array.isArray(e?.note?.lights) ? e.note.lights : [])))];
 
 /** The region's stored breaks after a write (pure): the live ones, then each add whose key is not already there. */
 export function decorBrokenAfter(entries, adds, keys) {

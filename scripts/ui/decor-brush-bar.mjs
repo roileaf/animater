@@ -4,6 +4,7 @@
 
 import { DECOR_IDS, DECOR_KINDS } from '../engines/motion/decor-paint.mjs';
 import { DECOR_DEFAULT_KINDS } from '../engines/motion/decor-regions.mjs';
+import { decorPropRows } from './decor-prop-options.mjs';
 
 export const BRUSH_SIZE = Object.freeze({ min: 0.5, max: 6, usual: 1.5 });
 export const BRUSH_THICK = Object.freeze({ min: 0.2, max: 2, usual: 0.8 });
@@ -19,13 +20,18 @@ const INDOOR = ["bed","rug","bookshelf","strongbox","hearth","desk","throne","al
 const WATER = ["lilyPads","cattails","streamRock","steppingStones","rowboat","dock","mooringPost","waterDebris","reeds","puddle","log","rock","boulder","pebbles","moss"];
 export const BRUSH_PLACES = Object.freeze([['surface', 'Outdoors'], ['town', 'Town'], ['indoor', 'Indoors'], ['water', 'Water'], ['cave', 'Underground']]);
 const placeWhere = (place) => (place === 'cave' ? 'cave' : 'surface');
-const remembered = { where: 'surface', kinds: { surface: [DECOR_DEFAULT_KINDS.surface[0]], town: ['well'], indoor: ['bed'], water: ['lilyPads'], cave: [DECOR_DEFAULT_KINDS.cave[0]] }, size: BRUSH_SIZE.usual, thick: BRUSH_THICK.usual, scale: BRUSH_SCALE.usual, turn: null, lock: null };
+const remembered = { where: 'surface', kinds: { surface: [DECOR_DEFAULT_KINDS.surface[0]], town: ['well'], indoor: ['bed'], water: ['lilyPads'], cave: [DECOR_DEFAULT_KINDS.cave[0]] }, size: BRUSH_SIZE.usual, thick: BRUSH_THICK.usual, scale: BRUSH_SCALE.usual, turn: null, lock: null, props: {} };
+/** How what the brush lays of a kind breaks (pure): the choices picked for that kind, only those offered for it and not Automatic,
+ *  as saved on each brushed entry (`prop`); Burst only with Black powder. Remembered per kind. */
+export const brushPropFor = (kind) => Object.fromEntries(decorPropRows(kind, remembered.props[kind] ?? {}).filter((r) => r.value !== '' && (r.key !== 'burst' || remembered.props[kind]?.burst !== undefined)).map((r) => [r.key, r.value]));
+/** Sets one breaking choice for a kind ('' for Automatic). */
+export const setBrushProp = (kind, key, value) => { const now = { ...(remembered.props[kind] ?? {}) }; if (value === '' || value === undefined) delete now[key]; else now[key] = value; remembered.props[kind] = now; };
 // How the decorations it lays are turned: null for every one its own way, else an angle in radians (Shift+wheel, 15° a step).
 export const BRUSH_TURN_STEP = Math.PI / 12;
 
 /** The brush's choices now (pure copy): where, the one kind picked there (as a list of one), size in squares, thickness, decoration scale.
  *  While a region's own brush is out, where is the region's and the kind one of its own. */
-export const brushChoices = () => ({ where: remembered.lock?.where ?? placeWhere(remembered.where), place: remembered.lock ? null : remembered.where, kinds: remembered.lock ? [remembered.lock.pick] : [...remembered.kinds[remembered.where]], size: remembered.size, thick: remembered.thick, scale: remembered.scale, turn: remembered.turn });
+export const brushChoices = () => { const kinds = remembered.lock ? [remembered.lock.pick] : [...remembered.kinds[remembered.where]]; return { where: remembered.lock?.where ?? placeWhere(remembered.where), place: remembered.lock ? null : remembered.where, kinds, size: remembered.size, thick: remembered.thick, scale: remembered.scale, turn: remembered.turn, prop: brushPropFor(kinds[0]) }; };
 /** The kinds a place offers in the bar (pure): 'town' its built things and street litter; 'surface' (outdoors) and 'cave' their
  *  own and those found in both, outdoors leaving built things to the town and the dungeon. */
 export const brushKindsFor = (where) => (where === 'town' ? TOWN.filter((id) => DECOR_KINDS[id]) : where === 'indoor' ? INDOOR.filter((id) => DECOR_KINDS[id]) : where === 'water' ? WATER.filter((id) => DECOR_KINDS[id]) : DECOR_IDS.filter((id) => (DECOR_KINDS[id].set === 'both' || DECOR_KINDS[id].set === where) && !(where === 'surface' && BUILT.has(id))));
@@ -79,7 +85,18 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, region =
     search.addEventListener('input', () => { query = search.value; filter(); });
     search.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const first = [...chips.children].find((c) => !c.hidden); if (first) pick(first.dataset.kind); } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); query = ''; search.value = ''; filter(); } });
     filter();
+    // How the kind picked breaks (when it can): the tile's Breakable prop options that apply to it, saved on each one it lays.
+    const props = el('div', 'an-db-row an-db-props'), kind = brushChoices().kinds[0];
+    for (const r of decorPropRows(kind, remembered.props[kind] ?? {})) {
+      const box = el('label', 'an-db-prop'); box.title = r.hint;
+      let input;
+      if (r.type === 'select') { input = el('select'); for (const [v, l] of r.options) { const o = el('option', '', l); o.value = v; o.selected = v === r.value; input.append(o); } }
+      else { input = el('input'); input.type = 'number'; input.min = String(r.min); input.max = String(r.max); input.step = '1'; input.value = String(r.value); }
+      input.addEventListener('change', () => { setBrushProp(kind, r.key, r.type === 'number' ? Math.min(r.max, Math.max(r.min, Math.round(Number(input.value) || r.value))) : input.value); draw(); onChange(); });
+      box.append(el('span', '', r.label), input); props.append(box);
+    }
     bar.append(head, row, search, chips);
+    if (props.children.length) bar.append(props);
     if (typing) { search.focus(); search.setSelectionRange(search.value.length, search.value.length); }
   };
   const api = { element: bar, close: () => { bar.remove(); if (remembered.lock === lock) remembered.lock = null; },

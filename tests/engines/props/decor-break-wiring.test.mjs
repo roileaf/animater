@@ -114,7 +114,9 @@ test("every trigger asks for decorations too; decorations never free walls", () 
   assert.match(main, /slammed\.map\(\(s\) => \(s\.t\.decor \? askDecor\(scene, s\.t,/);
   assert.match(main, /scene\.regions\.get\(view\.decor\.regionId\)/);
   assert.match(main, /applyDecorBreak\(scene, region, view\.decor\.key, cause, note, game\.user\)/);
-  assert.match(main, /const cause = \{ kind: "blast", sourceId: doc\.id \}, look/);
+  // (a keg tile's blast runs runBlastAt with its own id; a decoration's with its view id)
+  assert.match(main, /return runBlastAt\(scene, \{ centre, burst, levels, sourceId: doc\.id \}\);/);
+  assert.match(main, /const cause = \{ kind: "blast", sourceId \}, look/);
 });
 
 // Task 8: the town and dungeon kinds, the lights, and the live check's fixes.
