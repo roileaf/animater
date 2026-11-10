@@ -89,6 +89,14 @@ test('a ripple comes only when something has moved far enough since the last', (
   assert.equal(rippleDue({ x: 0, y: 0 }, { x: 30, y: 40 }, 50), true);
 });
 
+// Roi: "shouldnt frogs jump to the water when tokens passes?" A frog on a pad with no water within a square sat still as Celdar walked by.
+test('a frog with no water close round its pad still leaps for the nearest water, further off', () => {
+  const far = (x, y) => y < -170 && y > -400;
+  const f = frogStep(frog(), { grid: 100, near: [{ x: 0, y: 100 }], ok: far, random: () => 0.5 });
+  assert.equal(f.mode, 'leap');
+  assert.ok(far(f.tx, f.ty) && Math.hypot(f.tx, f.ty) <= 250, 'into the water, no more than 2.5 squares');
+});
+
 test('a frog with no water to leap into stays where it is', () => {
   const f = frogStep(frog(), { grid: 100, near: [{ x: 0, y: 150 }], ok: () => false, random: () => 0.5 });
   assert.equal(f.mode, 'sit');

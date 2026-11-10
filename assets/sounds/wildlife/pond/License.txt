@@ -3,5 +3,6 @@ was checked for its CC0 licence. Each file was cut from the sound's high-quality
 mixed to mono, loudness-matched (about -33 LUFS) and encoded as Ogg Vorbis 96 kb/s for Animater.
 Thank you to each author.
 
+pond-lake-318064-0.ogg: "Water_Lapping_River.wav" by ceich93, https://freesound.org/people/ceich93/sounds/318064/ (CC0 1.0). Changes: cut 18.00-50.00 s, its end crossfaded into its start to loop (30 s), loudness-matched.
 pond-still-415608-0.ogg: "Mud Volcano Field - Salton Sea" by RTB45, https://freesound.org/people/RTB45/sounds/415608/ (CC0 1.0). Changes: cut 124.00-156.00 s, its end crossfaded into its start to loop (30 s), loudness-matched.
 pond-still-547690-415608-0.ogg: "Swamp Ambience.mp3" by RyanKingArt, https://freesound.org/people/RyanKingArt/sounds/547690/ (CC0 1.0), cut 0.00-32.00 s and looped, mixed with "Mud Volcano Field - Salton Sea" by RTB45, https://freesound.org/people/RTB45/sounds/415608/ (CC0 1.0), cut 124.00-156.00 s and looped, the bubbles 5 dB under the swamp; the mix's end crossfaded into its start to loop (30 s), loudness-matched.

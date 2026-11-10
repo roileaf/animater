@@ -36,7 +36,7 @@ import {underwaterPose,underwaterTint} from './engines/motion/underwater-appeara
 import { creatureGait, creatureBulk, creatureBody, creatureFlight, printShape } from "./engines/motion/creature-gait.mjs";
 import { movementSoundMix, movementContactWeight, resolveMovementSound, createMovementPreview } from "./engines/motion/movement-profile.mjs";
 import { movementSoundsForm, mountMovementSounds } from "./ui/movement-sounds-config.mjs";
-import { movementSound, movementEnvironment, shadowFall, standingCopyFall } from "./engines/motion/movement-feel.mjs";
+import { movementSound, movementEnvironment, outOfWater, swimOutWaypoints, shadowFall, standingCopyFall } from "./engines/motion/movement-feel.mjs";
 import { createGroundTrails, bloodColor, sceneWeather, isCold } from "./engines/motion/ground-trails.mjs";
 import { BLOOD_TYPES, tableBlood, creatureBloodType, creatureHasHeart } from "./engines/motion/blood-colors.mjs";
 import { bloodColorsMenu, BLOOD_SETTING } from "./ui/blood-colors-settings.mjs";
@@ -223,6 +223,7 @@ import { appendWallSection } from "./ui/wall-config-sections.mjs";
 import { createPondLife, gullsOver } from "./engines/motion/pond-life.mjs";
 import { createFieldLife, batLamps } from "./engines/motion/field-life.mjs";
 import { riverHeard, riverFile, RIVER_VOLUME, nightLevel, nightFile, nearestOfArea } from "./engines/motion/river-sound.mjs";
+import { FIRE_VOLUME, firesHeard, fireStart, soundsLight } from "./engines/sound/fire-sound.mjs";
 import { THUNDER, weatherLevels, weatherIsOurs, thunderOnTopOf, thunderShape, thunderReaches, thunderPan, weatherFile, weatherLoudness, louder, WEATHER_LOOPS } from "./engines/motion/weather-sound.mjs";
 import { createDoorBursts, doorSends, doorPlace, burstTarget, flockPaths, flockSize } from "./engines/motion/door-burst.mjs";
 import { createFloorBlood, hitMarks, bleedStep, standingDrip, splatMarks, scaleMarks, packMark, unpackMark } from "./engines/motion/floor-blood.mjs";
@@ -265,6 +266,7 @@ import { DND_KINDS,DND5E_SOURCE,dndEntries,dndEntry,dndRecipe,normalizeDndCatalo
 import { saveReaction, twoeSaveOutcome, dnd5eSaveOutcome } from './systems/outcome.mjs';
 import { approvalState, approvedPlayerRecipe, playerSubmissions, validatePlayerRecipes, decide } from './core/player-recipes.mjs';
 import { dndSettingKey,sfSettingKey,dhSettingKey,dsSettingKey, catalogListText } from './catalogs/shared/catalog-system.mjs';
+import { loadCatalogData, catalogDataLoaded, onCatalogData } from './catalogs/shared/catalog-data.mjs';
 import { dndStateHost } from './catalogs/dnd5e/dnd5e-states.mjs';
 import {SF_KINDS,SF2E_SOURCE,sfEntries,sfEntry,sfRecipe,normalizeSfCatalogState} from './catalogs/sf2e/sf2e-catalog.mjs';
 import {sfStateHost} from './catalogs/sf2e/sf2e-states.mjs';
@@ -3074,14 +3076,14 @@ const setFlamesAsk = async () => {
   const keep = ["keep", "Leave as each light has it"];
   const content = `<p>${chosen.length ? `The ${lights.length} selected light(s)` : `All ${lights.length} light(s) in this scene (none selected)`}:</p>
     ${select("flame", "Flame", [keep, ["", "Auto (fire lights)"], ["true", "On"], ["false", "Off"]])}
-    ${select("fireKind", "Fire", [keep, ["", "Auto: one flame"], ["torch", "Torch or candle: one flame"], ["brazier", "Brazier or fire bowl: a bed of flames"], ["bonfire", "Campfire or bonfire: a big bed of flames"]])}
+    ${select("fireKind", "Fire", [keep, ["", "Auto: one flame"], ["torch", "Torch or candle: one flame"], ["lantern", "Lantern: one flame, quieter"], ["brazier", "Brazier or fire bowl: a bed of flames"], ["bonfire", "Campfire or bonfire: a big bed of flames"], ["pot", "Cooking pot: a bed of flames, bubbling"]])}
     ${select("flameSize", "Flame size", [keep, ["", "As its light (100%)"], ["0.4", "Tiny (40%): a candle"], ["0.6", "Small (60%)"], ["0.8", "A little smaller (80%)"], ["1.25", "A little bigger (125%)"], ["1.5", "Big (150%)"], ["2", "Huge (200%)"]])}
     ${select("moths", "Moths", [keep, ["", "Auto (fire lights underground)"], ["true", "On (any map)"], ["false", "Off"]])}
-    ${[["soot", "Soot"], ["smoke", "Smoke"], ["heatHaze", "Heat haze"], ["sparks", "Sparks"], ["chimney", "Chimney smoke"]].map(([k, label]) => select(k, label, [keep, ["", "Auto (fire lights)"], ["true", "On"], ["false", "Off"]])).join("")}`;
+    ${[["fireSound", "Sound"], ["soot", "Soot"], ["smoke", "Smoke"], ["heatHaze", "Heat haze"], ["sparks", "Sparks"], ["chimney", "Chimney smoke"]].map(([k, label]) => select(k, label, [keep, ["", "Auto (fire lights)"], ["true", "On"], ["false", "Off"]])).join("")}`;
   flamesAsking = true;
   try {
     const picked = await foundry.applications.api.DialogV2.prompt({ window: { title: "Flames (Animater)" }, content,
-      ok: { label: "Apply", callback: (event, button) => Object.fromEntries(["flame", "fireKind", "flameSize", "moths", "soot", "smoke", "heatHaze", "sparks", "chimney"].map((k) => [k, button.form.elements[k].value])) } });
+      ok: { label: "Apply", callback: (event, button) => Object.fromEntries(["flame", "fireKind", "flameSize", "moths", "fireSound", "soot", "smoke", "heatHaze", "sparks", "chimney"].map((k) => [k, button.form.elements[k].value])) } });
     const change = Object.fromEntries(Object.entries(picked ?? {}).filter(([, v]) => v !== "keep").map(([k, v]) => [`flags.${ID}.${k}`, v]));
     if (!Object.keys(change).length) return;
     await canvas.scene.updateEmbeddedDocuments("AmbientLight", lights.map((l) => ({ _id: l.id, ...change })));
@@ -3277,15 +3279,15 @@ Hooks.on("getSceneControlButtons", (controls) => {
       onChange: () => openWeatherPanel() });
     add({ name: "animaterWeatherAll", title: "Weather for all scenes: a scene's own settings come first", icon: "fa-solid fa-earth-americas", order: order + 3.6, button: true, visible: toolShown("toolWeather"),
       onChange: () => openAllWeatherPanel() });
-    add({ name: "animaterDetectWater", title: "Detect water (Experimental): propose water regions from this level's map", icon: "fa-solid fa-water", order: order + 3.55, button: true,
+    add({ name: "animaterFloorRegions", title: "Floor regions (Experimental): propose water and other floor regions from this level's map", icon: "fa-solid fa-draw-polygon", order: order + 3.55, button: true,
       visible: toolShown("toolDetectWater") && game.settings.get(ID, "experimentalWaterRegions") === true,
-      onChange: () => { void openDetectedWater(); } });
+      onChange: () => { void openFloorRegionsTool(); } });
     add({ name: "animaterClouds", title: "Clouds over the map: on or off, for everyone", icon: "fa-solid fa-cloud", order: order + 4, toggle: true, visible: toolShown("toolClouds"), active: game.settings.get(ID, "weatherClouds") !== false,
       onChange: (event, active) => { void game.settings.set(ID, "weatherClouds", active === true); } });
   } catch { /* another layout of the controls */ }
 });
 // The read happens on the click, not on a frame.
-const openDetectedWater = async () => {
+const openFloorRegionsTool = async () => {
   if (!canvas?.ready) return;
   // All of it now, in one tick. The first click's module load is an await, and the GM can change scene during it.
   const { scene, level } = canvas;
@@ -3301,13 +3303,16 @@ const openDetectedWater = async () => {
   }
   const levelId = level?.id;
   const textures = level?.textures;
-  const { openWaterDetect } = await import("./ui/water-detect-ui.mjs");
-  await openWaterDetect({
+  const { openFloorRegions } = await import("./ui/floor-regions-ui.mjs");
+  await openFloorRegions({
     src,
     scene,
     sceneRect,
     levelId,
     textures,
+    grid: canvas.grid?.size ?? 100,
+    tile: (floor, style) => floorTextures.tileImage(floor, style),
+    snapshot: (list, rect, width, height) => floorTextures.snapshot(list.map((spec) => ({ ...spec, blades: floorLevel.blades, shine: floorLevel.shine, roofed: roofedRegion(spec.areas) })), rect, width, height),
     notify: (message) => { ui.notifications?.info(message); },
     warn: (message) => { ui.notifications?.warn(message); },
   });
@@ -4306,14 +4311,16 @@ const tickPools = () => {
 // Rivers heard (engines/motion/river-sound.mjs): any water with a way to flow (the region's right-click panel → Water → Flows toward), a loop for each speed
 // of current, none till audio is unlocked (Foundry would hold it to the first click), none on water frozen over, quieter through a wall.
 let riverRegions = [], riverLookAt = 0;
-const riverVoices = { gentle: { sound: null, starting: false }, swift: { sound: null, starting: false }, still: { sound: null, starting: false } };
+const riverVoices = { gentle: { sound: null, starting: false }, swift: { sound: null, starting: false }, swamp: { sound: null, starting: false }, lake: { sound: null, starting: false } };
 const readRivers = () => {
   riverRegions = [];
   const water = [];
   for (const region of regionsHere()) { try { if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) === "water") { const painted = waterPainted(region); for (const area of regionAreas(region)) { area.painted = painted; water.push(area); } } } catch { /* a broken region never breaks the rest */ } }
   wakeRipples.water(water);
+  // Still water styled as a Swamp (the region's Texture style) plays the swamp's insects and mud; a plain pond, quiet lapping.
+  const swampWater = (own) => own?.textureStyles?.water === "swamp";
   for (const region of regionsHere()) {
-    try { const own = stepFlags(region.flags?.[ID]) ?? {}; if ((own.waterfall && bothSettingsOn("waterfalls")) || waterKindOf(own) === "falls") continue; if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water" || region.flags?.[ID]?.regionSound === "off") continue; const kind = waterKindOf(own); if (!own.flowTo && (kind !== "still" || region.flags?.[ID]?.sea)) continue; riverRegions.push({ speed: !own.flowTo ? "still" : own.current === "swift" ? "swift" : "gentle", areas: regionAreas(region), keeps: !!own.noFreeze }); } catch { /* a broken region never breaks the rest */ }
+    try { const own = stepFlags(region.flags?.[ID]) ?? {}; if ((own.waterfall && bothSettingsOn("waterfalls")) || waterKindOf(own) === "falls") continue; if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water" || region.flags?.[ID]?.regionSound === "off") continue; const kind = waterKindOf(own); if (!own.flowTo && (kind !== "still" || region.flags?.[ID]?.sea)) continue; riverRegions.push({ speed: !own.flowTo ? (swampWater(region.flags?.[ID]) ? "swamp" : "lake") : own.current === "swift" ? "swift" : "gentle", areas: regionAreas(region), keeps: !!own.noFreeze }); } catch { /* a broken region never breaks the rest */ }
   }
 };
 // The night out of doors, constant (river-sound.mjs nightLevel): on a map with open ground, with Wildlife sounds on. Heard from the listener.
@@ -4440,10 +4447,73 @@ const tickRivers = () => {
     })().catch(() => {}).finally(() => { voice.starting = false; });
   }
 };
-Hooks.on("canvasTearDown", () => { stopVoice(riverVoices.gentle); stopVoice(riverVoices.swift); stopVoice(riverVoices.still); stopVoice(nightVoice); for (const voice of Object.values(weatherVoices)) stopVoice(voice); riverRegions = []; });
+Hooks.on("canvasTearDown", () => { stopVoice(riverVoices.gentle); stopVoice(riverVoices.swift); stopVoice(riverVoices.swamp); stopVoice(riverVoices.lake); stopVoice(nightVoice); for (const voice of Object.values(weatherVoices)) stopVoice(voice); riverRegions = []; });
 const stopPools = () => { const s = poolSound; poolSound = null; try { s?.stop(); } catch { /* gone */ } };
 Hooks.on("canvasTearDown", () => { stopPools(); clearTimeout(lifeTimer); lifeTimer = null; vermin.clear(); drips.clear(); cavern.clear(); webs.clear(); lavaPolygons = []; skyOpenings = []; caveTouches = []; underLife.clear(); foulPolygons = []; foulKey = ""; mothsSetOn = false; underWanted = false; underSpots = []; underCrawl = []; underLook = null; keepOut = {}; rubbleSceneId = null; rubblePlayed.clear(); });
 const viewNow = () => { const st = canvas.stage, s = st.scale.x || 1, [sw, sh] = canvas.screenDimensions ?? [window.innerWidth, window.innerHeight]; return { x: st.pivot.x - sw / 2 / s, y: st.pivot.y - sh / 2 / s, w: sw / s, h: sh / s }; };
+// Fires heard (engines/sound/fire-sound.mjs): the few fires nearest a listener, each its own loop, the placed fire lights
+// by their Fire kind (Light configuration → Animater → Fire; Sound turns one off) and the torches and lanterns creatures
+// hold. Each fire keeps its own recording and pitch, and starts its loop at a place of its own, so fires lit together
+// don't crackle in step. Quieter through a wall; none till audio is unlocked. Listed once a second, voices set twice.
+const fireVoices = new Map();
+let fireList = [], fireListAt = 0, fireLookAt = 0;
+const fireSoundsOn = () => bothSettingsOn("fireSounds");
+const readFires = () => {
+  const out = [];
+  for (const light of canvas.lighting?.placeables ?? []) {
+    try {
+      const src = light.lightSource; if (!src?.active || light.document.hidden) continue;
+      if (canvas.level && light.document.includedInLevel?.(canvas.level) === false) continue;
+      const own = light.document.flags?.[ID] ?? {}, flag = own.flame;
+      const burns = flag === true || flag === "true" ? true : flag === false || flag === "false" ? false : isFireLight(src.data);
+      if (!soundsLight(own, burns)) continue;
+      out.push({ key: `light:${light.id}`, kind: fireKindOf(own.fireKind), x: light.center.x, y: light.center.y });
+    } catch { /* a light mid-change */ }
+  }
+  for (const source of canvas.effects?.lightSources ?? []) {
+    try {
+      const token = source?.active && source.object?.document?.documentName === "Token" ? source.object : null; if (!token) continue;
+      const kind = lightKindOf(token, source.data); if (kind !== "torch" && kind !== "lantern") continue;
+      out.push({ key: `token:${token.id}`, kind, x: source.data.x, y: source.data.y });
+    } catch { /* a token mid-change */ }
+  }
+  return out;
+};
+const tickFireSounds = () => {
+  const now = performance.now(); if (now - fireLookAt < 500) return; fireLookAt = now;
+  if (game.audio?.locked) return;
+  const on = fireSoundsOn() && soundsOn();
+  if (on && now - fireListAt > 1000) { fireListAt = now; fireList = readFires(); } else if (!on) fireList = [];
+  let ears = canvas.sounds?.getListenerPositions?.() ?? [];
+  if (!ears.length && game.user?.isGM) { const v = viewNow(); ears = [{ x: v.x + v.w / 2, y: v.y + v.h / 2 }]; }
+  const heard = on && fireList.length ? firesHeard(fireList, ears, { grid: canvas.grid.size }) : [], wanted = new Set();
+  for (const h of heard) {
+    let through = 1;
+    try { if (CONFIG.Canvas.polygonBackends.sound.testCollision(h.from, h.at, { type: "sound", mode: "any" })) through = 0.35; } catch { /* no wall test */ }
+    const volume = soundsOn() ? FIRE_VOLUME[h.voice] * h.level * through * waterLoudness("fireVolume") : 0;
+    wanted.add(h.id);
+    let voice = fireVoices.get(h.id);
+    if (!voice) { voice = { sound: null, starting: false, volume }; fireVoices.set(h.id, voice); }
+    voice.volume = volume;
+    if (voice.sound) { try { voiceAt(voice, volume); } catch { stopVoice(voice); } continue; }
+    if (volume <= 0.004 || voice.starting) continue;
+    voice.starting = true;
+    (async () => {
+      const sound = new foundry.audio.Sound(h.file, { context: game.audio.environment });
+      await sound.load(); await sound.play({ loop: true, volume: 0, offset: fireStart(sound.duration) });
+      const rate = sound.sourceNode?.playbackRate; if (rate) rate.value = h.rate;
+      voiceStarted(voice, sound, voice.volume, 1200);
+    })().catch(() => {}).finally(() => { voice.starting = false; });
+  }
+  // A fire no longer among the nearest fades out and, once quiet a while, stops and is forgotten.
+  for (const [id, voice] of fireVoices) {
+    if (wanted.has(id)) continue;
+    if (voice.sound) { try { voiceAt(voice, 0); } catch { stopVoice(voice); } }
+    if (!voice.sound && !voice.starting) fireVoices.delete(id);
+  }
+};
+for (const hook of ["createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "canvasReady"]) Hooks.on(hook, () => { fireListAt = 0; });
+Hooks.on("canvasTearDown", () => { for (const voice of fireVoices.values()) stopVoice(voice); fireVoices.clear(); fireList = []; });
 const creaturesNow = () => (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.actor).map((t) => ({ id: t.id, x: t.x + t.w / 2, y: t.y + t.h / 2, width: t.w }));
 // Drawn clouds (the Weather panel): just above the rain and the birds, over the roofs; their shadows on the ground, under the creatures.
 let cloudRoot = null;
@@ -4971,10 +5041,11 @@ function skyTick() {
   if (blastReactions.busy) blastReactions.tick(seconds);
   if (drips.count) { drips.tick(seconds, dripLanded); tickPools(); }
   else if (poolSound) tickPools();
-  if (riverRegions.length || riverVoices.gentle.sound || riverVoices.swift.sound || riverVoices.still.sound) tickRivers();
+  if (riverRegions.length || riverVoices.gentle.sound || riverVoices.swift.sound || riverVoices.swamp.sound || riverVoices.lake.sound) tickRivers();
   if (wildOpen || nightVoice.sound) tickNight();
   if (wildOpen) tickChorus(seconds);
   tickAftermath(seconds);
+  tickFireSounds();
   if (townLife.busy) tickTown(seconds);
   tickSceneFarm(Math.min(seconds, 0.1));
   if (regionLife.size) regionTick(seconds);
@@ -5117,7 +5188,7 @@ const movementFeel = createMovementFeel({
       if (until !== undefined && until <= time) feelSkip.delete(d.id);
       // Teleporting (gone: no shadow while it slides unseen), or playing an animation (skip: no steps or dust).
       const gone = (until ?? 0) > time, skip = gone || motions?.active?.has?.(t) === true;
-      const signature = [c.x, c.y, t.w, d.elevation, base, level, d.movementAction, t.visible, d.hidden, t.controlled, t.isOwner, t.isPreview, d.flags?.[ID]?.noShadow];
+      const action = actionNow(t), signature = [c.x, c.y, t.w, d.elevation, base, level, action, t.visible, d.hidden, t.controlled, t.isOwner, t.isPreview, d.flags?.[ID]?.noShadow];
       const cached = movementViews.get(d.id);
       if (cached && cached.token === t && time - cached.at < 500 && signature.every((value, i) => value === cached.signature[i])) {
         cached.view.skip = skip; cached.view.gone = gone;
@@ -5126,7 +5197,7 @@ const movementFeel = createMovementFeel({
       const sound = movementSoundMix(d.flags?.[ID]?.movementSound);
       const soundBody = sound.body === 'none' ? null : sound.body || movementFeelBody(d);
       const view = {
-        id: d.id, x: c.x, y: c.y, width: t.w ?? 100, elevation: d.elevation ?? 0, base, action: d.movementAction,
+        id: d.id, x: c.x, y: c.y, width: t.w ?? 100, elevation: d.elevation ?? 0, base, action,
         ...((d.elevation??0)<base?{floor:movementFeelFloor(c,d)}:{}),
         statuses: d.actor?.statuses, gait: sound.gait || movementFeelGait(d), printShape: printShape(sound.gait || movementFeelGait(d), { actor: d.actor, name: d.name }), bulk: movementFeelBulk(d),
         body: soundBody, flight: sound.flight || (['air', 'fire', 'water'].includes(soundBody) ? 'flight' : movementFeelFlight(d)), sound,
@@ -5436,6 +5507,66 @@ const tickBurrowSink = () => {
     if (turned ||waterTurned|| moving || was ||waterSink.has(d.id)||waterTints.has(t)|| (first && under)) applyBurrowSink(t);
   }
 };
+// Out of the water ("Swimmers walk out of the water"): a swimmer's move is walked from where its path leaves the water
+// (engines/motion/movement-feel.mjs swimOutWaypoints), rising first if it was under, as it crosses, not once it stops.
+// A drag, the keys, TokenDocument#move and Scene#moveTokens all hand Foundry the move's waypoints in the update's
+// options (options.movement), read first by TokenDocument#_preUpdate on the mover's own screen: they are changed there.
+const swimOutMove = (doc, options, changed) => {
+  const move = options?.movement?.[doc?.id];
+  if (!Array.isArray(move?.waypoints) || !move.waypoints.length || options.isUndo || options.isPaste) return;
+  const walk = CONFIG.Token?.movement?.actions?.walk ? "walk" : null; if (!walk) return;
+  const src = doc._source, pivot = doc.getCenterPoint({ x: 0, y: 0, elevation: 0, width: src.width, height: src.height, shape: src.shape });
+  const out = swimOutWaypoints({ x: src.x, y: src.y, elevation: src.elevation, action: doc.movementAction }, move.waypoints,
+    (p, { elevation }) => movementFeelFloor(p, { elevation, movementAction: "swim" }),
+    { walk, base: canvas.level?.elevation?.base ?? 0, step: (canvas.grid?.size ?? 100) / 4, centre: (p) => ({ x: p.x + pivot.x, y: p.y + pivot.y }) });
+  if (out.length === move.waypoints.length && out.every((w, i) => w === move.waypoints[i])) return;
+  move.waypoints = out;
+  // Ending on land, its mode is walking from now on (the waypoints carry each stretch's own way of moving; the token's
+  // chosen mode is this field, in the same update).
+  if (changed && out.at(-1)?.action === walk) changed.movementAction = walk;
+};
+const installSwimOut = () => {
+  const proto = globalThis.CONFIG?.Token?.documentClass?.prototype;
+  if (typeof proto?._preUpdate !== "function" || proto._preUpdate.animaterSwimOut) return;
+  // The method passed on to is looked up at each call (a system or module may wrap Foundry's after this is installed).
+  const own = Object.hasOwn(proto, "_preUpdate") ? proto._preUpdate : null;
+  const walkOut = function (changed, options, user) {
+    try { if (this.parent === canvas?.scene && hotSetting("swimOutOnLand") !== false) swimOutMove(this, options, changed); } catch { /* the move as asked */ }
+    return (own ?? Object.getPrototypeOf(proto)._preUpdate).call(this, changed, options, user);
+  };
+  walkOut.animaterSwimOut = true;
+  proto._preUpdate = walkOut;
+};
+Hooks.once("setup", installSwimOut);
+// The way a token moves right now (its marks, sounds and shadow go by it): the waypoint being animated, while a move
+// plays, else its chosen movement action. In Foundry the document's movementAction is the mode chosen for the token,
+// and each waypoint carries its own: a swimmer walked out of the water walks from the edge, its mode still Swim till it
+// stops. Each step of a move's animation that starts calls Token#_prepareAnimation with its waypoint's action.
+const movingAction = new WeakMap();
+const actionNow = (t) => (t.movementAnimationPromise && movingAction.get(t)) || t.document?.movementAction;
+const installMoveAction = () => {
+  const proto = globalThis.CONFIG?.Token?.objectClass?.prototype;
+  if (typeof proto?._prepareAnimation !== "function" || proto._prepareAnimation.animaterAction) return;
+  const own = Object.hasOwn(proto, "_prepareAnimation") ? proto._prepareAnimation : null;
+  const record = function (from, changes, context, options) {
+    try { if (context?.name === this.movementAnimationName && typeof options?.action === "string") movingAction.set(this, options.action); } catch { /* its chosen action, then */ }
+    return (own ?? Object.getPrototypeOf(proto)._prepareAnimation).call(this, from, changes, context, options);
+  };
+  record.animaterAction = true;
+  proto._prepareAnimation = record;
+};
+Hooks.once("setup", installMoveAction);
+// A move made some other way (a plain position update) that ends off the water: walked again, and up, once it stops.
+Hooks.on("updateToken", (doc, change, options, userId) => {
+  try {
+    if (userId !== game.user?.id || !("x" in change || "y" in change || "elevation" in change)) return;
+    if (doc.movementAction !== "swim" || hotSetting("swimOutOnLand") === false) return;
+    const point = doc.getCenterPoint?.() ?? doc.object?.center; if (!point) return;
+    const walk = CONFIG.Token?.movement?.actions?.walk ? "walk" : null;
+    const update = outOfWater({ action: doc.movementAction, floor: movementFeelFloor(point, doc), elevation: doc.elevation, base: canvas.level?.elevation?.base ?? 0, walk });
+    if (update) void doc.update(update).catch(() => {});
+  } catch { /* never break a move */ }
+});
 Hooks.on("refreshToken", (token, flags) => {
   try {
     if (!burrowSinkOn()&&!underwaterLooksOn()) return;
@@ -6578,6 +6709,8 @@ export class AnimaterApp extends HandlebarsApplicationMixin(ApplicationV2) {
     const root = this.element.querySelector(".an-root");
     if (this.workspace?.root !== root) {
       this.workspace?.destroy();
+      // Every catalog of this world (on or off) is listed here: their data loads first, once.
+      await loadWorldCatalogs({ all: true });
       const { Workspace } = await import("./ui/workspace.mjs");
       if (this.rendered === false || root !== this.element.querySelector(".an-root")) return;
       if (this.workspace?.root === root) return;
@@ -7227,6 +7360,38 @@ async function seedBorrowedCatalogs() {
 const catalogKeys = () => [...(CATALOG_KINDS[game.system.id] ?? []), ...(borrowedSystemId() ? TWOE_KINDS.map((kind) => twoeSettingKey(borrowedSystemId(), kind)) : [])].filter((key) => game.settings.settings.has(`${ID}.${key}`));
 const catalogOn = (key) => { const s = hotSetting(key) ?? {}; return s.enabled === true && (s.scope ?? "all") === "all"; };
 function catalogsOn() { const keys = catalogKeys(); return { on: keys.filter(catalogOn).length, total: keys.length }; }
+// Catalog data loads on demand (catalog-data.mjs), not with the module: once this screen's canvas is up, the
+// data of the catalogs that are on (this system's, and the borrowed 2e system's with crossover on); a catalog
+// turned on later, when it is; all of them when the Animater window opens. A catalog that is off never loads
+// for a player. Until its data is in, a catalog plays nothing (the first seconds after joining).
+const catalogSystemsHere = () => [game.system.id, ...(borrowedSystemId() ? [borrowedSystemId()] : [])];
+const settingOn = (key) => { try { return hotSetting(key)?.enabled === true; } catch { return false; } };
+const npcCatalogOn = () => { try { return hotSetting("npcAbilities") !== false; } catch { return true; } };
+// Which data files a system's catalogs that are on need.
+function catalogDataWanted(system) {
+  if (system === "pf2e") return [["spells", "spellCatalog"], ["feats", "featCatalog"], ["actions", "actionCatalog"], ["features", "featureCatalog"],
+    ["weapons", "weaponCatalog"], ["states", "conditionCatalog"], ["states", "effectCatalog"]].filter(([, key]) => settingOn(key)).map(([name]) => name)
+    .concat(npcCatalogOn() ? ["npcActions"] : []);
+  const keys = system === "sf2e" ? SF_KINDS.map(sfSettingKey) : system === "dnd5e" ? DND_KINDS.map(dndSettingKey) : [];
+  return keys.some(settingOn) || (system === game.system.id && npcCatalogOn()) ? ["entries", "npcActions"] : [];
+}
+let catalogsStarted = false;
+async function loadWorldCatalogs({ all = false } = {}) {
+  try {
+    for (const system of catalogSystemsHere()) {
+      const names = all ? undefined : [...new Set(catalogDataWanted(system))];
+      if (!names || names.length) await loadCatalogData({ systems: [system], names });
+    }
+  } catch (error) { console.warn("Animater | catalog data did not load", error); }
+}
+onCatalogData(() => { persistentStates?.schedule(); });
+// After the canvas has drawn (or a few seconds on, with no scene), so the data never holds up the first view.
+Hooks.once("ready", () => {
+  const start = () => { if (catalogsStarted) return; catalogsStarted = true; setTimeout(() => void loadWorldCatalogs(), 1000); };
+  if (canvas?.ready) start(); else { Hooks.once("canvasReady", () => { start(); }); setTimeout(start, 8000); }
+});
+// A catalog (or crossover) turned on mid-session loads then.
+Hooks.on("updateSetting", (setting) => { if (catalogsStarted && String(setting?.key ?? "").startsWith(`${ID}.`)) void loadWorldCatalogs(); });
 async function useEveryCatalog() {
   if (!game.user.isGM) throw Error("Only a GM can turn catalogs on.");
   for (const key of catalogKeys()) await game.settings.set(ID, key, { ...(hotSetting(key) ?? {}), enabled: true, scope: "all", independent: true, preferCatalog: true });
@@ -7937,13 +8102,13 @@ Hooks.once("init", () => {
     ['toolClearGroundMarks','Show the Clear ground marks button','In the Animater controls, for the GM. Marks still fade by themselves.'],
     ['toolAnimals','Show the Animals button','In the Animater controls: choose how many of each animal a scene has, and put them down by hand.'],
     ['toolWeather','Show the Weather button','In the Animater controls: choose the scene\'s weather and tune its amount, size, speed, colour, fog, lightning, wind and clouds.'],
-    ['toolDetectWater','Show the Detect water button','In the Animater controls: propose water regions from this level\'s map (experimental).'],
+    ['toolDetectWater','Show the Floor regions button','In the Animater controls: propose water and other floor regions from this level\'s map (experimental).'],
     ['toolClouds','Show the Clouds button','In the Animater controls. Hidden, the Clouds over the map setting still turns them off and on.'],
     ['toolFlames','Show the Flames button','In the lighting controls. Hidden, each light still sets its own flame in its configuration.'],
   ]) registerSetting(key,{name,hint,scope:'client',config:true,type:Boolean,default:true,onChange:()=>ui.controls?.render({reset:true})});
   registerSetting("experimentalWaterRegions", {
-    name: "Experimental: detect water regions",
-    hint: "Adds a button in the Animater controls that proposes water regions from the level background. Off by default. It runs only when you click that button.",
+    name: "Experimental: floor regions from the map",
+    hint: "Adds a Floor regions button in the Animater controls that proposes water and other floor regions from the level background. Off by default. It runs only when you click that button.",
     scope: "world",
     config: true,
     type: Boolean,
@@ -8359,10 +8524,12 @@ Hooks.once("init", () => {
   registerSetting("thunderPanning", { name: "Thunder from the side it struck", hint: "Thunder plays to the left or right of your selected token, or of the middle of your view with none selected, as it struck. Off: in both ears alike. Either way, how far off it struck says how loud it is.", scope: "client", config: true, type: Boolean, default: true });
   skyPair("weatherSounds", "weatherSoundsLocal", "Weather sounds", "Rain, wind and hail you can hear, growing and fading with the weather and the scene's wind and muffled under a roof, and thunder after each lightning flash. Calendaria's own weather sound stands down on this screen for the weathers sounded here; its fantasy weathers keep theirs.", "");
   registerSetting("weatherVolume", { name: "Weather volume", hint: "How loud rain, wind, hail and thunder are for you, in percent: 0 silent, 100 as recorded. Only on your screen; everyone sets their own.", scope: "client", config: true, type: Number, range: { min: 0, max: 100, step: 5 }, default: 100 });
-  skyPair("riverSounds", "riverSoundsLocal", "River sounds", "Running water, gentle or swift, from any water region with a way to flow (the region's right-click panel → Water → Flows toward), and a swamp's insects and slow mud bubbles by still water (Pond): loudest at the bank, fading with distance, silent while frozen. A region's Sound: Off quiets its own.", "");
+  skyPair("riverSounds", "riverSoundsLocal", "River sounds", "Running water, gentle or swift, from any water region with a way to flow (the region's right-click panel → Water → Flows toward), quiet lapping by still water (Pond), and insects and slow mud bubbles instead where its Texture style is Swamp: loudest at the bank, fading with distance, silent while frozen. A region's Sound: Off quiets its own.", "");
   registerSetting("riverVolume", { name: "River volume", hint: "How loud running water is for you: 0 silent, 1 as recorded, 2 twice as loud.", scope: "client", config: true, type: Number, range: { min: 0, max: 2, step: 0.05 }, default: 1 });
   skyPair("doorBurst", "doorBurstLocal", "Bats and rats bursting through doors", "A door set to it (Wall configuration → Animater door) sends a flock of bats or a run of rats through as it opens, over whoever opened it, with their sounds.");
   skyPair("verminSounds", "verminSoundsLocal", "Rat and bat sounds", "The rats' claws and squeaks, sharper when one bolts, and the bats' wings and chirps, quietly and a few at a time, only near enough to be heard, ringing in the room and muffled by walls. With Rats and bats on.", "");
+  skyPair("fireSounds", "fireSoundsLocal", "Fire sounds", "Fire lights crackle close by, each by its Fire kind (Light configuration → Animater → Fire): a torch, a quieter lantern, a brazier, a campfire, a cooking pot bubbling over its fire. Torches and lanterns creatures hold crackle too. Loudest beside it, fading within a few squares, quieter through a wall. A light's Sound: Off quiets its own.", "");
+  registerSetting("fireVolume", { name: "Fire volume", hint: "How loud fires are for you: 0 silent, 1 as recorded, 2 twice as loud.", scope: "client", config: true, type: Number, range: { min: 0, max: 2, step: 0.05 }, default: 1 });
   skyPair("caveMoths", "caveMothsLocal", "Moths and crawlers", "In an underground scene, moths loop round the fires, their shadows flicking over the floor, and beetles and a centipede run along the foot of the walls, freezing and darting off, keeping out of the light. On any other map, moths come to a light set to them (Light configuration → Animater → Moths: On).");
   skyPair("caveWet", "caveWetLocal", "Wet walls", "Where a region is marked as wet walls (the region's right-click panel → Cave, or Air → Room dressing), water seeps down the walls: a dark wet band at their foot, with runs out from it, glistening where the light catches it.");
   skyPair("caveSteam", "caveSteamLocal", "Steam vents", "Where a region is marked as steam vents (the region's right-click panel → Cave, or Air → Room dressing), steam breathes up from cracks in the floor, warm-lit, now and then puffing out in a burst, and drifts off on the draft.");
@@ -8473,6 +8640,7 @@ Hooks.once("init", () => {
     scope:'world',config:true,type:Number,default:-10,range:{min:-1000,max:0,step:1},
   });
   registerSetting('underwaterLooks',{name:'Submerged token appearance',hint:'Below the water surface, visible swimmers fade to a blue, translucent silhouette. Surfacing restores their original appearance. This changes artwork only, not Foundry visibility or detection.',scope:'world',config:true,type:Boolean,default:true,onChange:()=>clearBurrowSink()});
+  registerSetting('swimOutOnLand',{name:'Swimmers walk out of the water',hint:'A creature set to swim that ends its move off the water (on land, a bridge or ice) walks again, and one still under the surface comes up first. Off: its movement action and elevation stay as you leave them.',scope:'world',config:true,type:Boolean,default:true});
   registerSetting('underwaterOpacity',{name:'Submerged token opacity',hint:'How clearly a submerged creature’s artwork is drawn (0.35 = 35%). Applies equally to GM and player artwork, while Foundry still decides who can see the creature.',scope:'world',config:true,type:Number,default:.35,range:{min:.1,max:1,step:.05}});
   for(const [key,name,natural] of [['swimWakeSeconds','Swimming wake lifetime',1.6],['underwaterBubbleSeconds','Underwater bubble lifetime',1.8],['burrowTrailSeconds','Burrow path lifetime',8]])registerSetting(key,{
     name:`${name} (seconds)`,hint:`Time until fully faded. 0 keeps natural fading (${natural} seconds). Applies to existing and new effects. Burrow holes keep their own lifetime.`,
@@ -9069,6 +9237,8 @@ async function loadDndBooks() {
   const active = Array.from(game.modules?.values?.() ?? []).filter((m) => m.active && DND_BOOKS.test(m.id));
   if (game.system.id !== "dnd5e" || !active.length) return;
   try {
+    // The SRD entries come first; a book's join after them.
+    await loadCatalogData({ systems: ["dnd5e"], names: ["entries"] });
     const { DND5E_BOOK_ENTRIES } = await import("../data/dnd5e-book-catalog.mjs");
     const added = addDndBookEntries(DND5E_BOOK_ENTRIES, (id) => Boolean(game.modules.get(id)?.active));
     if (added) app?.workspace?.render();
@@ -9134,15 +9304,12 @@ Hooks.on("renderSceneConfig", (app, html) => {
   tracks.innerHTML = `<label>Old tracks</label><div class="form-fields"><select name="flags.${ID}.oldTracks">${[["off", "Off"], ["gm", "The GM sees them"], ["everyone", "Everyone sees them"]].map(([v, l]) => `<option value="${v}"${v === tracksNow ? " selected" : ""}>${l}</option>`).join("")}</select><input type="number" min="1" step="1" name="flags.${ID}.oldTrackHours" value="${hoursNow}" aria-label="Hours they last" style="max-width:5em"><span>game hours</span><button type="button" data-animater-clear-tracks${kept ? "" : " disabled"}>Clear ${kept}</button></div><p class="hint">Prints stay here and age by the game's clock ("Old tracks"), so someone can read who passed and how long ago. The GM sees them: for you to describe, or to switch on for everyone when a character finds the trail. Everyone sees them: except those of creatures that were hidden or sneaking, which only the GM sees. Off keeps none. Clear wipes this scene's tracks at once.</p>`;
   tracks.querySelector("[data-animater-clear-tracks]").addEventListener("click", async (event) => { event.preventDefault(); event.currentTarget.disabled = true; event.currentTarget.textContent = "Clear 0"; await app.document?.unsetFlag?.(ID, "tracks"); });
   life.append(tracks);
-  // How many creatures and how big, a row each.
-  const flag = (k) => String(app.document?.getFlag?.(ID, k) ?? "");
-  const pick = (k, options) => `<select name="flags.${ID}.${k}">${options.map(([v, l]) => `<option value="${v}"${v === flag(k) ? " selected" : ""}>${l}</option>`).join("")}</select>`;
-  const amounts = [["none", "None"], ["few", "Few"], ["", "Usual number"], ["more", "More"], ["many", "Many"]];
-  const sized = (k) => `<range-picker name="flags.${ID}.${k}" value="${sizePercent(app.document?.getFlag?.(ID, k))}" min="${SIZE_RANGE.min}" max="${SIZE_RANGE.max}" step="${SIZE_RANGE.step}"></range-picker>`;
-  const row = (k, label) => `<div class="form-group"><label>${label}</label><div class="form-fields">${pick(k, amounts)}${sized(`${k}Size`)}</div></div>`;
+  // How many of each animal and how big: the Animals panel's (exact counts, which a drop-down of amounts here could not
+  // show: it fell back to None, and saving this form wrote that over the count).
   const creatures = document.createElement("div");
-  creatures.innerHTML = `<div class="form-group"><label>All animals on this map</label><div class="form-fields">${sized("animalScale")}</div><p class="hint">For a map drawn at a different scale: a percent of the usual size, multiplying each size below.</p></div>${row("rats", "Rats")}${row("bats", "Bats")}${row("moths", "Moths")}${row("crawlers", "Crawlers")}${row("rabbits", "Rabbits")}${row("wildBirds", "Birds")}${row("fish", "Fish")}${row("waterBirds", "Water birds")}${row("frogs", "Frogs")}${row("deer", "Deer")}${row("foxes", "Foxes")}${row("insects", "Insects")}${row("owls", "Owls")}${row("squirrels", "Squirrels")}${row("snakes", "Snakes")}<div class="form-group"><label>Wolves</label><div class="form-fields">${pick("wolves", [["", "None"], ["few", "Few"], ["usual", "Usual number"], ["more", "More"], ["many", "Many"]])}${sized("wolvesSize")}</div></div><p class="hint">How many of each this map has and how big they are, as a percent of the usual size: few is half the usual number, more twice, many three times. Rats, bats, moths and crawlers are for underground scenes (moths counted round each fire); rabbits, birds, deer and foxes for open ground by day, fish, water birds and frogs for water; insects are butterflies and dragonflies by day and fireflies by night, owls come out at night, and bats round lamps out of doors go by Bats. To keep them out of one place, draw a region over it (the region's right-click panel → Animals → Keep out).</p>`;
-  life.prepend(...creatures.children);
+  creatures.className = "form-group";
+  creatures.innerHTML = `<label>Animals</label><p class="hint">How many of each animal this scene has, and how big, are set in the Animals panel (the paw button in the scene controls), kind by kind.</p>`;
+  life.prepend(creatures);
   life.prepend(life.querySelector("legend"));
   group.innerHTML = `<label>Acoustics</label><div class="form-fields"><select name="flags.${ID}.acoustics">${[["", "From the walls"], ["outdoors", "Open air: little echo"], ["hall", "Hall or temple: longer echo"], ["cave", "Cave or dungeon: long, dark echo"]].map(([v, l]) => `<option value="${v}"${v === value ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">How Animater's sounds ring in this scene. From the walls: each sound gets reverb to fit the space where it happens (with Room acoustics from walls on; else as recorded). A choice here applies everywhere in the scene.</p>`;
   tab.append(group);
@@ -9306,18 +9473,19 @@ Hooks.on("renderAmbientLightConfig", (app, html) => {
     return buttons(name, label, [["", "Auto", auto], ["true", "On", "This light, always"], ["false", "Off", "Never on this light"]], v, tip);
   };
   const set = document.createElement("fieldset");
-  const kinds = [["", "Auto", "One flame"], ["torch", "Torch", "Torch or candle: one flame"], ["brazier", "Brazier", "Brazier or fire bowl: a bed of flames"], ["bonfire", "Campfire", "Campfire or bonfire: a big bed of flames"]];
+  const kinds = [["", "Auto", "One flame"], ["torch", "Torch", "Torch or candle: one flame"], ["lantern", "Lantern", "Lantern: one flame, and a quieter sound"], ["brazier", "Brazier", "Brazier or fire bowl: a bed of flames"], ["bonfire", "Campfire", "Campfire or bonfire: a big bed of flames"], ["pot", "Cooking pot", "Cooking pot: a bed of flames under it, bubbling"]];
   const sizes = [["0.4", "40%", "Tiny: a candle"], ["0.6", "60%", "Small"], ["0.8", "80%", "A little smaller"], ["", "100%", "As its light"], ["1.25", "125%", "A little bigger"], ["1.5", "150%", "Big"], ["2", "200%", "Huge"]];
   const sizeNow = sizes.some(([o]) => o === String(flags.flameSize ?? "")) ? String(flags.flameSize ?? "") : "";
   set.innerHTML = `<legend>Animater</legend>
     ${autoOnOff("flame", "Flame", "A flame burning where this light stands (\"Flames on fire lights\"). Off where the map already draws its fire.")}
-    ${buttons("fireKind", "Fire", kinds, kinds.some(([o]) => o === flags.fireKind) ? flags.fireKind : "", "One tongue for a torch, a bed of them across a brazier's bowl or a campfire.")}
+    ${buttons("fireKind", "Fire", kinds, kinds.some(([o]) => o === flags.fireKind) ? flags.fireKind : "", "One tongue for a torch or lantern, a bed of them across a brazier's bowl, a campfire or under a cooking pot. Each kind has its own sound.")}
     ${buttons("flameSize", "Flame size", sizes, sizeNow, "Bigger or smaller than its light makes it, to fit the sconce or bowl the map draws.")}
     ${autoOnOff("moths", "Moths", "Moths loop round it (\"Moths and crawlers\"). Auto: every fire light in an underground scene; On: this light, on any map.", "Fire lights underground")}
     ${autoOnOff("soot", "Soot", "The wall behind it blackened (\"Soot over torches\"). Auto: a fire light against a wall in an underground scene; On: any light against a wall, anywhere.", "Fire lights underground, against a wall")}
     ${autoOnOff("smoke", "Smoke", "Smoke rising from this light.")}
     ${autoOnOff("heatHaze", "Heat haze", "The air shimmering over this light (\"Heat haze over fires\").")}
     ${autoOnOff("sparks", "Sparks", "Sparks and embers rising from this light (\"Sparks from fires\").")}
+    ${autoOnOff("fireSound", "Sound", "This fire heard close by (\"Fire sounds\"): crackling, or a pot bubbling, by its Fire kind.")}
     ${autoOnOff("chimney", "Chimney smoke", "A hearth in a room smokes from the roof above it while the roof is drawn (Auto). On: always smokes above the roofs (a forge). Off: never.", "A hearth in a room")}
     <p class="hint">Auto follows the light's animation: a torch, flame, fire, candle or flicker light is a fire. Each switch is its own: turning Heat haze off leaves the flame, smoke and sparks. Hover a name or a button for more.</p>`;
   // A click sets the hidden field and tells the form, so Foundry's live preview of the light follows.
@@ -10182,6 +10350,9 @@ Hooks.once("ready", () => {
     conditions: () => ({ source: clone(game.system.id==='daggerheart'?DAGGERHEART_SOURCE:game.system.id==='draw-steel'?DRAW_STEEL_SOURCE:game.system.id==='sf2e'?SF2E_SOURCE:game.system.id==='dnd5e'?DND5E_SOURCE:PF2E_STATE_SOURCE), conditions: clone(game.system.id==='daggerheart'?dhEntries('condition'):game.system.id==='draw-steel'?dsEntries('condition'):game.system.id==='sf2e'?sfEntries('condition'):game.system.id==='dnd5e'?dndEntries('condition'):game.system.id==='pf2e'?PF2E_CONDITIONS:[]) }),
     effects: () => ({ source: clone(game.system.id==='sf2e'?SF2E_SOURCE:game.system.id==='dnd5e'?DND5E_SOURCE:PF2E_STATE_SOURCE), effects: clone(game.system.id==='sf2e'?sfEntries('effect'):game.system.id==='dnd5e'?dndEntries('effect'):game.system.id==='pf2e'?PF2E_EFFECTS:[]) }),
     refreshPersistent: () => persistentStates?.reconcile(),
+    // Catalog data loads on demand: this loads every catalog of the world now (spells() and the rest list nothing before).
+    loadCatalogs: () => loadWorldCatalogs({ all: true }),
+    catalogLoaded: (system, name) => catalogDataLoaded(system ?? game.system.id, name),
     // Wipes ground marks: a GM's screen and every connected one (everyone: false for only yours), a player's own.
     clearGroundMarks: (options) => clearGroundMarksApi(options),
     // Read-only views for live checks (tools/live/*.mjs): what this screen perceives of a moving token (seen: its

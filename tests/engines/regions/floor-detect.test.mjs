@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { WATER_TUNING, detectWater, selectWaterAt, mergeWaterProposals, contourLoops, isSimple, toRegionData, editableWaterRegionIds, fitSize, waterSelectionPixels } from "../../../scripts/engines/regions/water-detect.mjs";
+import { WATER_TUNING, detectWater, selectColourAt, mergeAreaProposals, contourLoops, isSimple, toRegionData, editableFloorRegionIds, fitSize, areaPixels } from "../../../scripts/engines/regions/floor-detect.mjs";
 
 function hsvToRgb(h, s, v) {
   const c = v * s, hp = h / 60, x = c * (1 - Math.abs((hp % 2) - 1));
@@ -212,20 +212,20 @@ test("toRegionData maps pixel corners into scene space and writes water flags", 
   assert.equal(Math.min(...ys), 2000);
   assert.equal(Math.max(...ys), 4500);
   assert.deepEqual(data.levels, ["level-a"]);
-  assert.deepEqual(data.flags, { animater: { floor: "water", generated: "water-detect", waterKind: "river", flowTo: "se", current: "swift" } });
+  assert.deepEqual(data.flags, { animater: { floor: "water", generated: "floor-detect", waterKind: "river", flowTo: "se", current: "swift" } });
   const still = toRegionData(found.proposals[0], {
     sceneRect: { x: 0, y: 0, width: 20, height: 10 }, imageWidth: 20, imageHeight: 10, name: "Pool", waterKind: "still",
   });
   assert.deepEqual(still.levels, []);
-  assert.deepEqual(still.flags, { animater: { floor: "water", generated: "water-detect", waterKind: "still", flowTo: "", current: "" } });
+  assert.deepEqual(still.flags, { animater: { floor: "water", generated: "floor-detect", waterKind: "still", flowTo: "", current: "" } });
   const badStill = toRegionData(found.proposals[0], {
     sceneRect: { x: 0, y: 0, width: 20, height: 10 }, imageWidth: 20, imageHeight: 10, waterKind: "still", flowTo: "", current: "swift",
   });
   assert.equal(badStill.flags.animater.current, "");
 });
 
-test("editableWaterRegionIds selects only generated regions on exactly this level", () => {
-  const ids = editableWaterRegionIds([
+test("editableFloorRegionIds selects only generated regions on exactly this level", () => {
+  const ids = editableFloorRegionIds([
     { id: "hand", flags: { animater: { floor: "water" } } },
     { id: "old", levels: ["level-a"], flags: { animater: { floor: "water", generated: "water-detect" } } },
     { id: "other", flags: { animater: { generated: "something-else" } } },
@@ -233,8 +233,8 @@ test("editableWaterRegionIds selects only generated regions on exactly this leve
     null,
   ], "level-a");
   assert.deepEqual(ids, ["old"]);
-  assert.deepEqual(editableWaterRegionIds(null, "level-a"), []);
-  assert.deepEqual(editableWaterRegionIds({ contents: [{ id: "kept" }, { id: "again", levels: ["b"], flags: { animater: { generated: "water-detect" } } }] }, "b"), ["again"]);
+  assert.deepEqual(editableFloorRegionIds(null, "level-a"), []);
+  assert.deepEqual(editableFloorRegionIds({ contents: [{ id: "kept" }, { id: "again", levels: ["b"], flags: { animater: { generated: "water-detect" } } }] }, "b"), ["again"]);
 });
 
 test("two runs on the same pixels return the same proposals and the same mask", () => {
@@ -246,10 +246,10 @@ test("two runs on the same pixels return the same proposals and the same mask", 
   assert.deepEqual(a.mask, b.mask);
 });
 
-test("editableWaterRegionIds keeps shared, all-level, and other-level generated regions", () => {
+test("editableFloorRegionIds keeps shared, all-level, and other-level generated regions", () => {
   const made = (id, levels) => ({ id, levels: new Set(levels), flags: { animater: { generated: "water-detect" } } });
   const regions = [made("here", ["cellar"]), made("upstairs", ["attic"]), made("everywhere", []), made("both", ["cellar", "attic"])];
-  assert.deepEqual(editableWaterRegionIds(regions, "cellar"), ["here"]);
+  assert.deepEqual(editableFloorRegionIds(regions, "cellar"), ["here"]);
 });
 
 test("fitSize keeps the aspect ratio and stops at the long edge", () => {
@@ -624,12 +624,12 @@ const MUTED = () => {
 test("muted water the automatic pass rejects is selected by a click", () => {
   const { rgba, width, height } = MUTED();
   assert.equal(detectWater(rgba, width, height).status, "none");
-  const picked = selectWaterAt(rgba, width, height, { x: 60, y: 50 });
+  const picked = selectColourAt(rgba, width, height, { x: 60, y: 50 });
   assert.equal(picked.status, "found");
   assert.ok(Math.abs(picked.seed.hue - 205) < 2, `hue ${picked.seed.hue}`);
   assert.ok(Math.abs(picked.seed.saturation - 0.38) < 0.02, `saturation ${picked.seed.saturation}`);
   const { proposal } = picked;
-  assert.equal(proposal.id, "water-1");
+  assert.equal(proposal.id, "area-1");
   assert.equal(proposal.preselected, true);
   assert.equal(proposal.clicked, true);
   assert.equal(proposal.pixels.length, 80 * 60);
@@ -642,28 +642,28 @@ test("a click with no colour under it, or on a speck, returns a reason", () => {
   const width = 400, height = 400;
   const rgba = blank(width, height, 30, 0.02, 120);
   fill(rgba, width, 150, 150, 6, 6, 205, 0.5, 90);
-  assert.deepEqual(selectWaterAt(rgba, width, height, { x: 40, y: 40 }), { status: "none", reason: "no-colour" });
-  assert.deepEqual(selectWaterAt(rgba, width, height, { x: 152, y: 152 }), { status: "none", reason: "too-small" });
+  assert.deepEqual(selectColourAt(rgba, width, height, { x: 40, y: 40 }), { status: "none", reason: "no-colour" });
+  assert.deepEqual(selectColourAt(rgba, width, height, { x: 152, y: 152 }), { status: "none", reason: "too-small" });
   const clear = blank(40, 40, 205, 0.5, 90, 0);
-  assert.deepEqual(selectWaterAt(clear, 40, 40, { x: 20, y: 20 }), { status: "none", reason: "no-colour" });
+  assert.deepEqual(selectColourAt(clear, 40, 40, { x: 20, y: 20 }), { status: "none", reason: "no-colour" });
 });
 
 test("a click on an existing piece is already water, and a removed piece can be clicked again", () => {
   const { rgba, width, height } = scene();
   const auto = detectWater(rgba, width, height);
-  assert.deepEqual(selectWaterAt(rgba, width, height, { x: 150, y: 50 }, { claimed: auto.proposals }), { status: "none", reason: "already-water" });
-  assert.equal(selectWaterAt(rgba, width, height, { x: 150, y: 50 }, { claimed: [] }).status, "found");
+  assert.deepEqual(selectColourAt(rgba, width, height, { x: 150, y: 50 }, { claimed: auto.proposals }), { status: "none", reason: "already-water" });
+  assert.equal(selectColourAt(rgba, width, height, { x: 150, y: 50 }, { claimed: [] }).status, "found");
 });
 
 test("a clicked piece shares no pixel with a claimed one, and its id is new", () => {
   const width = 200, height = 120;
   const rgba = blank(width, height, 30, 0.3, 80);
   fill(rgba, width, 20, 20, 160, 80, 205, 0.5, 110);
-  const claimed = [{ id: "water-7", pixels: Int32Array.from({ length: 100 }, (_, i) => (30 + (i >> 1)) * width + 60 + (i % 2) * 40) }, { id: "water-2", pixels: new Int32Array() }];
+  const claimed = [{ id: "area-7", pixels: Int32Array.from({ length: 100 }, (_, i) => (30 + (i >> 1)) * width + 60 + (i % 2) * 40) }, { id: "area-2", pixels: new Int32Array() }];
   const before = new Set(claimed[0].pixels);
-  const picked = selectWaterAt(rgba, width, height, { x: 150, y: 60 }, { claimed });
+  const picked = selectColourAt(rgba, width, height, { x: 150, y: 60 }, { claimed });
   assert.equal(picked.status, "found");
-  assert.equal(picked.proposal.id, "water-8");
+  assert.equal(picked.proposal.id, "area-8");
   for (const p of picked.proposal.pixels) assert.equal(before.has(p), false, `pixel ${p} is taken`);
 });
 
@@ -675,7 +675,7 @@ test("pieces that meet share no pixel, and their polygons overlap only within th
     for (let x = 0; x < width; x++) rgba.set(x < shore ? [20, 140, 200, 255] : [160, 50, 50, 255], (y * width + x) * 4);
   }
   const auto = detectWater(rgba, width, height);
-  const picked = selectWaterAt(rgba, width, height, { x: 170, y: 100 }, { claimed: auto.proposals });
+  const picked = selectColourAt(rgba, width, height, { x: 170, y: 100 }, { claimed: auto.proposals });
   assert.equal(picked.status, "found");
   const owner = new Uint8Array(width * height);
   for (const proposal of auto.proposals) for (const p of proposal.pixels) owner[p] = 1;
@@ -710,8 +710,8 @@ test("corner settling near a claimed piece keeps the pieces apart and the ring s
   const rgba = noise(size, 0.93).map((value, i) => (i % 4 === 3 ? 255 : value));
   const stripes = [];
   for (let y = 40; y < 90; y++) for (let x = 40; x < 90; x++) if ((x + y) % 2) stripes.push(y * size + x);
-  const claimed = [{ id: "water-1", pixels: Int32Array.from(stripes) }];
-  const picked = selectWaterAt(rgba, size, size, { x: 10, y: 10 }, { claimed });
+  const claimed = [{ id: "area-1", pixels: Int32Array.from(stripes) }];
+  const picked = selectColourAt(rgba, size, size, { x: 10, y: 10 }, { claimed });
   assert.equal(picked.status, "found");
   const taken = new Set(stripes);
   for (const p of picked.proposal.pixels) assert.equal(taken.has(p), false);
@@ -729,7 +729,7 @@ test("a click on unclaimed muted water beside claimed water follows the muted wa
   paint(40, 100, 60, 80, [70, 110, 130]);
   paint(100, 60, 120, 120, [20, 140, 210]);
   const auto = detectWater(rgba, width, height);
-  const picked = selectWaterAt(rgba, width, height, { x: 99, y: 100 }, { claimed: auto.proposals });
+  const picked = selectColourAt(rgba, width, height, { x: 99, y: 100 }, { claimed: auto.proposals });
   assert.equal(picked.status, "found");
   assert.equal(picked.proposal.pixels.length, 60 * 80);
   assert.ok(Math.abs(picked.seed.saturation - 60 / 130) < 0.01, `saturation ${picked.seed.saturation}`);
@@ -744,7 +744,7 @@ for (const streamWidth of [3, 4, 6]) {
       const colour = y >= top && y < top + streamWidth ? [70, 95, 115] : [125, 105, 75];
       for (let x = 0; x < width; x++) rgba.set([...colour, 255], (y * width + x) * 4);
     }
-    const picked = selectWaterAt(rgba, width, height, { x: 200, y: 150 });
+    const picked = selectColourAt(rgba, width, height, { x: 200, y: 150 });
     assert.equal(picked.status, "found");
     assert.equal(picked.proposal.pixels.length, width * streamWidth);
     assert.ok(Math.abs(picked.seed.hue - 207) < 2, `hue ${picked.seed.hue}`);
@@ -756,7 +756,7 @@ test("a click on foam reads the water around it", () => {
   const rgba = blank(width, height, 30, 0.2, 70);
   fill(rgba, width, 20, 20, 120, 120, 205, 0.5, 120);
   fill(rgba, width, 79, 79, 3, 3, 0, 0.02, 240);
-  const picked = selectWaterAt(rgba, width, height, { x: 80, y: 80 });
+  const picked = selectColourAt(rgba, width, height, { x: 80, y: 80 });
   assert.equal(picked.status, "found");
   assert.ok(Math.abs(picked.seed.hue - 205) < 2, `hue ${picked.seed.hue}`);
   assert.equal(picked.proposal.pixels.length, 120 * 120);
@@ -772,20 +772,20 @@ const CLAIMED_POCKET = () => {
   paint(86, 98, 8, 4, [55, 95, 110]);
   const pixels = [];
   for (let y = 99; y <= 100; y++) for (let x = 87; x <= 93; x++) pixels.push(y * width + x);
-  return { rgba, width, height, paint, claimed: [{ id: "water-1", pixels: Int32Array.from(pixels) }] };
+  return { rgba, width, height, paint, claimed: [{ id: "area-1", pixels: Int32Array.from(pixels) }] };
 };
 
 test("what a click leaves after the claimed pixels are gone must itself clear the size minimum", () => {
   const { rgba, width, height, claimed } = CLAIMED_POCKET();
   assert.ok(18 < width * height * WATER_TUNING.componentMinShare);
-  assert.deepEqual(selectWaterAt(rgba, width, height, { x: 86, y: 99 }, { claimed }), { status: "none", reason: "too-small" });
+  assert.deepEqual(selectColourAt(rgba, width, height, { x: 86, y: 99 }, { claimed }), { status: "none", reason: "too-small" });
 });
 
 test("a pocket below the minimum never comes back as a speck, even with a large pool past its neck", () => {
   const { rgba, width, height, paint, claimed } = CLAIMED_POCKET();
   paint(94, 98, 6, 1, [55, 95, 110]);
   paint(100, 80, 50, 40, [55, 95, 110]);
-  const picked = selectWaterAt(rgba, width, height, { x: 86, y: 99 }, { claimed });
+  const picked = selectColourAt(rgba, width, height, { x: 86, y: 99 }, { claimed });
   if (picked.status === "found") assert.ok(picked.proposal.pixels.length >= width * height * WATER_TUNING.componentMinShare, `${picked.proposal.pixels.length} pixels`);
   else assert.equal(picked.reason, "too-small");
 });
@@ -799,7 +799,7 @@ test("a red pool is selected across the hue wrap", () => {
       rgba.set([r, g, b, 255], (y * width + x) * 4);
     }
   }
-  const picked = selectWaterAt(rgba, width, height, { x: 60, y: 60 });
+  const picked = selectColourAt(rgba, width, height, { x: 60, y: 60 });
   assert.equal(picked.status, "found");
   assert.ok(picked.proposal.pixels.length >= 6400);
   assert.ok(picked.seed.hue < 10 || picked.seed.hue > 350, `hue ${picked.seed.hue}`);
@@ -809,7 +809,7 @@ for (const [holeHue, waterHue] of [[190, 220], [200, 300]]) test(`a small blue h
   const width = 256, height = 256;
   const rgba = blank(width, height, waterHue, 0.9, 180);
   fill(rgba, width, 100, 100, 8, 8, holeHue, 0.4, 170);
-  const picked = selectWaterAt(rgba, width, height, { x: 10, y: 10 });
+  const picked = selectColourAt(rgba, width, height, { x: 10, y: 10 });
   assert.equal(picked.status, "found");
   assert.equal(picked.proposal.loops.filter((loop) => loop.hole).length, 1);
   assert.equal(new Set(picked.proposal.pixels).has(104 * width + 104), false);
@@ -828,20 +828,20 @@ test("saturated grass does not join teal water through the weak hue band alone",
   const width = 200, height = 200;
   const rgba = blank(width, height, 150, 0.75, 160);
   fill(rgba, width, 0, 90, 200, 20, 115, 0.8, 140);
-  const picked = selectWaterAt(rgba, width, height, { x: 100, y: 40 });
+  const picked = selectColourAt(rgba, width, height, { x: 100, y: 40 });
   assert.equal(picked.status, "found");
   const pixels = new Set(picked.proposal.pixels);
   assert.equal(pixels.has(40 * width + 100), true, "clicked water remains selected");
   assert.equal(pixels.has(100 * width + 100), false, "touching grass stays outside the narrow selection");
   assert.equal(pixels.has(140 * width + 100), false, "selection cannot cross the grass strip");
-  const wide = selectWaterAt(rgba, width, height, { x: 100, y: 40 }, { broad: true });
+  const wide = selectColourAt(rgba, width, height, { x: 100, y: 40 }, { broad: true });
   assert.equal(new Set(wide.proposal.pixels).has(100 * width + 100), true, "wide range requires GM review of similar land");
 });
 
 test("a click off the image reads the nearest edge pixel, and short pixels throw", () => {
   const { rgba, width, height } = MUTED();
-  assert.ok(selectWaterAt(rgba, width, height, { x: -40, y: -40 }).proposal.pixels.includes(0));
-  assert.throws(() => selectWaterAt(new Uint8Array(4), width, height, { x: 0, y: 0 }), /shorter/);
+  assert.ok(selectColourAt(rgba, width, height, { x: -40, y: -40 }).proposal.pixels.includes(0));
+  assert.throws(() => selectColourAt(new Uint8Array(4), width, height, { x: 0, y: 0 }), /shorter/);
 });
 
 for (const [name, build, x, y] of [
@@ -852,7 +852,7 @@ for (const [name, build, x, y] of [
   test(`a click on ${name} finishes within a second`, () => {
     const rgba = build();
     const start = performance.now();
-    const picked = selectWaterAt(rgba, 1024, 1024, { x, y });
+    const picked = selectColourAt(rgba, 1024, 1024, { x, y });
     const elapsed = performance.now() - start;
     assert.equal(picked.status, "found");
     assert.ok(elapsed < 1000, `${elapsed.toFixed(0)} ms`);
@@ -870,9 +870,9 @@ test("adding a pale shoreline to a draft keeps its existing water and boat holes
   assert.equal(auto.status, "found");
   const target = auto.proposals[0];
   assert.equal(new Set(target.pixels).has(20 * width + 30), false);
-  const clicked = selectWaterAt(rgba, width, height, { x: 30, y: 20 });
+  const clicked = selectColourAt(rgba, width, height, { x: 30, y: 20 });
   assert.equal(clicked.status, "found");
-  const merged = mergeWaterProposals([target, clicked.proposal], width, height);
+  const merged = mergeAreaProposals([target, clicked.proposal], width, height);
   const pixels = new Set(merged.pixels);
   assert.equal(merged.id, target.id);
   assert.equal(pixels.has(20 * width + 30), true, "pale shallows added");
@@ -890,7 +890,7 @@ test("combining disconnected areas makes one region without water between them",
   fill(rgba, width, 120, 120, 50, 50, 210, 0.85, 170);
   const auto = detectWater(rgba, width, height);
   assert.equal(auto.proposals.length, 2);
-  const combined = mergeWaterProposals(auto.proposals, width, height);
+  const combined = mergeAreaProposals(auto.proposals, width, height);
   assert.equal(combined.loops.filter((loop) => !loop.hole).length, 2);
   assert.equal(combined.pixels.length, 5000);
   assert.equal(new Set(combined.pixels).has(90 * width + 90), false);
@@ -901,20 +901,20 @@ test("combining disconnected areas makes one region without water between them",
 
 test("combining areas settles diagonal contacts without entering another claimed area", () => {
   const width = 8, height = 8;
-  const first = { id: "water-1", pixels: new Int32Array([9, 10, 17, 18]) };
-  const next = { id: "water-2", pixels: new Int32Array([27, 28, 35, 36]) };
+  const first = { id: "area-1", pixels: new Int32Array([9, 10, 17, 18]) };
+  const next = { id: "area-2", pixels: new Int32Array([27, 28, 35, 36]) };
   const claimed = [{ pixels: new Int32Array([19]) }];
-  const combined = mergeWaterProposals([first, next], width, height, { claimed });
+  const combined = mergeAreaProposals([first, next], width, height, { claimed });
   assert.equal(new Set(combined.pixels).has(19), false);
   for (const loop of combined.loops) assert.equal(isSimple(loop.points), true);
 });
 
 
 test("extending saved water retains its existing overlap without claiming more of another region", () => {
-  const target = { id: "water-1", pixels: new Int32Array([0, 1, 10, 11]) };
+  const target = { id: "area-1", pixels: new Int32Array([0, 1, 10, 11]) };
   const added = { pixels: new Int32Array([2, 3, 12, 13]) };
   const claimed = [{ pixels: new Int32Array([1, 3, 11, 13]) }];
-  const merged = mergeWaterProposals([target, added], 10, 10, { claimed, preserveTarget: true });
+  const merged = mergeAreaProposals([target, added], 10, 10, { claimed, preserveTarget: true });
   const pixels = new Set(merged.pixels);
   assert.equal(pixels.has(1), true);
   assert.equal(pixels.has(11), true);
@@ -932,15 +932,15 @@ test("claiming a saved shore drops leftover sliver components instead of offerin
   for (let i = 0; i < Math.ceil(min) + 10; i++) slivers.push(60 * width + 2 * i);
   assert.ok(slivers.length > min);
   assert.ok(slivers.every((_, i) => i === 0 || slivers[i] - slivers[i - 1] > 1));
-  const detected = { id: "water-1", pixels: Int32Array.from([...claimedPixels, ...slivers]) };
+  const detected = { id: "area-1", pixels: Int32Array.from([...claimedPixels, ...slivers]) };
   const claimed = [{ id: "saved", pixels: Int32Array.from(claimedPixels) }];
-  const merged = mergeWaterProposals([detected], width, height, { claimed, dropSmallComponents: true });
+  const merged = mergeAreaProposals([detected], width, height, { claimed, dropSmallComponents: true });
   assert.equal(merged.pixels.length, 0, "isolated shore slivers are not one fresh area");
   assert.ok(merged.share < WATER_TUNING.componentMinShare);
 
   const real = [];
   for (let y = 120; y < 150; y++) for (let x = 120; x < 150; x++) real.push(y * width + x);
-  const withReal = mergeWaterProposals([{ id: "water-1", pixels: Int32Array.from([...claimedPixels, ...slivers, ...real]) }], width, height, { claimed, dropSmallComponents: true });
+  const withReal = mergeAreaProposals([{ id: "area-1", pixels: Int32Array.from([...claimedPixels, ...slivers, ...real]) }], width, height, { claimed, dropSmallComponents: true });
   assert.equal(withReal.pixels.length, real.length, "a real leftover keeps only its own component");
   assert.equal(new Set(withReal.pixels).has(slivers[0]), false);
 });
@@ -957,8 +957,8 @@ test("combining into a saved region keeps a small pond under the component size 
   assert.ok(pond.length < min);
   const added = [];
   for (let y = 10; y < 110; y++) for (let x = 110; x < 150; x++) added.push(y * width + x);
-  const target = { id: "water-1", pixels: Int32Array.from([...block, ...pond]) };
-  const merged = mergeWaterProposals([target, { pixels: Int32Array.from(added) }], width, height, { preserveTarget: true });
+  const target = { id: "area-1", pixels: Int32Array.from([...block, ...pond]) };
+  const merged = mergeAreaProposals([target, { pixels: Int32Array.from(added) }], width, height, { preserveTarget: true });
   const pixels = new Set(merged.pixels);
   assert.equal(pond.filter((p) => pixels.has(p)).length, 64, "the pond survives combine");
   assert.equal(block.filter((p) => pixels.has(p)).length, block.length);
@@ -967,10 +967,10 @@ test("combining into a saved region keeps a small pond under the component size 
 
 test("selection coverage includes fractional boundary cells but leaves full hole cells clear", () => {
   const box = (x, y, w, h, hole = false) => ({ points: [x, y, x + w, y, x + w, y + h, x, y + h], hole });
-  const pixels = waterSelectionPixels([box(0.25, 0.25, 9, 9), box(3, 3, 2, 2, true)], 12, 12);
+  const pixels = areaPixels([box(0.25, 0.25, 9, 9), box(3, 3, 2, 2, true)], 12, 12);
   assert.equal(pixels.length, 96);
   assert.ok(pixels.includes(9 * 12 + 9));
   assert.equal(pixels.includes(3 * 12 + 3), false);
   const triangle = [{ points: [0.25, 0.25, 2.25, 0.25, 0.25, 2.25], hole: false }];
-  assert.deepEqual([...waterSelectionPixels(triangle, 4, 4)], [0, 1, 2, 4, 5, 8]);
+  assert.deepEqual([...areaPixels(triangle, 4, 4)], [0, 1, 2, 4, 5, 8]);
 });

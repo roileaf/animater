@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { selectWaterAt } from "../../../scripts/engines/regions/water-detect.mjs";
+import { selectColourAt } from "../../../scripts/engines/regions/floor-detect.mjs";
 
 const SIZE = 200;
 const rgb = (hue, sat, value) => {
@@ -23,7 +23,7 @@ test("a click on a lamp's reflection reads the water around it", () => {
     if (x >= 99 && x <= 100 && y >= 99 && y <= 100) return rgb(45, 0.4, 190);
     return inLake(x, y) ? rgb(205, 0.45, 70) : LAND;
   });
-  const result = selectWaterAt(image, SIZE, SIZE, { x: 100, y: 100 });
+  const result = selectColourAt(image, SIZE, SIZE, { x: 100, y: 100 });
   assert.equal(result.status, "found");
   assert.ok(Math.abs(result.seed.hue - 205) < 3, `seed hue ${result.seed.hue}`);
   assert.ok(result.proposal.share > 0.3, `share ${result.proposal.share}`);
@@ -34,14 +34,14 @@ test("a click where a bright patch meets paler water fills the paler water too",
     if (!inLake(x, y)) return LAND;
     return rgb(205, x >= 100 && x <= 106 && y >= 97 && y <= 103 ? 0.9 : 0.47, 120);
   });
-  const result = selectWaterAt(image, SIZE, SIZE, { x: 100, y: 100 });
+  const result = selectColourAt(image, SIZE, SIZE, { x: 100, y: 100 });
   assert.equal(result.status, "found");
   assert.ok(result.proposal.share > 0.3, `share ${result.proposal.share}`);
 });
 
 test("a click on a 3 pixel stream selects the stream and not its banks", () => {
   const image = paint((x) => (x >= 99 && x <= 101 ? rgb(205, 0.45, 90) : rgb(36, 0.4, 110)));
-  const result = selectWaterAt(image, SIZE, SIZE, { x: 100, y: 100 });
+  const result = selectColourAt(image, SIZE, SIZE, { x: 100, y: 100 });
   assert.equal(result.status, "found");
   assert.ok(Math.abs(result.seed.hue - 205) < 3, `seed hue ${result.seed.hue}`);
   assert.ok(result.proposal.share < 0.03, `share ${result.proposal.share}`);

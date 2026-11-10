@@ -51,20 +51,20 @@ test("Detect water sits in the Animater group only while the experimental settin
   settings.set("experimentalWaterRegions", true);
   settings.set("toolDetectWater", true);
   let controls = buildControls();
-  assert.ok(controls.animater?.tools?.animaterDetectWater);
-  assert.equal(controls.animater.tools.animaterDetectWater.visible, true);
-  assert.equal(controls.animater.tools.animaterDetectWater.button, true);
-  assert.equal(controls.regions.tools.animaterDetectWater, undefined);
+  assert.ok(controls.animater?.tools?.animaterFloorRegions);
+  assert.equal(controls.animater.tools.animaterFloorRegions.visible, true);
+  assert.equal(controls.animater.tools.animaterFloorRegions.button, true);
+  assert.equal(controls.regions.tools.animaterFloorRegions, undefined);
 
   settings.set("experimentalWaterRegions", false);
   controls = buildControls();
-  assert.equal(controls.animater.tools.animaterDetectWater.visible, false);
-  assert.equal(controls.regions.tools.animaterDetectWater, undefined);
+  assert.equal(controls.animater.tools.animaterFloorRegions.visible, false);
+  assert.equal(controls.regions.tools.animaterFloorRegions, undefined);
 
   settings.set("experimentalWaterRegions", true);
   settings.set("toolDetectWater", false);
   controls = buildControls();
-  assert.equal(controls.animater.tools.animaterDetectWater.visible, false);
+  assert.equal(controls.animater.tools.animaterFloorRegions.visible, false);
   settings.set("toolDetectWater", true);
 });
 
@@ -74,14 +74,14 @@ test("a scene switch during the first click's module load still writes to the sc
   const controls = buildControls();
   const sceneA = makeScene("A"), sceneB = makeScene("B");
   globalThis.canvas = viewing(sceneA, "level-A", 200);
-  controls.animater.tools.animaterDetectWater.onChange();
+  controls.animater.tools.animaterFloorRegions.onChange();
   globalThis.canvas = viewing(sceneB, "level-B", 800, { scaleX: 2 });
   await new Promise((resolve) => setTimeout(resolve, 80));
   assert.ok(renderedApp, "a moved level B map would have refused to open");
   renderedApp.element = {
     querySelector: () => null,
     querySelectorAll: (selector) => (selector === "[data-id]" ? [{
-      dataset: { id: "water-1" },
+      dataset: { id: "area-1" },
       querySelector: (inner) => (inner === "[data-pick]" ? { checked: true } : { value: "" }),
     }] : []),
   };

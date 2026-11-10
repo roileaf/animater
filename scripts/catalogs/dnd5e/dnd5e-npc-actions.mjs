@@ -1,12 +1,19 @@
-import {catalogDataNeeded} from '../shared/catalog-data.mjs';
-const {DND_NPC_ACTIONS,DND_NPC_ACTION_SOURCE}=catalogDataNeeded('dnd5e')?await import('../../../data/dnd5e-npc-actions.mjs'):{DND_NPC_ACTIONS:[],DND_NPC_ACTION_SOURCE:{}};
+import {catalogData,fillList} from '../shared/catalog-data.mjs';
+
 import {buildNpcActionRecipe} from '../shared/npc-system-actions.mjs';
 import {dndEntry,dndRecipe} from './dnd5e-catalog.mjs';
 import {matchRecipe,matchStrikeOverride,normalize,originalName,validateRecipe} from '../../core/model.mjs';
+// Filled when the data loads (catalog-data.mjs).
+const DND_NPC_ACTIONS=[],DND_NPC_ACTION_SOURCE={};
 export {DND_NPC_ACTIONS,DND_NPC_ACTION_SOURCE};
-const byId=new Map(DND_NPC_ACTIONS.map(a=>[a.id,a])),bySource=new Map(),byName=new Map();
-for(const action of DND_NPC_ACTIONS){const name=normalize(action.name);if(!byName.has(name))byName.set(name,[]);byName.get(name).push(action);}
-for(const action of DND_NPC_ACTIONS)for(const match of action.matches){if(!bySource.has(match.source))bySource.set(match.source,[]);bySource.get(match.source).push({action,activityId:match.activityId});}
+const byId=new Map(),bySource=new Map(),byName=new Map();
+await catalogData('dnd5e','npcActions',async()=>{
+ const data=await import('../../../data/dnd5e-npc-actions.mjs');
+ fillList(DND_NPC_ACTIONS,data.DND_NPC_ACTIONS);Object.assign(DND_NPC_ACTION_SOURCE,data.DND_NPC_ACTION_SOURCE);
+ for(const action of DND_NPC_ACTIONS)byId.set(action.id,action);
+ for(const action of DND_NPC_ACTIONS){const name=normalize(action.name);if(!byName.has(name))byName.set(name,[]);byName.get(name).push(action);}
+ for(const action of DND_NPC_ACTIONS)for(const match of action.matches){if(!bySource.has(match.source))bySource.set(match.source,[]);bySource.get(match.source).push({action,activityId:match.activityId});}
+});
 function select(candidates,event){
  const activityId=event.activityId??event.activity?._id,name=event.activityName??event.activity?.name;
  if(activityId){const exact=candidates.filter(c=>c.activityId===activityId);if(exact.length===1)return exact[0].action;}

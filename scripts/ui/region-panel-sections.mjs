@@ -12,8 +12,8 @@ import { keepsOut } from '../engines/motion/wildlife.mjs';
 import { REGION_LOOK_FLAG } from '../engines/playback/region-looks.mjs';
 import { choice } from './region-steps-ui.mjs';
 import { ROOM_DRESSING, kindFlags } from './region-panel-model.mjs';
-// Whether the ground here is built out over water: the same as choosing Dock (on) or Ground (off) above, said in so many words.
-const OVER_WATER_TIP = 'Built out over water: a deck, a jetty, a bridge. The water goes on under it; what walks here walks on its boards. The same as choosing Dock above.';
+// Whether the ground here is built out over water (a dock): on, it shows how it is built, its posts and its shadow.
+const OVER_WATER_TIP = 'Built out over water: a deck, a jetty, a bridge. The water goes on under it; what walks here walks on its boards, and it shows how it is built, its posts and its shadow.';
 
 // The small pieces every section is made of.
 export const element = (tag, className, text) => { const el = document.createElement(tag); if (className) el.className = className; if (text !== undefined) el.textContent = text; return el; };
@@ -152,7 +152,8 @@ export const SECTIONS = {
 
   air(c) {
     const { own, kind, act } = c;
-    const parts = [row('Weather', choice([['', 'As the scene'], ...c.weathers()], own.regionWeather ?? '', 'Weather here', (v) => act({ regionWeather: v })), "Weather drawn only inside this region, in place of the scene's. Only the look: the ground, sounds and footsteps stay as the scene's."),
+    const parts = [toggle('Roof', c.roofed, (on) => c.setRoof(on), "Keeps the weather, the sun and the sky's light out, as indoors or in a cave: Foundry's Suppress Weather on this region. Open to the sky below lets it in through a hole."),
+      row('Weather', choice([['', 'As the scene'], ...c.weathers()], own.regionWeather ?? '', 'Weather here', (v) => act({ regionWeather: v })), "Weather drawn only inside this region, in place of the scene's. Only the look: the ground, sounds and footsteps stay as the scene's."),
       row('Climate', seg(CLIMATES, own.cold ?? '', (v) => act({ cold: v }), 'Climate here'), "Whether creatures' breath shows inside, whatever the scene's climate.")];
     parts.push(toggle('Tavern murmur', said(own, 'tavern'), flip('tavern', act), 'The murmur of a crowd inside: loud in here, faint through the walls, spilling out of an open door.'));
     // A room's dressing: a cave sets it in its own section, every other kind here.

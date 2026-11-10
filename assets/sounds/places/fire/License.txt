@@ -1,0 +1,19 @@
+All recordings in this folder are CC0 1.0 (public domain) from Freesound (https://freesound.org); each source page
+was checked for its CC0 licence. Each file was cut from the sound's high-quality Freesound preview,
+mixed to mono, loudness-matched (about -33 LUFS) and encoded as Ogg Vorbis 96 kb/s for Animater.
+Thank you to each author.
+
+fire-brazier-346321-0.ogg: "Crackling fireplace" by nielstii, https://freesound.org/people/nielstii/sounds/346321/ (CC0 1.0). Changes: cut 6.00-38.00 s, its end crossfaded into its start to loop (30 s), mixed to mono, loudness-matched.
+fire-brazier-484338-0.ogg: "Fireplace crackling wood little flame.wav" by BonnyOrbit, https://freesound.org/people/BonnyOrbit/sounds/484338/ (CC0 1.0). Changes: cut 81.00-113.00 s, its end crossfaded into its start to loop (30 s), mixed to mono, loudness-matched.
+fire-brazier-501417-0.ogg: "Aachen_Burning Fireplace Crackling Fire Sounds.wav" by visionear, https://freesound.org/people/visionear/sounds/501417/ (CC0 1.0). Changes: cut 99.00-131.00 s, its end crossfaded into its start to loop (30 s), mixed to mono, loudness-matched.
+fire-campfire-563764-0.ogg: "bonfire flames sizzling" by florianreichelt, https://freesound.org/people/florianreichelt/sounds/563764/ (CC0 1.0). Changes: cut 12.00-44.00 s, its end crossfaded into its start to loop (30 s), mixed to mono, loudness-matched.
+fire-campfire-588401-0.ogg: "Campfire Close Crackling Sticks.mp3" by FunWithSound, https://freesound.org/people/FunWithSound/sounds/588401/ (CC0 1.0). Changes: cut 45.00-77.00 s, its end crossfaded into its start to loop (30 s), mixed to mono, loudness-matched.
+fire-campfire-637523-0.ogg: "fire small campfire crackling short +air tone.flac" by kyles, https://freesound.org/people/kyles/sounds/637523/ (CC0 1.0). Changes: cut 0.00-32.00 s, its end crossfaded into its start to loop (30 s), mixed to mono, loudness-matched.
+fire-campfire-729396-0.ogg: "Campfire 02" by HECKFRICKER, https://freesound.org/people/HECKFRICKER/sounds/729396/ (CC0 1.0). Changes: cut 174.00-206.00 s, its end crossfaded into its start to loop (30 s), mixed to mono, loudness-matched.
+fire-pot-137229-0.ogg: "Boiling water.wav" by xenognosis, https://freesound.org/people/xenognosis/sounds/137229/ (CC0 1.0). Changes: cut 0.00-11.00 s, its end crossfaded into its start to loop (9 s), mixed to mono, loudness-matched.
+fire-pot-415893-0.ogg: "pilaf is boiling in cauldron 1" by Selector, https://freesound.org/people/Selector/sounds/415893/ (CC0 1.0). Changes: cut 0.00-17.00 s, its end crossfaded into its start to loop (15 s), mixed to mono, loudness-matched.
+fire-pot-451287-0.ogg: "Boiling water (Cooking paella)" by bolkmar, https://freesound.org/people/bolkmar/sounds/451287/ (CC0 1.0). Changes: cut 24.00-56.00 s, its end crossfaded into its start to loop (30 s), mixed to mono, loudness-matched.
+fire-pot-456382-0.ogg: "Boiling Pot of Water" by monsterthing, https://freesound.org/people/monsterthing/sounds/456382/ (CC0 1.0). Changes: cut 0.00-13.00 s, its end crossfaded into its start to loop (11 s), mixed to mono, loudness-matched.
+fire-torch-483692-0.ogg: "torch ambience loop" by LordStirling, https://freesound.org/people/LordStirling/sounds/483692/ (CC0 1.0). Changes: cut 0.00-32.00 s, its end crossfaded into its start to loop (30 s), mixed to mono, loudness-matched.
+fire-torch-497195-0.ogg: "burning candle in the wind.wav" by 16GPanskaSibinska_N, https://freesound.org/people/16GPanskaSibinska_N/sounds/497195/ (CC0 1.0). Changes: cut 0.00-11.00 s, its end crossfaded into its start to loop (9 s), mixed to mono, loudness-matched.
+fire-torch-813328-0.ogg: "Crackling Flames (loop)" by NickTayloe, https://freesound.org/people/NickTayloe/sounds/813328/ (CC0 1.0). Changes: cut 3.00-35.00 s, its end crossfaded into its start to loop (30 s), mixed to mono, loudness-matched.

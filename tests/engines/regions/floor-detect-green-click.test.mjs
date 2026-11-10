@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { selectWaterAt } from "../../../scripts/engines/regions/water-detect.mjs";
+import { selectColourAt } from "../../../scripts/engines/regions/floor-detect.mjs";
 
 function hsvToRgb(h, s, v) {
   const c = v * s, hp = h / 60, x = c * (1 - Math.abs((hp % 2) - 1));
@@ -68,7 +68,7 @@ function buildGradedGreenPool(width, height) {
 test("a green click joins similar connected water and keeps coloured pads as holes", () => {
   const width = 200, height = 130;
   const rgba = buildGradedGreenPool(width, height);
-  const picked = selectWaterAt(rgba, width, height, { x: 100, y: 35 }, { broad: true });
+  const picked = selectColourAt(rgba, width, height, { x: 100, y: 35 }, { broad: true });
   assert.equal(picked.status, "found");
   const set = new Set(picked.proposal.pixels);
   assert.ok(set.has(35 * width + 100), "upper band");
@@ -88,7 +88,7 @@ test("a red pool still fills a dull reflection across the hue wrap", () => {
   const rgba = paintSolid(width, height);
   fillRect(rgba, width, 20, 20, 160, 160, 350, 0.8, 90);
   fillRect(rgba, width, 90, 90, 8, 8, 350, 0.3, 90);
-  const picked = selectWaterAt(rgba, width, height, { x: 50, y: 50 });
+  const picked = selectColourAt(rgba, width, height, { x: 50, y: 50 });
   assert.equal(picked.status, "found");
   assert.equal(polygonCovers(picked.proposal, 94, 94), true);
 });
@@ -97,7 +97,7 @@ test("nearby clicks at the cool end of green water still reach its warmer end", 
   const width = 200, height = 130;
   const rgba = paintSolid(width, height);
   for (let y = 20; y < 120; y++) fillRect(rgba, width, 10, y, 180, 1, 128 - (y - 20) * 40 / 99, 0.6, 40);
-  const picked = selectWaterAt(rgba, width, height, { x: 100, y: 24 }, { broad: true });
+  const picked = selectColourAt(rgba, width, height, { x: 100, y: 24 }, { broad: true });
   assert.equal(picked.status, "found");
   assert.ok(new Set(picked.proposal.pixels).has(115 * width + 100), "connected warm green water");
 });
@@ -108,7 +108,7 @@ test("hundreds of small floating pads remain separate polygon holes", () => {
   for (let y = 20; y <= 500; y += 20) {
     for (let x = 20; x <= 500; x += 20) fillRect(rgba, width, x, y, 8, 8, 47, 0.8, 110);
   }
-  const picked = selectWaterAt(rgba, width, height, { x: 12, y: 12 });
+  const picked = selectColourAt(rgba, width, height, { x: 12, y: 12 });
   assert.equal(picked.status, "found");
   assert.equal(picked.proposal.loops.filter((loop) => loop.hole).length, 625);
   assert.equal(polygonCovers(picked.proposal, 24, 24), false);

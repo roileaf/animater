@@ -27,7 +27,8 @@ export function farmStep(animal, { dt = 1 / 20, grid = 100, near = [], ok = () =
   // Too close a creature, or a loud noise: off at a run, away from it.
   const close = near.find((n) => Math.hypot(n.x - a.x, n.y - a.y) < k.fear * grid + body * 0.3);
   const heard = noise && Math.hypot(noise.x - a.x, noise.y - a.y) < noise.radius;
-  if (close || heard) { a.mode = 'flee'; a.a = away(close ?? noise); a.wait = Math.max(a.mode === 'flee' ? a.wait : 0, 2 + random() * 2); }
+  // (One already running keeps the rest of its run if that is longer; one grazing runs two to four seconds, not its graze's time.)
+  if (close || heard) { const running = a.mode === 'flee'; a.mode = 'flee'; a.a = away(close ?? noise); a.wait = Math.max(running ? a.wait : 0, 2 + random() * 2); }
   a.wait -= dt;
   if (a.wait <= 1e-9) {
     if (a.mode === 'graze') {

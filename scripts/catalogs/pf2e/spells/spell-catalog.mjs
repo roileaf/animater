@@ -1,31 +1,41 @@
-import {catalogDataNeeded} from '../../shared/catalog-data.mjs';
-const {PF2E_SOURCE, PF2E_SPELLS} = catalogDataNeeded('pf2e') ? await import('../../../../data/pf2e-spells.mjs') : {PF2E_SOURCE: {}, PF2E_SPELLS: []};
+import {catalogData,fillList} from '../../shared/catalog-data.mjs';
 import { normalize, matchRecipe, ownRecipe } from "../../../core/model.mjs";
 import {
   spellRecipe,
   SPELL_THEMES,
   DELIVERY_LABELS,
 } from "./spell-choreography.mjs";
+// Filled when the data loads (catalog-data.mjs).
+const PF2E_SOURCE = {}, PF2E_SPELLS = [];
 export { PF2E_SOURCE, PF2E_SPELLS, spellRecipe, SPELL_THEMES, DELIVERY_LABELS };
 
-const byId = new Map(PF2E_SPELLS.map((s) => [s.id, s]));
+const byId = new Map();
 const byName = new Map();
-for (const spell of [...PF2E_SPELLS].sort(
-  (a, b) => Number(a.edition === "legacy") - Number(b.edition === "legacy"),
-))
-  for (const name of [spell.name, spell.slug]) {
-    const key = normalize(name);
-    if (!byName.has(key)) byName.set(key, spell);
-  }
+let loaded = false;
+await catalogData('pf2e', 'spells', async () => {
+  const data = await import('../../../../data/pf2e-spells.mjs');
+  fillList(PF2E_SPELLS, data.PF2E_SPELLS); Object.assign(PF2E_SOURCE, data.PF2E_SOURCE);
+  for (const spell of PF2E_SPELLS) byId.set(spell.id, spell);
+  for (const spell of [...PF2E_SPELLS].sort(
+    (a, b) => Number(a.edition === "legacy") - Number(b.edition === "legacy"),
+  ))
+    for (const name of [spell.name, spell.slug]) {
+      const key = normalize(name);
+      if (!byName.has(key)) byName.set(key, spell);
+    }
+  loaded = true;
+});
 export const catalogSpell = (id) =>
   byId.get(String(id).replace(/^pf2e-/, "")) ?? null;
+// Before the data loads, a saved choice keeps its id as it is (nothing is dropped as unknown).
+const knownSpell = (id) => loaded ? catalogSpell(id)?.id : String(id).replace(/^pf2e-/, "");
 export const catalogSpellReady = spell => Boolean(spell && !spell.design?.unavailable && spell.design?.motif !== 'generic');
 export function normalizeCatalogState(state = {}) {
   state ??= {};
   const ids = (values) => [
     ...new Set(
       (Array.isArray(values) ? values : [])
-        .map((id) => catalogSpell(id)?.id)
+        .map(knownSpell)
         .filter(Boolean),
     ),
   ];

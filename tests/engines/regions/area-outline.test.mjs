@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { changeVertex, validateOutline, smoothOutline, outlinePoint, hitOutline, unionOutlines, subtractOutlines } from "../../../scripts/engines/regions/water-outline.mjs";
-import { waterProposalFromLoops } from "../../../scripts/engines/regions/water-detect.mjs";
+import { changeVertex, validateOutline, smoothOutline, outlinePoint, hitOutline, unionOutlines, subtractOutlines } from "../../../scripts/engines/regions/area-outline.mjs";
+import { areaProposalFromLoops } from "../../../scripts/engines/regions/floor-detect.mjs";
 const ring = (points, hole = false) => ({ points, hole });
 const box = (x, y, w, h, hole = false) => ring([x,y,x+w,y,x+w,y+h,x,y+h], hole);
 
@@ -20,7 +20,7 @@ test("move, insert and delete keep source immutable and refresh the mask from ex
   assert.equal(validateOutline(original, moved, 10, 10), "");
   assert.deepEqual(original, [box(0,0,10,10)]);
   assert.equal(moved[0].points[2], 6.25);
-  assert.ok(waterProposalFromLoops(moved, 10, 10).pixels.length < 100);
+  assert.ok(areaProposalFromLoops(moved, 10, 10).pixels.length < 100);
   const inserted = changeVertex(moved, { ring: 0, vertex: 0, action: "insert", x: 3, y: 0 });
   assert.equal(validateOutline(moved, inserted, 10, 10), "");
   assert.deepEqual(changeVertex(inserted, { ring: 0, vertex: 1, action: "delete" }), moved);
@@ -76,7 +76,7 @@ test("polygon union preserves fractional edited edges while adding water, holes,
   assert.equal(loops.filter((l)=>!l.hole).length,2);
   assert.equal(loops.filter((l)=>l.hole).length,1);
   assert.ok(loops[0].points.includes(0.25));
-  const result = waterProposalFromLoops(loops,20,10);
+  const result = areaProposalFromLoops(loops,20,10);
   assert.equal(result.pixels.length,93);
   assert.equal(result.pixels.includes(3*20+1),false);
   assert.deepEqual(unionOutlines(left,left), [box(0.25,0,5,10), ring([1,4,2,4,2,3,1,3],true)]);
@@ -91,8 +91,8 @@ test("union masks match both inputs for intersecting synthetic polygons and fill
     [[box(2,2,3,3)], [box(0,0,10,10)]],
   ];
   for (const [left,right] of inputs) {
-    const expected = new Set([...waterProposalFromLoops(left,20,20).pixels,...waterProposalFromLoops(right,20,20).pixels]);
-    const actual = new Set(waterProposalFromLoops(unionOutlines(left,right),20,20).pixels);
+    const expected = new Set([...areaProposalFromLoops(left,20,20).pixels,...areaProposalFromLoops(right,20,20).pixels]);
+    const actual = new Set(areaProposalFromLoops(unionOutlines(left,right),20,20).pixels);
     assert.deepEqual(actual,expected);
   }
   assert.throws(()=>unionOutlines([box(0,0,4,4)],[box(4,4,4,4)]),/touch/);
@@ -142,7 +142,7 @@ test("difference creates holes, notches, split shores, enlarged holes and water 
   for (const [left,right,count,outer,holes] of cases) {
     const before = structuredClone(left);
     const loops = subtractOutlines(left,right);
-    assert.equal(waterProposalFromLoops(loops,10,10).pixels.length,count);
+    assert.equal(areaProposalFromLoops(loops,10,10).pixels.length,count);
     assert.equal(loops.filter(l=>!l.hole).length,outer);
     assert.equal(loops.filter(l=>l.hole).length,holes);
     assert.ok(loops.some(l=>l.points.includes(0.25) && l.points.includes(9.25)));

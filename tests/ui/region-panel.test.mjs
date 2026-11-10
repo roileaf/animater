@@ -33,7 +33,7 @@ const fire = (n, type, extra = {}) => { const e = { target: n, defaultPrevented:
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 // Opens the panel on one region; `saves` records every save, and flagsOf follows them unless `stick` keeps the region as it was.
-async function setup(start = {}, floor = 'grass', { reject = false, stick = false, texture = () => false, season = () => false, hold = false, what = null, flagsOf = null, confirm = null, configure = null, shows = null } = {}) {
+async function setup(start = {}, floor = 'grass', { reject = false, stick = false, texture = () => false, season = () => false, hold = false, what = null, flagsOf = null, confirm = null, configure = null, shows = null, roof = null } = {}) {
   const dom = installDom();
   const { createRegionPanel } = await import('../../scripts/ui/region-panel.mjs');
   const doc = { name: 'Mill pond' };
@@ -53,6 +53,7 @@ async function setup(start = {}, floor = 'grass', { reject = false, stick = fals
     ...(confirm ? { confirm } : {}),
     ...(configure ? { configure } : {}),
     ...(shows ? { shows } : {}),
+    ...(roof ? { roof } : {}),
   });
   panel.open(what ?? { doc, floor, at: { x: 5, y: 6 }, client: { x: 10, y: 10 }, regions: [{ doc, floor }], first: doc });
   const root = () => dom.body.children[0];
@@ -600,7 +601,7 @@ test('long explanations are tooltips, not paragraphs', async () => {
   t.done();
 });
 
-test('Over water says in so many words what Dock means: on from Ground builds it out over the water, off from Dock brings it back to Ground', async () => {
+test('Over water on Ground builds it out over the water (a dock); off brings it back to plain ground', async () => {
   const t = await setup({ floor: 'wood' }, 'wood');
   t.openSection('ground');
   await t.click(t.byLabel('Over water'));
@@ -609,8 +610,24 @@ test('Over water says in so many words what Dock means: on from Ground builds it
   t.done();
   const d = await setup({ floor: 'wood', overWater: true }, 'wood');
   d.openSection('deck');
+  assert.equal(d.byLabel('Ground').attrs['aria-pressed'], 'true', 'a dock shows as Ground: there is no Dock kind to pick');
+  assert.equal(d.byLabel('Dock'), null);
   await d.click(d.byLabel('Over water'));
   assert.equal(d.saves.at(-1).overWater, false);
   assert.equal(d.saves.at(-1).floor, 'wood');
   d.done();
+});
+
+test('Roof: one switch puts a roof on the region (Foundry Suppress Weather) or takes it off, and notes it in its flags', async () => {
+  let on = false; const calls = [];
+  const t = await setup({ floor: 'grass' }, 'grass', { roof: { has: () => on, set: async (d, v) => { calls.push(v); on = v; } } });
+  t.openSection('air');
+  assert.equal(t.byLabel('Roof').attrs['aria-checked'], 'false');
+  await t.click(t.byLabel('Roof'));
+  assert.deepEqual(calls, [true]);
+  assert.deepEqual(t.saves.at(-1), { roof: true }, 'noted, so everything that redraws on a region change hears of it');
+  assert.equal(t.byLabel('Roof').attrs['aria-checked'], 'true');
+  await t.click(t.byLabel('Roof'));
+  assert.deepEqual(calls, [true, false]);
+  t.done();
 });

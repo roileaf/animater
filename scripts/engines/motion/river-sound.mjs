@@ -1,16 +1,17 @@
 // Water heard (assets/sounds/wildlife/river and /pond, their License.txt): one loop for each speed of current on the map, and one for still
-// water (a Pond: a swamp's insects and slow mud bubbles), as loud as the
+// water: a pond's quiet lapping, or a swamp's insects and slow mud bubbles where it is styled as a Swamp, as loud as the
 // nearest listener is near the nearest water flowing at that speed. The GM with no creature listens from the middle of the view.
 
 const DIR = 'modules/animater/assets/sounds/wildlife/river';
 export const RIVER_SOUNDS = Object.freeze({
   gentle: ['180732-0', '180732-1', '637831-0', '826598-1'].map((n) => `${DIR}/river-gentle-${n}.ogg`),
   swift: ['323458-0', '588180-0', '588180-1', '642774-1', '718556-0'].map((n) => `${DIR}/river-swift-${n}.ogg`),
-  still: ['547690-415608-0', '415608-0'].map((n) => `modules/animater/assets/sounds/wildlife/pond/pond-still-${n}.ogg`),
+  swamp: ['547690-415608-0', '415608-0'].map((n) => `modules/animater/assets/sounds/wildlife/pond/pond-still-${n}.ogg`),
+  lake: ['318064-0'].map((n) => `modules/animater/assets/sounds/wildlife/pond/pond-lake-${n}.ogg`),
 });
 // How far it carries (squares) and how loud at the bank; swift water carries further, still water hardly at all.
-export const RIVER_REACH = Object.freeze({ gentle: 10, swift: 16, still: 6 });
-export const RIVER_VOLUME = Object.freeze({ gentle: 0.3, swift: 0.42, still: 0.26 });
+export const RIVER_REACH = Object.freeze({ gentle: 10, swift: 16, swamp: 6, lake: 6 });
+export const RIVER_VOLUME = Object.freeze({ gentle: 0.3, swift: 0.42, swamp: 0.26, lake: 0.24 });
 
 // Whether a point is inside a polygon (flat x, y pairs), and how far it is from it (pure): 0 inside.
 export const distanceToArea = (p, points) => nearestOfArea(p, points).d;
@@ -26,10 +27,10 @@ export function nearestOfArea(p, points) {
   return inside ? { d: 0, x: p.x, y: p.y } : { d: best, x, y };
 }
 
-// How much of each current's sound is heard (pure): `rivers` [{ speed: 'gentle' | 'swift' | 'still', areas: [flat points] }], `ears` the listening
+// How much of each current's sound is heard (pure): `rivers` [{ speed: 'gentle' | 'swift' | 'swamp' | 'lake', areas: [flat points] }], `ears` the listening
 // points, `grid` px a square. { gentle: { level 0-1, from }, swift }, `from` the listener nearest it and `at` the place in the water nearest them, for what stands between.
 export function riverHeard(rivers = [], ears = [], { grid = 100 } = {}) {
-  const out = { gentle: { level: 0, from: null, at: null }, swift: { level: 0, from: null, at: null }, still: { level: 0, from: null, at: null } };
+  const out = { gentle: { level: 0, from: null, at: null }, swift: { level: 0, from: null, at: null }, swamp: { level: 0, from: null, at: null }, lake: { level: 0, from: null, at: null } };
   for (const river of rivers) {
     const voice = out[river.speed]; if (!voice) continue;
     const reach = RIVER_REACH[river.speed] * grid;

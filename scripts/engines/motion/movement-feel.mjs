@@ -983,6 +983,7 @@ export function movementSound(action, { floor, gait, statuses, flight } = {}) {
 // Each kind's own bundled CC0 family (Freesound, credited beside the assets in License.txt), cut to one
 // event and loudness-matched like the footsteps. PSFX's wing, landing and burrow recordings are long loops (5–8 s), not
 // single beats, so they are not used here.
+const SPLASHES = ['398039-0', '364700-0', '398032-0'].map((n) => `modules/animater/assets/sounds/wildlife/splash/splash-${n}.ogg`);
 export const MOVE_SOUND_FILES = Object.freeze({
   wing: freesound(['wing-389634-0', 'wing-362405-0', 'wing-561364-0', 'wing-362405-1']),
   flight: completed('flight', 'any', 862337),
@@ -991,6 +992,9 @@ export const MOVE_SOUND_FILES = Object.freeze({
   climb: freesound(['climb-816743-0', 'climb-816743-1', 'climb-816743-3', 'climb-816743-4']),
   crawl: freesound(['crawl-872226-0', 'crawl-19291-0', 'crawl-389794-0', 'crawl-389794-1', 'crawl-389794-2']),
   jump: freesound(['jump-496188-0', 'jump-494797-0', 'jump-391448-1', 'jump-495390-1']),
+  // Going under the water ('dive') and coming back up ('surface'): a splash each, from the wildlife's splashes.
+  dive: SPLASHES,
+  surface: SPLASHES,
 });
 // The `n`th sound of `kind` by the token `seed` (never the same recording twice running); null for 'step' and unknown kinds.
 export function moveSoundFile(kind, n, { seed = '' } = {}) {
@@ -1012,7 +1016,7 @@ const GAP_SCALE = { flight: 2, burrow: 1.5, swim: 1.3, climb: 1.4, crawl: 1.6 };
 // always play (0).
 export function moveSoundGap(kind, weight, { gait } = {}) {
   if (kind === 'wing') return Math.round(lerpWeight(WING_GAP, weight, 0.3));
-  if (kind === 'jump' || kind === 'land') return 0;
+  if (kind === 'jump' || kind === 'land' || kind === 'dive' || kind === 'surface') return 0;
   if (kind === 'flight') return Math.max(700, Math.round(stepGap(weight) * GAP_SCALE.flight));
   // Hard hoof clips preserve a paired clop. Even small hooved creatures leave room for that phrase to finish.
   if (kind === 'step' && gait === 'hooves') return Math.max(stepGap(weight), Math.ceil(340 / weightRate(Math.max(0, weight - 1))));
@@ -1025,7 +1029,7 @@ export function moveSoundGap(kind, weight, { gait } = {}) {
 // octave down.
 const WING_RATE = [1.45, 1.2, 1, 0.82, 0.66, 0.52];
 // How loud each kind is (0-1, before the creature's size and the user's surface volume); a crawl is quiet.
-const MOVE_VOLUME = { wing: 0.17, flight: 0.08, burrow: 0.2, swim: 0.2, climb: 0.13, crawl: 0.09, jump: 0.15 };
+const MOVE_VOLUME = { wing: 0.17, flight: 0.08, burrow: 0.2, swim: 0.2, climb: 0.13, crawl: 0.09, jump: 0.15, dive: 0.85, surface: 0.65 };
 const weightGain = (weight) => {
   const w = Math.min(5, Math.max(0, Number(weight) || 0)), i = Math.floor(w);
   return WEIGHT_GAIN[i] + (WEIGHT_GAIN[Math.min(5, i + 1)] - WEIGHT_GAIN[i]) * (w - i);
@@ -1107,6 +1111,53 @@ export function swimWake(at, { grid = 100, width = grid } = {}) {
     return { kind: 'wake', color: L.color, x: tail.x, y: tail.y, vx: Math.cos(out) * drift, vy: Math.sin(out) * drift,
       radius: Math.max(grid * 0.25, width * 0.35), rotation: arm, alpha: L.alpha, delay: 0, life: L.life, spin: 0, grow: 0.6, side };
   });
+}
+// Out of the water (pure): a creature set to swim whose move ends on a floor that is not water walks again (`walk` the
+// system's walking action, none to leave the action be), and one still below the surface comes up to it (`base` the
+// level's floor). The change to make, or null for none.
+export function outOfWater({ action, floor, elevation = 0, base = 0, walk = 'walk' } = {}) {
+  if (String(action ?? '').toLowerCase() !== 'swim' || floor === 'water' || !floor) return null;
+  const change = {};
+  if (walk) change.movementAction = walk;
+  if ((Number(elevation) || 0) < (Number(base) || 0)) change.elevation = Number(base) || 0;
+  return Object.keys(change).length ? change : null;
+}
+// A swimmer's path, walked out of the water where it leaves it (pure): `start` where the token is { x, y, elevation,
+// action }, `waypoints` the move asked for (each may give only some of x, y, elevation, action; the rest carry on from
+// the one before), `floorAt(point, { elevation })` the floor under a point (`centre(position)` maps a token position to
+// the point it stands on). Along each swum stretch it looks every `step` px; where the floor stops being water, a
+// waypoint is added at the edge, and from there on the move walks (`walk`), first rising to the level's floor (`base`)
+// if it was under. The waypoints unchanged when the path never leaves the water, or no swimming is asked for.
+export function swimOutWaypoints(start, waypoints, floorAt, { walk = 'walk', base = 0, step = 25, centre = (p) => p } = {}) {
+  const list = Array.isArray(waypoints) ? waypoints : [waypoints];
+  const floorOf = (p, elevation) => { try { return floorAt(centre(p), { elevation }); } catch { return null; } };
+  const out = [];
+  let prev = { x: Number(start?.x) || 0, y: Number(start?.y) || 0, elevation: Number(start?.elevation) || 0, action: start?.action }, walked = false;
+  const up = (e) => Math.max(Number(e) || 0, Number(base) || 0);
+  for (const wp of list) {
+    // (A key given as undefined carries on from the one before, as Foundry reads it.)
+    const full = { ...prev, ...Object.fromEntries(Object.entries(wp ?? {}).filter(([, v]) => v !== undefined)) };
+    if (walked) {
+      out.push(String(full.action ?? '').toLowerCase() === 'swim' || wp.action === undefined ? { ...wp, action: walk, elevation: up(full.elevation) } : wp);
+      prev = { ...full, action: walk, elevation: up(full.elevation) };
+      continue;
+    }
+    if (String(full.action ?? '').toLowerCase() !== 'swim' || !walk) { out.push(wp); prev = full; continue; }
+    const dx = full.x - prev.x, dy = full.y - prev.y, de = full.elevation - prev.elevation, n = Math.max(1, Math.ceil(Math.hypot(dx, dy) / step));
+    let edge = null;
+    for (let k = 1; k <= n; k++) {
+      const t = k / n, p = { x: prev.x + dx * t, y: prev.y + dy * t }, elevation = prev.elevation + de * t, floor = floorOf(p, elevation);
+      if (floor && floor !== 'water') { edge = { x: Math.round(p.x), y: Math.round(p.y), elevation, t }; break; }
+    }
+    if (!edge) { out.push(wp); prev = full; continue; }
+    const keep = Object.fromEntries(Object.entries(full).filter(([k]) => !['x', 'y', 'elevation', 'action'].includes(k) && !['snapped', 'explicit', 'checkpoint', 'intermediate'].includes(k)));
+    out.push({ ...keep, x: edge.x, y: edge.y, elevation: edge.elevation, action: full.action });
+    if (up(edge.elevation) !== edge.elevation) out.push({ ...keep, x: edge.x, y: edge.y, elevation: up(edge.elevation), action: walk });
+    if (edge.t < 1 || full.x !== edge.x || full.y !== edge.y) out.push({ ...wp, action: walk, elevation: up(full.elevation) });
+    walked = true;
+    prev = { ...full, action: walk, elevation: up(full.elevation) };
+  }
+  return out;
 }
 // Depth is relative to the viewed level, not absolute world elevation. Swimming
 // below water (or explicit Swim on an underwater map) is never burrowing.
@@ -1447,8 +1498,11 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
           const heading = move.heading ?? Math.atan2(point.y - move.y, point.x - move.x);
           lay(burrowHole({ x: point.x, y: point.y, heading }, { seed: token.id, grid: size, width: token.width || size, exit: !under }), time);
         }
+        // Going under the water: a splash heard. Coming back up: the splash seen and heard.
+        if (move.submerged === false && medium.submerged && token.visible) sound('water', point, token, 'dive');
         if(move.submerged===true&&!medium.submerged&&medium.relative>=0&&token.visible) {
           lay(surfaceSplash(point,{seed:id,grid:size,width:token.width||size}),time,'water');
+          sound('water', point, token, 'surface');
         }
         move.submerged=medium.submerged;
         if (medium.swimming || medium.submerged) { move.wetAt = time; move.wetFor = DRIP_MS; move.wetBy = 1; }
@@ -1507,8 +1561,9 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
           continue;
         }
         if (token.visible && !under) standing.push({ id, x: point.x, y: point.y, width: token.width, elevation: Number(token.elevation) || 0, ring: token.ring || false, order: orderOf(token) });
-        // Standing on the ground: its shadows when "Shadows under every token" is on.
-        if (groundShadows() && token.visible && token.shadow !== false) {
+        // Standing on the ground: its shadows when "Shadows under every token" is on. Under the water or the earth it casts
+        // none: nothing of it stands in the light.
+        if (groundShadows() && token.visible && token.shadow !== false && !under && !medium.submerged) {
           let handle = shadows.get(id);
           // In its own shape, from its feet away from the light or the sun (its body about half its width tall).
           const art = shadowShapes() ? token.art : null, both = lightShadows();

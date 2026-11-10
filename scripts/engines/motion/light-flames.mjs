@@ -30,14 +30,15 @@ export const flameUnit = (size = 1, grid = 100) => grid * 0.22 * Math.sqrt(Math.
 
 // The kinds of fire (pure): a torch one tongue; a brazier a bed across a bowl about a square wide; a bonfire a wider,
 // taller bed. Auto: one flame (maps light their candles and lanterns with Foundry's flame animation too); a bed is chosen.
-export const FIRE_KINDS = ['torch', 'brazier', 'bonfire'];
+// A lantern burns one tongue as a torch does, and a cooking pot a brazier's bed under the pot; each sounds its own (fire-sound.mjs).
+export const FIRE_KINDS = ['torch', 'lantern', 'brazier', 'bonfire', 'pot'];
 export const fireKindOf = (flag) => FIRE_KINDS.includes(flag) ? flag : 'torch';
 
 // The tongues of a fire (pure): where each stands from the fire's middle (px) and how tall it is (times the unit). One for
 // a torch; a brazier one big flame with two smaller pressed against it (they burn together as one fire), a bonfire a
 // bigger one with four round it. The middle one tallest, the others drawn behind it.
 export function fireTongues(kind = 'torch', grid = 100) {
-  if (kind === 'brazier') return [{ x: -grid * 0.08, y: -grid * 0.02, scale: 1.1 }, { x: grid * 0.08, y: -grid * 0.01, scale: 1.2 }, { x: 0, y: 0, scale: 1.7 }];
+  if (kind === 'brazier' || kind === 'pot') return [{ x: -grid * 0.08, y: -grid * 0.02, scale: 1.1 }, { x: grid * 0.08, y: -grid * 0.01, scale: 1.2 }, { x: 0, y: 0, scale: 1.7 }];
   if (kind === 'bonfire') return [{ x: -grid * 0.2, y: -grid * 0.03, scale: 1.2 }, { x: grid * 0.2, y: -grid * 0.02, scale: 1.3 }, { x: -grid * 0.1, y: grid * 0.02, scale: 1.6 }, { x: grid * 0.1, y: grid * 0.03, scale: 1.5 }, { x: 0, y: grid * 0.01, scale: 2.2 }];
   return [{ x: 0, y: 0, scale: 1 }];
 }
