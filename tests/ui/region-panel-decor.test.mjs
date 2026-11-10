@@ -49,14 +49,13 @@ test('the brush bar offers each place its own kinds and remembers what is ticked
   // It paints one kind at a time: picking a chip puts out the one lit before.
   assert.equal(c.kinds.length, 1);
   const bar = read('scripts/ui/decor-brush-bar.mjs');
-  assert.match(bar, /c\.addEventListener\('click', \(\) => \{ remembered\.kinds\[remembered\.where\] = \[id\]; draw\(\); onChange\(\); \}\);/);
+  assert.match(bar, /c\.addEventListener\('click', \(\) => \{ if \(lock\) lock\.pick = id; else remembered\.kinds\[remembered\.where\] = \[id\]; draw\(\); onChange\(\); \}\);/);
   assert.doesNotMatch(bar, /Select all/);
   // Its Decoration size scales what it lays, on open ground and on top of a region's own scale.
   assert.equal(c.scale, 1);
   assert.match(bar, /slider\('Decoration size', BRUSH_SCALE, 'scale', 0\.1\)/);
   const main = read('scripts/main.mjs');
-  assert.match(main, /density: c\.thick, scale: c\.scale \}/);
-  assert.match(main, /scale: s\.scale \* brushChoices\(\)\.scale \}/);
+  assert.match(main, /density: c\.thick, scale: c\.scale \* \(s\?\.scale \?\? 1\) \}/);
 });
 
 test('the Decorations tool sits in Animater\'s controls and can be hidden', () => {
@@ -90,7 +89,7 @@ test('Ctrl+Z takes back a brush stroke and Ctrl+Shift+Z or Ctrl+Y puts it back, 
 test('the wheel still zooms; Ctrl+wheel sets the brush size and Shift+wheel its density', () => {
   const main = read('scripts/main.mjs'), bar = read('scripts/ui/decor-brush-bar.mjs');
   assert.match(main, /if \(e\.target !== view \|\| !\(e\.ctrlKey \|\| e\.metaKey \|\| e\.shiftKey \|\| e\.altKey\)\) return;/);
-  assert.match(main, /if \(e\.shiftKey && !\(e\.ctrlKey \|\| e\.metaKey\)\) \{ if \(free\) state\.bar\?\.setThick\(brushChoices\(\)\.thick \+ \(up \? 0\.1 : -0\.1\)\); \}/);
+  assert.match(main, /if \(e\.shiftKey && !\(e\.ctrlKey \|\| e\.metaKey\)\) \{ state\.bar\?\.setThick\(brushChoices\(\)\.thick \+ \(up \? 0\.1 : -0\.1\)\); \}/);
   assert.match(main, /window\.addEventListener\("wheel", wheel, \{ capture: true, passive: false \}\)/);
   assert.match(main, /window\.removeEventListener\("wheel", wheel, \{ capture: true \}\)/);
   assert.match(bar, /setThick: \(v\) =>/);
@@ -112,9 +111,20 @@ test('decorations feed the other engines: canopy trees, moving water, the cavern
 test('a ghost of the next dab follows the brush, changes with the bar, and a click lays exactly it', () => {
   const main = read('scripts/main.mjs');
   assert.match(main, /floorLayer\("decorBrush", 1102\)\(\)\.addChild\(ghost, ring\)/);
-  assert.match(main, /openBrushBar\(\{ onClose: \(\) => stopDecorBrush\(\), onChange: \(\) => draw\(\) \}\)/);
+  assert.match(main, /openBrushBar\(\{ onClose: \(\) => stopDecorBrush\(\), onChange: \(\) => draw\(\), region \}\)/);
   assert.match(main, /const showGhost = !!state\.at && !state\.down && !state\.erasing; ghost\.visible = showGhost;/);
   assert.match(main, /if \(first && state\.ghostItems\.length\) \{ for \(const g of state\.ghostItems\)/);
   assert.match(main, /dab\(p, e\.shiftKey, true\)/);
   assert.match(read('scripts/engines/motion/decorations.mjs'), /sprite\(d, look = \{\}\) \{ const \{ pic, scale \} = picture\(d, look\);/);
+});
+
+test('a region\'s own brush shows the bar with only its place and its ticked kinds, one at a time', async () => {
+  const main = read('scripts/main.mjs');
+  assert.match(main, /state\.bar = openBrushBar\(\{ onClose: \(\) => stopDecorBrush\(\), onChange: \(\) => draw\(\), region \}\)/);
+  assert.match(main, /size: s\?\.kinds\?\.\[id\]\?\.size \?\? 1, amount: 1/);
+  const { brushChoices } = await import('../../scripts/ui/decor-brush-bar.mjs');
+  const bar = read('scripts/ui/decor-brush-bar.mjs');
+  assert.match(bar, /if \(lock\) lock\.pick = id; else remembered\.kinds\[remembered\.where\] = \[id\];/);
+  assert.match(bar, /if \(!lock\) row\.append\(where\);/);
+  assert.equal(brushChoices().kinds.length, 1);
 });

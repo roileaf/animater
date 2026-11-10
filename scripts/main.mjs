@@ -2399,13 +2399,16 @@ const decorBrushTarget = (p) => regionsHere().find((r) => decorSettings(r.flags?
 const startDecorBrush = (doc = null) => {
   stopDecorBrush();
   if (!canvas?.ready || !game.user?.isGM) return;
-  const free = !doc, view = canvas.app.view, ring = new PIXI.Graphics(), grid = () => canvas.grid.size;
+  const view = canvas.app.view, ring = new PIXI.Graphics(), grid = () => canvas.grid.size;
   // A ghost of what the next click lays, under the ring, following the pointer and changing as the bar's choices change.
   const ghost = new PIXI.Container(); ghost.eventMode = "none"; ghost.alpha = 0.55;
   ring.eventMode = "none"; floorLayer("decorBrush", 1102)().addChild(ghost, ring);
   const state = decorBrushing = { id: null, doc: null, brushed: [], erased: [], circles: [], fresh: null, size: DECOR_BRUSH.usual, down: false, last: null, at: null, seed: Date.now() % 1e6, ring, ghost, ghostKey: null, ghostItems: [], ghostSeed: Date.now() % 1e5, bar: null };
-  state.bar = free ? openBrushBar({ onClose: () => stopDecorBrush(), onChange: () => draw() }) : null;
-  const sizeNow = () => (free ? brushChoices().size : state.size);
+  // A region's own brush shows the bar too, with only its place and its ticked kinds; either way it paints one kind at a time.
+  const own = doc ? decorSettings(doc.flags?.[ID]?.decor) : null;
+  const region = own ? { name: doc.name, where: own.where, kinds: Object.keys(own.kinds).filter((id) => DECOR_KINDS[id] && (DECOR_KINDS[id].set === "both" || DECOR_KINDS[id].set === own.where)) } : null;
+  state.bar = openBrushBar({ onClose: () => stopDecorBrush(), onChange: () => draw(), region });
+  const sizeNow = () => brushChoices().size;
   const at = (e) => { const p = canvas.canvasCoordinatesFromClient?.({ x: e.clientX, y: e.clientY }) ?? canvas.stage.toLocal({ x: e.clientX, y: e.clientY }); return { x: p.x, y: p.y }; };
   // The ghost: one dab's worth laid out round the pointer (the very ones a click puts down), drawn again only when the choices change.
   const refreshGhost = () => {
@@ -2416,7 +2419,7 @@ const startDecorBrush = (doc = null) => {
     const placed = [];
     for (let i = 0, n = dabCount(using.density); i < n; i++) { const d = stampDecor({ x: 0, y: 0, radius, grid: grid(), kinds: using.kinds, seed: state.ghostSeed * 131 + i * 7919, existing: placed, scale: using.scale }); if (d) placed.push(d); }
     state.ghostItems = placed;
-    const look = decorLook({ where: free ? brushChoices().where : decorSettings((state.doc ?? doc)?.flags?.[ID]?.decor)?.where ?? "surface" });
+    const look = decorLook({ where: brushChoices().where });
     for (const d of [...placed].sort((a, b) => (DECOR_KINDS[a.kind].flat ? 0 : 1) - (DECOR_KINDS[b.kind].flat ? 0 : 1) || a.size - b.size)) { const s = decorations.sprite(d, look); if (s) ghost.addChild(s); }
   };
   const draw = () => {
@@ -2433,9 +2436,9 @@ const startDecorBrush = (doc = null) => {
     else { const c = brushChoices(); Object.assign(state, { id: NEW_DECOR_REGION, doc: null, brushed: [], erased: [], circles: [], fresh: { where: c.where, kinds: Object.fromEntries(c.kinds.map((k) => [k, { size: 1, amount: 1 }])) } }); }
   };
   const paintWith = () => {
-    if (free) { const c = brushChoices(); return { kinds: c.kinds.filter((id) => DECOR_KINDS[id]).map((id) => ({ id, size: 1, amount: 1 })), density: c.thick, scale: c.scale }; }
-    const s = decorSettings((state.doc ?? doc)?.flags?.[ID]?.decor);
-    return s ? { kinds: Object.entries(s.kinds).filter(([id]) => DECOR_KINDS[id].set === "both" || DECOR_KINDS[id].set === s.where).map(([id, k]) => ({ id, size: k.size, amount: k.amount })), density: s.density, scale: s.scale * brushChoices().scale } : { kinds: [], density: 0, scale: 1 };
+    // The kind picked on the bar; into a region, at that kind's own size there and the region's size.
+    const c = brushChoices(), s = decorSettings((state.doc ?? doc)?.flags?.[ID]?.decor);
+    return { kinds: c.kinds.filter((id) => DECOR_KINDS[id]).map((id) => ({ id, size: s?.kinds?.[id]?.size ?? 1, amount: 1 })), density: c.thick, scale: c.scale * (s?.scale ?? 1) };
   };
   const dabCount = (density) => Math.max(1, Math.round(sizeNow() * Math.max(0.2, density) * 1.5));
   const dab = (p, erase, first = false) => {
@@ -2478,7 +2481,7 @@ const startDecorBrush = (doc = null) => {
     const z = e.key === "z" || e.key === "Z", undo = (e.ctrlKey || e.metaKey) && z && !e.shiftKey, redo = (e.ctrlKey || e.metaKey) && ((z && e.shiftKey) || e.key === "y" || e.key === "Y");
     if (undo || redo) { e.preventDefault(); e.stopImmediatePropagation(); if (!state.down) void (undo ? undoDecorStep() : redoDecorStep()); return; }
     if (e.key === "Escape") stopDecorBrush();
-    else if (e.key === "[" || e.key === "]") { const next = Math.min(DECOR_BRUSH.max, Math.max(DECOR_BRUSH.min, sizeNow() + (e.key === "]" ? 0.5 : -0.5))); if (free) state.bar?.setSize(next); else state.size = next; draw(); }
+    else if (e.key === "[" || e.key === "]") { const next = Math.min(DECOR_BRUSH.max, Math.max(DECOR_BRUSH.min, sizeNow() + (e.key === "]" ? 0.5 : -0.5))); state.bar?.setSize(next); draw(); }
   };
   // The wheel still zooms the map; Ctrl+wheel sets the brush's size and Shift+wheel how thick it lays them (both kept from
   // Foundry, whose Ctrl or Shift+wheel would turn the selected tokens).
@@ -2487,14 +2490,13 @@ const startDecorBrush = (doc = null) => {
     e.preventDefault(); e.stopImmediatePropagation();
     const up = (e.deltaY || e.deltaX) < 0;
     if (e.altKey && !(e.ctrlKey || e.metaKey || e.shiftKey)) state.bar?.setScale(brushChoices().scale + (up ? 0.1 : -0.1));
-    else if (e.shiftKey && !(e.ctrlKey || e.metaKey)) { if (free) state.bar?.setThick(brushChoices().thick + (up ? 0.1 : -0.1)); }
-    else { const next = Math.min(DECOR_BRUSH.max, Math.max(DECOR_BRUSH.min, sizeNow() + (up ? 0.5 : -0.5))); if (free) state.bar?.setSize(next); else state.size = next; }
+    else if (e.shiftKey && !(e.ctrlKey || e.metaKey)) { state.bar?.setThick(brushChoices().thick + (up ? 0.1 : -0.1)); }
+    else { const next = Math.min(DECOR_BRUSH.max, Math.max(DECOR_BRUSH.min, sizeNow() + (up ? 0.5 : -0.5))); state.bar?.setSize(next); }
     draw();
   };
   const menu = (e) => { const from = state.rightAt; state.rightAt = null; if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > 6) return; e.preventDefault(); stopDecorBrush(); };
   window.addEventListener("pointerdown", down, true); window.addEventListener("pointermove", move, true); window.addEventListener("pointerup", up, true); window.addEventListener("keydown", key, true); view.addEventListener("contextmenu", menu, true); window.addEventListener("wheel", wheel, { capture: true, passive: false });
   state.stop = () => { window.removeEventListener("pointerdown", down, true); window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", key, true); view.removeEventListener("contextmenu", menu, true); window.removeEventListener("wheel", wheel, { capture: true }); try { ring.destroy(); ghost.destroy({ children: true }); } catch { /* gone */ } state.bar?.close(); };
-  if (!free) ui.notifications?.info?.("Decorations brush: drag to paint, Shift-drag to rub out, [ and ] to resize, right-click or Esc to stop.");
 };
 const stopDecorBrush = () => { const s = decorBrushing; decorBrushing = null; if (s) { s.stop?.(); syncDecorations(); } };
 // The brush's strokes, to take back and put back (this screen, this scene, the last 30): a stroke into a region (what it held
