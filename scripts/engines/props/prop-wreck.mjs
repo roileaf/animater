@@ -11,7 +11,7 @@ import { nameTokens } from "./prop-material.mjs";
 import { propTraits, propGuesses, BURST_DEFAULT } from "./prop-traits.mjs";
 import { collapseLayout } from "./prop-collapse.mjs";
 import { tipLayout, COAL_MS } from "./prop-tip.mjs";
-import { toppleLayout, TOPPLE_MS, CHUNK_MS } from "./prop-topple.mjs";
+import { toppleLayout, roundStump, TOPPLE_MS, CHUNK_MS } from "./prop-topple.mjs";
 import { createPosedPieces, tileFrame } from "./prop-pieces.mjs";
 import { propSound, tipSound } from "./prop-sounds.mjs";
 import { seededRandom } from "../fragments/fragments.mjs";
@@ -432,6 +432,19 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     g.globalCompositeOperation = "source-atop"; g.fillStyle = sh0; g.fillRect(-P, -h - P, F.length + 2 * P, F.width + 2 * P);
     return { canvas: c, kl };
   };
+  // A decoration's round stump, painted as the decorations are: an ink outline, flat steps of its own tones (no gradients),
+  // its standing side in shade, the fresh break paler than the weathered top, cracks and a few chips at its foot.
+  const drawRoundStump = (g, s, tones) => {
+    const ink = Math.max(1.2, s.r / 22);
+    g.lineStyle(ink, INK, 1).beginFill(mix(tones.dark, 0x000000, 0.25), 1).drawPolygon(s.side).endFill();
+    g.lineStyle(ink, INK, 1).beginFill(tones.mid, 1).drawPolygon(s.top).endFill();
+    g.lineStyle(0).beginFill(tones.dark, 0.55).drawPolygon(s.shade).endFill();
+    g.lineStyle(0).beginFill(tones.light, 0.7).drawPolygon(s.lit).endFill();
+    g.lineStyle(ink * 0.8, INK, 0.9).beginFill(mix(tones.light, 0xd8d2c6, 0.35), 1).drawPolygon(s.fresh).endFill();
+    g.lineStyle(0).beginFill(mix(tones.light, 0xffffff, 0.3), 0.6).drawPolygon(s.fresh.map((v, i) => lerp(v, i % 2 ? s.centre.y : s.centre.x, 0.45) - s.r * 0.05)).endFill();
+    g.lineStyle(ink * 0.7, INK, 0.75); for (const [ax, ay, bx, by] of s.cracks) g.moveTo(ax, ay).lineTo(bx, by);
+    for (const c of s.chips) g.lineStyle(ink * 0.6, INK, 0.9).beginFill([tones.mid, tones.dark, tones.light][c.tone] ?? tones.mid, 1).drawPolygon(c.poly).endFill();
+  };
   function toppled({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate }) {
     const size = { width: d.width, height: d.height }, turn = ((d.rotation ?? 0) * Math.PI) / 180, gk = (grid() || 100) / 100;
     const L = toppleLayout(note, { ...size, grid: grid() || 100, rotation: d.rotation ?? 0, box: paintedBox(d, tones) }), F = L.fall;
@@ -441,9 +454,14 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     const smallFrame = frameOf(d, centre, 0), smallG = new PIXI.Graphics(); smallFrame.addChild(smallG); marks.addChild(smallFrame);
     // The stump over the plinth's ring: a broken stone top, paler in the middle, cracks running out.
     const stumpFrame = frameOf(d, centre, 0.05), sg = new PIXI.Graphics(), c0 = L.stump.centre; stumpFrame.addChild(sg); box.addChild(stumpFrame);
-    sg.lineStyle(1.6, INK, 1).beginFill(mix(tones.mid, 0x8f8a82, 0.75), 1).drawPolygon(L.stump.poly).endFill();
-    sg.lineStyle(0).beginFill(mix(tones.light, 0xb5afa5, 0.75), 0.9).drawPolygon(L.stump.poly.map((v, i) => lerp(v, i % 2 ? c0.y : c0.x, 0.35))).endFill();
-    sg.lineStyle(1, INK, 0.6); for (const [ax, ay, bx, by] of L.stump.cracks) sg.moveTo(ax, ay).lineTo(bx, by);
+    // (A decoration, which brings its own picture, leaves a round stump in its own tones; a statue its plinth's square top.)
+    const round = tile.art ? roundStump(note, { ...size, box: paintedBox(d, tones) }) : null;
+    if (round) drawRoundStump(sg, round, tones);
+    else {
+      sg.lineStyle(1.6, INK, 1).beginFill(mix(tones.mid, 0x8f8a82, 0.75), 1).drawPolygon(L.stump.poly).endFill();
+      sg.lineStyle(0).beginFill(mix(tones.light, 0xb5afa5, 0.75), 0.9).drawPolygon(L.stump.poly.map((v, i) => lerp(v, i % 2 ? c0.y : c0.x, 0.35))).endFill();
+      sg.lineStyle(1, INK, 0.6); for (const [ax, ay, bx, by] of L.stump.cracks) sg.moveTo(ax, ay).lineTo(bx, by);
+    }
     // The ring, the lying figure and its chunks, all from the tile's own picture.
     let ring = null, chunks = null, fig = null, figShade = null, lying = null;
     const breakW = tileToWorld(d, centre, F.at), fallTurn = F.angle + turn, stretch = F.to.stretch;

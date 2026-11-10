@@ -177,7 +177,9 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
         seen.add(spec.id);
         // (The switch that lets them break draws nothing: flipping it never rebuilds. A break does, from the cached pictures.)
         const { canBreak: _switch, ...drawn } = spec.settings ?? {};
-        const key = JSON.stringify([drawn, spec.areas, spec.look, g, spec.broken ?? []]), had = regions.get(spec.id);
+        // (An area's holes are a property of its array, which JSON drops: written out, so a new hole rebuilds too.)
+        const shape = (spec.areas ?? []).map((a) => [Array.from(a), a.holes ?? []]);
+        const key = JSON.stringify([drawn, shape, spec.look, g, spec.broken ?? []]), had = regions.get(spec.id);
         if (had?.key === key) continue;
         if (had) dropRegion(had);
         const { placements, shown } = decorShown(spec, g), where = spec.settings?.where ?? 'surface';

@@ -98,6 +98,34 @@ const profile = (u) => (u < 0.08 ? 0.42 + u * 2 : u < 0.62 ? 0.56 + u * 0.35 : u
 //   5-8 of them, their targets inside the rubble strip grown by a quarter square.
 // dust: puffs {x, y, vx, vy, r0, r1, a, at (ms after the impact), life, seed}; chips: {x0, y0, x, y, rot0, rot, l, w,
 //   tone, sh, small}; mark: {x, y, r, squash, angle} (a pale stone mark, flattened along the fall).
+/**
+ * The stump a toppled decoration leaves (pure; a stalagmite or rock column, round where a statue's plinth is square), in
+ * tile-local px over its painted part (`box`, shares of the tile). Painted as the decorations are: the stump's standing side
+ * (`side`, below and right), its top (`top`, a round rim of radius `r`), stepped light and shade on it (`lit` up-left,
+ * `shade` down-right), the fresh break (`fresh`, a jagged star), cracks running out to the rim and a few chips at its foot.
+ */
+export function roundStump(note, { width, height, box = [0, 0, 1, 1] } = {}) {
+  const rand = seededRandom(((note?.seed ?? 0) >>> 0) * 211 + 37);
+  const tw = Math.max(1, Number(width) || 0), th = Math.max(1, Number(height) || 0);
+  const ok = Array.isArray(box) && box.length === 4 && box.every(Number.isFinite) && box[2] > box[0] && box[3] > box[1];
+  const [f0, g0, f1, g1] = ok ? box.map((v) => Math.min(1, Math.max(0, v))) : [0, 0, 1, 1];
+  const cx = ((f0 + f1) / 2) * tw, cy = ((g0 + g1) / 2) * th, r = 0.36 * Math.min((f1 - f0) * tw, (g1 - g0) * th);
+  // A rough circle: n points, each radius wobbling a little (a brushed rim, never a clean disc).
+  const rough = (rad, n, wob, ox = 0, oy = 0) => { const a0 = rand() * TAU, out = []; for (let i = 0; i < n; i++) { const a = a0 + ((i + (rand() - 0.5) * 0.4) / n) * TAU, k = rad * (1 + (rand() * 2 - 1) * wob); out.push(cx + ox + Math.cos(a) * k, cy + oy + Math.sin(a) * k); } return out; };
+  const top = rough(r, 16, 0.06), side = rough(r * 1.02, 16, 0.06, r * 0.08, r * 0.12);
+  const lit = rough(r * 0.6, 12, 0.08, -r * 0.16, -r * 0.18), shade = rough(r * 0.58, 12, 0.08, r * 0.2, r * 0.18);
+  // The break: a star of points, in and out, where the top snapped off.
+  const fresh = [], n = 7, a0 = rand() * TAU, fx = cx + (rand() - 0.5) * r * 0.2, fy = cy + (rand() - 0.5) * r * 0.2;
+  // (Unevenly spaced, some teeth long and some barely there: a snapped top, not a drawn star.)
+  for (let i = 0; i < n * 2; i++) { const a = a0 + ((i + (rand() - 0.5) * 0.7) / (n * 2)) * TAU, k = r * (i % 2 ? 0.18 + rand() * 0.14 : 0.3 + rand() * 0.34); fresh.push(fx + Math.cos(a) * k, fy + Math.sin(a) * k); }
+  const cracks = Array.from({ length: 4 }, () => { const a = rand() * TAU, k0 = r * (0.45 + rand() * 0.1), k1 = r * (0.8 + rand() * 0.12); return [fx + Math.cos(a) * k0, fy + Math.sin(a) * k0, cx + Math.cos(a + 0.15) * k1, cy + Math.sin(a + 0.15) * k1]; });
+  const chips = Array.from({ length: 3 + Math.floor(rand() * 3) }, () => {
+    const a = rand() * TAU, k = r * (1.08 + rand() * 0.22), x = cx + Math.cos(a) * k, y = cy + Math.sin(a) * k, s = r * (0.07 + rand() * 0.07), t = rand() * TAU;
+    return { poly: [0, 1, 2].flatMap((j) => { const b = t + (j / 3) * TAU + (rand() - 0.5) * 0.6; return [x + Math.cos(b) * s, y + Math.sin(b) * s]; }), tone: Math.floor(rand() * 3) };
+  });
+  return { centre: { x: cx, y: cy }, r, side, top, lit, shade, fresh, cracks, chips };
+}
+
 export function toppleLayout(note, { width, height, grid = 100, rotation = 0, box = [0, 0, 1, 1] } = {}) {
   const rand = seededRandom(((note?.seed ?? 0) >>> 0) * 197 + 61);
   const tw = Math.max(1, Number(width) || 0), th = Math.max(1, Number(height) || 0), gs = Number(grid) || 100, gk = gs / 100;

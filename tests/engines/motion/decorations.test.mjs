@@ -70,15 +70,24 @@ test("a wreck tile stands, turns and mirrors as the decoration is drawn", () => 
   assert.equal(t.art, art); assert.ok(Math.abs(t.rotation - 180 / Math.PI) < 1e-9); // flat kinds turn freely
   assert.equal(decorWreckTile({ ...view, decor: { ...view.decor, d: { ...d, kind: "crate" } } }, art).texture.scaleX, 1);
 });
-test("flipping Decorations can break never rebuilds a region; a new break does", async () => {
+test("flipping Decorations can break never rebuilds a region; a break or a new hole does", async () => {
   const { createDecorations } = await import("../../../scripts/engines/motion/decorations.mjs");
   class Container { constructor() { this.children = []; } addChild(c) { this.children.push(c); return c; } removeChild() {} destroy() {} }
   const shadows = new Container(), layer = () => new Container(), deco = createDecorations({ PIXI: { Container }, shadows: () => shadows, ground: layer, above: layer });
-  const settings = decorSettings({ on: true, seed: 3, density: 1, kinds: {} }), areas = [[0, 0, 100, 0, 100, 100, 0, 100]], builds = () => shadows.children.length;
-  deco.sync([{ id: "R1", settings, areas, look: {} }]); const once = builds();
-  assert.ok(once > 0);
-  deco.sync([{ id: "R1", settings: { ...settings, canBreak: true }, areas, look: {} }]);
+  // Underground crystals go to the cavern engine (nothing painted here), so cavern() shows what the region draws.
+  const settings = decorSettings({ on: true, where: "cave", seed: 3, density: 0, kinds: {}, brushed: [{ kind: "crystals", x: 50, y: 50, size: 0.6, turn: 0, seed: 1 }] });
+  const areas = [[0, 0, 100, 0, 100, 100, 0, 100]], builds = () => shadows.children.length, region = { id: "R1", settings, areas, look: {} };
+  const key = decorKeyed(region, 100)[0].key;
+  deco.sync([region]); const once = builds();
+  assert.ok(once > 0); assert.equal(deco.cavern().crystals.length, 1);
+  deco.sync([{ ...region, settings: { ...settings, canBreak: true } }]);
   assert.equal(builds(), once);
-  deco.sync([{ id: "R1", settings: { ...settings, canBreak: true }, areas, look: {}, broken: ["crate:1:2:h"] }]);
-  assert.equal(builds(), once * 2);
+  deco.sync([{ ...region, settings: { ...settings, canBreak: true }, broken: [key] }]);
+  assert.equal(builds(), once * 2); assert.equal(deco.cavern().crystals.length, 0);
+  // A hole cut round the crystals (only the hole changes): the region rebuilds and they are gone.
+  const holed = [Object.assign([...areas[0]], { holes: [[30, 30, 70, 30, 70, 70, 30, 70]] })];
+  deco.sync([{ ...region, areas: holed }]); const three = builds();
+  assert.equal(deco.cavern().crystals.length, 1); // (brushed ones stay: they are put down by hand)
+  deco.sync([{ ...region, areas: [Object.assign([...areas[0]], { holes: [[20, 20, 80, 20, 80, 80, 20, 80]] })] }]);
+  assert.equal(builds(), three + once);
 });

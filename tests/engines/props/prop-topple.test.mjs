@@ -267,3 +267,24 @@ test("the mock's statue lies as long as in mock scene 6, filling the strip from 
   const s = toppleStrip({ x: 0, y: 0, width: 240, height: 240 }, 0);
   assert.ok(Math.abs(L.fall.at.x + L.fall.length - (s.from.x + s.length)) < 1e-6, "the figure ends where the rubble strip ends");
 });
+
+import { roundStump } from "../../../scripts/engines/props/prop-topple.mjs";
+import { readFileSync as readSrc } from "node:fs";
+test("a toppled decoration's stump is round, jagged on top, seeded, and inside its painted part", () => {
+  const note = { seed: 77, cutAngle: 0.3 }, at = { width: 200, height: 200, box: [0.2, 0.25, 0.8, 0.75] };
+  const s = roundStump(note, at), again = roundStump(note, at);
+  assert.deepEqual(s, again);
+  assert.notDeepEqual(roundStump({ ...note, seed: 78 }, at), s);
+  // centred on the painted part, a round outline (every rim point near one radius), within the painted part
+  assert.deepEqual([s.centre.x, s.centre.y], [100, 100]);
+  const radii = []; for (let i = 0; i < s.top.length; i += 2) radii.push(Math.hypot(s.top[i] - 100, s.top[i + 1] - 100));
+  assert.ok(s.top.length >= 24 && Math.min(...radii) > s.r * 0.85 && Math.max(...radii) < s.r * 1.15 && s.r * 1.15 < 50);
+  // the fresh break: smaller than the top and jagged (its radii swing much more than the rim's)
+  const fr = []; for (let i = 0; i < s.fresh.length; i += 2) fr.push(Math.hypot(s.fresh[i] - 100, s.fresh[i + 1] - 100));
+  assert.ok(Math.max(...fr) < s.r * 0.8 && Math.max(...fr) - Math.min(...fr) > (Math.max(...radii) - Math.min(...radii)) * 1.5);
+  assert.ok(s.cracks.length >= 3 && s.chips.length >= 3 && s.chips.length <= 6);
+  for (const k of ["side", "lit", "shade"]) assert.ok(Array.isArray(s[k]) && s[k].length >= 16);
+  // only a tile that brings its own picture (a decoration) gets it; a prop statue keeps the plinth cap
+  const src = readSrc(new URL("../../../scripts/engines/props/prop-wreck.mjs", import.meta.url), "utf8");
+  assert.match(src, /tile\.art \? roundStump\(/);
+});
