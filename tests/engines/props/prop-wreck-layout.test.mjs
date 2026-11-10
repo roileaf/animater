@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { wreckLayout, wreckTargets, LIQUIDS, SPILL_FAN, POTION_COLOURS, PAGE_COLOURS, SPINE_COLOURS, POWDER_TONES, collapseDust, spillExtent } from "../../../scripts/engines/props/prop-wreck-layout.mjs";
+import { wreckLayout, wreckTargets, LIQUIDS, SPILL_FAN, POTION_COLOURS, PAGE_COLOURS, SPINE_COLOURS, POWDER_TONES, collapseDust, spillExtent, patchTongues } from "../../../scripts/engines/props/prop-wreck-layout.mjs";
 import { tileToWorld } from "../../../scripts/engines/props/prop-wreck.mjs";
 import { propGuesses } from "../../../scripts/engines/props/prop-traits.mjs";
 import { tileRect } from "../../../scripts/engines/props/prop-geometry.mjs";
@@ -142,9 +142,11 @@ test("a fire note lays out flames over the spill; the rest of the wreck is uncha
   assert.deepEqual(a.specks, b.specks);
   assert.deepEqual(a, wreckLayout(lit, { ...at, contents: "lampoil" }), "seeded");
   const { flames, embers, at: c } = a.fire;
-  assert.equal(flames.length, 9);
+  // a bed of torch-flame tongues over the patch (patchTongues)
+  assert.deepEqual(flames, patchTongues({ at: c, r: a.fire.r, cutAngle: note.cutAngle, seed: note.seed, grid: 100 }));
+  assert.ok(flames.length >= 5 && flames.length <= 9);
   for (const f of flames) {
-    assert.ok(f.s >= 14 && f.s <= 26);
+    assert.ok(f.scale >= 0.7 && f.scale <= 1.9);
     assert.ok(Math.hypot(f.x - c.x, f.y - c.y) <= 60, "on the spill");
     assert.ok(f.start >= 0 && f.start <= 600);
   }
@@ -157,6 +159,33 @@ test("a fire note lays out flames over the spill; the rest of the wreck is uncha
   assert.ok(Math.hypot(mean(xs) - c.x, mean(ys) - c.y) < 20);
   // a fire note on a prop with no oil still scorches, with no flames
   assert.equal(wreckLayout(lit, { ...at, contents: "none" }).fire, null);
+});
+
+test("the burning patch's tongues: seeded, inside the patch, tallest at the middle, more for a bigger patch", () => {
+  const at = { x: 400, y: 260 }, base = { at, r: 50, cutAngle: 0.4, seed: 77, grid: 100 };
+  const t = patchTongues(base);
+  assert.deepEqual(t, patchTongues(base), "the same seed lays the same bed");
+  assert.notDeepEqual(t, patchTongues({ ...base, seed: 78 }));
+  assert.ok(t.length >= 5 && t.length <= 9);
+  const ca = Math.cos(0.4), sa = Math.sin(0.4);
+  for (const f of t) {
+    const dx = f.x - at.x, dy = f.y - at.y, u = dx * ca + dy * sa, v = -dx * sa + dy * ca;
+    assert.ok((u / (0.75 * 50)) ** 2 + (v / (0.45 * 50)) ** 2 <= 1 + 1e-9, "inside the patch, stretched along the spill");
+    assert.ok(f.scale >= 0.7 && f.scale <= 1.9);
+    assert.ok(f.start >= 0 && f.start <= 600);
+  }
+  const tallest = t.reduce((a, b) => (b.scale > a.scale ? b : a));
+  assert.ok(Math.hypot(tallest.x - at.x, tallest.y - at.y) <= 0.15 * 50, "the tallest stands at the middle");
+  for (const f of t) if (f !== tallest) assert.ok(f.scale < tallest.scale);
+  // the ones further out are lower: the bed falls off toward its edge
+  const out = t.filter((f) => Math.hypot(f.x - at.x, f.y - at.y) > 25), mid = t.filter((f) => Math.hypot(f.x - at.x, f.y - at.y) < 12);
+  if (out.length && mid.length) assert.ok(Math.max(...out.map((f) => f.scale)) < Math.min(...mid.map((f) => f.scale)));
+  // drawn back to front: up the screen first
+  for (let i = 1; i < t.length; i++) assert.ok(t[i].y >= t[i - 1].y);
+  // a small patch burns with fewer tongues than a big one
+  assert.ok(patchTongues({ ...base, r: 25 }).length < patchTongues({ ...base, r: 150 }).length);
+  assert.equal(patchTongues({ ...base, r: 25 }).length, 5);
+  assert.equal(patchTongues({ ...base, r: 150 }).length, 9);
 });
 
 // Powder kegs (Task 13)

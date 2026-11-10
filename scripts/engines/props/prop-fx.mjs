@@ -1,6 +1,6 @@
-// Small painted fire effects the wreckage draws (approved mock "Breaking more", scene 4 onward): flames seen from above,
-// a soft glow, embers, smoke puffs and a flash. Each call adds its drawing to `parent` and returns a handle
-// {update(ms), destroy()}; ms is the time since the effect's own start, so a redraw at any time draws the same frame.
+// Small painted effects the wreckage draws (approved mock "Breaking more", scene 4 onward): a soft glow, embers, smoke
+// puffs and a flash (its fires' flames are the torch's: prop-fire.mjs). Each call adds its drawing to `parent` and
+// returns a handle {update(ms), destroy()}; ms is the time since the effect's own start, so a redraw at any time draws the same frame.
 import { seededRandom as stream } from "../fragments/fragments.mjs";
 
 const TAU = Math.PI * 2;
@@ -9,27 +9,6 @@ const span = (t, a, d) => clamp01((t - a) / d);
 const lerp = (a, b, u) => a + (b - a) * u;
 const outCubic = (u) => 1 - (1 - u) ** 3;
 const INK = 0x1a1410;
-
-// The flame's stepped tones, outermost first: [colour, alpha, share of the radius].
-export const FLAME = [[0x8e2410, 0.92, 1], [0xd8601c, 0.95, 0.72], [0xf4b443, 0.95, 0.46], [0xfde69a, 0.9, 0.22]];
-export const FLICKER_MS = 70; // a new shape about 14 times a second
-
-// One flame from above into Graphics g: tongues around a hot core, leaning one way (screen up by default).
-export function paintFlame(g, x, y, s, t, seed, alpha = 1, lean = -Math.PI / 2) {
-  if (s < 0.5 || alpha <= 0) return;
-  const r = stream(seed * 7919 + Math.floor(t / FLICKER_MS) * 13), n = 5 + Math.floor(r() * 3), ph = r() * TAU;
-  const tongues = Array.from({ length: n }, () => 0.6 + r() * 0.8);
-  for (const [c, a, k] of FLAME) {
-    const pts = [];
-    for (let i = 0; i < 24; i++) {
-      const ang = (i / 24) * TAU, turn = ((ang + ph) / TAU) * n, ti = Math.floor(turn) % n, local = turn % 1;
-      const tongue = Math.sin(local * Math.PI) ** 2.5 * tongues[ti] * 0.55, leanK = 1 + 0.6 * Math.max(0, Math.cos(ang - lean));
-      const rr = s * k * (0.42 + tongue * leanK) * (0.9 + r() * 0.2);
-      pts.push(x + Math.cos(ang) * rr, y + Math.sin(ang) * rr);
-    }
-    g.beginFill(c, a * alpha).drawPolygon(pts).endFill();
-  }
-}
 
 export function createPropFx({ PIXI }) {
   let glowTex = null;
@@ -44,28 +23,6 @@ export function createPropFx({ PIXI }) {
     return glowTex;
   };
   const gone = (o) => { try { o.destroy(); } catch { /* already gone */ } };
-
-  // spots: [{x, y, s, seed, start}] (s: flame radius in px, start: ms it catches). opts: end (ms the fire is out),
-  // dieMs (how long it dies down before end), lean. handle.heat is the mean of the flames' strength at the last update.
-  function flames(parent, spots, { end = Infinity, dieMs = 1400, lean } = {}) {
-    const g = new PIXI.Graphics(); parent.addChild(g);
-    const handle = {
-      heat: 0, graphics: g,
-      update(t) {
-        g.clear();
-        const die = 1 - span(t, end - dieMs, dieMs);
-        let heat = 0;
-        for (const f of spots) {
-          const k = span(t, f.start ?? 0, 400) * die;
-          if (k <= 0) continue;
-          heat += k; paintFlame(g, f.x, f.y, f.s * (0.5 + 0.5 * k), t, f.seed ?? 0, Math.min(1, k * 1.5), lean);
-        }
-        handle.heat = spots.length ? heat / spots.length : 0;
-      },
-      destroy() { gone(g); },
-    };
-    return handle;
-  }
 
   // An added (bright) glow of radius r at `at`; handle.level(k) sets its strength 0-1, and update(ms) flickers it.
   // add: false lays it down plainly instead (a soft dark soot under a scorch); squash and angle flatten and turn it.
@@ -138,5 +95,5 @@ export function createPropFx({ PIXI }) {
   // Frees the shared glow texture (the canvas is torn down).
   function clear() { if (glowTex) { try { glowTex.destroy(true); } catch { /* gone */ } glowTex = null; } }
 
-  return { flames, glow, embers, puffs, flash, clear };
+  return { glow, embers, puffs, flash, clear };
 }

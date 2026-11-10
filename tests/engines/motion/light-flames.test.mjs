@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fireKindOf, fireTongues, underTile, tileDrawnAt } from '../../../scripts/engines/motion/light-flames.mjs';
+import { fireKindOf, fireTongues, underTile, tileDrawnAt, fireGlow } from '../../../scripts/engines/motion/light-flames.mjs';
 
 test('a roof faded for a creature inside is not drawn, though its own alpha stays whole', () => {
   const at = { x: 5, y: 5 }, roof = { alpha: 1, elevation: 20 };
@@ -64,4 +64,21 @@ test('a sconce in the map\'s foreground picture leaves its flame showing, a roof
   assert.equal(underTile(foreground(() => false), at), false, 'nothing drawn there');
   assert.equal(underTile([{ elevation: 20, covers: patch(30) }], at), true, 'a small tile a GM placed still hides it');
   assert.equal(underTile([{ elevation: 0, covers: patch(1000), fixtureReach: reach }], at, 5), false, 'nothing below the fire hides it');
+});
+
+test("a fire's halo and heart: sized by its flame and its bed, fading with its heat", () => {
+  const torch = fireGlow({ unit: 20 });
+  assert.equal(torch.halo.size, 36);
+  assert.ok(Math.abs(torch.halo.y + 5.4) < 1e-9, "a little above the root");
+  assert.equal(torch.halo.alpha, 0.16);
+  assert.ok(Math.abs(torch.heart.w - 8) < 1e-9 && Math.abs(torch.heart.h - 3.2) < 1e-9);
+  assert.ok(Math.abs(torch.heart.alpha - 0.35) < 1e-9);
+  // a bed spreads both; a taller flicker grows the halo
+  const bed = fireGlow({ unit: 20, spread: 10, tall: 1.2 });
+  assert.ok(bed.halo.size > torch.halo.size && bed.heart.w > torch.heart.w && bed.heart.h > torch.heart.h);
+  assert.ok(Math.abs(bed.halo.size - 2 * 30 * 0.92) < 1e-9);
+  // dying down: both fade to nothing
+  const out = fireGlow({ unit: 20, heat: 0 });
+  assert.equal(out.halo.alpha, 0); assert.equal(out.heart.alpha, 0);
+  assert.ok(Math.abs(fireGlow({ unit: 20, heat: 0.5 }).halo.alpha - 0.08) < 1e-9);
 });

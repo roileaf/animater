@@ -179,10 +179,25 @@ function potionsSpill(c, extent, grid, cutAngle, rand) {
   return { kind: "potions", shards, stains };
 }
 
-// Burning lamp oil (mock scene 4): nine flames over the spill's middle, spread along the hit, each catching a little
-// after the break; embers rise from it for the minute it burns (BURN_MS, its last 10 s dying down). Its own seeded
-// stream, so the rest of the wreck lays out as it would without fire. Times in ms from the break.
+// Burning lamp oil: a bed of the torch's flame tongues over the spill (light-flames.mjs draws a brazier's the same way),
+// each catching a little after the break; embers rise from it for the minute it burns (BURN_MS, its last 10 s dying
+// down). Its own seeded stream, so the rest of the wreck lays out as it would without fire. Times in ms from the break.
 export const BURN_DIE_MS = 10000;
+// The patch's tongues (pure): r the patch's radius (px), stretched along the spill (cutAngle). One tallest in the middle,
+// the rest spread over the patch (a sunflower spiral, jittered from the seed), lower toward its edge and catching later;
+// more of them for a bigger patch (5-9). scale: times the flame's height unit. Listed back to front (up the screen first).
+const GOLDEN = Math.PI * (3 - Math.sqrt(5));
+export function patchTongues({ at, r, cutAngle = 0, seed = 0, grid = 100 }) {
+  const rand = seededRandom((seed >>> 0) * 977 + 31), n = Math.max(5, Math.min(9, Math.round(4 + (4 * r) / grid)));
+  const ca = Math.cos(cutAngle), sa = Math.sin(cutAngle), out = [];
+  for (let i = 0; i < n; i++) {
+    const d = i ? Math.min(1, Math.sqrt((i - 0.5 + rand() * 0.5) / n)) : 0, a = i * GOLDEN + rand() * 0.5;
+    const u = Math.cos(a) * d * 0.72 * r, v = Math.sin(a) * d * 0.42 * r;
+    const scale = i ? (1.75 + (0.85 - 1.75) * d) * (0.92 + rand() * 0.16) : 1.8;
+    out.push({ x: at.x + u * ca - v * sa, y: at.y + u * sa + v * ca, scale, start: Math.round(120 + d * 320 + rand() * 80) });
+  }
+  return out.sort((p, q) => p.y - q.y);
+}
 function burningPatch(spill, r, grid, cutAngle, seed) {
   const rand = seededRandom((seed >>> 0) * 131 + 71), body = spill.marks.filter((m) => m.art !== "drop");
   const list = body.length ? body : spill.marks;
@@ -190,7 +205,7 @@ function burningPatch(spill, r, grid, cutAngle, seed) {
   const at = { x: list.reduce((a, m) => a + m.x, 0) / list.length, y: list.reduce((a, m) => a + m.y, 0) / list.length };
   const k = r / 50, size = grid / 100, ca = Math.cos(cutAngle), sa = Math.sin(cutAngle);
   const along = (u, v) => ({ x: at.x + u * ca - v * sa, y: at.y + u * sa + v * ca });
-  const flames = Array.from({ length: 9 }, (_, i) => ({ ...along((rand() - 0.5) * 80 * k, (rand() - 0.5) * 50 * k), s: (14 + rand() * 12) * size, seed: (seed % 100000) * 10 + i, start: 150 + rand() * 350 }));
+  const flames = patchTongues({ at, r: r * 0.9, cutAngle, seed, grid });
   // Embers drift up the screen (as the mock's do), about eight a second until the fire dies down.
   const embers = Array.from({ length: 400 }, () => {
     const p = along((rand() - 0.5) * 80 * k, (rand() - 0.5) * 40 * k), life = 700 + rand() * 600;

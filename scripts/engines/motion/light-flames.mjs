@@ -43,22 +43,43 @@ export function fireTongues(kind = 'torch', grid = 100) {
   return [{ x: 0, y: 0, scale: 1 }];
 }
 
+// One soft round glow (white at its middle, fading to nothing at its edge), drawn once and shared by each user: a
+// flame's halo and heart are this, tinted, sized and faded each frame. (Redrawing them as shapes every frame for every
+// fire light made the garbage that stalled the canvas.)
+export const fireGlowTexture = (PIXI) => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  // Even steps of alpha, as the stacked circles gave: densest at the middle, nothing at the rim.
+  grad.addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(0.45, 'rgba(255,255,255,0.55)'); grad.addColorStop(0.8, 'rgba(255,255,255,0.15)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
+  return PIXI.Texture.from(c);
+};
+
+// A fire's halo and heart (pure): `unit` its flame's height unit, `spread` how far its bed reaches from the middle (0 for
+// one tongue), `tall` its tongues' mean flicker height, `heat` 0-1 how strongly it burns (a fire dying down fades them).
+// halo: a faint warm glow round it, `y` above the root, `size` across; heart: a soft glow at the root, `w` by `h`.
+export const fireGlow = ({ unit, spread = 0, tall = 1, heat = 1 }) => {
+  const r = (unit + spread) * (0.9 + 0.1 * (tall - 1));
+  return {
+    halo: { y: -r * 0.3, size: r * 2, alpha: 0.16 * heat },
+    heart: { w: (unit * 0.2 + spread * 0.6) * 2, h: (unit * 0.08 + spread * 0.3) * 2, alpha: Math.min(1, (0.07 + 0.03 * (tall - 1)) * 5) * heat },
+  };
+};
+
+// One tongue's frame at `t` seconds: its flicker (held-torch.mjs) sizes it and sways it with `lean` (-1..1); `alpha` and
+// `size` (0-1) let a fire catch and die down. Returns its height factor (about 1).
+export const burnTongue = (tongue, t, lean = 0, { alpha = 1, size = 1 } = {}) => {
+  const k = flicker(tongue.key, t), u = tongue.shader.uniforms;
+  u.uTime = t; u.uLean = (lean + k.sway) * 2.5; u.uAlpha = alpha;
+  tongue.mesh.scale.set(k.width * size, k.height * size);
+  return k.height;
+};
+
 /** The layer: sync([{ key, x, y, unit, color, kind, grid, visible }]) keeps one fire a light; look(lean(key) -> -1..1) leans them; tick(t); clear(). */
 export function createLightFlames({ PIXI, root }) {
   const flames = new Map();
-  // One soft round glow (white at its middle, fading to nothing at its edge), drawn once and shared: each flame's halo
-  // and heart are this, tinted, sized and faded each frame. (Redrawing them as shapes every frame for every fire light
-  // made the garbage that stalled the canvas.)
   let glowTex = null;
-  const glow = () => {
-    if (glowTex && !glowTex.baseTexture?.destroyed) return glowTex;
-    const c = document.createElement('canvas'); c.width = c.height = 64;
-    const g = c.getContext('2d'), grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
-    // Even steps of alpha, as the stacked circles gave: densest at the middle, nothing at the rim.
-    grad.addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(0.45, 'rgba(255,255,255,0.55)'); grad.addColorStop(0.8, 'rgba(255,255,255,0.15)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = grad; g.fillRect(0, 0, 64, 64);
-    return (glowTex = PIXI.Texture.from(c));
-  };
+  const glow = () => (glowTex && !glowTex.baseTexture?.destroyed ? glowTex : (glowTex = fireGlowTexture(PIXI)));
   const glowSprite = () => { const s = new PIXI.Sprite(glow()); s.anchor.set(0.5); s.eventMode = 'none'; return s; };
   const drop = (f) => { try { f.box.destroy({ children: true }); } catch { /* gone */ } };
   return {
@@ -96,18 +117,12 @@ export function createLightFlames({ PIXI, root }) {
         try {
           let tall = 0;
           f.lean += ((f.aim ?? 0) - f.lean) * 0.08;
-          for (const tongue of f.tongues) {
-            const k = flicker(tongue.key, t), u = tongue.shader.uniforms;
-            u.uTime = t; u.uLean = (f.lean + k.sway) * 2.5; u.uAlpha = 1;
-            tongue.mesh.scale.set(k.width, k.height);
-            tall += k.height / f.tongues.length;
-          }
+          for (const tongue of f.tongues) tall += burnTongue(tongue, t, f.lean) / f.tongues.length;
           // The heart where it burns (a bed of coals under a brazier's), and a faint warm halo round it.
-          const r = (f.unit + f.spread) * (0.9 + 0.1 * (tall - 1));
-          f.halo.tint = f.tint ? f.tint.hex : 0xff8a30; f.halo.position.set(0, -r * 0.3); f.halo.width = f.halo.height = r * 2; f.halo.alpha = 0.16;
+          const { halo, heart } = fireGlow({ unit: f.unit, spread: f.spread, tall });
+          f.halo.tint = f.tint ? f.tint.hex : 0xff8a30; f.halo.position.set(0, halo.y); f.halo.width = f.halo.height = halo.size; f.halo.alpha = halo.alpha;
           // The heart: a soft warm glow at the flame's root, fading out to nothing (no rim: a solid one read as a coin).
-          const hx = f.unit * 0.2 + f.spread * 0.6, hy = f.unit * 0.08 + f.spread * 0.3, heat = 0.07 + 0.03 * (tall - 1);
-          f.heart.tint = f.tint ? f.tint.hex : 0xff5a10; f.heart.width = hx * 2; f.heart.height = hy * 2; f.heart.alpha = Math.min(1, heat * 5);
+          f.heart.tint = f.tint ? f.tint.hex : 0xff5a10; f.heart.width = heart.w; f.heart.height = heart.h; f.heart.alpha = heart.alpha;
         } catch { /* mid-teardown: the next sync drops it */ }
       }
     },

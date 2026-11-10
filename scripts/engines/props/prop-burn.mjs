@@ -22,6 +22,39 @@ export function burnAt(L, u, v) {
 // The share of the run at which the front reaches burn time b.
 export const frontAt = (b) => (b + 0.05) / 1.5;
 
+// The flames riding the front (pure): lanes side by side across the burn, each a tongue that follows the front along
+// the hit. s: its place across (-1..1 of the reach frontPoint is given), scale: times the flame's unit. As many as the
+// plant is wide across the hit (reach, px: by default its round body): a small web a few (3), a big bush more (up to
+// 10). Seeded, so every screen lays the same.
+export function frontTongues(L, { grid = 100, seed = 0, reach = frontReach(L) } = {}) {
+  const rand = seededRandom((seed >>> 0) * 433 + 29), n = clamp(Math.round(1 + (4 * (reach.hi - reach.lo)) / grid), 3, 10);
+  return Array.from({ length: n }, (_, i) => ({ s: -0.85 + (1.7 * (i + 0.5 + (rand() - 0.5) * 0.8)) / n, scale: 0.8 + rand() * 0.35 }));
+}
+// Where a lane's tongue stands when the front is at burn time b (tile-local px, and u, v shares): the point on its lane
+// whose burn time (burnAt) is b, found along the hit; null where its lane has not caught yet or has burnt out.
+// reach: { lo, hi } how far across the hit (px from the middle, left-hand side negative) the painted plant runs; the
+// lanes spread over it. By default the plant's round body, not out to the tile's empty corners.
+export const frontReach = (L) => { const half = Math.min((Math.abs(L.dir.y) * L.width + Math.abs(L.dir.x) * L.height) / 2, 0.45 * Math.max(L.width, L.height)); return { lo: -half, hi: half }; };
+export function frontPoint(L, lane, b, reach = frontReach(L)) {
+  const { width: w, height: h, dir } = L, across = { x: -dir.y, y: dir.x };
+  const off = reach.lo + ((lane.s + 1) / 2) * (reach.hi - reach.lo);
+  const ox = w / 2 + across.x * off, oy = h / 2 + across.y * off;
+  // The stretch of the lane inside the tile (t along the hit from its foot).
+  let lo = -Infinity, hi = Infinity;
+  for (const [o, d, max] of [[ox, dir.x, w], [oy, dir.y, h]]) {
+    if (Math.abs(d) < 1e-9) { if (o < 0 || o > max) return null; continue; }
+    const t0 = (0 - o) / d, t1 = (max - o) / d;
+    lo = Math.max(lo, Math.min(t0, t1)); hi = Math.min(hi, Math.max(t0, t1));
+  }
+  if (!(hi > lo)) return null;
+  const at = (t) => ({ x: ox + dir.x * t, y: oy + dir.y * t });
+  const time = (t) => { const p = at(t); return burnAt(L, p.x / w, p.y / h); };
+  if (time(lo) > b || time(hi) < b) return null;
+  for (let i = 0; i < 30; i++) { const mid = (lo + hi) / 2; if (time(mid) < b) lo = mid; else hi = mid; }
+  const p = at((lo + hi) / 2);
+  return { x: p.x, y: p.y, u: p.x / w, v: p.y / h };
+}
+
 // rotation: the tile's turn in degrees; dir is the hit's direction in the tile's own frame. embers: 20-40 (more for a
 // bigger plant), each caught when the front reaches it (t0, ms), drifting up and dimming over life ms. ash: the ash
 // mark's centre and radius. noise: the burn time's grid (burnAt).

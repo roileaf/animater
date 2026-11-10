@@ -3,8 +3,10 @@
 import { bloodArt } from "../motion/blood-art.mjs";
 import { wreckLayout, wreckTargets, collapseDust, flatMark, spillExtent, BLAST_SCORCH, GRAIN_TONES, POWDER_TONES, SPINE_COLOURS, BURN_DIE_MS } from "./prop-wreck-layout.mjs";
 import { BURN_MS } from "./prop-lights.mjs";
-import { createPropFx, paintFlame } from "./prop-fx.mjs";
-import { burnLayout, splitLayout, burnAt, frontAt, BURN_AWAY_MS } from "./prop-burn.mjs";
+import { createPropFx } from "./prop-fx.mjs";
+import { createTorchFires } from "./prop-fire.mjs";
+import { flameUnit } from "../motion/light-flames.mjs";
+import { burnLayout, splitLayout, burnAt, frontAt, frontTongues, frontPoint, frontReach, BURN_AWAY_MS } from "./prop-burn.mjs";
 import { nameTokens } from "./prop-material.mjs";
 import { propTraits, propGuesses, BURST_DEFAULT } from "./prop-traits.mjs";
 import { collapseLayout } from "./prop-collapse.mjs";
@@ -90,11 +92,16 @@ export function paintMark(PIXI, mark, held) {
 
 // materialOf(tile doc) names the prop's material; playSound(file, at, {volume, reach}?) plays a recording at a point
 // (main.mjs, with room acoustics); shake(at, burst) jolts the view for an explosion seen happening (optional).
-export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = () => "wood", playSound = () => {}, shake = () => {} }) {
+// The fires a break starts burn with the torch flame over the lighting (prop-fire.mjs): fireRoot() the container over
+// the lighting (null: in the wreck), fireSeen(key, at, elevation) whether this screen sees one, fireLean(key, at) the
+// air on it, fireTongues() whether the quality tier draws flame tongues.
+export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = () => "wood", playSound = () => {}, shake = () => {},
+  fireRoot = () => null, fireSeen = () => true, fireLean = () => 0, fireTongues = () => true }) {
   const wrecks = new Map(); // tile id -> { box, handle, stop }
   const artTextures = new Map(), colours = new Map();
   const posed = createPosedPieces({ PIXI });
   const fx = createPropFx({ PIXI });
+  const torch = createTorchFires({ PIXI, root: fireRoot, seen: fireSeen, lean: fireLean, tongues: fireTongues });
 
   const artTexture = (art, n, color) => {
     const key = `${art}:${n}:${color}`;
@@ -128,19 +135,25 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
 
   const groundMark = (mark, held) => paintMark(PIXI, mark, held);
 
-  // Burning lamp oil (mock scene 4): soft soot under the scorch, always; while it burns (a break seen happening), flames
-  // over the spill with a hot core glow and rising embers, catching just after the break and dying down over the last
-  // BURN_DIE_MS of BURN_MS. The wide glow is the GM's temporary fire light; its smoke and its fire-pot loop come with it.
+  // Burning lamp oil (mock scene 4): soft soot under the scorch, always; while it burns (a break seen happening), a bed
+  // of torch-flame tongues over the spill (tallest in the middle) with its halo, glowing heart and rising embers, catching
+  // just after the break and dying down over the last BURN_DIE_MS of BURN_MS. The wide glow is the GM's temporary fire
+  // light; its smoke and its fire-pot loop come with it.
   const SCORCH_IN_MS = 12000; // the scorch shows through as the flames die
   const sootUnder = (fire, cutAngle, marks) => fx.glow(marks, fire.at, fire.r * 1.65, 0x0c0806, { alpha: 0.45, flicker: false, add: false, squash: 0.8, angle: cutAngle });
-  const burning = (fire, box) => {
-    const layer = new PIXI.Container(); layer.zIndex = 2; box.addChild(layer); // over the flying pieces (z 1), as the mock's fire layer
-    const core = fx.glow(layer, fire.at, fire.r * 2, 0xffc060, { alpha: 0.5 });
-    const flames = fx.flames(layer, fire.flames, { end: BURN_MS, dieMs: BURN_DIE_MS });
-    const sparks = fx.embers(layer, fire.embers);
+  const burning = (fire, box, key, elevation) => {
+    const layer = new PIXI.Container(); layer.zIndex = 2; box.addChild(layer); // over the flying pieces (z 1) when there is no light root
+    // The flame unit of a fire light about the patch's size (a lantern's patch burns as a cooking pot's bed).
+    const g = grid() || 100, unit = flameUnit(1, g) * Math.min(1.4, Math.max(0.75, Math.sqrt(fire.r / (0.45 * g))));
+    const flames = torch.fire(layer, { key, at: fire.at, elevation, unit, spread: fire.r * 0.6, tongues: fire.flames });
+    const sparks = fx.embers(flames.sparks, fire.embers);
     return {
-      update(t) { flames.update(t); core.level(flames.heat); core.update(t); sparks.update(t); },
-      destroy() { flames.destroy(); core.destroy(); sparks.destroy(); quiet(() => layer.destroy({ children: true })); },
+      update(t) {
+        const die = 1 - span(t, BURN_MS - BURN_DIE_MS, BURN_DIE_MS);
+        flames.update(t, (i) => ({ level: span(t, fire.flames[i].start, 400) * die }));
+        sparks.update(t);
+      },
+      destroy() { sparks.destroy(); flames.destroy(); quiet(() => layer.destroy({ children: true })); },
     };
   };
 
@@ -656,6 +669,24 @@ void main() {
     }
     return out;
   };
+  // The picture's paint, its alpha read once: painted(u, v) whether it is painted near a place (u, v: shares of it), and
+  // reach how far across the hit the painted plant runs (frontPoint), past a few stray threads at either side.
+  const FRONT_LAG = 0.06;
+  const paintOf = (art, L) => {
+    let data = null;
+    try { data = art?.getContext("2d").getImageData(0, 0, art.width, art.height).data; } catch { data = null; }
+    if (!data) return { painted: () => true, reach: frontReach(L) };
+    const W = art.width, H = art.height, near = 0.035;
+    const alpha = (u, v) => { const x = Math.min(W - 1, Math.max(0, Math.floor(u * W))), y = Math.min(H - 1, Math.max(0, Math.floor(v * H))); return data[(y * W + x) * 4 + 3]; };
+    const offs = [];
+    for (let j = 0; j < 48; j++) for (let i = 0; i < 48; i++) {
+      const u = (i + 0.5) / 48, v = (j + 0.5) / 48;
+      if (alpha(u, v) > 60) offs.push((u - 0.5) * L.width * -L.dir.y + (v - 0.5) * L.height * L.dir.x);
+    }
+    offs.sort((a, b) => a - b);
+    const reach = offs.length > 8 ? { lo: offs[Math.floor(offs.length * 0.06)], hi: offs[Math.floor(offs.length * 0.94)] } : frontReach(L);
+    return { painted: (u, v) => [[0, 0], [near, 0], [-near, 0], [0, near], [0, -near]].some(([du, dv]) => alpha(u + du, v + dv) > 60), reach };
+  };
   function burned({ tile, d, note, entry, box, texture, centre, sortLayer, animate }) {
     const w = d.width, h = d.height, side = Math.max(w, h), gk = (grid() || 100) / 100, web = propGuesses(d.texture?.src).cuttable;
     const L = burnLayout(note, { width: w, height: h, grid: grid() || 100, rotation: d.rotation ?? 0 }), ashAt = tileToWorld(d, centre, L.ash);
@@ -697,16 +728,19 @@ void main() {
       if (!burn) { plain = new PIXI.Sprite(artTex); plain.scale.set(1 / k); burning.addChild(plain); }
     }
     const air = new PIXI.Container(); air.zIndex = 2; box.addChild(air);
-    const flameG = new PIXI.Graphics(); air.addChild(flameG);
-    const local = art ? frontSpots(art, L, w, h, note.seed) : [], spots = local.map((p) => ({ ...p, ...tileToWorld(d, centre, p) }));
-    const flameSize = side * (web ? 0.062 : 0.126);
+    const local = art ? frontSpots(art, L, w, h, note.seed) : [];
+    // Torch-flame tongues riding the front, side by side across it, each burning only where the picture is painted.
+    const { painted, reach } = paintOf(art, L), lanes = frontTongues(L, { grid: grid() || 100, seed: note.seed, reach });
+    const flames = torch.fire(air, { key: `prop:${d.id}`, at: centre, elevation: d.elevation ?? 0, unit: side * (web ? 0.1 : 0.2), spread: side * 0.3,
+      tongues: lanes.map((l) => ({ x: centre.x, y: centre.y, scale: l.scale })) });
+    const lit = lanes.map(() => ({ level: 0, x: centre.x, y: centre.y }));
     // each ember rises off the painted point nearest its place, when the front reaches that point
     const onPaint = (e) => {
       let best = null, bd = Infinity;
       for (const p of local) { const dd = (p.x - e.x) ** 2 + (p.y - e.y) ** 2; if (dd < bd) { bd = dd; best = p; } }
       return best ? { x: best.x, y: best.y, t0: frontAt(best.b) * BURN_AWAY_MS } : e;
     };
-    const sparks = fx.embers(air, L.embers.map((e) => { const at = onPaint(e); return { ...e, ...tileToWorld(d, centre, at), at: at.t0 }; }));
+    const sparks = fx.embers(flames.sparks, L.embers.map((e) => { const at = onPaint(e); return { ...e, ...tileToWorld(d, centre, at), at: at.t0 }; }));
     const heat = web ? null : fx.glow(air, centre, side * 1.05, 0xff8030, { alpha: 0.35 });
     const rand = seededRandom((note.seed >>> 0) * 83 + 13), s = side / 190;
     const smoke = web ? null : fx.puffs(air, Array.from({ length: 10 }, (_, i) => ({ x: centre.x + (rand() - 0.5) * 80 * s, y: centre.y + (rand() - 0.5) * 60 * s, vx: 20 * gk, vy: -80 * gk,
@@ -719,12 +753,16 @@ void main() {
       if (burn) burn.set(f);
       if (plain) { plain.tint = mix(0xffffff, 0x2a2420, span(ms, 0, BURN_AWAY_MS * 0.5)); plain.alpha = 1 - span(ms, BURN_AWAY_MS * 0.3, BURN_AWAY_MS * 0.7); }
       burning.visible = f < 1.6;
-      flameG.clear();
-      for (const p of spots) {
-        const e = f - p.b; if (e < -0.01 || e > 0.16) continue;
-        const kk = 1 - Math.abs(e - 0.05) / 0.11;
-        paintFlame(flameG, p.x, p.y, flameSize * (0.5 + 0.5 * kk), ms, (note.seed >>> 0) % 10000 + p.seed, clamp01(kk * 1.3));
-      }
+      lanes.forEach((lane, i) => {
+        // just behind the front, where the picture glows as it catches
+        const p = frontPoint(L, lane, f - FRONT_LAG, reach), s = lit[i], on = !!p && painted(p.u, p.v);
+        if (on) {
+          const at = tileToWorld(d, centre, p);
+          if (s.level < 0.05) { s.x = at.x; s.y = at.y; } else { s.x = lerp(s.x, at.x, 0.5); s.y = lerp(s.y, at.y, 0.5); }
+        }
+        s.level += ((on ? 1 : 0) - s.level) * 0.3;
+      });
+      flames.update(ms, (i) => lit[i]);
       sparks.update(ms);
       if (heat) { heat.level(Math.sin(Math.PI * span(ms, 0, BURN_AWAY_MS * 1.4))); heat.update(ms); }
       smoke?.update(ms);
@@ -734,7 +772,7 @@ void main() {
     const done = () => {
       entry.stop = null; floorIn(Infinity);
       if (burn) { quiet(() => burn.mesh.destroy()); quiet(() => burn.geometry.destroy()); burn = null; }
-      quiet(() => sparks.destroy()); quiet(() => heat?.destroy()); quiet(() => smoke?.destroy());
+      quiet(() => sparks.destroy()); quiet(() => flames.destroy()); quiet(() => heat?.destroy()); quiet(() => smoke?.destroy());
       quiet(() => air.destroy({ children: true })); quiet(() => burning.destroy({ children: true }));
     };
     entry.stop = () => { cancelAnimationFrame(raf); done(); };
@@ -869,7 +907,7 @@ void main() {
     const frame = (t) => { entry.handle?.update(t); grow(t); speckG.alpha = Math.min(1, t * 1.5); };
     if (!animate) { frame(1); return; }
     // A break seen burning: the scorch and its soot come in as the flames die; the wreck's own clock runs on to BURN_MS.
-    const fire = layout.fire ? burning(layout.fire, box) : null;
+    const fire = layout.fire ? burning(layout.fire, box, `prop:${id}`, d.elevation ?? 0) : null;
     const scorchIn = (ms) => { const u = clamp01((ms - (BURN_MS - SCORCH_IN_MS)) / (SCORCH_IN_MS - 1000)); if (mark) mark.alpha = u; if (soot) soot.sprite.alpha = 0.45 * u; };
     if (fire) entry.fire = fire;
     // Only a break seen happening is heard; a wreck redrawn on load stays silent. The note's seed gives every screen the same pick.
@@ -904,7 +942,7 @@ void main() {
     for (const id of [...wrecks.keys()]) hide(id);
     for (const t of artTextures.values()) if (t) quiet(() => t.destroy(true));
     artTextures.clear();
-    fx.clear();
+    fx.clear(); torch.clear();
   }
 
   return { show, hide, sync, clear };

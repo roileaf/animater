@@ -5906,7 +5906,16 @@ const syncLightFlames = () => {
     }
   }
   lightFlames.sync(list);
-  lightFlames.look((key) => { const l = canvas.lighting?.get?.(key); if (!l) return 0; const a = torchDraftOn() ? airLeanAt(l.center.x, l.center.y) : 0, draft = Math.sign(a) * 0.8 * Math.min(1, Math.sqrt(Math.abs(a) * 1.6)); return Math.max(-1, Math.min(1, draft + windOnFire(key, l.center.x, l.center.y).lean)); });
+  lightFlames.look((key) => { const l = canvas.lighting?.get?.(key); return l ? fireLeanAt(key, l.center.x, l.center.y) : 0; });
+};
+// How a flame at (x, y) leans (-1..1): the draft where the air moves indoors, and the wind out of doors.
+const fireLeanAt = (key, x, y) => { const a = torchDraftOn() ? airLeanAt(x, y) : 0, draft = Math.sign(a) * 0.8 * Math.min(1, Math.sqrt(Math.abs(a) * 1.6)); return Math.max(-1, Math.min(1, draft + windOnFire(key, x, y).lean)); };
+// A fire a break started (engines/props/prop-fire.mjs) shows by a fire light's rules: drawn over the lighting, so only
+// where this screen sees it (not in the fog, behind a wall, or under a roof or tree drawn now).
+const fireSeenHere = (key, at, elevation = 0) => {
+  let visible = true;
+  try { visible = canvas.visibility?.testVisibility?.(at, { tolerance: (canvas.grid?.size ?? 100) * 0.2 }) !== false; } catch { /* shown */ }
+  return visible && !flameCovered(key, at, elevation);
 };
 const torchLightRootOf = () => {
   if (!torchLightRoot || torchLightRoot.destroyed) {
@@ -7091,7 +7100,11 @@ const propWreckage = createPropWreckage({ PIXI: globalThis.PIXI, layer: () => ca
   // Heard where it breaks, with the room's acoustics (playUnder); an explosion louder and further.
   playSound: (file, at, { volume = 0.8, reach = 20 } = {}) => { void playUnder("propBreak", at, { file, volume, reach, rate: 0.95 + Math.random() * 0.1, walls: true, gmAlways: true, room: 0.8 }); },
   // A powder keg going off jolts the view a little (the cave-in's tremor, a touch bigger with the burst).
-  shake: (at, burst) => { cameraShake.tremor({ at, weight: 6, sceneId: canvas.scene?.id, level: canvas?.level?.id, seed: `keg:${Math.round(at.x)}:${Math.round(at.y)}`, scale: 0.8 + 0.2 * (Number(burst) || 2) }); } });
+  shake: (at, burst) => { cameraShake.tremor({ at, weight: 6, sceneId: canvas.scene?.id, level: canvas?.level?.id, seed: `keg:${Math.round(at.x)}:${Math.round(at.y)}`, scale: 0.8 + 0.2 * (Number(burst) || 2) }); },
+  // Its fires burn with the torch flame over the lighting, by a fire light's rules, whatever "Flames on fire lights" says;
+  // the quality tier that draws a fire light's tongues draws theirs.
+  fireRoot: () => (canvas?.ready ? torchLightRootOf() : null), fireSeen: fireSeenHere, fireLean: (key, at) => fireLeanAt(key, at.x, at.y),
+  fireTongues: () => qualityRank(localQuality()) >= 2 });
 const PROP_REFUSED_MS = 3000, PROP_LATE_MS = 30000;
 const propPending = new Map(), propWriting = new Set(); // broken on this screen, waiting on the GM; being written by the GM
 const propLate = new Map(); // shown again after PROP_REFUSED_MS: a GM write that still comes is drawn without playing again

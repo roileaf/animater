@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { burnLayout, splitLayout, burnAt, BURN_AWAY_MS } from "../../../scripts/engines/props/prop-burn.mjs";
+import { burnLayout, splitLayout, burnAt, frontTongues, frontPoint, frontReach, BURN_AWAY_MS } from "../../../scripts/engines/props/prop-burn.mjs";
 import { flatMark } from "../../../scripts/engines/props/prop-wreck-layout.mjs";
 import { wreckLayout } from "../../../scripts/engines/props/prop-wreck-layout.mjs";
 import { propsInArea, propNextToMiss } from "../../../scripts/engines/props/prop-pick.mjs";
@@ -155,4 +155,51 @@ test("a blast burns a plant away", () => {
   const r = validBreakRequest({ cause: { kind: "blast", sourceId: "keg" }, note: n }, { tile: t, walls: [], scene, grid: 100, sender: { id: "gm", isGM: true, viewedScene: "s" }, source: keg });
   assert.equal(r.ok, true, r.why);
   assert.deepEqual([r.note.style, r.note.mark], ["burn", "ash"]);
+});
+
+test("flames ride the burn front: tongues across it, more for a bigger plant, each on the front as it moves", () => {
+  const n = { seed: 31, cutAngle: 0.7 }, size = { width: 190, height: 150, grid: 100 };
+  const L = burnLayout(n, size), lanes = frontTongues(L, { grid: 100, seed: n.seed });
+  assert.deepEqual(lanes, frontTongues(L, { grid: 100, seed: n.seed }), "seeded");
+  assert.notDeepEqual(lanes, frontTongues(L, { grid: 100, seed: 32 }));
+  // count scales with the plant: a small web a few, a big bush more
+  const small = frontTongues(burnLayout(n, { width: 60, height: 60, grid: 100 }), { grid: 100, seed: 31 });
+  const big = frontTongues(burnLayout(n, { width: 260, height: 240, grid: 100 }), { grid: 100, seed: 31 });
+  assert.equal(small.length, 3);
+  assert.equal(big.length, 10);
+  assert.ok(small.length < lanes.length && lanes.length < big.length);
+  // the painted plant's own width across the hit counts: a narrow stem burns with fewer than its tile's round body
+  assert.equal(frontTongues(L, { grid: 100, seed: 31, reach: { lo: -20, hi: 30 } }).length, 3);
+  assert.equal(frontTongues(L, { grid: 100, seed: 31, reach: { lo: -100, hi: 100 } }).length, 9);
+  for (const l of lanes) { assert.ok(l.s > -1 && l.s < 1, "across the front, inside the plant"); assert.ok(l.scale >= 0.8 && l.scale <= 1.15); }
+  for (let i = 1; i < lanes.length; i++) assert.ok(lanes[i].s > lanes[i - 1].s, "spread side by side across it");
+  // each tongue stands on the front: where the burn time is the one asked for, on its own lane, inside the tile
+  const across = { x: -L.dir.y, y: L.dir.x }, halfAcross = Math.min((Math.abs(L.dir.y) * size.width + Math.abs(L.dir.x) * size.height) / 2, 0.45 * size.width);
+  const meanAlong = (b) => {
+    let sum = 0, k = 0;
+    for (const l of lanes) {
+      const p = frontPoint(L, l, b); if (!p) continue;
+      assert.ok(Math.abs(burnAt(L, p.u, p.v) - b) < 0.01, "on the front");
+      assert.ok(p.x >= 0 && p.x <= size.width && p.y >= 0 && p.y <= size.height);
+      assert.ok(Math.abs(p.u * size.width - p.x) < 1e-9 && Math.abs(p.v * size.height - p.y) < 1e-9);
+      const off = (p.x - size.width / 2) * across.x + (p.y - size.height / 2) * across.y;
+      assert.ok(Math.abs(off - l.s * halfAcross) < 0.5, "on its lane");
+      sum += (p.x - size.width / 2) * L.dir.x + (p.y - size.height / 2) * L.dir.y; k++;
+    }
+    return k ? sum / k : null;
+  };
+  const early = meanAlong(0.35), late = meanAlong(0.75);
+  assert.ok(early !== null && late !== null, "the middle of the burn has flames");
+  assert.ok(late > early, "the front moves along the hit");
+  // before the front reaches the plant and after it has crossed: no flames
+  for (const l of lanes) { assert.equal(frontPoint(L, l, -0.5), null); assert.equal(frontPoint(L, l, 2), null); }
+  // given how far across the painted plant runs, the lanes spread over just that
+  assert.deepEqual(frontReach(L), { lo: -halfAcross, hi: halfAcross });
+  const reach = { lo: -20, hi: 30 };
+  for (const l of lanes) {
+    const p = frontPoint(L, l, 0.5, reach); if (!p) continue;
+    const off = (p.x - size.width / 2) * across.x + (p.y - size.height / 2) * across.y;
+    assert.ok(Math.abs(off - (-20 + ((l.s + 1) / 2) * 50)) < 0.5);
+    assert.ok(Math.abs(burnAt(L, p.u, p.v) - 0.5) < 0.01);
+  }
 });
