@@ -12,7 +12,11 @@ test('a tree tile\'s kind: its own choice, else its name, else a broadleaf', () 
   assert.equal(treeKindOf({ src: 'Birch Tree.webp' }), 'birch');
   assert.equal(treeKindOf({ src: 'pine.webp', own: 'palm' }), 'palm', 'its own choice first');
   assert.equal(treeKindOf({ src: 'pine.webp', own: 'nonsense' }), 'pine');
-  assert.deepEqual(TREE_KINDS.map(([k]) => k), ['', 'broadleaf', 'pine', 'palm', 'birch', 'bare', 'willow']);
+  assert.equal(treeKindOf({ src: 'Spruce_Large.webp' }), 'spruce');
+  assert.equal(treeKindOf({ src: 'fir-tree-2.webp' }), 'spruce');
+  assert.equal(treeKindOf({ src: 'Cherry Blossom 01.webp' }), 'blossom');
+  assert.equal(treeKindOf({ src: 'apple_tree.webp' }), 'blossom');
+  assert.deepEqual(TREE_KINDS.map(([k]) => k), ['', 'broadleaf', 'pine', 'spruce', 'palm', 'birch', 'blossom', 'bare', 'willow']);
 });
 
 test('each kind is darker than the old half shade, a birch lightest and a pine darkest', () => {
@@ -22,7 +26,7 @@ test('each kind is darker than the old half shade, a birch lightest and a pine d
 });
 
 test('their shapes: clumps inside the crown and none past it, branches forking, fronds combed', () => {
-  for (const kind of ['broadleaf', 'pine', 'birch', 'willow']) {
+  for (const kind of ['broadleaf', 'pine', 'spruce', 'birch', 'blossom', 'willow']) {
     assert.equal(treeShadeAt(kind, 200, 0, 1), 0, `${kind}: nothing past its crown`);
     let some = 0; for (let x = -60; x <= 60; x += 6) for (let y = -60; y <= 60; y += 6) some += treeShadeAt(kind, x, y, 1);
     assert.ok(some > 10, `${kind}: shade inside`);
@@ -49,7 +53,7 @@ test('a stand of trees gets a repeating pattern that meets itself; one tree its 
   assert.ok(isOneTree({ width: 300, height: 280, grid: 100 }));
   assert.ok(!isOneTree({ width: 1420, height: 1400, grid: 200 }), 'seven squares wide is a stand');
   assert.ok(!isOneTree({ width: 400, height: 150, grid: 100 }), 'a long hedge is not one crown');
-  for (const kind of ['broadleaf', 'birch', 'willow', 'pine']) {
+  for (const kind of ['broadleaf', 'birch', 'willow', 'pine', 'spruce', 'blossom']) {
     for (const y of [3, 100, 200]) assert.ok(Math.abs(treeFieldAt(kind, 0, y, 2) - treeFieldAt(kind, PATTERN_SIZE, y, 2)) < 1e-9, `${kind}: left meets right`);
     for (const x of [3, 100, 200]) assert.ok(Math.abs(treeFieldAt(kind, x, 0, 2) - treeFieldAt(kind, x, PATTERN_SIZE, 2)) < 1e-9, `${kind}: top meets bottom`);
   }

@@ -193,6 +193,7 @@ export const SETTINGS_TABS = Object.freeze([
     { local: "showControlButton" },
     { local: "toolCaveIn" },
     { local: "toolEnergyBlast" },
+    { local: "toolDecorate" },
     { local: "toolClearRubble" },
     { local: "toolClearBlood" },
     { local: "toolSplatBlood", gmOnly: true },

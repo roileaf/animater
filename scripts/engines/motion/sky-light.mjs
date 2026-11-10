@@ -1,5 +1,6 @@
 import { weatherDrawn } from './sky-weather.mjs';
 import { CLOUD_DECK } from './cloud-deck.mjs';
+import { SNOW_LOOK } from './snow-look.mjs';
 // The sky over the map: cloud shadows drifting with the wind, the sun glittering on water and rippling over its banks,
 // snow and ice sparkling, the air shimmering over hot ground at midday, and lightning flashing in a storm. What the
 // weather is and where each surface lies is pure; the light is drawn by one shader over the map (createSurfaceLight),
@@ -229,9 +230,7 @@ float fbm3(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 3; i++) { s += a
 float fbm4(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a * noise(p); p = p * 2.03 + 17.0; a *= 0.5; } return s / 0.9375 * 0.96875; }
 // Where snow lies in patches: the same pattern as snowPatchAt in this file (a hash without sine, so the GPU and the
 // creatures' tracks agree on it).
-float patchHash(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
-float patchNoise(vec2 p){ vec2 i = floor(p), f = p - i; f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(patchHash(i), patchHash(i + vec2(1, 0)), f.x), mix(patchHash(i + vec2(0, 1)), patchHash(i + vec2(1, 1)), f.x), f.y); }
+${SNOW_LOOK}
 // Where water stands on wet ground (0-1): small pools at first, spreading and joining the wetter it gets, with an uneven edge. (uPuddles: how big, 1 as usual; smaller ones stay apart, as a big puddle runs across a town's painted roofs; 0 none.)
 float puddleAt(vec2 px){
   if (uWet <= 0.05 || uPuddles < 0.01) return 0.0;
@@ -253,11 +252,7 @@ vec3 lampsOn(vec2 px){
   }
   return got;
 }
-float snowField(vec2 px){
-  vec2 p = px / (uGrid * 4.0); float s = 0.0, a = 0.5;
-  for (int i = 0; i < 5; i++) { s += a * patchNoise(p); p = p * 2.03 + 17.0; a *= 0.5; }
-  return s;
-}
+float snowField(vec2 px){ return snowFieldAt(px, uGrid); }
 // How far fire has melted the snow here, with an uneven edge.
 float meltAt(vec2 px){
   float got = 0.0;
@@ -983,8 +978,8 @@ void main(){
       // From the sun or moon where it is now: long soft shading when it is low, little under a closed sky. Each rise throws a shadow away from it.
       vec2 toSun = uSnowSun.xy;
       float blocked = uHasSnowGround > 0.5 ? smoothstep(0.0, 0.1, texture2D(uSnowRelief, vUv + toSun * uGrid * (0.1 + 0.16 * uSnowSun.w) / uSize).z - high) : 0.0;
-      float lit = clamp(0.7 - dot(slope, toSun) * (0.26 + uSnowSun.z * (0.26 + 0.2 * uSnowSun.w)) - blocked * uSnowSun.z * 0.42, 0.0, 1.0);
-      vec3 tone = mix(vec3(0.62, 0.7, 0.86), mix(vec3(1.0, 0.99, 0.97), uSnowSunColor, 0.6 * uSnowSun.z), lit) * (0.95 + 0.05 * speck);
+      float lit = clamp(snowLit(slope, toSun, uSnowSun.z, uSnowSun.w) - blocked * uSnowSun.z * 0.42, 0.0, 1.0);
+      vec3 tone = snowTone(lit, speck, uSnowSunColor, uSnowSun.z);
       // The trees' shade lies on it, blue, where the sun is out.
       tone = mix(tone, tone * vec3(0.62, 0.68, 0.82), texture2D(uTreeShade, vUv).a * uSnowSun.z * 0.9);
       // A lamp or fire nearby catches the side of each rise that faces it. (Most of the light itself is Foundry's, over all this.)

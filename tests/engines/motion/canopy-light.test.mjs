@@ -136,14 +136,19 @@ test('sun through the leaves falls in ragged warm patches, not round pale discs'
   assert.ok(!frag.includes('`'), 'no backtick in the shader');
 });
 
+const frag0 = (sources) => sources[0][1];
 test('each kind of tree lets the sun through its own way, read from a baked kind map', async () => {
   const { CANOPY_SHADER_SOURCES, KIND_CODES } = await import('../../../scripts/engines/motion/canopy-light.mjs');
   const { TREE_DARK } = await import('../../../scripts/engines/motion/tree-kinds.mjs');
-  // Every kind has its own code, none of them 0 (no tree), each fitting the kind map's red in eighths.
+  // Every kind has its own code, none of them 0 (no tree), each fitting the kind map's red in sixteenths.
   assert.deepEqual(Object.keys(KIND_CODES).sort(), Object.keys(TREE_DARK).sort());
   const codes = Object.values(KIND_CODES);
   assert.equal(new Set(codes).size, codes.length);
-  assert.ok(codes.every((c) => Number.isInteger(c) && c >= 1 && c <= 7));
+  assert.ok(codes.every((c) => Number.isInteger(c) && c >= 1 && c <= 15));
+  // The map is read back in the same steps it is written in.
+  assert.match(frag0(CANOPY_SHADER_SOURCES), /\.r \* 16\.0 \+ 0\.5\)/);
+  // Blossom drops petals, not leaves.
+  assert.match(frag0(CANOPY_SHADER_SOURCES), /petal/i);
   const [, frag] = CANOPY_SHADER_SOURCES[0];
   assert.match(frag, /uniform sampler2D [^;]*uKinds/);
   // A bare tree and a palm add none of their own: their branches' and fronds' shade already leaves the ground lit between.

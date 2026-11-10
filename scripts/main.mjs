@@ -247,6 +247,10 @@ import { createLightFlames, flameUnit, fireKindOf, underTile, tileDrawnAt } from
 import { draftField, sceneOpenings, draftStrength, draftPixels, gustDelays, createSmokeAir, MIST_AIR } from "./engines/motion/indoor-air.mjs";
 import { createCavern, fungusTouches, skylightShare } from "./engines/motion/cavern.mjs";
 import { createWebs, webCorners } from "./engines/motion/webs.mjs";
+import { createDecorations } from "./engines/motion/decorations.mjs";
+import { decorSettings, strokeShapes, circleArea as decorCircle } from "./engines/motion/decor-regions.mjs";
+import { openBrushBar, brushChoices } from "./ui/decor-brush-bar.mjs";
+import { DECOR_KINDS, stampDecor } from "./engines/motion/decor-paint.mjs";
 import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, seasonGround, groundInputs, groundStep, groundMoved, iceHours } from "./engines/motion/ambient-life.mjs";
 import { isFireLight, hazesLight, sparksLight, smokesLight, fireHazeTag, hazeAbove } from "./engines/distortion/fire-haze.mjs";
 import { createFireSmoke, fireSize, SMOKE_FIRES, chimneyOf, chimneyPlume } from "./engines/motion/fire-smoke.mjs";
@@ -2235,7 +2239,7 @@ const weatherNow = () => {
 };
 // The light past the tiles and over the ground follows the sun as soon as it is known (a calendar ready after the
 // canvas, a new hour), not only when the walls' shadows are next rebuilt.
-const lookSunlit = () => { if (!canvas?.ready) return; try { lookCanopy(); lookSky(); } catch { /* not built yet */ } };
+const lookSunlit = () => { if (!canvas?.ready) return; try { lookCanopy(); lookSky(); } catch { /* not built yet */ } try { syncDecorations(); } catch { /* not built yet */ } };
 const lookCanopy = () => {
   try {
     const weather = weatherNow(), leaves = leavesOn() ? leavesOf({ season: seasonNow(), wind: weather.wind }) : null;
@@ -2257,7 +2261,8 @@ const heightOf = (tiles, usual) => {
 const rebuildCanopy = () => {
   try {
     if (!canvas?.ready || (!canopyOn() && !roofLightOn() && !leavesOn())) { canopyLight.clear(); return; }
-    const { tree, roof } = sunlitTiles(), trees = canopyOn() || leavesOn() ? tree : [], roofs = roofLightOn() && !shadowsOffHere() ? roof : [];
+    // (The decorations' trees with the tiles': the same shade, flecks and falling leaves.)
+    const { tree, roof } = sunlitTiles(), trees = canopyOn() || leavesOn() ? [...tree, ...decorations.trees()] : [], roofs = roofLightOn() && !shadowsOffHere() ? roof : [];
     canopyHeight = heightOf(trees, 3); roofHeight = heightOf(roofs, 4);
     canopySunKey = sunKeyOf(sunNow);
     let water = []; try { water = surfacesHere().water; } catch { /* no flecks kept off */ }
@@ -2348,6 +2353,155 @@ const floorTextures = createFloorTextures({ PIXI: globalThis.PIXI, root: floorDr
 // Where the creatures are drawn now, for the grass they walk through.
 const tokensOnFloor = () => { const out = []; for (const t of canvas.tokens?.placeables ?? []) { if (!t.visible || !t.actor || t.document?.hidden) continue; const at = t.mesh?.position ?? t.center; out.push({ id: t.id, x: at.x, y: at.y, width: t.w }); } return out; };
 const floorMotion = createFloorMotion({ PIXI: globalThis.PIXI, root: floorLayer("floorMotion", 420), grid: () => canvas.grid?.size ?? 100 });
+// Decorations (engines/motion/decorations.mjs): each region's painted rocks, trees, puddles and the rest (the region's right-click
+// panel → Decorations). Their shadows and they themselves on the ground, over the tiles (a rock on a painted rug) and under the
+// creatures; the trees' crowns over the creatures, opening round one beneath.
+// (Flat ones, moss and a puddle's mud, lie under the sky's lying snow, at 641; the rest stand over it, with their own snow.)
+const decorations = createDecorations({ PIXI: globalThis.PIXI, flat: floorLayer("decorFlat", 641), shadows: floorLayer("decorShadows", 651), ground: floorLayer("decorations", 655), above: floorLayer("decorCrowns", 740), grid: () => canvas.grid?.size ?? 100, render: (object, renderTexture) => canvas.app.renderer.render(object, { renderTexture, clear: true }) });
+// A puddle's water colour: dark, peaty teal (a painted water floor's is a lake's, too pale and clear for a puddle on grass).
+let pondBedTexture = null;
+const decorPondBed = () => { if (!pondBedTexture || pondBedTexture.baseTexture?.destroyed) pondBedTexture = PIXI.Texture.fromBuffer(new Uint8Array([24, 58, 56, 255]), 1, 1); return pondBedTexture; };
+// What a region's decorations look like now: the season, rain and lying snow, night (what glows), underground.
+const decorLook = (settings) => { const soaked = groundOf().now, darkness = Number(canvas.environment?.darknessLevel) || 0; return { season: seasonNow() ?? "summer", wet: wetOn() && soaked.wet > 0.4 ? 1 : 0, snow: snowCoverOn() && settings.where !== "cave" ? Math.round((soaked.snow ?? 0) * 4) / 4 : 0, night: darkness > 0.6 || settings.where === "cave", cave: settings.where === "cave" }; };
+let decorTreesKey = "";
+const syncDecorations = () => {
+  if (!canvas?.ready) return;
+  const list = [];
+  if (regionStepsOn()) for (const region of regionsHere()) {
+    try {
+      let settings = decorSettings(region.flags?.[ID]?.decor);
+      // While the brush paints this region, what it has painted shows at once, before it is saved.
+      if (settings && decorBrushing?.id === region.id) settings = { ...settings, brushed: decorBrushing.brushed, erased: decorBrushing.erased };
+      if (settings) list.push({ id: region.id, settings, areas: regionAreas(region), look: decorLook(settings) });
+    } catch { /* a broken region never breaks the rest */ }
+  }
+  // A stroke on open ground, before its region is made: what it has painted, within the circles it has swept.
+  if (decorBrushing?.id === NEW_DECOR_REGION && decorBrushing.circles.length) {
+    const settings = { where: decorBrushing.fresh.where, kinds: {}, density: 0, scale: 1, seed: 1, brushed: decorBrushing.brushed, erased: [] };
+    list.push({ id: NEW_DECOR_REGION, settings, areas: decorBrushing.circles.map(([x, y, r]) => decorCircle(x, y, r)), look: decorLook(settings) });
+  }
+  decorations.sync(list);
+  lightDecorations();
+  // Their trees join the canopy's shade: built again when they change.
+  const key = JSON.stringify(decorations.trees().map((t) => [t.id, t.kind, Math.round(t.x), Math.round(t.y)]));
+  if (key !== decorTreesKey) { decorTreesKey = key; try { canopySoon(); } catch { /* not ready */ } }
+};
+// The decorations brush: paints decorations by hand, each dab a few within its circle, kept off what already stands there.
+// From a region's Decorations section (Brush) it paints that region's ticked kinds into it. From the Decorations tool in
+// Animater's controls it paints the kinds ticked on its bar (ui/decor-brush-bar.mjs): into the region a stroke starts in, when
+// that one has decorations on, or, starting on open ground, into a new region drawn round the stroke as it goes. Shift-drag
+// rubs out (the scatter leaves those places bare). What a stroke paints shows at once and is saved when it ends.
+// [ and ] make the brush smaller or bigger; right-click or Esc stops.
+let decorBrushing = null;
+const NEW_DECOR_REGION = "animater-decor-new";
+const DECOR_BRUSH = { min: 0.5, max: 6, usual: 1.5 };
+const decorBrushTarget = (p) => regionsHere().find((r) => decorSettings(r.flags?.[ID]?.decor) && regionPointIn(p, regionAreas(r)));
+const startDecorBrush = (doc = null) => {
+  stopDecorBrush();
+  if (!canvas?.ready || !game.user?.isGM) return;
+  const free = !doc, view = canvas.app.view, ring = new PIXI.Graphics(), grid = () => canvas.grid.size;
+  ring.eventMode = "none"; floorLayer("decorBrush", 1102)().addChild(ring);
+  const state = decorBrushing = { id: null, doc: null, brushed: [], erased: [], circles: [], fresh: null, size: DECOR_BRUSH.usual, down: false, last: null, at: null, seed: Date.now() % 1e6, ring, bar: null };
+  state.bar = free ? openBrushBar({ onClose: () => stopDecorBrush() }) : null;
+  const sizeNow = () => (free ? brushChoices().size : state.size);
+  const at = (e) => { const p = canvas.canvasCoordinatesFromClient?.({ x: e.clientX, y: e.clientY }) ?? canvas.stage.toLocal({ x: e.clientX, y: e.clientY }); return { x: p.x, y: p.y }; };
+  const draw = () => { ring.clear(); if (!state.at) return; ring.lineStyle(2, state.erasing ? 0xff7a64 : 0xffffff, 0.9); ring.drawCircle(state.at.x, state.at.y, (sizeNow() * grid()) / 2); };
+  // Where a stroke goes: the region the brush was opened on; else the region it starts in; else a new one round it.
+  const begin = (p) => {
+    const target = doc ?? decorBrushTarget(p);
+    if (target) { const s = decorSettings(target.flags?.[ID]?.decor) ?? { brushed: [], erased: [] }; Object.assign(state, { id: target.id, doc: target, brushed: [...s.brushed], erased: [...s.erased], circles: [], fresh: null }); }
+    else { const c = brushChoices(); Object.assign(state, { id: NEW_DECOR_REGION, doc: null, brushed: [], erased: [], circles: [], fresh: { where: c.where, kinds: Object.fromEntries(c.kinds.map((k) => [k, { size: 1, amount: 1 }])) } }); }
+  };
+  const paintWith = () => {
+    if (free) { const c = brushChoices(); return { kinds: c.kinds.filter((id) => DECOR_KINDS[id]).map((id) => ({ id, size: 1, amount: 1 })), density: c.thick, scale: 1 }; }
+    const s = decorSettings(state.doc?.flags?.[ID]?.decor);
+    return s ? { kinds: Object.entries(s.kinds).filter(([id]) => DECOR_KINDS[id].set === "both" || DECOR_KINDS[id].set === s.where).map(([id, k]) => ({ id, size: k.size, amount: k.amount })), density: s.density, scale: s.scale } : { kinds: [], density: 0, scale: 1 };
+  };
+  const dab = (p, erase) => {
+    const radius = (sizeNow() * grid()) / 2;
+    if (erase) { state.brushed = state.brushed.filter((b) => (b.x - p.x) ** 2 + (b.y - p.y) ** 2 > radius * radius); if (state.doc) state.erased.push([Math.round(p.x), Math.round(p.y), Math.round(radius)]); }
+    else {
+      if (!state.doc) state.circles.push([Math.round(p.x), Math.round(p.y), Math.round(radius)]);
+      const areas = state.doc ? regionAreas(state.doc) : null, { kinds, density, scale } = paintWith();
+      for (let i = 0, n = Math.max(1, Math.round(sizeNow() * Math.max(0.2, density) * 1.5)); i < n; i++) { const d = stampDecor({ x: p.x, y: p.y, radius, grid: grid(), kinds, seed: state.seed++, existing: state.brushed, scale }); if (d && (!areas || regionPointIn(d, areas))) state.brushed.push(d); }
+    }
+    syncDecorations();
+  };
+  const finish = async () => {
+    const { doc: target, brushed, erased, circles, fresh } = state;
+    try {
+      if (target) {
+        // What it held before the stroke, for Ctrl+Z.
+        const before = decorSettings(target.flags?.[ID]?.decor) ?? { brushed: [], erased: [] }, after = { brushed: brushed.slice(-600), erased: erased.slice(-400) };
+        await target.update({ flags: { [ID]: { decor: after } } }, { render: false });
+        rememberDecorStep({ kind: "edit", id: target.id, before: { brushed: before.brushed, erased: before.erased }, after });
+      } else if (circles.length && brushed.length) {
+        const data = { name: "Decorations", color: "#7a9a4a", shapes: strokeShapes(circles), flags: { [ID]: { decor: { on: true, where: fresh.where, density: 0, scale: 1, seed: state.seed, kinds: fresh.kinds, brushed: brushed.slice(-600), erased: [] } } } };
+        const [made] = await canvas.scene.createEmbeddedDocuments("Region", [data]);
+        if (made) rememberDecorStep({ kind: "create", id: made.id, data });
+      }
+    } catch (err) { console.warn("Animater | decorations brush", err); ui.notifications?.warn?.("The decorations could not be saved."); }
+    if (decorBrushing === state) Object.assign(state, { id: null, doc: null, brushed: [], erased: [], circles: [], fresh: null });
+  };
+  // (A right-drag pans the map as ever; only a right-click that stays put stops the brush.)
+  const down = (e) => { if (e.button === 2) { state.rightAt = { x: e.clientX, y: e.clientY }; return; } if (e.button !== 0) return; e.stopPropagation(); e.preventDefault(); const p = at(e); begin(p); state.down = true; state.erasing = e.shiftKey; state.last = p; dab(p, e.shiftKey); };
+  const move = (e) => { const p = at(e); state.at = p; state.erasing = e.shiftKey; draw(); if (!state.down) return; e.stopPropagation(); if (Math.hypot(p.x - state.last.x, p.y - state.last.y) > sizeNow() * grid() * 0.35) { state.last = p; dab(p, e.shiftKey); } };
+  const up = (e) => { if (!state.down) return; e.stopPropagation(); state.down = false; void finish(); };
+  const key = (e) => {
+    if (e.target?.closest?.("input, textarea")) return;
+    // Ctrl+Z takes back the last stroke, Ctrl+Shift+Z or Ctrl+Y puts it back (Foundry's own undo waits while the brush is out).
+    const z = e.key === "z" || e.key === "Z", undo = (e.ctrlKey || e.metaKey) && z && !e.shiftKey, redo = (e.ctrlKey || e.metaKey) && ((z && e.shiftKey) || e.key === "y" || e.key === "Y");
+    if (undo || redo) { e.preventDefault(); e.stopImmediatePropagation(); if (!state.down) void (undo ? undoDecorStep() : redoDecorStep()); return; }
+    if (e.key === "Escape") stopDecorBrush();
+    else if (e.key === "[" || e.key === "]") { const next = Math.min(DECOR_BRUSH.max, Math.max(DECOR_BRUSH.min, sizeNow() + (e.key === "]" ? 0.5 : -0.5))); if (free) state.bar?.setSize(next); else state.size = next; draw(); }
+  };
+  // The wheel still zooms the map; Ctrl+wheel sets the brush's size and Shift+wheel how thick it lays them (both kept from
+  // Foundry, whose Ctrl or Shift+wheel would turn the selected tokens).
+  const wheel = (e) => {
+    if (e.target !== view || !(e.ctrlKey || e.metaKey || e.shiftKey)) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    const up = (e.deltaY || e.deltaX) < 0;
+    if (e.shiftKey && !(e.ctrlKey || e.metaKey)) { if (free) state.bar?.setThick(brushChoices().thick + (up ? 0.1 : -0.1)); }
+    else { const next = Math.min(DECOR_BRUSH.max, Math.max(DECOR_BRUSH.min, sizeNow() + (up ? 0.5 : -0.5))); if (free) state.bar?.setSize(next); else state.size = next; }
+    draw();
+  };
+  const menu = (e) => { const from = state.rightAt; state.rightAt = null; if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > 6) return; e.preventDefault(); stopDecorBrush(); };
+  view.addEventListener("pointerdown", down, true); view.addEventListener("pointermove", move, true); window.addEventListener("pointerup", up, true); window.addEventListener("keydown", key, true); view.addEventListener("contextmenu", menu, true); window.addEventListener("wheel", wheel, { capture: true, passive: false });
+  state.stop = () => { view.removeEventListener("pointerdown", down, true); view.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", key, true); view.removeEventListener("contextmenu", menu, true); window.removeEventListener("wheel", wheel, { capture: true }); try { ring.destroy(); } catch { /* gone */ } state.bar?.close(); };
+  if (!free) ui.notifications?.info?.("Decorations brush: drag to paint, Shift-drag to rub out, [ and ] to resize, right-click or Esc to stop.");
+};
+const stopDecorBrush = () => { const s = decorBrushing; decorBrushing = null; if (s) { s.stop?.(); syncDecorations(); } };
+// The brush's strokes, to take back and put back (this screen, this scene, the last 30): a stroke into a region (what it held
+// before and after) or one that made a new region (taken back, the region goes; put back, it is made again).
+const decorSteps = { undo: [], redo: [] };
+const rememberDecorStep = (step) => { decorSteps.undo.push(step); if (decorSteps.undo.length > 30) decorSteps.undo.shift(); decorSteps.redo = []; };
+const decorRegion = (id) => canvas.scene?.regions?.get(id) ?? null;
+const undoDecorStep = async () => {
+  const step = decorSteps.undo.pop(); if (!step) { ui.notifications?.info?.("No brush stroke to take back."); return; }
+  try {
+    if (step.kind === "edit") await decorRegion(step.id)?.update({ flags: { [ID]: { decor: step.before } } }, { render: false });
+    else await decorRegion(step.id)?.delete();
+    decorSteps.redo.push(step);
+  } catch (err) { console.warn("Animater | decorations undo", err); }
+};
+const redoDecorStep = async () => {
+  const step = decorSteps.redo.pop(); if (!step) return;
+  try {
+    if (step.kind === "edit") await decorRegion(step.id)?.update({ flags: { [ID]: { decor: step.after } } }, { render: false });
+    else { const [made] = await canvas.scene.createEmbeddedDocuments("Region", [step.data]); if (made) step.id = made.id; }
+    decorSteps.undo.push(step);
+  } catch (err) { console.warn("Animater | decorations redo", err); }
+};
+Hooks.on("canvasTearDown", () => { stopDecorBrush(); decorSteps.undo = []; decorSteps.redo = []; });
+const regionPointIn = (p, areas) => areas.some((a) => pointInPolygon(p, a) && !(a.holes ?? []).some((h) => pointInPolygon(p, h)));
+// The sun or moon aims their shadows: away from it, as long as it is low.
+const lightDecorations = () => {
+  if (!decorations.busy) return;
+  const sun = sunNow && !shadowsOffHere() ? { angle: (((Number(sunNow.angle) || 0) + 180) * Math.PI) / 180, length: Math.min(3, 1 / Math.tan((Math.max(6, Number(sunNow.height) || 55) * Math.PI) / 180)), strength: (Number.isFinite(Number(sunNow.strength)) ? Math.max(0, Math.min(1, Number(sunNow.strength))) : 1) * directSun(skyCoverNow) } : null;
+  // (The snow on them is the ground's: as much as lies, lit by the same sun or moon.)
+  let snowAmount = 0; try { snowAmount = snowCoverOn() ? Number(groundOf().now.snow) || 0 : 0; } catch { /* none */ }
+  decorations.light({ sun, treesByCanopy: canopyOn() && !!canopyLight.treeShade, snowAmount: undergroundScene() ? 0 : snowAmount, moon: !!sunNow?.moon });
+};
 // Where the sun and moon reach, for all that answers them.
 const sunReachNow = () => { const r = canvas.dimensions?.sceneRect; return r ? { sunlit: wallShadows.sunlit?.texture ?? globalThis.PIXI.Texture.WHITE, trees: canopyLight.treeShade ?? globalThis.PIXI.Texture.EMPTY, rect: [r.x, r.y, r.width, r.height] } : null; };
 const plainFloorOf = (region) => regionFloor({ name: region.name, flag: plainFloorFlag(region.flags?.[ID] ?? {}) });
@@ -2386,6 +2540,8 @@ const floorPlaneOf = (plane) => (plane?.role === "floor" && plane.id?.kind === "
 const syncFloorLooks = () => {
   if (!canvas?.ready) return;
   floorLevel = floorDetail(localQuality());
+  // (First, so the puddles among them are in the moving water below.)
+  try { syncDecorations(); } catch (err) { console.warn("Animater | decorations", err); }
   const list = [];
   if (floorLevel.show && regionStepsOn()) for (const region of regionsHere()) {
     try {
@@ -2483,6 +2639,10 @@ const movingWaterList = () => {
       list.push({ id: region.id, areas, watery: true, over: above.map((r) => { const shape = regionAreas(r), xs = shape.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 0)), ys = shape.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 1)); return { areas: shape, ...overShadowOf(r.flags?.[ID], plainFloorOf(r) ?? ""), contact: false, cut: r.flags?.[ID]?.overWater === true, casts: castsShadow(r.flags?.[ID]), painted: !!plainFloorOf(r) && regionStepsOn() && !!floorLevel.show && showsTexture(r.flags?.[ID] ?? {}, sceneChoice), across: Math.max(...xs) - Math.min(...xs) > Math.max(...ys) - Math.min(...ys) }; }), lift: Math.max(0, ...above.filter((r) => castsShadow(r.flags?.[ID])).map((r) => overLiftOf({ above: r.elevation?.bottom, water: region.elevation?.bottom, distance: canvas.dimensions?.distance, grid: canvas.grid.size }))) || undefined, bed, kind, followsWind: toward === "wind", edge: stepEdge(own), depth: waterDepthLook(own.waterDepth), beach: own.seaBeach !== "off", sand: kind === "sea" && own.seaBeach !== "off" ? floorTextures.tile("sand", "beach") : null, map: canvas.dimensions?.sceneRect ? { x: canvas.dimensions.sceneRect.x, y: canvas.dimensions.sceneRect.y, width: canvas.dimensions.sceneRect.width, height: canvas.dimensions.sceneRect.height } : null, waves: kind === "sea" && own.waveTo in WIND_FROM ? ((WIND_FROM[own.waveTo] - 90) * Math.PI) / 180 : null, angle: toward in WIND_FROM ? ((WIND_FROM[toward] - 90) * Math.PI) / 180 : kind === "falls" ? fallWindAngle(skyWindAngle) : null, current: riverCurrent(stepFlags(own)?.current), keeps: !!own.noFreeze, roofed: roofedRegion(areas), hulls: kind === "sea" ? hullsOver(areas) : undefined });
     } catch { /* a broken region never breaks the rest */ }
   }
+  // The decorations' puddles and cave pools: still water in the outline their painted rim goes round, deep, the colour of a painted water floor.
+  if (on) for (const pool of decorations.water()) {
+    try { list.push({ id: pool.id, areas: pool.areas, watery: true, over: [], kind: "still", followsWind: false, edge: 1, depth: pool.deep ? { hold: 1.6, dark: 0.72 } : { hold: 1.35, dark: 0.4 }, bed: { texture: decorPondBed(), key: "decor-pond", edge: 1, colourOnly: true }, beach: false, sand: null, map: canvas.dimensions?.sceneRect ? { x: canvas.dimensions.sceneRect.x, y: canvas.dimensions.sceneRect.y, width: canvas.dimensions.sceneRect.width, height: canvas.dimensions.sceneRect.height } : null, waves: null, angle: null, current: 0, keeps: false, roofed: roofedRegion(pool.areas) }); } catch { /* one pool never breaks the rest */ }
+  }
   return list;
 };
 // What of a raised floor shows from its own painted tile: plain, nothing but the floor; built, what it is built from, with its posts if it shows them, standing in the water or on what is lower.
@@ -2557,7 +2717,7 @@ const outlinePanelRegion = (doc) => {
   g.eventMode = "none"; canvas.interface.addChild(g); panelOutline = g;
 };
 Hooks.on("canvasTearDown", () => { panelOutline = null; });
-const regionPanel = createRegionPanel({ shows: outlinePanelRegion, flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]), configure: (doc) => doc.sheet?.render({ force: true }), confirm: (text) => foundry.applications.api.DialogV2.confirm({ window: { title: "Animater: None" }, content: `<p>${foundry.utils.escapeHTML?.(text) ?? text}</p>`, rejectClose: false }).then((yes) => yes === true) });
+const regionPanel = createRegionPanel({ brush: (doc) => startDecorBrush(doc), shows: outlinePanelRegion, flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]), configure: (doc) => doc.sheet?.render({ force: true }), confirm: (text) => foundry.applications.api.DialogV2.confirm({ window: { title: "Animater: None" }, content: `<p>${foundry.utils.escapeHTML?.(text) ?? text}</p>`, rejectClose: false }).then((yes) => yes === true) });
 Hooks.on("updateRegion", (doc, change) => { const flags = change?.flags?.[ID]; if (flags && "step" in flags) refreshStepsWindow(doc.id); });
 // The menu stands by the spot it was opened for: when the map moves under it, it goes.
 Hooks.on("canvasPan", () => { regionPanel.close(); });
@@ -3536,6 +3696,8 @@ Hooks.on("getSceneControlButtons", (controls) => {
     const add = (tool) => { tools[tool.name] = tool; };
     controls.animater = { name: "animater", title: "Animater", icon: "fa-solid fa-wand-magic-sparkles", layer: "tokens", order: 50, activeTool: "select", tools,
       onChange: (event, active) => { if (!active || canvas.tokens?.active) return; canvas.tokens?.activate(); void ui.controls?.activate({ control: "animater", tool: "select" }); } };
+    add({ name: "animaterDecorate", title: "Decorations: paint rocks, trees, bushes and more onto the map (into the region you start in, or a new one)", icon: "fa-solid fa-tree", order: order - 1, button: true, visible: toolShown("toolDecorate"),
+      onChange: () => (decorBrushing ? stopDecorBrush() : startDecorBrush()) });
     add({ name: "animaterCaveIn", title: "Cave-in: click where the ceiling comes down", icon: "fa-solid fa-person-falling-burst", order, button: true, visible: toolShown("toolCaveIn"),
       onChange: () => aimCaveIn() });
     add({ name: "animaterEnergyBlast", title: "Energy blast: pick a kind, click where it goes off", icon: "fa-solid fa-explosion", order: order + 3, button: true, visible: toolShown("toolEnergyBlast"),
@@ -3853,10 +4015,16 @@ const rebuildCavern = () => {
   // Floor, not the solid rock between the rooms: somewhere a lamp lights (as for the rats).
   const floor = (pt) => !lampLights.length || lampLights.some((l) => Array.isArray(l.shape) && l.shape.length >= 6 && pointInPolygon(pt, l.shape));
   skyOpenings = sky.flatMap((p) => p.areas ?? p);
+  // The decorations' glowing kinds underground are the cavern's own: its fungus, crystals and lava, and the webs' cobwebs.
+  let decor = { fungus: [], crystals: [], lava: [], webs: [] };
+  try { syncDecorations(); decor = decorations.cavern(); } catch { /* none */ }
+  if (bothSettingsOn("caveFungus")) fungus.push(...decor.fungus);
+  if (bothSettingsOn("caveCrystals")) crystals.push(...decor.crystals);
+  if (bothSettingsOn("caveLava")) lava.push(...decor.lava);
   cavern.build({ fungus, crystals, lava, mist, sky, walls, grid, seed, isFloor: floor, bounds: canvas.dimensions.sceneRect });
   fillMist();
   lavaPolygons = lava.flatMap((p) => p.areas);
-  const webAreas = of("webs", "caveWebs").flatMap((p) => p.areas);
+  const webAreas = [...of("webs", "caveWebs").flatMap((p) => p.areas), ...(bothSettingsOn("caveWebs") ? decor.webs : [])];
   if (webAreas.length) webs.build({ corners: webCorners({ walls, areas: webAreas, grid, seed, floor }), grid, seed });
   // The underground's wear: wet walls, steam, bad air, soot over the wall torches, the rubble of cave-ins.
   try {
@@ -4811,6 +4979,7 @@ const tickFireSounds = () => {
 };
 for (const hook of ["createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "canvasReady"]) Hooks.on(hook, () => { fireListAt = 0; });
 Hooks.on("canvasTearDown", () => { for (const voice of fireVoices.values()) stopVoice(voice); fireVoices.clear(); fireList = []; });
+Hooks.on("canvasTearDown", () => { try { decorations.clear(); } catch { /* gone */ } decorTreesKey = ""; });
 const creaturesNow = () => (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.actor).map((t) => ({ id: t.id, x: t.x + t.w / 2, y: t.y + t.h / 2, width: t.w }));
 // Drawn clouds (the Weather panel): just above the rain and the birds, over the roofs; their shadows on the ground, under the creatures.
 let cloudRoot = null;
@@ -5355,6 +5524,8 @@ function skyTick() {
   if (wakeRipples.busy) wakeRipples.tick(seconds);
   if (cavern.busy) tickCavern(seconds, performance.now());
   if (webs.count) webs.tick(seconds, { view: viewNow(), air: airAt });
+  // The decorations' crowns open over the creatures beneath them.
+  if (decorations.busy) { decorations.creatures(tokensOnFloor()); decorations.tick(seconds); }
   if (underWanted || mothsSetOn || underLife.busy) tickUnderLife(seconds);
   windowShaftLayer.tick(seconds);
   // Again next frame while a creature's silhouette is still being made.
@@ -8129,6 +8300,7 @@ Hooks.once("init", () => {
   for (const [key,name,hint] of [
     ['toolCaveIn','Show the Cave-in button','In the Animater controls. Hidden, a Region can still bring a ceiling down.'],
     ['toolEnergyBlast','Show the Energy Blast button','In the Animater controls.'],
+    ['toolDecorate','Show the Decorations button','In the Animater controls: a brush for painting rocks, trees, bushes and more onto the map. Hidden, a region\'s Decorations section still has its own Brush.'],
     ['toolClearRubble','Show the Clear rubble button','In the Animater controls.'],
     ['toolClearBlood','Show the Clear blood button','In the Animater controls. Blood still fades by itself.'],
     ['toolSplatBlood','Show the Splat blood button','In the Animater controls, for the GM: old blood on the ground around the selected tokens, kept with the scene until Clear blood.'],
