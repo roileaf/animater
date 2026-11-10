@@ -48,7 +48,7 @@ const wander = (rng, x, y, a, steps, step, turn) => { const pts = [[x, y]]; for 
 // Leaf colours: shadow, body, lit, bright. Muted olive, as the map's.
 const LEAVES = {
   spring: ['#3c4a12', '#6e8424', '#98aa2e', '#c2c03c'],
-  summer: ['#38320c', '#6a5c14', '#9e7c1e', '#c8962a'],
+  summer: ['#302c0c', '#5c5414', '#8a7c1e', '#b49e2c'],
   autumn: ['#4a2c0e', '#8a5218', '#b47a28', '#d8a636'],
   winter: ['#2e3218', '#4e522a', '#6a6c40', '#908c56'],
 };
@@ -129,24 +129,49 @@ function leafMass(g, rng, R, o, { leafLen, count, lobes = 7, rough = 0.16, cx = 
   // A dark bed under the leaves, so no gaps show ground (or only some, for an airy crown).
   if (bed > 0) { g.save(); g.globalAlpha = bed; trace(g, moved(hull, cx, cy, 0.94)); g.fillStyle = shade(set[0], -0.45); g.fill(); g.restore(); }
   under?.();
+  // As the map's crowns: many small leaves, finely inked, heaped in clumps. Each clump a little dome, lit on its own top-left and
+  // sinking into dark hollows where it meets the next, so the crown reads as bunched foliage rather than a flat tile of leaves.
+  leafLen *= 0.62; count = Math.round(count * 2.4);
+  const clumps = [[cx + R * 0.05 * (rng() - 0.5), cy + R * 0.05 * (rng() - 0.5), R * (0.34 + rng() * 0.08), 0]];
+  for (let i = 0; i < lobes * 1.7; i++) { const a = rng() * 6.28, t = 0.35 + Math.sqrt(rng()) * 0.6, d = t * edge(a) * 0.82; clumps.push([cx + Math.cos(a) * d, cy + Math.sin(a) * d, R * (0.22 + rng() * 0.14) * (1.1 - t * 0.35), t]); }
+  const clumpOf = (x, y) => { let best = clumps[0], bd = Infinity; for (const c of clumps) { const d = Math.hypot(x - c[0], y - c[1]) / c[2]; if (d < bd) { bd = d; best = c; } } return [best, bd]; };
   const leaves = [];
-  for (let i = 0; i < count; i++) { const a = rng() * 6.28, t = Math.sqrt(rng()), d = t * edge(a) * 0.98; leaves.push([cx + Math.cos(a) * d, cy + Math.sin(a) * d, t, outward && t > 0.3 ? a +(rng() - 0.5) * (1 - outward) * 6.28 : rng() * 6.28]); }
-  // Drawn in a loose rim-to-middle order, jittered, so no rings or rays show.
-  leaves.sort((p, q) => (q[2] + (lattice(q[0] * 7, q[1] * 7, 1) - 0.5) * 0.5) - (p[2] + (lattice(p[0] * 7, p[1] * 7, 1) - 0.5) * 0.5));
+  for (let i = 0; i < count; i++) { const a = rng() * 6.28, t = Math.sqrt(rng()), d = t * edge(a) * 0.98, x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d, [c, cd] = clumpOf(x, y); leaves.push([x, y, t, outward && t > 0.3 ? a + (rng() - 0.5) * (1 - outward) * 6.28 : rng() * 6.28, c, Math.min(1.4, cd)]); }
+  // Drawn clump by clump, rim clumps first, and in each from its edge to its top, so each clump heaps over its hollow.
+  leaves.sort((p, q) => (q[4][3] - p[4][3]) * 4 + (q[5] - p[5]) + (lattice(p[0] * 7, p[1] * 7, 1) - 0.5) * 0.2);
   const drifts = [];
-  for (const [x, y, t, a] of leaves) {
-    const lx = x - cx, ly = y - cy, patch = noise(lx / (R * 0.3) + k0, ly / (R * 0.3), 3), lit = towardLight(lx, ly, R) * 0.4 + (patch - 0.5) * 1.6 + (1 - t) * 0.15 - t * t * 0.55 + (rng() - 0.5) * 0.4;
+  for (const [x, y, t, a, c, cd] of leaves) {
+    const lx = x - cx, ly = y - cy, patch = noise(lx / (R * 0.3) + k0, ly / (R * 0.3), 3);
+    const lit = towardLight(x - c[0], y - c[1], c[2]) * 0.55 - cd * cd * 0.55 + 0.3 + towardLight(lx, ly, R) * 0.25 + (patch - 0.5) * 0.7 - t * t * 0.3 + (rng() - 0.5) * 0.35;
     const other = lightFrom && rng() < mixIn, from = other ? lightFrom : set;
     let fill = lit < -0.35 ? from[0] : lit < 0.15 ? from[1] : lit < 0.55 ? from[2] : from[3];
     // Under snow the leaves cool and dull; the snow itself lies over them afterwards, in drifts.
     if (o.snow > 0) fill = mix(fill, '#6a7480', 0.25 * o.snow);
     if (o.snow > 0 && lit > 0.7 - o.snow * 0.4 && rng() < 0.3) drifts.push([x, y, leafLen * (0.7 + rng() * 0.5)]);
     fill = mix(fill, shade(fill, (rng() - 0.5) * 0.3), 0.6);
-    leaf(g, x, y, leafLen * (0.8 + rng() * 0.45), a, fill, o.ink * 0.85, wide, other && lightShape ? lightShape : shape);
+    leaf(g, x, y, leafLen * (0.8 + rng() * 0.45), a, fill, o.ink * 0.55, wide, other && lightShape ? lightShape : shape);
   }
   snowDrifts(g, rng, drifts, hull, o);
   if (o.wet > 0) { g.save(); trace(g, hull); g.clip(); g.fillStyle = `rgba(6,10,14,${0.18 * o.wet})`; g.fillRect(cx - R * 1.3, cy - R * 1.3, R * 2.6, R * 2.6); g.restore(); }
   return hull;
+}
+
+// A crown of needle tufts within hull (radius R about cx, cy), each tuft a small burst of finely inked needles, the tufts heaped
+// in clumps that are lit on their own top-left and dark where they meet. bed: the dark under them (null for none, but then a soft
+// shadow falls from them on what lies beneath, as an upper tier on a lower). Snow lies on the most lit tips.
+function needleCrown(g, rng, R, o, { hull, cx = 0, cy = 0, set, bed, tufts, len, n, clumps: many = 7 }) {
+  if (bed) { trace(g, moved(hull, cx, cy, 0.8)); g.fillStyle = bed; g.fill(); }
+  else { g.save(); g.filter = `blur(${Math.max(1, R * 0.06)}px)`; trace(g, moved(hull, cx + R * 0.06, cy + R * 0.08, 1)); g.fillStyle = 'rgba(0,4,2,0.55)'; g.fill(); g.restore(); }
+  const k0 = rng() * 50, clumps = [[cx, cy, R * 0.4, 0]];
+  for (let i = 0; i < many; i++) { const a = rng() * 6.28, t = 0.4 + rng() * 0.5; clumps.push([cx + Math.cos(a) * t * R, cy + Math.sin(a) * t * R, R * (0.25 + rng() * 0.12), t]); }
+  const all = [];
+  for (let i = 0; i < tufts; i++) { const a = rng() * 6.28, t = Math.sqrt(rng()), x = cx + Math.cos(a) * t * R * 0.84, y = cy + Math.sin(a) * t * R * 0.84; let c = clumps[0], cd = Infinity; for (const q of clumps) { const d = Math.hypot(x - q[0], y - q[1]) / q[2]; if (d < cd) { cd = d; c = q; } } all.push([x, y, t, c, Math.min(1.4, cd)]); }
+  all.sort((p, q) => (q[3][3] - p[3][3]) * 4 + (q[4] - p[4]));
+  for (const [x, y, t, c, cd] of all) {
+    const lit = towardLight(x - c[0], y - c[1], c[2]) * 0.55 - cd * cd * 0.55 + 0.3 + towardLight(x - cx, y - cy, R) * 0.2 + (noise((x - cx) / (R * 0.35) + k0, (y - cy) / (R * 0.35)) - 0.5) * 0.6 - t * t * 0.3 + (rng() - 0.5) * 0.3;
+    const color = lit < -0.35 ? set[0] : lit < 0.1 ? set[1] : lit < 0.5 ? set[2] : set[3], snowy = o.snow > 0 && lit > 0.55 - o.snow * 0.45, l0 = o.unit * len * (0.8 + rng() * 0.4), turn = rng() * 6.28;
+    for (let k = 0; k < n; k++) { const a = turn + (k / n) * 6.28 + (rng() - 0.5) * 0.4, l = l0 * (0.65 + rng() * 0.35), p = [[x, y], [x + Math.cos(a) * l, y + Math.sin(a) * l]]; line(g, p, 'rgba(8,10,4,0.85)', o.ink * 1.15); line(g, p, snowy && k % 2 ? '#dfe5e8' : mix(color, shade(color, (rng() - 0.5) * 0.4), 0.5), o.ink * 0.6); }
+  }
 }
 
 // --- Stone ----------------------------------------------------------------------------------------------------------------------------
@@ -205,6 +230,25 @@ function standing(g, rng, pts, base, o, { lift = 0.25, ...face } = {}) {
   // The crack net, across the face and running on down over the brow.
   for (let i = 0; i < (face.cracks ?? 3) * 1.6; i++) { const a = rng() * 6.28, p = wander(rng, cx + dx + (rng() - 0.5) * r * 1.1, cy + dy + (rng() - 0.5) * r * 1.1, a, 3 + Math.floor(rng() * 4), r * 0.13, 0.7); line(g, p, `rgba(236,228,206,${0.14 + rng() * 0.16})`, Math.max(0.5, o.ink * (0.4 + rng() * 0.3))); if (rng() < 0.4) line(g, wander(rng, ...p[1], a + (rng() < 0.5 ? 0.9 : -0.9), 2, r * 0.1, 0.6), 'rgba(236,228,206,0.14)', Math.max(0.4, o.ink * 0.35)); }
   for (let i = 0; i < Math.ceil((face.cracks ?? 3) / 2); i++) line(g, wander(rng, cx + (rng() - 0.5) * r, cy + (rng() - 0.5) * r, rng() * 6.28, 4, r * 0.1, 1), 'rgba(30,20,10,0.45)', o.ink * 0.6);
+  // Facets, as the desert maps draw their small stones: a line or two across the top where its planes meet, the plane toward the
+  // light a shade lighter.
+  if (face.facets) for (let f = 0; f < face.facets; f++) {
+    const p0 = [cx + dx * 0.7 + (rng() - 0.5) * rx * 0.35, cy + dy * 0.7 + (rng() - 0.5) * ry * 0.35], i0 = Math.floor(rng() * top.length), i1 = (i0 + Math.floor(top.length * (0.28 + rng() * 0.22))) % top.length;
+    const arc = []; for (let k = i0; k !== i1; k = (k + 1) % top.length) arc.push(top[k]); arc.push(top[i1]);
+    const lit = towardLight(arc[Math.floor(arc.length / 2)][0] - cx, arc[Math.floor(arc.length / 2)][1] - cy, r) > 0;
+    poly(g, [p0, ...arc]); g.fillStyle = lit ? 'rgba(255,245,220,0.13)' : 'rgba(20,12,4,0.16)'; g.fill();
+    line(g, [top[i0], p0, top[i1]], 'rgba(16,10,4,0.75)', o.ink * 0.9);
+  }
+  // Moss on its top, as the mine's boulders have: soft green patches and a fine stipple over the stone (not in winter, nor underground).
+  if (face.moss && o.season !== 'winter' && !o.cave) {
+    const set = MOSS[o.season] ?? MOSS.summer;
+    g.save(); g.filter = `blur(${Math.max(1, soft)}px)`;
+    // The whole stone olive under its moss, patches thicker on top.
+    g.globalCompositeOperation = 'multiply'; g.fillStyle = 'rgba(168,166,104,0.6)'; trace(g, pts); g.fill(); g.globalCompositeOperation = 'source-over';
+    for (let i = 0; i < 6; i++) { const px = cx + dx + (rng() - 0.6) * rx * 1.1, py = cy + dy + (rng() - 0.6) * ry * 1.1; g.fillStyle = `rgba(${rng() < 0.5 ? '78,84,40' : '120,118,70'},0.32)`; g.beginPath(); g.ellipse(px, py, rx * (0.22 + rng() * 0.25), ry * (0.16 + rng() * 0.2), rng() * 3, 0, 6.283); g.fill(); }
+    g.restore();
+    speckle(g, rng, cx + dx, cy + dy, rx * 0.75, ry * 0.65, Math.round(r * 4), set, o.unit * 0.01);
+  }
   // The brow: an ink line only where the top turns down into the wall (its edge facing away from the light), thickest in the
   // middle of that stretch and thinning to nothing at its ends, as a pen would draw it.
   const away = [-dx, -dy], n0 = Math.hypot(...away) || 1;
@@ -249,6 +293,35 @@ function woodEnd(g, rng, cx, cy, rx, ry, o) {
   g.restore();
   trace(g, pts); g.strokeStyle = '#3a2814'; g.lineWidth = o.ink * 2.2; g.stroke(); trace(g, moved(pts, cx, cy, 1.04)); g.strokeStyle = INK; g.lineWidth = o.ink; g.stroke();
 }
+// A small mushroom cap from above: dull, its colour sinking to the rim, a darker knob at its middle, a few pale flecks on some,
+// inked. `tilted`: lying over, its pale gills showing as fine lines from the stem.
+function mushroomCap(g, rng, x, y, r, color, o, tilted = false) {
+  if (tilted) {
+    const a = rng() * 6.28; g.save(); g.translate(x, y); g.rotate(a);
+    g.beginPath(); g.ellipse(0, 0, r, r * 0.62, 0, 0, 6.283); g.fillStyle = '#b8a27a'; g.fill();
+    for (let k = 0; k < 14; k++) { const t = (k / 14) * 6.283; line(g, [[0, 0], [Math.cos(t) * r * 0.95, Math.sin(t) * r * 0.6]], 'rgba(70,52,30,0.55)', Math.max(0.5, o.ink * 0.4)); }
+    g.beginPath(); g.arc(0, 0, r * 0.18, 0, 6.283); g.fillStyle = '#d8c8a2'; g.fill();
+    g.beginPath(); g.ellipse(0, 0, r, r * 0.62, 0, 0, 6.283); g.strokeStyle = INK; g.lineWidth = o.ink * 0.8; g.stroke(); g.restore();
+    return;
+  }
+  const pts = blob(rng, x, y, r, r * (0.9 + rng() * 0.1), 12, 0.07);
+  g.save(); trace(g, pts); g.clip();
+  const cg = g.createRadialGradient(x - r * 0.3, y - r * 0.3, 0, x, y, r * 1.05); cg.addColorStop(0, shade(color, 0.18)); cg.addColorStop(0.6, color); cg.addColorStop(1, shade(color, -0.5)); g.fillStyle = cg; g.fillRect(x - r * 1.2, y - r * 1.2, r * 2.4, r * 2.4);
+  g.beginPath(); g.arc(x - r * 0.05, y - r * 0.05, r * 0.28, 0, 6.283); g.fillStyle = shade(color, -0.25); g.fill();
+  if (rng() < 0.45) for (let k = 0; k < 5; k++) { g.fillStyle = 'rgba(220,205,170,0.45)'; g.beginPath(); g.arc(x + (rng() - 0.5) * r * 1.3, y + (rng() - 0.5) * r * 1.3, r * (0.05 + rng() * 0.05), 0, 6.283); g.fill(); }
+  snowPatch(g, rng, x - r * 0.25, y - r * 0.25, r * 0.55 * o.snow, r * 0.45 * o.snow, o);
+  g.restore(); trace(g, pts); g.strokeStyle = INK; g.lineWidth = o.ink * 0.85; g.stroke();
+  return pts;
+}
+// Grain along a board or bark between two points: a few long, slightly wandering thin lines, darker and paler.
+function grainAlong(g, rng, x0, y0, x1, y1, width, count, o) {
+  const len = Math.hypot(x1 - x0, y1 - y0), ux = (x1 - x0) / (len || 1), uy = (y1 - y0) / (len || 1), nx = -uy, ny = ux;
+  for (let i = 0; i < count; i++) {
+    const off = (rng() - 0.5) * width * 0.85, start = rng() * len * 0.3, end = len * (0.6 + rng() * 0.4), pts = [];
+    for (let t = start; t <= end; t += len / 8) { const w = off + (noise(t / (len || 1) * 3 + i, i) - 0.5) * width * 0.25; pts.push([x0 + ux * t + nx * w, y0 + uy * t + ny * w]); }
+    if (pts.length > 1) line(g, pts, rng() < 0.65 ? 'rgba(24,14,6,0.55)' : 'rgba(190,160,115,0.28)', Math.max(0.5, o.ink * (0.4 + rng() * 0.4)));
+  }
+}
 // Bark: dark brown plates running along a shape, clipped to it, darker toward the shadowed side.
 function bark(g, rng, pts, along, o) {
   const [cx, cy] = centre(pts), r = reach(pts, [cx, cy]), c = Math.cos(along), s = Math.sin(along);
@@ -278,7 +351,14 @@ function bareBranches(g, rng, s, o, { color = '#5a4632', count = 7, reach = 0.38
   const grow = (x, y, a, len, w, left) => {
     const p = wander(rng, x, y, a, 3, len / 3, gnarl), [ex, ey] = p[p.length - 1];
     for (let i = 1; i < p.length; i++) segs.push([p[i - 1], p[i], [p[i][0] + 0.5, p[i][1] + 0.5]]);
-    line(g, p, INK, w + o.ink * 1.4); line(g, p, color, w); line(g, p.map(([px, py]) => [px - w * 0.2, py - w * 0.2]), 'rgba(235,225,205,0.35)', w * 0.3);
+    // Tapering along the limb to the width its forks start at, so it reads as wood rather than tubing: inked, then the bark,
+    // darker on its shadowed side, a thin lit edge, and a streak or two of its grain.
+    const wAt = (i) => w * (1 - 0.38 * (i / (p.length - 1)));
+    for (let i = 1; i < p.length; i++) line(g, [p[i - 1], p[i]], INK, wAt(i - 0.5) + o.ink * 1.1);
+    for (let i = 1; i < p.length; i++) line(g, [p[i - 1], p[i]], shade(color, -0.22), wAt(i - 0.5));
+    for (let i = 1; i < p.length; i++) line(g, [p[i - 1], p[i]].map(([px, py]) => [px - wAt(i) * 0.12, py - wAt(i) * 0.15]), color, wAt(i - 0.5) * 0.6);
+    line(g, p.map(([px, py], i) => [px - wAt(i) * 0.28, py - wAt(i) * 0.32]), 'rgba(235,225,205,0.28)', w * 0.18);
+    if (w > o.ink * 2) line(g, p.map(([px, py], i) => [px + wAt(i) * 0.1, py + wAt(i) * 0.05]), 'rgba(10,6,2,0.35)', Math.max(0.5, o.ink * 0.4));
     // Snow along the top of the thicker limbs only, broken where it has slid off, the bark showing beside it.
     if (o.snow > 0 && w > o.ink * 1.5) for (let i = 1; i < p.length; i++) if (rng() < 0.65) line(g, [p[i - 1], p[i]].map(([px, py]) => [px - w * 0.2, py - w * 0.25]), `rgba(228,234,240,${0.55 + 0.25 * rng()})`, Math.max(o.ink * 0.5, w * 0.28 * o.snow));
     if (marks) for (let i = 1; i < p.length; i++) if (rng() < 0.6) { const [px, py] = p[i], q = p[i - 1], d = Math.atan2(py - q[1], px - q[0]) + Math.PI / 2; line(g, [[px - Math.cos(d) * w * 0.5, py - Math.sin(d) * w * 0.5], [px + Math.cos(d) * w * 0.5, py + Math.sin(d) * w * 0.5]], 'rgba(20,16,12,0.85)', o.ink * 0.9); }
@@ -308,7 +388,11 @@ function paintTrunk(g, rng, s, o, kind) {
 function bareTree(g, rng, s, o, options = {}) {
   // Its shadow is its branches', not a crown's.
   const segs = bareBranches(g, rng, s, o, options);
-  woodEnd(g, rng, 0, 0, s * 0.12, s * 0.12, o);
+  // Where the limbs leave the trunk: a knot of bark seen from above, rounded and dark, lit on one side, not a cut end.
+  const color = options.color ?? '#5a4632', r = s * 0.1, knot = blob(rng, 0, 0, r, r * 0.92, 12, 0.2);
+  const kg = g.createRadialGradient(-r * 0.35, -r * 0.4, 0, 0, 0, r * 1.1); kg.addColorStop(0, shade(color, 0.1)); kg.addColorStop(0.7, shade(color, -0.2)); kg.addColorStop(1, shade(color, -0.5));
+  trace(g, knot); g.fillStyle = kg; g.fill(); g.strokeStyle = INK; g.lineWidth = o.ink * 1.1; g.stroke();
+  for (let i = 0; i < 4; i++) line(g, wander(rng, (rng() - 0.5) * r, (rng() - 0.5) * r, rng() * 6.28, 3, r * 0.3, 0.6), 'rgba(10,6,2,0.4)', Math.max(0.5, o.ink * 0.5));
   return segs;
 }
 
@@ -345,15 +429,22 @@ export function waterOutline(d, grid, look = {}) {
 // draws centred on (0, 0) within radius s, and returns outlines for its shadow (or nothing for a flat kind).
 const KINDS = {
   rock: { label: 'Rocks', size: 0.4, height: 0.35, paint(g, s, rng, o) {
-    const pts = blob(rng, 0, 0, s * 0.92, s * 0.72, 11, 0.18); standing(g, rng, pts, pick(rng, stonesOf(o)), o, { lift: 0.16, cracks: 2, ledges: 0 }); return [pts];
+    o = { ...o, ink: o.ink * 0.7 };
+    // A fist-to-knee-high stone, faceted, heavy ink round it, as the maps draw theirs.
+    const pts = blob(rng, 0, 0, s * 0.92, s * 0.74, 9, 0.24); standing(g, rng, pts, pick(rng, stonesOf(o)), o, { lift: 0.18, cracks: 1, ledges: 0, facets: 1 + Math.floor(rng() * 2) }); return [pts];
   } },
   boulder: { label: 'Boulders', size: 1.3, height: 1.2, paint(g, s, rng, o) {
-    const pts = blob(rng, 0, 0, s * 0.95, s * 0.8, 14, 0.13); standing(g, rng, pts, pick(rng, stonesOf(o)), o, { lift: 0.3, cracks: 6, ledges: Math.floor(rng() * 2), ink: 1.2 });
+    const pts = blob(rng, 0, 0, s * 0.95, s * 0.8, 14, 0.13); standing(g, rng, pts, pick(rng, stonesOf(o)), o, { lift: 0.3, cracks: 6, ledges: Math.floor(rng() * 2), ink: 1.2, moss: rng() < 0.55 });
     return [pts];
   } },
   pebbles: { label: 'Pebbles', size: 0.5, height: 0.06, paint(g, s, rng, o) {
+    o = { ...o, ink: o.ink * 0.4 };
     const out = [];
-    for (let i = 0; i < 8; i++) { const a = rng() * 6.28, d = Math.sqrt(rng()) * s * 0.7, r = s * (0.08 + rng() * 0.1), pts = blob(rng, Math.cos(a) * d, Math.sin(a) * d, r, r * 0.75, 9, 0.15); stone(g, rng, pts, pick(rng, stonesOf(o)), o, { cracks: 0, ledges: 0, ink: 0.8 }); out.push(pts); }
+    // A scatter of small faceted stones, a few bigger, some half sunk in grit.
+    const stones = []; for (let i = 0; i < 5 + Math.floor(rng() * 4); i++) { const a = rng() * 6.28, d = Math.sqrt(rng()) * s * 0.65; stones.push([Math.cos(a) * d, Math.sin(a) * d, s * (0.1 + rng() * rng() * 0.2)]); }
+    speckle(g, rng, 0, 0, s * 0.6, s * 0.5, 50, o.cave ? ['#3a3834', '#55524c'] : ['#5a4e3a', '#7a6c54', '#3e3428'], o.unit * 0.008);
+    stones.sort((p, q) => q[2] - p[2]);
+    for (const [x, y, r] of stones) { const pts = blob(rng, x, y, r, r * (0.65 + rng() * 0.25), 8, 0.25); standing(g, rng, pts, shade(pick(rng, stonesOf(o)), 0.15), o, { lift: 0.05, cracks: 0, ledges: 0, facets: rng() < 0.6 ? 1 : 0 }); out.push(pts); }
     return out;
   } },
   bush: { label: 'Bushes', size: 0.9, height: 0.5, paint(g, s, rng, o) {
@@ -378,7 +469,7 @@ const KINDS = {
   willow: { label: 'Willows', size: 2.6, height: 2.0, tree: true, paint(g, s, rng, o) {
     // Long narrow leaves hanging from the middle outward, so the crown streaks from its centre to a soft fringe.
     if (bareSeason(o)) return bareTree(g, rng, s, o, { color: '#6a5a3a', count: 10, reach: 0.44, width: 0.03, depth: 2, droop: true });
-    return [leafMass(g, rng, s * 0.95, o, { leafLen: o.unit * 0.22, count: crown(s, o, 420), lobes: 12, rough: 0.12, wide: 0.22, colors: WILLOW[o.season], bed: 0.85, outward: 0.92, shape: 'willow' })];
+    return [leafMass(g, rng, s * 0.95, o, { leafLen: o.unit * 0.2, count: crown(s, o, 420), lobes: 12, rough: 0.22, wide: 0.2, colors: WILLOW[o.season], bed: 0.85, outward: 0.92, shape: 'willow' })];
   } },
   fruitTree: { label: 'Fruit trees', size: 1.8, height: 1.8, tree: true, paint(g, s, rng, o) {
     if (bareSeason(o)) return bareTree(g, rng, s, o, { count: 6, reach: 0.36 });
@@ -396,72 +487,122 @@ const KINDS = {
     return [hull];
   } },
   pine: { label: 'Pines', size: 1.9, height: 2.8, tree: true, paint(g, s, rng, o) {
-    // Tufts of long needles, each a small burst, packed into a round crown: dark below, yellow-green on the lit tips.
-    const set = ['#14220e', '#304e1e', '#527432', '#8aa842'], R = s * 0.92, k0 = rng() * 50, hull = blob(rng, 0, 0, R, R, 18, 0.1);
-    trace(g, moved(hull, 0, 0, 0.92)); g.fillStyle = '#0e1a0a'; g.fill();
-    const tufts = []; for (let i = 0; i < crown(s, o, 120); i++) { const a = rng() * 6.28, t = Math.sqrt(rng()); tufts.push([Math.cos(a) * t * R * 0.86, Math.sin(a) * t * R * 0.86, t]); }
-    tufts.sort((p, q) => q[2] - p[2]);
-    for (const [x, y, t] of tufts) {
-      const lit = towardLight(x, y, R) * 0.45 + (noise(x / (R * 0.35) + k0, y / (R * 0.35)) - 0.5) * 1.4 + (1 - t) * 0.3 - t * t * 0.5, color = lit < -0.3 ? set[1] : lit < 0.25 ? set[2] : set[3], snowy = o.snow > 0 && lit > 0.5 - o.snow * 0.5, len = o.unit * (0.13 + rng() * 0.06), n = 14, turn = rng() * 6.28;
-      for (let k = 0; k < n; k++) { const a = turn + (k / n) * 6.28 + (rng() - 0.5) * 0.3, l = len * (0.7 + rng() * 0.3), p = [[x, y], [x + Math.cos(a) * l, y + Math.sin(a) * l]]; line(g, p, INK, o.ink * 1.7); line(g, p, snowy && k % 2 ? '#dfe5e8' : mix(color, shade(color, (rng() - 0.5) * 0.4), 0.5), o.ink * 1); }
-    }
+    // Tufts of long needles, each a small burst, heaped in clumps over a round crown: dark below, yellow-green on lit tips.
+    const R = s * 0.92, hull = blob(rng, 0, 0, R, R, 18, 0.12);
+    needleCrown(g, rng, R, o, { hull, set: ['#14220e', '#2c4a1c', '#4c6e2e', '#7e9c3e'], bed: '#0c1608', tufts: crown(s, o, 420), len: 0.13, n: 13 });
     return [hull];
   } },
   spruce: { label: 'Spruces', size: 1.6, height: 3.0, tree: true, paint(g, s, rng, o) {
-    // Seen from above, a spruce is a star of tiers, each narrower and lighter toward the tip at its centre: blue-green and dense.
-    const set = ['#0a1612', '#3c6250'], out = [];
-    g.fillStyle = '#08120e'; trace(g, blob(rng, 0, 0, s * 0.82, s * 0.82, 16, 0.08)); g.fill();
-    for (let tier = 0; tier < 5; tier++) {
-      const r = s * (0.95 - tier * 0.17), n = 20 - tier * 2, sx = -tier * s * 0.035, sy = -tier * s * 0.045;
-      for (let i = 0; i < n; i++) { const a = (i / n) * 6.28 + rng() * 0.3 + tier; blade(g, sx, sy, a, r * (0.85 + rng() * 0.2), o.unit * 0.045, (rng() - 0.5) * 0.2, shade(set[0], tier * 0.05), shade(set[1], tier * 0.08), o.ink * 0.7); }
-      if (o.snow > 0) for (let i = 0; i < n; i++) { const a = (i / n) * 6.28 + tier + 0.3, d = r * 0.62; if (towardLight(Math.cos(a), Math.sin(a), 1) < -0.2 || rng() < 0.4) continue; g.save(); g.filter = `blur(${Math.max(0.6, r * 0.02)}px)`; g.fillStyle = `rgba(226,233,239,${0.45 + 0.25 * rng()})`; g.beginPath(); g.ellipse(sx + Math.cos(a) * d, sy + Math.sin(a) * d, r * 0.13 * o.snow, r * 0.04 * o.snow, a, 0, 6.28); g.fill(); g.restore(); }
-      if (!tier) { const pts = []; for (let i = 0; i < 24; i++) { const a = (i / 24) * 6.28; pts.push([Math.cos(a) * r * 0.95, Math.sin(a) * r * 0.95]); } out.push(pts); }
+    // From above a spruce is its tiers of short, stiff, blue-green needles, rising to its tip in the middle: a tight, ragged-edged
+    // crown, each tier lighter than the one beneath and stepped toward the light, the tip a small bright tuft.
+    const R = s * 0.86, hull = blob(rng, 0, 0, R, R, 22, 0.16);
+    trace(g, moved(hull, 0, 0, 0.8)); g.fillStyle = '#06100c'; g.fill();
+    for (let tier = 0; tier < 4; tier++) {
+      const r = R * (1 - tier * 0.22), sx = -tier * R * 0.04, sy = -tier * R * 0.05, ring = blob(rng, sx, sy, r, r, 18, 0.18);
+      needleCrown(g, rng, r, o, { hull: ring, cx: sx, cy: sy, set: [shade('#0c1a16', tier * 0.08), shade('#22403a', tier * 0.08), shade('#3a6052', tier * 0.08), shade('#6a8c78', tier * 0.06)], bed: tier ? null : '#081410', tufts: Math.round(crown(r, o, 520)), len: 0.1, n: 11, clumps: 5 + tier });
     }
-    return out;
+    return [hull];
   } },
   palm: { label: 'Palms', size: 2.0, height: 2.6, tree: true, paint(g, s, rng, o) {
     // Fronds from a rough brown crown: each a bending rib with narrow leaflets on both sides, dark at the base, yellowing out.
-    const n = 7 + Math.floor(rng() * 3), turn = rng() * 6.28, base = '#1e2e0e', tip = o.season === 'autumn' ? '#a89a3a' : '#8aa83a', out = [], fronds = [];
-    for (let i = 0; i < n; i++) fronds.push([turn + (i / n) * 6.28 + (rng() - 0.5) * 0.3, s * (0.82 + rng() * 0.16), (rng() - 0.5) * 0.5, rng() < 0.15]);
-    fronds.sort((p, q) => towardLight(Math.cos(p[0]), Math.sin(p[0]), 1) - towardLight(Math.cos(q[0]), Math.sin(q[0]), 1));
-    for (const [a, len, bend, dead] of fronds) {
-      const c = Math.cos(a), sn = Math.sin(a), at = (t) => [c * len * t - sn * bend * len * t * t, sn * len * t + c * bend * len * t * t];
-      for (let k = 2; k <= 18; k++) { const t = k / 19, [x, y] = at(t), [nx, ny] = at(t + 0.01), dir = Math.atan2(ny - y, nx - x), l = len * 0.3 * Math.sin(t * Math.PI * 0.85 + 0.15); for (const side of [-1, 1]) leaf(g, x, y, l, dir + side * 1.05 + 0.25 * side, dead ? mix('#6a5228', '#a88a4a', t) : mix(base, tip, 0.25 + t * 0.7 + (rng() - 0.5) * 0.15), o.ink * 0.6, 0.16); }
-      line(g, Array.from({ length: 10 }, (_, k) => at(k / 9)), INK, o.ink * 2.2); line(g, Array.from({ length: 10 }, (_, k) => at(k / 9)), dead ? '#8a7040' : '#6a7a2a', o.ink * 1.1);
-      out.push([[0, 0], at(0.5).map((v, j) => v + (j ? c : -sn) * len * 0.22), at(1), at(0.5).map((v, j) => v - (j ? c : -sn) * len * 0.22)]);
+    // Two layers: older fronds beneath, long, drooping, darker and some browned; young ones above, shorter and fresher. Leaflets
+    // narrow and many, unevenly long, a few torn away, so no frond is a neat comb.
+    const turn = rng() * 6.28, base = '#1a280c', tip = o.season === 'autumn' ? '#9a8e36' : '#7c9634', out = [], fronds = [];
+    const low = 8 + Math.floor(rng() * 3), high = 5 + Math.floor(rng() * 3);
+    for (let i = 0; i < low; i++) fronds.push([turn + (i / low) * 6.28 + (rng() - 0.5) * 0.4, s * (0.8 + rng() * 0.2), (rng() - 0.5) * 0.6, rng() < 0.25, 0]);
+    for (let i = 0; i < high; i++) fronds.push([turn + 0.3 + (i / high) * 6.28 + (rng() - 0.5) * 0.5, s * (0.5 + rng() * 0.2), (rng() - 0.5) * 0.4, false, 1]);
+    fronds.sort((p, q) => p[4] - q[4] || towardLight(Math.cos(p[0]), Math.sin(p[0]), 1) - towardLight(Math.cos(q[0]), Math.sin(q[0]), 1));
+    for (const [a, len, bend, dead, layer] of fronds) {
+      const c = Math.cos(a), sn = Math.sin(a), at = (t) => [c * len * t - sn * bend * len * t * t, sn * len * t + c * bend * len * t * t], dark = layer ? 0 : 0.18;
+      for (let k = 2; k <= 30; k++) { const t = k / 31, [x, y] = at(t), [nx, ny] = at(t + 0.01), dir = Math.atan2(ny - y, nx - x); for (const side of [-1, 1]) { if (rng() < 0.08) continue; const l = len * 0.28 * Math.sin(t * Math.PI * 0.85 + 0.15) * (0.7 + rng() * 0.45), lit = towardLight(Math.cos(a + side * 0.6), Math.sin(a + side * 0.6), 1) * 0.12; leaf(g, x, y, l, dir + side * (0.95 + rng() * 0.25), dead ? mix('#5a4422', '#9a7e44', t) : shade(mix(base, tip, 0.2 + t * 0.65 + (rng() - 0.5) * 0.2), lit - dark), o.ink * 0.4, 0.12); } }
+      line(g, Array.from({ length: 10 }, (_, k) => at(k / 9)), 'rgba(8,10,4,0.85)', o.ink * 1.4); line(g, Array.from({ length: 10 }, (_, k) => at(k / 9)), dead ? '#7a6038' : shade('#5e6a26', -dark), o.ink * 0.7);
+      if (!layer) out.push([[0, 0], at(0.5).map((v, j) => v + (j ? c : -sn) * len * 0.22), at(1), at(0.5).map((v, j) => v - (j ? c : -sn) * len * 0.22)]);
     }
     const husk = blob(rng, 0, 0, s * 0.12, s * 0.12, 10, 0.25); trace(g, husk); g.fillStyle = '#5a4428'; g.fill(); g.strokeStyle = INK; g.lineWidth = o.ink; g.stroke();
     return out;
   } },
   deadTree: { label: 'Dead trees', size: 2.0, height: 2.0, tree: true, paint(g, s, rng, o) {
     // Grey and gnarled, bare in every season, one limb snapped short.
-    return bareTree(g, rng, s, o, { color: '#6e665a', count: 5, reach: 0.42, width: 0.06, depth: 3, gnarl: 1.0 });
+    return bareTree(g, rng, s, o, { color: '#625a4e', count: 5, reach: 0.42, width: 0.06, depth: 3, gnarl: 1.0 });
   } },
-  stump: { label: 'Stumps', size: 0.8, height: 0.3, paint(g, s, rng, o) {
-    // The trunk flaring into roots: one outline bulging out at each root, bark grain running outward along them; the cut top with
-    // rings, or hollow and dark inside a ring of pale rotten wood.
-    const roots = 4 + Math.floor(rng() * 4), a0 = rng() * 6.28, lens = Array.from({ length: roots }, () => 0.35 + rng() * 0.65), outer = [];
-    for (let i = 0; i < 72; i++) { const a = (i / 72) * 6.28, u = ((a - a0) / 6.28 * roots % 1 + 1) % 1, which = Math.floor((((a - a0) / 6.28 * roots) % roots + roots) % roots), flare = Math.pow(Math.max(0, Math.cos((u - 0.5) * Math.PI)), 4), rr = s * (0.52 + 0.46 * flare * lens[which]) * (1 + (noise(a * 3, 2) - 0.5) * 0.08); outer.push([Math.cos(a) * rr, Math.sin(a) * rr]); }
+  stump: { label: 'Stumps', size: 0.9, height: 0.3, paint(g, s, rng, o) {
+    // As the map draws them: the trunk flaring into roots of every length and breadth, pale grey-brown weathered bark with long
+    // grain running out along each root, inked; on top the cut wood with its rings and cracks, or a hollow dark inside a crumbling
+    // pale ring; now and then a few small mushrooms at its foot.
+    const roots = 5 + Math.floor(rng() * 4), spots = Array.from({ length: roots }, (_, i) => ({ a: ((i + (rng() - 0.5) * 0.6) / roots) * 6.283, len: 0.25 + rng() * 0.75, wide: 0.5 + rng() * 0.7 })), outer = [];
+    for (let i = 0; i < 96; i++) {
+      const a = (i / 96) * 6.283; let flare = 0;
+      for (const r of spots) { let d = Math.abs(((a - r.a + Math.PI * 3) % 6.283) - Math.PI); d /= (0.42 * r.wide); flare = Math.max(flare, r.len * Math.max(0, 1 - d * d) ** 1.6); }
+      const rr = s * (0.5 + 0.48 * flare) * (1 + (noise(a * 4, 3) - 0.5) * 0.12); outer.push([Math.cos(a) * rr, Math.sin(a) * rr]);
+    }
     g.save(); poly(g, outer); g.clip();
-    const bg = g.createRadialGradient(-s * 0.2, -s * 0.2, 0, 0, 0, s); bg.addColorStop(0, '#6e563a'); bg.addColorStop(0.6, '#4a3824'); bg.addColorStop(1, '#2a1e12'); g.fillStyle = bg; g.fillRect(-s, -s, s * 2, s * 2);
-    for (let i = 0; i < 110; i++) { const a = rng() * 6.28, d0 = s * (0.35 + rng() * 0.45), d1 = d0 + s * (0.12 + rng() * 0.35), b = a + (rng() - 0.5) * 0.1; line(g, [[Math.cos(a) * d0, Math.sin(a) * d0], [Math.cos(b) * d1, Math.sin(b) * d1]], rng() < 0.65 ? 'rgba(14,8,2,0.75)' : 'rgba(170,140,100,0.4)', o.ink * (0.8 + rng() * 1.2)); }
+    const bg = g.createRadialGradient(-s * 0.25, -s * 0.25, 0, 0, 0, s); bg.addColorStop(0, '#7e6c52'); bg.addColorStop(0.55, '#5e4e3a'); bg.addColorStop(1, '#382c20'); g.fillStyle = bg; g.fillRect(-s, -s, s * 2, s * 2);
+    // Grain: long lines out along each root, and around the trunk between them.
+    for (const r of spots) for (let k = 0; k < 9; k++) { const a = r.a + (rng() - 0.5) * 0.5 * r.wide, d0 = s * (0.2 + rng() * 0.2), d1 = s * (0.5 + 0.48 * r.len) * (0.7 + rng() * 0.3); grainAlong(g, rng, Math.cos(a) * d0, Math.sin(a) * d0, Math.cos(a) * d1, Math.sin(a) * d1, s * 0.08, 1, o); }
+    for (let k = 0; k < 28; k++) { const a = rng() * 6.283, d0 = s * (0.3 + rng() * 0.2), d1 = d0 + s * (0.1 + rng() * 0.2); line(g, [[Math.cos(a) * d0, Math.sin(a) * d0], [Math.cos(a + 0.03) * d1, Math.sin(a + 0.03) * d1]], 'rgba(20,14,6,0.6)', o.ink * (0.5 + rng() * 0.6)); }
     if (o.wet > 0) { g.fillStyle = `rgba(6,8,10,${0.2 * o.wet})`; g.fillRect(-s, -s, s * 2, s * 2); }
-    g.restore(); poly(g, outer); g.strokeStyle = INK; g.lineWidth = o.ink * 1.4; g.lineJoin = 'round'; g.stroke();
-    const top = blob(rng, -s * 0.02, -s * 0.02, s * 0.44, s * 0.42, 16, 0.08);
-    if (rng() < 0.45) { trace(g, top); g.fillStyle = '#8e7656'; g.fill(); g.strokeStyle = INK; g.lineWidth = o.ink * 1.2; g.stroke(); for (let i = 0; i < 16; i++) { const a = (i / 16) * 6.28 + rng() * 0.2; line(g, [[Math.cos(a) * s * 0.3 - s * 0.02, Math.sin(a) * s * 0.3 - s * 0.02], [Math.cos(a) * s * 0.46 - s * 0.02, Math.sin(a) * s * 0.46 - s * 0.02]], 'rgba(30,20,10,0.7)', o.ink * 0.8); } const hole =moved(top, -s * 0.02, -s * 0.02, 0.8); trace(g, hole); g.fillStyle = '#1a0c06'; g.fill(); g.strokeStyle = INK; g.lineWidth = o.ink; g.stroke(); }
-    else woodEnd(g, rng, -s * 0.02, -s * 0.02, s * 0.42, s * 0.4, o);
-    if (o.season !== 'winter' && rng() < 0.6) for (let i = 0; i < 3; i++) { const a = rng() * 6.28, x = Math.cos(a) * s * 0.58, y = Math.sin(a) * s * 0.58, r = o.unit * 0.03; g.fillStyle = '#8a3a22'; g.beginPath(); g.arc(x, y, r, 0, 6.28); g.fill(); g.strokeStyle = INK; g.lineWidth = o.ink * 0.6; g.stroke(); }
+    g.restore(); poly(g, outer); g.strokeStyle = INK; g.lineWidth = o.ink * 1.7; g.lineJoin = 'round'; g.stroke();
+    const top = blob(rng, -s * 0.03, -s * 0.03, s * 0.44, s * 0.41, 18, 0.1);
+    if (rng() < 0.5) {
+      // Hollow: a pale rotten rim broken into short pieces, black inside.
+      trace(g, top); g.fillStyle = '#a8977a'; g.fill(); g.strokeStyle = INK; g.lineWidth = o.ink * 1.3; g.stroke();
+      const hole = moved(top, -s * 0.03, -s * 0.03, 0.82); trace(g, hole); g.fillStyle = '#170b05'; g.fill(); g.strokeStyle = INK; g.lineWidth = o.ink * 1.1; g.stroke();
+      for (let i = 0; i < 22; i++) { const k = Math.floor((i / 22) * top.length), [ax, ay] = top[k], [bx, by] = hole[k]; line(g, [[ax, ay], [bx, by]], 'rgba(24,16,8,0.8)', o.ink * 0.8); }
+    } else {
+      woodEnd(g, rng, -s * 0.03, -s * 0.03, s * 0.42, s * 0.39, o);
+      // Cracks out from the heart, as old cut wood splits.
+      for (let i = 0; i < 3; i++) { const a = rng() * 6.283; line(g, wander(rng, -s * 0.03, -s * 0.03, a, 4, s * 0.1, 0.4), 'rgba(18,10,4,0.8)', o.ink * (0.8 + rng() * 0.5)); }
+    }
+    if (o.season !== 'winter' && rng() < 0.5) for (let i = 0; i < 3; i++) { const a = rng() * 6.28, d = s * (0.56 + rng() * 0.1); mushroomCap(g, rng, Math.cos(a) * d, Math.sin(a) * d, o.unit * (0.025 + rng() * 0.02), '#6e2a1c', o); }
     return [outer];
   } },
   log: { label: 'Fallen logs', size: 1.8, height: 0.35, paint(g, s, rng, o) {
-    const len = s * 0.92, w = s * 0.2, pts = [];
-    for (let i = 0; i <= 10; i++) pts.push([-len + 2 * len * (i / 10), -w * (1 + (noise(i * 0.7, 1) - 0.5) * 0.3)]);
-    for (let i = 10; i >= 0; i--) pts.push([-len + 2 * len * (i / 10), w * (1 + (noise(i * 0.7, 5) - 0.5) * 0.3)]);
-    bark(g, rng, pts, 0, o);
-    if (o.season !== 'winter') { g.save(); trace(g, pts); g.clip(); speckle(g, rng, -len * 0.3, w * 0.35, len * 0.4, w * 0.6, 120, MOSS[o.season] ?? MOSS.summer, o.unit * 0.012); g.restore(); }
-    for (let i = 0; i < 3; i++) { const x = -len * 0.1 + i * o.unit * 0.12, f = blob(rng, x, w * 1.02, o.unit * 0.07, o.unit * 0.045, 9, 0.1); trace(g, f); g.fillStyle = mix('#a8885a', '#c8aa72', rng()); g.fill(); g.strokeStyle = INK; g.lineWidth = o.ink * 0.6; g.stroke(); }
-    if (o.snow > 0) { g.save(); trace(g, pts); g.clip(); for (let i = 0; i < 5; i++) snowPatch(g, rng, -len * 0.75 + i * len * 0.35 + (rng() - 0.5) * len * 0.1, -w * 0.45, len * 0.2, w * 0.45 * o.snow, o); g.restore(); }
-    woodEnd(g, rng, len, 0, w * 0.85, w * 1.02, o);
+    // As the map draws them: deep bark of overlapping plates, each its own little inked scale, the dark showing in the cracks between;
+    // one end broken off ragged, the other sawn with its rings showing, or both broken; a few snapped-off twigs.
+    const len = s * 0.92, w = s * (0.18 + rng() * 0.05), sawn = rng() < 0.6, top = [], bottom = [];
+    const jag = (x, side) => (noise(x * 3.1, side) - 0.5) * w * 0.25;
+    for (let i = 0; i <= 14; i++) { const t = i / 14, x = -len + 2 * len * t, taper = 1 - 0.18 * t; top.push([x, -w * taper + jag(t, 1)]); bottom.push([x, w * taper + jag(t, 5)]); }
+    // The broken end(s): a ragged zigzag.
+    // A snapped end: splinters of every length, a few long ones standing proud, the rest short and torn.
+    const broken = (x, dir, h) => { const n = 9 + Math.floor(rng() * 4); return Array.from({ length: n }, (_, k) => { const t = k / (n - 1), long = rng() < 0.25 ? 1.1 + rng() * 0.8 : rng() * 0.5; return [x + dir * (k % 2 ? long : rng() * 0.15) * w * 0.8, -h + 2 * h * t + (rng() - 0.5) * h * 0.08]; }); };
+    const right = sawn ? [] : broken(len, 1, w * 0.82), left = broken(-len, -1, w).reverse();
+    const pts = [...top, ...right, ...bottom.slice().reverse(), ...left];
+    g.save(); poly(g, pts); g.clip();
+    g.fillStyle = '#1e140c'; g.fillRect(-s * 1.2, -s * 1.2, s * 2.4, s * 2.4);
+    // Plates, row by row along it, lighter on the side toward the light.
+    for (let row = -3; row <= 3; row++) for (let x = -len - w; x < len + w;) {
+      const pl = w * (0.9 + rng() * 1.1), ph = w * (0.16 + rng() * 0.14), cy = (row / 3.4) * w + (rng() - 0.5) * w * 0.16, cx = x + pl / 2, lit = -row / 3;
+      const plate = blob(rng, cx, cy, pl / 2, ph / 2, 10, 0.32, 0);
+      trace(g, plate); g.fillStyle = mix(mix('#2e2014', '#5e4630', 0.5 + lit * 0.45), '#1e140a', rng() * 0.35); g.fill(); g.strokeStyle = 'rgba(8,4,0,0.95)'; g.lineWidth = o.ink * 1.1; g.stroke();
+      if (rng() < 0.5) line(g, [[cx - pl * 0.3, cy], [cx + pl * 0.3, cy + (rng() - 0.5) * ph * 0.3]], 'rgba(150,120,85,0.3)', o.ink * 0.5);
+      x += pl * (0.6 + rng() * 0.3);
+    }
+    // Moss in the cracks along its shaded side: soft olive, not dots.
+    if (o.season !== 'winter' && rng() < 0.5) { const mx = (rng() - 0.5) * len; g.save(); g.filter = `blur(${Math.max(1, w * 0.12)}px)`; g.globalCompositeOperation = 'multiply'; g.fillStyle = 'rgba(120,130,60,0.7)'; g.beginPath(); g.ellipse(mx, w * 0.45, len * (0.2 + rng() * 0.2), w * 0.35, 0, 0, 6.283); g.fill(); g.restore(); }
+    if (o.snow > 0) for (let i = 0; i < 5; i++) snowPatch(g, rng, -len * 0.75 + i * len * 0.35 + (rng() - 0.5) * len * 0.1, -w * 0.45, len * 0.2, w * 0.45 * o.snow, o);
+    if (o.wet > 0) { g.fillStyle = `rgba(6,8,10,${0.2 * o.wet})`; g.fillRect(-s * 1.2, -s * 1.2, s * 2.4, s * 2.4); }
+    g.restore();
+    poly(g, pts); g.strokeStyle = INK; g.lineWidth = o.ink * 1.5; g.lineJoin = 'round'; g.stroke();
+    // Snapped twigs along its sides.
+    // Snapped branch stubs, leaning toward the log's top end, tapering, bark-dark with a pale broken tip.
+    for (let i = 0; i < 2 + Math.floor(rng() * 2); i++) {
+      const x = (rng() - 0.5) * len * 1.5, side = rng() < 0.5 ? -1 : 1, y = side * w * 0.8, a = side * (Math.PI / 2) - side * (0.5 + rng() * 0.5), l = w * (0.35 + rng() * 0.35), ex = x + Math.cos(a) * l, ey = y + Math.sin(a) * l, b = w * 0.11;
+      const nx = -Math.sin(a), ny = Math.cos(a), stub = [[x + nx * b, y + ny * b], [ex + nx * b * 0.5, ey + ny * b * 0.5], [ex - nx * b * 0.5, ey - ny * b * 0.5], [x - nx * b, y - ny * b]];
+      poly(g, stub); g.fillStyle = '#3a2a1a'; g.fill(); g.strokeStyle = INK; g.lineWidth = o.ink; g.stroke();
+      g.beginPath(); g.arc(ex, ey, b * 0.5, 0, 6.283); g.fillStyle = '#9a7e58'; g.fill(); g.strokeStyle = INK; g.lineWidth = o.ink * 0.7; g.stroke();
+    }
+    // A sawn end, seen from above: almost edge-on, only a narrow sliver of the cut face showing past the bark, a few rings curving
+    // across it, the saw line inked.
+    // (Inside the log's own outline, from its true top edge to its bottom, so it never sticks out past the bark.)
+    if (sawn) {
+      const ex = len, yTop = top[top.length - 1][1], yBot = bottom[bottom.length - 1][1], mid = (yTop + yBot) / 2, h = (yBot - yTop) / 2, d = w * 0.16;
+      const curve = Array.from({ length: 15 }, (_, k) => { const t = (k / 14) * Math.PI - Math.PI / 2; return [ex - d * Math.cos(t), mid + Math.sin(t) * h]; });
+      g.save(); poly(g, pts); g.clip();
+      poly(g, [[ex + 2, yTop], ...curve, [ex + 2, yBot]]); g.fillStyle = '#9a7e58'; g.fill();
+      for (let k = 1; k < 5; k++) { g.beginPath(); g.ellipse(ex, mid, d * (k / 5), h * (k / 5), 0, Math.PI / 2, Math.PI * 1.5); g.strokeStyle = 'rgba(60,40,20,0.55)'; g.lineWidth = o.ink * 0.5; g.stroke(); }
+      line(g, curve, INK, o.ink * 1.2);
+      g.restore();
+    }
     return [pts];
   } },
   puddle: { label: 'Puddles', size: 1.1, height: 0, flat: true, water: 'still', paint(g, s, rng, o) {
@@ -483,13 +624,14 @@ const KINDS = {
     return null;
   } },
   mushrooms: { label: 'Mushrooms', size: 0.4, height: 0.12, paint(g, s, rng, o) {
-    const out = [], red = rng() < 0.5, base = red ? '#8e2a1e' : '#9a7a4e';
-    for (let i = 0; i < 6; i++) { const a = rng() * 6.28, d = Math.sqrt(rng()) * s * 0.6, r = s * (0.12 + rng() * 0.14), x = Math.cos(a) * d, y = Math.sin(a) * d, pts = blob(rng, x, y, r, r, 12, 0.05);
-      g.save(); trace(g, pts); g.clip(); const cg = g.createRadialGradient(x - r * 0.35, y - r * 0.35, 0, x, y, r * 1.1); cg.addColorStop(0, shade(base, 0.35)); cg.addColorStop(1, shade(base, -0.45)); g.fillStyle = cg; g.fillRect(x - r * 1.2, y - r * 1.2, r * 2.4, r * 2.4);
-      if (red) for (let k = 0; k < 4; k++) { g.fillStyle = 'rgba(236,226,200,0.85)'; g.beginPath(); g.arc(x + (rng() - 0.5) * r * 1.2, y + (rng() - 0.5) * r * 1.2, r * 0.12, 0, 6.28); g.fill(); }
-      snowPatch(g, rng, x - r * 0.25, y - r * 0.25, r * 0.55 * o.snow, r * 0.45 * o.snow, o);
-      g.restore(); trace(g, pts); g.strokeStyle = INK; g.lineWidth = o.ink * 0.7; g.stroke(); out.push(pts); }
-    return out;
+    // A clump of small dull caps (red-brown, tan or ochre, as the map's), the big ones first and little ones crowding round them,
+    // one or two lying over with their gills showing; a little moss and leaf litter at their feet.
+    const out = [], color = pick(rng, ['#6e2a1c', '#7a5634', '#86683a']), caps = [];
+    speckle(g, rng, 0, 0, s * 0.55, s * 0.5, 40, MOSS[o.season] ?? MOSS.summer, o.unit * 0.01);
+    for (let i = 0; i < 3 + Math.floor(rng() * 4); i++) { const a = rng() * 6.28, d = Math.sqrt(rng()) * s * 0.5; caps.push([Math.cos(a) * d, Math.sin(a) * d, o.unit * (0.05 + rng() * 0.06)]); }
+    caps.sort((p, q) => q[2] - p[2]);
+    caps.forEach(([x, y, r], i) => { const pts = mushroomCap(g, rng, x, y, r, mix(color, shade(color, (rng() - 0.5) * 0.3), 0.6), o, i > 0 && rng() < 0.2); if (pts) out.push(pts); });
+    return out.length ? out : [blob(rng, 0, 0, s * 0.3, s * 0.3, 8, 0.2)];
   } },
   fairyRing: { label: 'Mushroom rings', size: 1.6, height: 0.06, paint(g, s, rng, o) {
     const out = [], n = 18, glow = o.night;
@@ -531,11 +673,19 @@ const KINDS = {
   } },
   flowers: { label: 'Wildflowers', size: 0.8, height: 0, flat: true, paint(g, s, rng, o) {
     if (o.season === 'winter') return null;
-    const sets = o.season === 'autumn' ? ['#c8963a', '#a8582a'] : ['#e8e2c8', '#e0c84a', '#c87a9a', '#9a8ad0'];
-    speckle(g, rng, 0, 0, s * 0.8, s * 0.8, 140, (MOSS[o.season] ?? MOSS.summer), o.unit * 0.012);
-    for (let i = 0; i < 26; i++) { const a = rng() * 6.28, d = Math.sqrt(rng()) * s * 0.8, x = Math.cos(a) * d, y = Math.sin(a) * d, r = o.unit * (0.012 + rng() * 0.008), color = pick(rng, sets);
-      for (let k = 0; k < 5; k++) { g.fillStyle = color; g.beginPath(); g.arc(x + Math.cos(k * 1.256) * r, y + Math.sin(k * 1.256) * r, r * 0.8, 0, 6.28); g.fill(); }
-      g.fillStyle = '#b07a18'; g.beginPath(); g.arc(x, y, r * 0.5, 0, 6.28); g.fill(); }
+    // Clumps of wildflowers: a rosette of small inked leaves each, and over it a few flowers of one muted colour (white, pale
+    // yellow, lilac, dusky pink), each five inked petals round a dot, some still in bud.
+    const colors = o.season === 'autumn' ? ['#c8a050', '#b07040'] : o.season === 'spring' ? ['#ece6d2', '#e2d070', '#b8a4d8', '#d8a0b0'] : ['#e4dcc4', '#d8c460', '#a894c8', '#c88c9c'];
+    const green = (LEAVES[o.season] ?? LEAVES.summer).slice(0, 3);
+    for (let c = 0; c < 4 + Math.floor(rng() * 3); c++) {
+      const a = rng() * 6.28, d = Math.sqrt(rng()) * s * 0.6, cx = Math.cos(a) * d, cy = Math.sin(a) * d, color = pick(rng, colors);
+      for (let k = 0; k < 5; k++) leaf(g, cx, cy, o.unit * (0.07 + rng() * 0.04), (k / 5) * 6.283 + rng() * 0.6, pick(rng, green), o.ink * 0.35, 0.3);
+      for (let f = 0; f < 2 + Math.floor(rng() * 3); f++) {
+        const fx = cx + (rng() - 0.5) * o.unit * 0.12, fy = cy + (rng() - 0.5) * o.unit * 0.12;
+        if (rng() < 0.2) { g.beginPath(); g.arc(fx, fy, o.unit * 0.012, 0, 6.283); g.fillStyle = shade(color, -0.2); g.fill(); g.strokeStyle = INK; g.lineWidth = o.ink * 0.5; g.stroke(); continue; }
+        leaf(g, fx, fy, o.unit * (0.05 + rng() * 0.02), rng() * 6.283, color, o.ink * 0.35, 0.6, 'flower');
+      }
+    }
     return null;
   } },
   grass: { label: 'Grass tufts', size: 0.5, height: 0.2, paint(g, s, rng, o) {
@@ -549,42 +699,129 @@ const KINDS = {
     return null;
   } },
   bones: { label: 'Bones', size: 0.6, height: 0.05, paint(g, s, rng, o) {
-    const out = [], boneFill = (x0, y0, x1, y1) => { const bg = g.createLinearGradient(x0 - s * 0.1, y0 - s * 0.1, x1 + s * 0.1, y1 + s * 0.1); bg.addColorStop(0, '#d8cdb0'); bg.addColorStop(1, '#8e8266'); return bg; };
-    for (let i = 0; i < 3; i++) {
-      const a = rng() * 6.28, x = (rng() - 0.5) * s * 0.8, y = (rng() - 0.5) * s * 0.8, len = s * (0.28 + rng() * 0.2), w = o.unit * 0.022, c = Math.cos(a), sn = Math.sin(a);
-      const shape = []; for (const k of [-1, 1]) { const ex = x + c * len * k, ey = y + sn * len * k; for (const side of [-1, 1]) shape.push([ex - sn * w * 1.6 * side + c * w * k, ey + c * w * 1.6 * side + sn * w * k]); }
-      const pts = [[x - c * len - sn * w * 1.8, y - sn * len + c * w * 1.8], [x - c * len * 0.7 - sn * w, y - sn * len * 0.7 + c * w], [x + c * len * 0.7 - sn * w, y + sn * len * 0.7 + c * w], [x + c * len - sn * w * 1.8, y + sn * len + c * w * 1.8], [x + c * len * 1.12, y + sn * len * 1.12], [x + c * len + sn * w * 1.8, y + sn * len - c * w * 1.8], [x + c * len * 0.7 + sn * w, y + sn * len * 0.7 - c * w], [x - c * len * 0.7 + sn * w, y - sn * len * 0.7 - c * w], [x - c * len + sn * w * 1.8, y - sn * len - c * w * 1.8], [x - c * len * 1.12, y - sn * len * 1.12]];
-      trace(g, pts); g.fillStyle = boneFill(x - c * len, y - sn * len, x + c * len, y + sn * len); g.fill(); g.strokeStyle = INK; g.lineWidth = o.ink * 0.7; g.stroke(); out.push(pts); void shape;
+    o = { ...o, ink: o.ink * 0.6 };
+    // Old bones in the dirt: yellowed and stained, darker where they lie in the earth, heavily inked. Long bones with knobbed
+    // ends, often a ribcage's curve of ribs off a broken spine, sometimes a skull, and splinters round them.
+    const out = [], ivory = o.cave ? ['#b8b09a', '#8a826c', '#4e483a'] : ['#cdbf98', '#9a8a64', '#54482e'];
+    const stain = (pts) => { g.save(); trace(g, pts); g.clip(); for (let i = 0; i < 5; i++) { const [x, y] = pick(rng, pts); g.fillStyle = `rgba(${rng() < 0.5 ? '70,48,20' : '40,34,18'},${0.15 + rng() * 0.2})`; g.beginPath(); g.ellipse(x, y, s * (0.04 + rng() * 0.06), s * (0.03 + rng() * 0.04), rng() * 3, 0, 6.283); g.fill(); } g.restore(); };
+    const fill = (pts, x0, y0, x1, y1) => { const bg = g.createLinearGradient(x0, y0, x1, y1); bg.addColorStop(0, ivory[0]); bg.addColorStop(0.6, ivory[1]); bg.addColorStop(1, ivory[2]); trace(g, pts); g.fillStyle = bg; g.fill(); stain(pts); trace(g, pts); g.strokeStyle = INK; g.lineWidth = o.ink * 1.1; g.stroke(); };
+    // A long bone from (x, y) along a: a shaft pinched in the middle, each end two knuckles.
+    const longBone = (x, y, a, len, w, broken) => {
+      const c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [x + c * u - sn * v, y + sn * u + c * v];
+      // Round the outline: the shaft's top edge to a knuckled end, its bottom edge back, the other end knuckled or snapped.
+      const end = [[0.72, 0.55], [0.92, 1.25], [1.04, 1.0], [1.1, 0.45], [1.0, 0.05], [1.1, -0.4], [1.04, -0.9], [0.94, -1.15], [0.72, -0.55]];
+      const far = broken ? [[-0.34, -0.55], [-0.42, -0.2], [-0.3, 0.1], [-0.38, 0.55]] : end.map(([u, v]) => [-u, -v]);
+      const pts = [...end, [0, -0.5], ...far, [0, 0.5]].map(([u, v]) => at(u * len, v * w * (0.9 + rng() * 0.2)));
+      fill(pts, ...at(-len, -w * 2), ...at(len, w * 2)); line(g, [at(-len * 0.6, -w * 0.15), at(len * 0.6, -w * 0.2)], 'rgba(255,248,225,0.35)', Math.max(0.6, w * 0.25)); out.push(pts);
+    };
+    const n = 2 + Math.floor(rng() * 2);
+    for (let i = 0; i < n; i++) longBone((rng() - 0.5) * s * 0.9, (rng() - 0.5) * s * 0.9, rng() * 6.28, s * (0.22 + rng() * 0.16), o.unit * 0.022, rng() < 0.3);
+    if (rng() < 0.55) {
+      // A ribcage: a spine of knuckled vertebrae, and ribs curving off one side of it, a few broken short.
+      const sa = rng() * 6.28, sx = (rng() - 0.5) * s * 0.4, sy = (rng() - 0.5) * s * 0.4, c = Math.cos(sa), sn = Math.sin(sa), side = rng() < 0.5 ? 1 : -1, len = s * 0.55;
+      for (let k = 0; k < 6; k++) { const u = (k / 5 - 0.5) * len, bx = sx + c * u, by = sy + sn * u, reach = s * (0.32 + Math.sin((k / 5) * Math.PI) * 0.14) * (rng() < 0.2 ? 0.5 : 1), p = []; for (let t = 0; t <= 6; t++) { const f = t / 6, ang = sa + side * (Math.PI / 2) - side * f * 1.2; p.push([bx + Math.cos(ang) * reach * f + c * f * f * reach * 0.35, by + Math.sin(ang) * reach * f + sn * f * f * reach * 0.35]); } line(g, p, INK, o.unit * 0.02 + o.ink * 1.1); line(g, p, ivory[1], o.unit * 0.02); line(g, p.map(([px, py]) => [px - 0.6, py - 0.6]), ivory[0], o.unit * 0.008); out.push(p); }
+      for (let k = 0; k < 8; k++) { const u = (k / 7 - 0.5) * len * 1.15, v = blob(rng, sx + c * u, sy + sn * u, o.unit * 0.026, o.unit * 0.02, 8, 0.15); fill(v, sx + c * u - s * 0.05, sy + sn * u - s * 0.05, sx + c * u + s * 0.05, sy + sn * u + s * 0.05); out.push(v); }
     }
-    if (rng() < 0.5) { const pts = blob(rng, s * 0.3, -s * 0.3, s * 0.16, s * 0.19, 12, 0.05); trace(g, pts); g.fillStyle = boneFill(s * 0.15, -s * 0.5, s * 0.45, -s * 0.1); g.fill(); g.strokeStyle = INK; g.lineWidth = o.ink * 0.7; g.stroke(); for (const dx of [-1, 1]) { g.fillStyle = '#1a120a'; g.beginPath(); g.ellipse(s * 0.3 + dx * s * 0.06, -s * 0.25, s * 0.035, s * 0.045, 0, 0, 6.28); g.fill(); } out.push(pts); }
+    if (rng() < 0.5) {
+      // A skull, face up: the cranium, deep sockets, the nose hole, a row of teeth along the jaw, a crack across the dome.
+      const kx = (rng() - 0.5) * s * 0.6, ky = (rng() - 0.5) * s * 0.6, r = s * 0.17, turn = rng() * 6.28, c = Math.cos(turn), sn = Math.sin(turn), at = (u, v) => [kx + c * u - sn * v, ky + sn * u + c * v];
+      const dome = []; for (let i = 0; i < 24; i++) { const t = (i / 24) * 6.283, rr = r * (Math.sin(t) > 0 ? 1 : 0.82), u = Math.cos(t) * rr * 0.85, v = Math.sin(t) * rr * 1.05 - (Math.sin(t) < 0 ? 0 : 0); dome.push(at(u, v - r * 0.1)); }
+      fill(dome, ...at(-r, -r), ...at(r, r));
+      for (const k of [-1, 1]) { g.beginPath(); const [ex, ey] = at(k * r * 0.36, r * 0.32); g.ellipse(ex, ey, r * 0.22, r * 0.19, turn, 0, 6.283); g.fillStyle = '#140c06'; g.fill(); }
+      poly(g, [at(0, r * 0.52), at(-r * 0.09, r * 0.7), at(r * 0.09, r * 0.7)]); g.fillStyle = '#140c06'; g.fill();
+      for (let k = -3; k <= 3; k++) line(g, [at(k * r * 0.1, r * 0.8), at(k * r * 0.1, r * 0.92)], 'rgba(20,12,6,0.8)', Math.max(0.6, o.ink * 0.6));
+      line(g, wander(rng, ...at(-r * 0.2, -r * 0.7), turn + 1.2, 3, r * 0.2, 0.8), 'rgba(20,12,6,0.6)', Math.max(0.5, o.ink * 0.5)); out.push(dome);
+    }
+    // Splinters.
+    for (let i = 0; i < 4; i++) { const a = rng() * 6.28, d = Math.sqrt(rng()) * s * 0.85, x = Math.cos(a) * d, y = Math.sin(a) * d, b = rng() * 6.28, l = s * (0.04 + rng() * 0.05); line(g, [[x, y], [x + Math.cos(b) * l, y + Math.sin(b) * l]], INK, o.unit * 0.012 + o.ink); line(g, [[x, y], [x + Math.cos(b) * l, y + Math.sin(b) * l]], ivory[1], o.unit * 0.012); }
     return out;
   } },
   crate: { label: 'Crates', size: 0.8, height: 0.55, paint(g, s, rng, o) {
-    const r = s * 0.78, turn = (rng() - 0.5) * 0.9, ct = Math.cos(turn), st = Math.sin(turn), at = (x, y) => [x * ct - y * st, x * st + y * ct], box = [at(-r, -r), at(r, -r), at(r, r), at(-r, r)];
-    g.save(); poly(g, box); g.clip();
-    const wg = g.createLinearGradient(...at(-r, -r), ...at(r, r)); wg.addColorStop(0, '#8a6a42'); wg.addColorStop(1, '#4a3420'); g.fillStyle = wg; g.fillRect(-s * 1.2, -s * 1.2, s * 2.4, s * 2.4);
-    for (let k = 0; k < 5; k++) { const y = -r + (k + 0.5) * (2 * r / 5); for (let i = 0; i < 4; i++) line(g, [at(-r, y + (rng() - 0.5) * r * 0.25), at(r, y + (rng() - 0.5) * r * 0.25)], 'rgba(40,26,12,0.35)', o.ink * 0.5); line(g, [at(-r, y + r / 5), at(r, y + r / 5)], 'rgba(20,12,6,0.8)', o.ink * 0.8); }
-    for (const [a, b] of [[[-r, -r], [r, r]], [[r, -r], [-r, r]]]) { line(g, [at(...a), at(...b)], INK, r * 0.2); line(g, [at(...a), at(...b)], '#6a4c2c', r * 0.15); }
-    for (const [x, y] of [[-r, -r], [r, -r], [r, r], [-r, r]]) { const c = at(x * 0.8, y * 0.8); g.fillStyle = '#3e3e3c'; g.beginPath(); g.arc(c[0], c[1], r * 0.18, 0, 6.28); g.fill(); g.strokeStyle = INK; g.lineWidth = o.ink * 0.6; g.stroke(); }
-    snowPatch(g, rng, ...at(-r * 0.3, -r * 0.35), r * 0.6 * o.snow, r * 0.45 * o.snow, o);
-    if (o.wet > 0) { g.fillStyle = `rgba(6,8,10,${0.22 * o.wet})`; g.fillRect(-s * 1.2, -s * 1.2, s * 2.4, s * 2.4); }
-    g.restore(); poly(g, box); g.strokeStyle = INK; g.lineWidth = o.ink * 1.2; g.stroke(); return [box];
+    // As the map draws one: a lid of planks laid across it, worn and grained, inside a frame — iron bands with rivets, or on a
+    // plainer crate boards nailed round the edge; heavy ink round it all, the lit edge toward the top left.
+    const r = s * 0.8, turn = (rng() - 0.5) * 0.9, ct = Math.cos(turn), st = Math.sin(turn), at = (x, y) => [x * ct - y * st, x * st + y * ct], box = [at(-r, -r), at(r, -r), at(r, r), at(-r, r)];
+    const iron = rng() < 0.65, band = r * (iron ? 0.22 : 0.24), diagonal = rng() < 0.4, braced = rng() < 0.55;
+    g.save(); g.rotate(turn);
+    g.save(); g.beginPath(); g.rect(-r, -r, r * 2, r * 2); g.clip();
+    g.fillStyle = '#4e3a24'; g.fillRect(-r, -r, r * 2, r * 2);
+    // The lid's planks, across or slanting, each its own shade with grain and a dark seam.
+    const pw = r * 0.36;
+    g.save(); if (diagonal) g.rotate(Math.PI / 4);
+    for (let k = -4; k <= 4; k++) {
+      const y0 = k * pw - pw / 2, shadeK = (rng() - 0.5) * 0.25;
+      g.fillStyle = mix('#64482a', shade('#64482a', shadeK), 0.8); g.fillRect(-r * 1.5, y0, r * 3, pw);
+      grainAlong(g, rng, -r * 1.5, y0 + pw / 2, r * 1.5, y0 + pw / 2, pw, 4, o);
+      line(g, [[-r * 1.5, y0], [r * 1.5, y0]], 'rgba(14,8,2,0.9)', o.ink * 1.1);
+      if (rng() < 0.4) { const kx = (rng() - 0.5) * r * 1.4; g.beginPath(); g.ellipse(kx, y0 + pw / 2, pw * 0.16, pw * 0.1, 0, 0, 6.283); g.strokeStyle = 'rgba(30,18,8,0.7)'; g.lineWidth = o.ink * 0.6; g.stroke(); }
+    }
+    g.restore();
+    // An X of two boards braced across the lid, as on the mine's crates.
+    if (braced) for (const [ax, ay, bx, by] of [[-r, -r, r, r], [r, -r, -r, r]]) {
+      const bw = r * 0.22, len = Math.hypot(bx - ax, by - ay), ang = Math.atan2(by - ay, bx - ax);
+      g.save(); g.translate((ax + bx) / 2, (ay + by) / 2); g.rotate(ang);
+      g.fillStyle = '#6e5232'; g.fillRect(-len / 2, -bw / 2, len, bw); grainAlong(g, rng, -len / 2, 0, len / 2, 0, bw, 3, o);
+      g.strokeStyle = INK; g.lineWidth = o.ink * 1.2; g.strokeRect(-len / 2, -bw / 2, len, bw); g.restore();
+    }
+    // Light: the lid catches it toward the top left.
+    const lg = g.createLinearGradient(-r, -r, r, r); lg.addColorStop(0, 'rgba(255,240,210,0.08)'); lg.addColorStop(1, 'rgba(10,6,2,0.38)'); g.fillStyle = lg; g.fillRect(-r, -r, r * 2, r * 2);
+    // The frame.
+    const ring = () => { g.beginPath(); g.rect(-r, -r, r * 2, r * 2); g.rect(-r + band, -r + band, (r - band) * 2, (r - band) * 2); };
+    ring(); g.fillStyle = iron ? '#55534e' : '#5a4228'; g.fill('evenodd');
+    if (!iron) for (const [x0, y0, x1, y1] of [[-r, -r + band / 2, r, -r + band / 2], [-r, r - band / 2, r, r - band / 2], [-r + band / 2, -r, -r + band / 2, r], [r - band / 2, -r, r - band / 2, r]]) grainAlong(g, rng, x0, y0, x1, y1, band, 3, o);
+    line(g, [[-r, -r + 1], [r, -r + 1]], iron ? 'rgba(200,200,190,0.35)' : 'rgba(220,190,140,0.3)', o.ink); line(g, [[-r + 1, -r], [-r + 1, r]], iron ? 'rgba(200,200,190,0.3)' : 'rgba(220,190,140,0.25)', o.ink);
+    // Rivets or nails along it.
+    const n = iron ? 4 : 3;
+    for (let i = 0; i <= n; i++) for (const side of [0, 1, 2, 3]) {
+      const t = -r + band / 2 + (i / n) * (r * 2 - band), [x, y] = side === 0 ? [t, -r + band / 2] : side === 1 ? [t, r - band / 2] : side === 2 ? [-r + band / 2, t] : [r - band / 2, t];
+      g.beginPath(); g.arc(x, y, band * (iron ? 0.2 : 0.12), 0, 6.283); g.fillStyle = iron ? '#2a2826' : '#262422'; g.fill(); g.fillStyle = 'rgba(220,220,210,0.4)'; g.beginPath(); g.arc(x - band * 0.05, y - band * 0.05, band * 0.06, 0, 6.283); g.fill();
+    }
+    snowPatch(g, rng, -r * 0.3, -r * 0.35, r * 0.6 * o.snow, r * 0.45 * o.snow, o);
+    if (o.wet > 0) { g.fillStyle = `rgba(6,8,10,${0.22 * o.wet})`; g.fillRect(-r, -r, r * 2, r * 2); }
+    g.restore();
+    g.beginPath(); g.rect(-r + band, -r + band, (r - band) * 2, (r - band) * 2); g.strokeStyle = INK; g.lineWidth = o.ink * 1.1; g.stroke();
+    g.beginPath(); g.rect(-r, -r, r * 2, r * 2); g.strokeStyle = INK; g.lineWidth = o.ink * 2.4; g.stroke();
+    g.restore();
+    return [box];
   } },
   barrel: { label: 'Barrels', size: 0.6, height: 0.6, paint(g, s, rng, o) {
-    const r = s * 0.85, pts = blob(rng, 0, 0, r, r, 24, 0.01);
-    g.save(); trace(g, pts); g.clip();
-    const wg = g.createRadialGradient(-r * 0.3, -r * 0.3, 0, 0, 0, r); wg.addColorStop(0, '#a8875a'); wg.addColorStop(1, '#5e4428'); g.fillStyle = wg; g.fillRect(-r, -r, r * 2, r * 2);
-    for (let k = -3; k <= 3; k++) { const y = k * r * 0.27; line(g, [[-r, y], [r, y]], 'rgba(30,18,8,0.75)', o.ink * 0.7); for (let i = 0; i < 2; i++) line(g, [[-r, y + rng() * r * 0.25], [r, y + rng() * r * 0.25]], 'rgba(60,40,20,0.3)', o.ink * 0.4); }
-    snowPatch(g, rng, -r * 0.2, -r * 0.2, r * 0.6 * o.snow, r * 0.55 * o.snow, o);
+    // From above: the iron hoop round its rim with its rivets, the dark end grain of the staves' tops (the chime), and the head of
+    // planks laid across, grained and seamed, with its bung; worn, lit toward the top left, inked.
+    const r = s * 0.85, pts = Array.from({ length: 32 }, (_, i) => [Math.cos(i / 32 * 6.283) * r, Math.sin(i / 32 * 6.283) * r]), turn = rng() * 6.283;
+    const circle = (k) => { g.beginPath(); g.arc(0, 0, r * k, 0, 6.283); };
+    circle(1); g.fillStyle = '#3e3c38'; g.fill();
+    // The hoop: grey iron, a pale edge toward the light, rivets round it.
+    const hg = g.createLinearGradient(-r, -r, r, r); hg.addColorStop(0, '#6a6862'); hg.addColorStop(1, '#2e2c28'); circle(1); g.fillStyle = hg; g.fill();
+    for (let i = 0; i < 10; i++) { const a = (i / 10) * 6.283 + turn; g.beginPath(); g.arc(Math.cos(a) * r * 0.93, Math.sin(a) * r * 0.93, r * 0.035, 0, 6.283); g.fillStyle = '#1e1c1a'; g.fill(); }
+    // The chime: the staves' ends, a ring of short dark segments.
+    circle(0.86); g.fillStyle = '#4a3420'; g.fill();
+    for (let i = 0; i < 16; i++) { const a = (i / 16) * 6.283 + turn; line(g, [[Math.cos(a) * r * 0.74, Math.sin(a) * r * 0.74], [Math.cos(a) * r * 0.86, Math.sin(a) * r * 0.86]], 'rgba(12,8,4,0.85)', o.ink * 0.8); }
+    // The head: planks across, grained.
+    g.save(); circle(0.74); g.clip(); g.rotate(turn);
+    const pw = r * 0.3;
+    for (let k = -3; k <= 3; k++) { const y0 = k * pw - pw / 2; g.fillStyle = mix('#6e5232', shade('#6e5232', (rng() - 0.5) * 0.25), 0.8); g.fillRect(-r, y0, r * 2, pw); grainAlong(g, rng, -r, y0 + pw / 2, r, y0 + pw / 2, pw, 4, o); line(g, [[-r, y0], [r, y0]], 'rgba(14,8,2,0.9)', o.ink * 1); }
+    // The bung, plugged.
+    const bx = r * 0.32, by = pw * 0.1; g.beginPath(); g.arc(bx, by, r * 0.09, 0, 6.283); g.fillStyle = '#5a3e22'; g.fill(); g.strokeStyle = INK; g.lineWidth = o.ink * 0.8; g.stroke();
     g.restore();
-    for (const k of [1, 0.86]) { g.beginPath(); g.arc(0, 0, r * k, 0, 6.28); g.strokeStyle = INK; g.lineWidth = o.ink * (k === 1 ? 3 : 1.2); g.stroke(); }
-    g.beginPath(); g.arc(0, 0, r * 0.97, 0, 6.28); g.strokeStyle = '#4a4744'; g.lineWidth = o.ink * 1.6; g.stroke();
+    const lg = g.createLinearGradient(-r, -r, r, r); lg.addColorStop(0, 'rgba(255,240,210,0.12)'); lg.addColorStop(1, 'rgba(10,6,2,0.32)'); circle(1); g.fillStyle = lg; g.fill();
+    g.save(); circle(0.74); g.clip(); snowPatch(g, rng, -r * 0.2, -r * 0.2, r * 0.55 * o.snow, r * 0.5 * o.snow, o); if (o.wet > 0) { g.fillStyle = `rgba(6,8,10,${0.22 * o.wet})`; g.fillRect(-r, -r, r * 2, r * 2); } g.restore();
+    circle(0.74); g.strokeStyle = INK; g.lineWidth = o.ink * 1.1; g.stroke(); circle(0.86); g.strokeStyle = 'rgba(14,10,6,0.9)'; g.lineWidth = o.ink; g.stroke(); circle(1); g.strokeStyle = INK; g.lineWidth = o.ink * 2; g.stroke();
     return [pts];
   } },
   campfire: { label: 'Old campfires', size: 0.9, height: 0.1, paint(g, s, rng, o) {
-    const ash = blob(rng, 0, 0, s * 0.62, s * 0.56, 14, 0.2); g.save(); trace(g, ash); g.clip(); const ag = g.createRadialGradient(0, 0, 0, 0, 0, s * 0.62); ag.addColorStop(0, '#5a5450'); ag.addColorStop(0.6, '#2a2420'); ag.addColorStop(1, '#16110c'); g.fillStyle = ag; g.fillRect(-s, -s, s * 2, s * 2); speckle(g, rng, 0, 0, s * 0.4, s * 0.4, 80, ['#8a8480', '#3a3430', '#a09a90'], o.unit * 0.008); g.restore();
-    for (let i = 0; i < 3; i++) { const a = rng() * 6.28, p = [[Math.cos(a) * s * 0.42, Math.sin(a) * s * 0.42], [-Math.cos(a) * s * 0.08, -Math.sin(a) * s * 0.08]]; line(g, p, INK, o.unit * 0.07); line(g, p, '#1e1612', o.unit * 0.055); }
-    const out = []; for (let i = 0; i < 10; i++) { const a = (i / 10) * 6.28 + rng() * 0.2, pts = blob(rng, Math.cos(a) * s * 0.72, Math.sin(a) * s * 0.72, s * 0.13, s * 0.11, 9, 0.15); stone(g, rng, pts, pick(rng, stonesOf(o)), o, { cracks: 0, ledges: 0, ink: 0.8 }); out.push(pts); }
+    // As the maps draw one: scorched ground round it, a tight ring of dark inked stones touching each other, and inside it a heap of
+    // charred sticks and coals over grey ash; a few wood chips scattered about.
+    g.save(); g.filter = `blur(${Math.max(1, s * 0.08)}px)`; trace(g, blob(rng, 0, 0, s * 0.95, s * 0.9, 14, 0.25)); g.fillStyle = 'rgba(14,10,6,0.55)'; g.fill(); g.restore();
+    const ring = s * 0.56, ash = blob(rng, 0, 0, ring * 0.92, ring * 0.9, 14, 0.12);
+    g.save(); trace(g, ash); g.clip(); const ag = g.createRadialGradient(0, 0, 0, 0, 0, ring); ag.addColorStop(0, '#4e4844'); ag.addColorStop(0.7, '#262220'); ag.addColorStop(1, '#100c08'); g.fillStyle = ag; g.fillRect(-s, -s, s * 2, s * 2);
+    speckle(g, rng, 0, 0, ring * 0.7, ring * 0.7, 70, ['#7a7470', '#2e2a26', '#9a948c'], o.unit * 0.008);
+    // A heap of charred sticks and coals, black, a few still brown at their ends.
+    g.save(); trace(g, blob(rng, 0, 0, ring * 0.6, ring * 0.55, 10, 0.3)); g.fillStyle = '#0e0a08'; g.fill(); g.restore();
+    for (let i = 0; i < 16; i++) { const a = rng() * 6.283, l = ring * (0.35 + rng() * 0.55), cx = (rng() - 0.5) * ring * 0.6, cy = (rng() - 0.5) * ring * 0.6, p = [[cx - Math.cos(a) * l / 2, cy - Math.sin(a) * l / 2], [cx + Math.cos(a) * l / 2, cy + Math.sin(a) * l / 2]], w = o.unit * (0.025 + rng() * 0.03); line(g, p, INK, w + o.ink * 1.3); line(g, p, rng() < 0.25 ? '#3e2c1c' : '#16110d', w); if (rng() < 0.4) line(g, p, 'rgba(120,110,100,0.3)', w * 0.3); }
+    g.restore();
+    // The ring: a stone each step round, big enough to touch the next.
+    const out = [], n = 11 + Math.floor(rng() * 4), size = (Math.PI * ring) / n;
+    for (let i = 0; i < n; i++) { const a = (i / n) * 6.283 + rng() * 0.12, d = ring * (1 + (rng() - 0.5) * 0.08), pts = blob(rng, Math.cos(a) * d, Math.sin(a) * d, size * (0.95 + rng() * 0.3), size * (0.8 + rng() * 0.25), 8, 0.22); stone(g, rng, pts, pick(rng, o.cave ? CAVE_STONES : ['#3e3a35', '#36332f', '#46423b']), o, { cracks: 0, ledges: 0, ink: 1.3 }); out.push(pts); }
+    for (let i = 0; i < 9; i++) { const a = rng() * 6.283, d = s * (0.72 + rng() * 0.25), x = Math.cos(a) * d, y = Math.sin(a) * d, b = rng() * 6.283, l = o.unit * (0.04 + rng() * 0.05); line(g, [[x, y], [x + Math.cos(b) * l, y + Math.sin(b) * l]], INK, o.ink * 2); line(g, [[x, y], [x + Math.cos(b) * l, y + Math.sin(b) * l]], '#8a6a42', o.ink * 0.9); }
     return out;
   } },
   roots: { label: 'Roots', size: 1.2, height: 0.05, paint(g, s, rng, o) {
@@ -593,12 +830,26 @@ const KINDS = {
     return out;
   } },
   crystals: { label: 'Crystals', size: 0.6, height: 0.6, paint(g, s, rng, o) {
-    const out = [], hue = pick(rng, ['#5e8ea4', '#8a6ea8', '#5e9a80']);
-    if (o.night || o.cave) { const gg = g.createRadialGradient(0, 0, 0, 0, 0, s); gg.addColorStop(0, 'rgba(150,200,240,0.35)'); gg.addColorStop(1, 'rgba(150,200,240,0)'); g.fillStyle = gg; g.fillRect(-s, -s, s * 2, s * 2); }
-    for (let i = 0; i < 6; i++) { const a = -Math.PI / 2 + (rng() - 0.5) * 2.4, len = s * (0.4 + rng() * 0.45), w = s * (0.08 + rng() * 0.06), c = Math.cos(a), sn = Math.sin(a), bx = (rng() - 0.5) * s * 0.3, by = (rng() - 0.2) * s * 0.3, pts = [[bx - sn * w, by + c * w], [bx + c * len * 0.78 - sn * w, by + sn * len * 0.78 + c * w], [bx + c * len, by + sn * len], [bx + c * len * 0.78 + sn * w, by + sn * len * 0.78 - c * w], [bx + sn * w, by - c * w]];
-      poly(g, pts); const cg = g.createLinearGradient(bx, by, bx + c * len, by + sn * len); cg.addColorStop(0, shade(hue, -0.5)); cg.addColorStop(1, shade(hue, 0.15)); g.fillStyle = cg; g.fill();
-      poly(g, [pts[0], pts[1], pts[2], [bx + c * len * 0.1, by + sn * len * 0.1]]); g.fillStyle = 'rgba(230,240,250,0.22)'; g.fill();
-      poly(g, pts); g.strokeStyle = INK; g.lineWidth = o.ink * 0.7; g.stroke(); out.push(pts); }
+    o = { ...o, ink: o.ink * 0.6 };
+    // A cluster grown out of a lump of rock, seen from above: shards leaning out every way from its heart, each a prism with a
+    // lit plane and a shadowed one meeting along its ridge, a pale tip, heavily inked. Muted, mineral colours, not candy.
+    const out = [], [hue, glow] = pick(rng, [['#6e5a7e', '170,140,210'], ['#4e727a', '130,190,200'], ['#9a968a', '210,210,190'], ['#5e7a5e', '150,200,150']]);
+    const rock = blob(rng, 0, 0, s * 0.5, s * 0.42, 10, 0.25); standing(g, rng, rock, pick(rng, stonesOf(o)), o, { lift: 0.14, cracks: 1, ledges: 0, facets: 1 }); out.push(rock);
+    if (o.night || o.cave) { const gg = g.createRadialGradient(0, 0, 0, 0, 0, s); gg.addColorStop(0, `rgba(${glow},0.28)`); gg.addColorStop(1, `rgba(${glow},0)`); g.fillStyle = gg; g.fillRect(-s, -s, s * 2, s * 2); }
+    const shards = []; for (let i = 0; i < 6 + Math.floor(rng() * 4); i++) shards.push([rng() * 6.28, s * (0.35 + rng() * 0.5), s * (0.07 + rng() * 0.06), (rng() - 0.5) * s * 0.2, (rng() - 0.5) * s * 0.2]);
+    // Shards leaning away from the light first, so those toward it stand over them; the tallest last of all.
+    shards.sort((p, q) => towardLight(Math.cos(q[0]), Math.sin(q[0]), 1) - towardLight(Math.cos(p[0]), Math.sin(p[0]), 1) || p[1] - q[1]);
+    for (const [a, len, w, bx, by] of shards) {
+      const c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [bx + c * u - sn * v, by + sn * u + c * v];
+      const l = [at(0, w), at(len * 0.78, w), at(len, 0)], r = [at(len, 0), at(len * 0.78, -w), at(0, -w)], ridge = [at(0, w * 0.1), at(len * 0.8, w * 0.05)];
+      const litSide = towardLight(-sn, c, 1) > 0, light = shade(hue, 0.18), dark = shade(hue, -0.35);
+      poly(g, [...l, ...ridge.slice().reverse()]); g.fillStyle = litSide ? light : dark; g.fill();
+      poly(g, [...ridge, ...r]); g.fillStyle = litSide ? dark : light; g.fill();
+      poly(g, [at(len * 0.78, w * 0.6), at(len, 0), at(len * 0.78, -w * 0.6), at(len * 0.82, 0)]); g.fillStyle = 'rgba(240,240,232,0.35)'; g.fill();
+      line(g, [...ridge, at(len, 0)], 'rgba(255,255,245,0.4)', Math.max(0.6, o.ink * 0.5));
+      for (let k = 0; k < 2; k++) { const u = len * (0.2 + rng() * 0.5); line(g, [at(u, w * 0.8), at(u + len * 0.08, w * 0.2)], 'rgba(10,8,14,0.35)', Math.max(0.5, o.ink * 0.4)); }
+      const pts = [...l, r[1], r[2]]; poly(g, pts); g.strokeStyle = INK; g.lineWidth = o.ink * 1.1; g.stroke(); out.push(pts);
+    }
     return out;
   } },
 
@@ -656,9 +907,22 @@ const KINDS = {
     return out;
   } },
   lichen: { label: 'Lichen', size: 1.0, height: 0, flat: true, set: 'both', paint(g, s, rng, o) {
-    // Crusts on the stone: rings of grey-green, rust and pale yellow, each spreading with a lighter edge.
-    for (let i = 0; i < 9; i++) { const a = rng() * 6.28, d = Math.sqrt(rng()) * s * 0.6, r = s * (0.12 + rng() * 0.22), c = pick(rng, ['#8a9a72', '#a8762e', '#c8b860', '#6e7a64']), pts = blob(rng, Math.cos(a) * d, Math.sin(a) * d, r, r * 0.85, 14, 0.25);
-      trace(g, pts); g.fillStyle = `${c}aa`; g.fill(); g.strokeStyle = shade(c, 0.25); g.lineWidth = o.ink * 0.9; g.stroke(); trace(g, moved(pts, centre(pts)[0], centre(pts)[1], 0.55)); g.strokeStyle = shade(c, -0.25); g.lineWidth = o.ink * 0.5; g.stroke(); }
+    // Crusts on the stone, ragged rather than round: each patch grown from a few points, an edge of small crowded lobes, the
+    // older middle faded and cracked to grey with the stone showing through, a fine stipple over it all. Muted grey-green,
+    // ochre and dull straw, a crust or two of each.
+    const colors = o.cave ? ['#6e7466', '#8a8670', '#5e6a5a'] : ['#7e8a6a', '#9a7a3a', '#aaa27a', '#6a7660'];
+    for (let i = 0; i < 4 + Math.floor(rng() * 3); i++) {
+      const a = rng() * 6.28, d = Math.sqrt(rng()) * s * 0.55, px = Math.cos(a) * d, py = Math.sin(a) * d, R = s * (0.14 + rng() * 0.2), c = pick(rng, colors), lobe = R * 0.13;
+      const seeds = Array.from({ length: 3 + Math.floor(rng() * 3) }, () => [px + (rng() - 0.5) * R, py + (rng() - 0.5) * R, R * (0.35 + rng() * 0.3)]);
+      g.save(); g.globalAlpha = 0.8;
+      // The lobed rim: crowded small rounds round each seed's edge, lighter at their outer lip.
+      for (const [sx, sy, sr] of seeds) for (let k = 0; k < 22; k++) { const t = rng() * 6.283, dd = sr * (0.75 + rng() * 0.3), lx = sx + Math.cos(t) * dd, ly = sy + Math.sin(t) * dd, lr = lobe * (0.6 + rng() * 0.7); g.beginPath(); g.arc(lx, ly, lr, 0, 6.283); g.fillStyle = shade(c, (rng() - 0.5) * 0.2); g.fill(); g.beginPath(); g.arc(lx, ly, lr, t - 1, t + 1); g.strokeStyle = shade(c, 0.3); g.lineWidth = Math.max(0.5, o.ink * 0.5); g.stroke(); }
+      // The body inside, a shade darker, and its old middle fading grey with cracks.
+      for (const [sx, sy, sr] of seeds) { const pts = blob(rng, sx, sy, sr * 0.8, sr * 0.75, 12, 0.3); trace(g, pts); g.fillStyle = shade(c, -0.1); g.fill(); }
+      for (const [sx, sy, sr] of seeds) { if (rng() < 0.4) continue; g.beginPath(); g.ellipse(sx, sy, sr * 0.4, sr * 0.35, rng() * 3, 0, 6.283); g.fillStyle = 'rgba(140,138,124,0.5)'; g.fill(); line(g, wander(rng, sx, sy, rng() * 6.28, 3, sr * 0.2, 0.9), 'rgba(30,26,18,0.4)', Math.max(0.5, o.ink * 0.4)); }
+      g.restore();
+      speckle(g, rng, px, py, R, R, 30, [shade(c, -0.35), shade(c, 0.3)], Math.max(0.5, o.unit * 0.005));
+    }
     return null;
   } },
   cobweb: { label: 'Cobwebs', size: 1.0, height: 0, flat: true, set: 'cave', paint(g, s, rng, o) {
