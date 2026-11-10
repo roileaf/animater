@@ -9848,6 +9848,32 @@ Hooks.once("ready", () => {
   Hooks.on("createToken", (doc) => { void appliedLooks.sync(doc); });
   Hooks.on("deleteToken", (doc) => { void appliedLooks.drop(doc.id); });
   Hooks.on("updateToken", (doc, change) => { const f = change?.flags?.[ID]; if (f && (APPLIED_FLAG in f || `-=${APPLIED_FLAG}` in f)) void appliedLooks.sync(doc); });
+  // Tokenshade on the Token HUD (ui/tokenshade-hud.mjs): a quick picker that applies a look to this token for everyone,
+  // takes one off, and tries one on (this screen only) while hovered. The GM on any token, a player on their own.
+  let tokenshadeHud = null;
+  Hooks.on("renderTokenHUD", (hud, html) => {
+    const token = hud?.object, doc = token?.document, root = html instanceof HTMLElement ? html : html?.[0];
+    if (!doc || !root || !(game.user.isGM || doc.isOwner)) return;
+    const catalog = fxCatalog();
+    if (!catalog.tokenReady) return;
+    void (tokenshadeHud ??= import("./ui/tokenshade-hud.mjs")).then((m) => {
+      if (hud.object !== token || !root.isConnected) return;
+      const paramsOf = (library, name) => tokenFx.getPresets(library).find((p) => p.name === name)?.params ?? [];
+      const applied = normalizeApplied(doc.flags?.[ID]?.[APPLIED_FLAG]);
+      const stageOf = (look) => ({ kind: "tokenfx", assets: [], fxLibrary: look.library, fxPreset: look.name, subject: "source", duration: 3000 });
+      m.mountTokenshadeHud(root, {
+        tokenId: doc.id, looks: m.hudLooks(catalog.presets, paramsOf), applied,
+        apply: async (look) => { try { await doc.setFlag(ID, APPLIED_FLAG, withApplied(doc.flags?.[ID]?.[APPLIED_FLAG], { name: look.name, stage: stageOf(look) })); } catch (error) { ui.notifications?.warn(`Animater | ${error.message}`); } },
+        remove: async (id) => {
+          const left = normalizeApplied(doc.flags?.[ID]?.[APPLIED_FLAG]).filter((l) => l.id !== id);
+          try { await (left.length ? doc.setFlag(ID, APPLIED_FLAG, left) : doc.unsetFlag(ID, APPLIED_FLAG)); } catch (error) { ui.notifications?.warn(`Animater | ${error.message}`); }
+        },
+        // Tried on while hovered: this screen only, until the pointer leaves it.
+        preview: (look) => { const run = startTokenFxPreview(optionalFx, { ...stageOf(look), duration: 30000 }, { tokens: [token], userId: game.user.id }); run.done.catch(() => {}); return run.stop; },
+        recent: () => m.readRecent(), remember: (key) => m.writeRecent(m.pushRecent(m.readRecent(), key)),
+      });
+    }).catch((error) => runtime?.trace("Blocked", `Tokenshade HUD: ${error.message}`));
+  });
   // Foundry's server relays a module event with the sender's user id as the second argument.
   game.socket?.on(`module.${ID}`, (data, senderId) => {
     if (data?.type === WINDOW_MESSAGE) { const asked = game.users.get(senderId); const wall = canvas?.scene?.walls?.get(data.wallId); if (game.users.activeGM?.isSelf && data.sceneId === canvas?.scene?.id && wall && asked && mayUseWindow({ canDoors: asked.can("WALL_DOORS"), paused: game.paused, inReach: windowReachedBy(asked, wall) }) && windowClick({ locked: wall.flags?.[ID]?.windowLocked === true }) === "toggle") void toggleWindow(wall); return; }
