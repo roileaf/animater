@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { FIRE_SOUNDS, FIRE_VOICES, FIRE_REACH, FIRE_VOLUME, FIRE_PITCH, FIRES_HEARD, POT_FIRE, firesHeard, fireVoiceFor, fireStart, fireVoiceOf, soundsLight } from '../../../scripts/engines/sound/fire-sound.mjs';
+import { FIRE_SOUNDS, FIRE_VOICES, FIRE_REACH, FIRE_VOLUME, FIRE_PITCH, FIRES_HEARD, POT_FIRE, FIRE_CROSSFADE, firesHeard, fireVoiceFor, fireStart, fireNextIn, fireVoiceOf, soundsLight } from '../../../scripts/engines/sound/fire-sound.mjs';
 import { FIRE_KINDS, fireKindOf, fireTongues } from '../../../scripts/engines/motion/light-flames.mjs';
 
 // Roi: "lets add sfx to torches, lanterns, campfires and braziers and cooking pots too"; of the audition, "4 sounds bad the rest are great".
@@ -79,5 +79,31 @@ test('main plays them: a Fire sounds setting with its volume, a Sound switch and
   assert.match(main, /\["lantern", "Lantern", /);
   assert.match(main, /if \(kind !== "torch" && kind !== "lantern"\) continue;/, 'held torches and lanterns are heard');
   const ui = readFileSync(new URL('../../../scripts/ui/settings-window.mjs', import.meta.url), 'utf8');
-  assert.match(ui, /\{ world: "fireSounds", local: "fireSoundsLocal", extras: \["fireVolume"\] \}/);
+  assert.match(ui, /\{ world: "fireSounds", local: "fireSoundsLocal", extras: \["fireVolume", "heldFireSounds"\] \}/);
+});
+
+// Sherp: "Is there a way to remove torch/fire sounds for held torches? The sound gets a little repetitive when its being held for a long period."
+test('held torches can be quieted on their own screen, leaving fires on the map', () => {
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /registerSetting\("heldFireSounds", \{ name: "Held torches crackle",[^}]*scope: "client", config: true, type: Boolean, default: true \}\)/);
+  assert.match(main, /if \(kind !== "torch" && kind !== "lantern"\) continue;\s*if \(hotSetting\("heldFireSounds"\) === false\) continue;/, 'only the held ones are skipped');
+});
+
+test('no short torch loop; a long-burning fire crossfades from one recording into the next', () => {
+  assert.equal(FIRE_SOUNDS.torch.length, 2);
+  assert.ok(!FIRE_SOUNDS.torch.some((f) => f.includes('497195')), 'the nine-second loop is gone');
+  assert.ok(!existsSync(new URL('../../../assets/sounds/places/fire/fire-torch-497195-0.ogg', import.meta.url)));
+  for (const voice of FIRE_VOICES) {
+    const turns = [0, 1, 2, 3].map((turn) => fireVoiceFor('token:abc', voice, turn));
+    for (let i = 1; i < turns.length; i++) assert.notEqual(turns[i].file, turns[i - 1].file, `${voice}: each turn another recording`);
+    assert.ok(turns.every((t) => t.rate === turns[0].rate), `${voice}: the same fire keeps its pitch`);
+  }
+  assert.deepEqual(fireVoiceFor('light:7', 'torch', 0), fireVoiceFor('light:7', 'torch'), 'turn 0 is the fire as before');
+  assert.equal(fireNextIn(30, 15, 1), 15 - FIRE_CROSSFADE, 'begins the crossfade as the recording nears its end');
+  assert.equal(fireNextIn(30, 0, 2), 15 - FIRE_CROSSFADE, 'sooner when it plays faster');
+  assert.equal(fireNextIn(30, 29.5, 1), FIRE_CROSSFADE, 'never at once');
+  assert.equal(fireNextIn(undefined), null, 'unknown length: it just loops');
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /now >= voice\.nextAt && !voice\.starting && volume > 0\.004\) startFireVoice\(voice, h, \(voice\.turn \?\? 0\) \+ 1\)/);
+  assert.match(main, /if \(voice\.sound\) stopVoice\(voice, fade\);\s*voiceStarted\(voice, sound, voice\.volume, turn \? fade : 1200\);/, 'the old fades out as the new fades in');
 });
