@@ -1,7 +1,8 @@
 // Experimental water proposals. The form, the create plan and the image read are pure and exported.
 // The window takes what it needs as options. Nothing here runs until a GM clicks the Regions tool.
 
-import { detectWater, selectColourAt, areaPixels, mergeAreaProposals, fitSize, toRegionData, editableFloorRegionIds, areaProposalFromLoops, WATER_TUNING, AREA_FLOORS, floorName, floorColour, isAreaFloor } from "../engines/regions/floor-detect.mjs";
+import { detectWater, selectColourAt, areaPixels, mergeAreaProposals, fitSize, toRegionData, editableFloorRegionIds, areaProposalFromLoops, traceProposals, WATER_TUNING, AREA_FLOORS, floorName, floorColour, isAreaFloor, GENERATED_MARK } from "../engines/regions/floor-detect.mjs";
+import { planesFrom, solidMask, project, bindingFromProposal, levelList, tileFrameIsPlain } from "../engines/regions/image-plane.mjs";
 import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindOf, caveKindFlags, TEXTURE_STYLES, STEP_EDGE, stepEdge, stepListOf, stepIndexOf, changeStep } from "../engines/motion/region-steps.mjs";
 import { outlinePoint, hitOutline, changeVertex, validateOutline, smoothOutline, unionOutlines, subtractOutlines } from "../engines/regions/area-outline.mjs";
 import { sizeOrder, startSize, boxPoints, nearbyClicks, consensus, cutStart, cutFrom, solidCut, spotAt, sliverAt, smallSpots, maskPieces, cleanSelection, nextAreaId, smartProposal, keepToColours, colourCut } from "../engines/regions/smart-select.mjs";
@@ -248,18 +249,19 @@ export function saveLabel(proposals, checkedIds, saving = false) {
 }
 
 // The status line under an area's name: saved or new, whether it will be written, and what it is.
-export function rowMeta({ saved, checked, floor, kind, overWater = false, learned = false }) {
+export function rowMeta({ saved, checked, floor, kind, overWater = false, learned = false, overhead = false }) {
   const state = saved ? (checked ? "Saved · will update" : "Saved") : (checked ? "New" : "New · not saved");
+  if (overhead) return `${state} · Cover`;
   if (floor === NO_FLOOR && !saved) return `${state} · Auto doesn't know this floor yet: pick one`;
   return [state, floorName(floor), floor === "water" ? labelOf(WATER_KINDS, kind) : "", overWater && canStandOverWater(floor) ? "over water" : "", learned && !saved ? LEARNED_NOTE : ""].filter(Boolean).join(" · ");
 }
 
 export function areaRowHTML(proposal, options = {}) {
-  const { checked: ticked = proposal.preselected, waterKind = "still", flowTo = "", current = "", waveTo = "", seaBeach = "", texture = "", sceneTexture = "", pattern = "", edge = "", overWater = false, step = "", stepsOwn = null, floor: chosen } = { ...proposal.savedChoices, ...options };
+  const { checked: ticked = proposal.preselected, waterKind = "still", flowTo = "", current = "", waveTo = "", seaBeach = "", texture = "", sceneTexture = "", pattern = "", edge = "", overWater = false, step = "", stepsOwn = null, floor: chosen, overhead = false } = { ...proposal.savedChoices, ...options };
   const saved = !!proposal.regionId;
   // No floor yet (Auto didn't know it): the row asks for one, unticked; its fields are a water area's until then, hidden.
-  const unknown = !saved && !isAreaFloor(chosen) && (chosen === NO_FLOOR || (chosen === undefined && proposal.floor === NO_FLOOR));
-  const floor = isAreaFloor(chosen) ? chosen : isAreaFloor(proposal.floor) ? proposal.floor : "water", water = floor === "water" && !unknown;
+  const unknown = !overhead && !saved && !isAreaFloor(chosen) && (chosen === NO_FLOOR || (chosen === undefined && proposal.floor === NO_FLOOR));
+  const floor = isAreaFloor(chosen) ? chosen : isAreaFloor(proposal.floor) ? proposal.floor : "water", water = !overhead && floor === "water" && !unknown;
   const checked = ticked && !unknown;
   const id = esc(proposal.id);
   const num = esc(String(proposal.id).replace("area-", ""));
@@ -269,9 +271,9 @@ export function areaRowHTML(proposal, options = {}) {
   const flows = waterFlows(kind);
   const flow = flowDefault(kind, flowTo);
   const cur = currentDefault(kind, current);
-  const shade = unknown ? NO_FLOOR_COLOUR : options.shade ?? floorColour(floor);
-  const shown = unknown ? NO_FLOOR : floor;
-  const warning = proposal.clicked && proposal.share > WATER_TUNING.clickWarnShare
+  const shade = unknown ? NO_FLOOR_COLOUR : options.shade ?? (overhead ? NO_FLOOR_COLOUR : floorColour(floor));
+  const shown = overhead || unknown ? NO_FLOOR : floor;
+  const warning = !overhead && proposal.clicked && proposal.share > WATER_TUNING.clickWarnShare
     ? `<p class="an-floors-warn">${percent(proposal.share)} of the map. Is this all ${esc(floorName(floor).toLowerCase())}?</p>` : "";
   const over = overWater === true && canStandOverWater(floor);
   const steps = stepOptions(floor, stepsOwn), stepNow = steps.some(([key]) => key === String(step)) ? String(step) : stepStart(floor, stepsOwn);
@@ -279,17 +281,17 @@ export function areaRowHTML(proposal, options = {}) {
   // The line: tick (save it or not), the number from the map, the name with its status, the size. Everything else is in
   // the inspector, which shows only for the selected area. The water fields show only on a water area.
   const learned = !saved && proposal.learned === true;
-  return `<div class="an-floors-row" data-id="${id}" data-scene-texture="${esc(sceneTexture)}"${learned ? ` data-learned title="Floor and look learned from the regions you saved that look like this one"` : ""}${unknown ? " data-needs-floor" : ""}>
+  return `<div class="an-floors-row" data-id="${id}" data-scene-texture="${esc(sceneTexture)}"${learned ? ` data-learned title="Floor and look learned from the regions you saved that look like this one"` : ""}${unknown ? " data-needs-floor" : ""}${overhead ? " data-overhead" : ""}>
   <label class="an-floors-pick" title="${saved ? `Tick to save changes to ${name}` : `Tick to create ${name} as a region`}"><input type="checkbox" data-pick="${id}"${checked ? " checked" : ""} aria-label="Include ${name} in save"></label>
   ${badge}
-  <span class="an-row-name"><strong>${saved ? name : nameOfFloor(shown)}</strong><span data-row-meta><i class="an-dot${saved ? " is-saved" : ""}"></i>${esc(rowMeta({ saved, checked, floor: shown, kind, overWater: over, learned }))}</span></span>
+  <span class="an-row-name"><strong>${saved ? name : (overhead ? "Cover" : nameOfFloor(shown))}</strong><span data-row-meta><i class="an-dot${saved ? " is-saved" : ""}"></i>${esc(rowMeta({ saved, checked, floor: shown, kind, overWater: over, learned, overhead }))}</span></span>
   <span class="an-floors-share" title="${proposal.vertices} vertices">${percent(proposal.share)}</span>
   <div class="an-inspector" data-inspector>
-    <div class="an-insp-head">${badge}<div><strong>${saved ? name : `${nameOfFloor(shown)} · area ${num}`}</strong><span>${saved ? "Saved region" : "New area"} · ${percent(proposal.share)} of the map</span></div></div>
+    <div class="an-insp-head">${badge}<div><strong>${saved ? name : (overhead ? `Cover · area ${num}` : `${nameOfFloor(shown)} · area ${num}`)}</strong><span>${saved ? "Saved region" : "New area"} · ${percent(proposal.share)} of ${overhead ? "this picture" : "the map"}</span></div></div>
     ${warning}<div class="an-insp-fields">
-      <label>Floor ${optionsHTML(unknown ? [[NO_FLOOR, `${NO_FLOOR_NAME}…`], ...FLOOR_OPTIONS] : FLOOR_OPTIONS, `data-floor="${id}"`, shown)}</label>
-      <label data-step-field title="${STEP_TIP}"${steps.length && !unknown ? "" : " hidden"}>Step <select data-step="${id}" data-floor-of="${esc(floor)}"${stepsOwn ? ` data-steps-own="${esc(JSON.stringify(stepsOwn))}"` : ""}>${steps.map(([key, label]) => `<option value="${key}"${key === stepNow ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
-      <label class="an-insp-check" data-over-water-field title="${OVER_WATER_TIP}"${canStandOverWater(shown) ? "" : " hidden"}><input type="checkbox" data-over-water="${id}"${over ? " checked" : ""}> Over water</label>
+      <label${overhead ? " hidden" : ""}>Floor ${optionsHTML(unknown ? [[NO_FLOOR, `${NO_FLOOR_NAME}…`], ...FLOOR_OPTIONS] : FLOOR_OPTIONS, `data-floor="${id}"`, shown)}</label>
+      <label data-step-field title="${STEP_TIP}"${steps.length && !unknown && !overhead ? "" : " hidden"}>Step <select data-step="${id}" data-floor-of="${esc(floor)}"${stepsOwn ? ` data-steps-own="${esc(JSON.stringify(stepsOwn))}"` : ""}>${steps.map(([key, label]) => `<option value="${key}"${key === stepNow ? " selected" : ""}>${esc(label)}</option>`).join("")}</select></label>
+      <label class="an-insp-check" data-over-water-field title="${OVER_WATER_TIP}"${!overhead && canStandOverWater(shown) ? "" : " hidden"}><input type="checkbox" data-over-water="${id}"${over ? " checked" : ""}> Over water</label>
       <div class="an-water-fields" data-water-fields${water ? "" : " hidden"}>
         <label data-water-field>Kind ${optionsHTML(WATER_KINDS, `data-kind="${id}"`, kind)}</label>
         <label data-flow-field${flows ? "" : " hidden"}>Flows ${optionsHTML(FLOW_OPTIONS, `data-flow="${id}"`, flow || "s")}</label>
@@ -297,8 +299,8 @@ export function areaRowHTML(proposal, options = {}) {
         <label data-sea-field${kind === "sea" ? "" : " hidden"}>Waves toward ${optionsHTML(WAVE_OPTIONS, `data-wave="${id}"`, waveTo)}</label>
         <label data-sea-field class="an-water-beach"${kind === "sea" ? "" : " hidden"}><input type="checkbox" data-beach="${id}"${seaBeach === "off" ? "" : " checked"}> Beach along the shore</label>
       </div>
-      <label class="an-insp-wide" title="Whether this region paints its floor's texture over the map. Don't paint suits a map that is already painted.">Floor texture ${optionsHTML(textureOptions(sceneTexture), `data-texture="${id}"`, textureOf(texture))}</label>
-      <div class="an-texture-fields" data-texture-fields${paintsTexture(floor, textureOf(texture), sceneTexture) ? "" : " hidden"}>
+      <label class="an-insp-wide" title="Whether this region paints its floor's texture over the map. Don't paint suits a map that is already painted."${overhead ? " hidden" : ""}>Floor texture ${optionsHTML(textureOptions(sceneTexture), `data-texture="${id}"`, textureOf(texture))}</label>
+      <div class="an-texture-fields" data-texture-fields${!overhead && paintsTexture(floor, textureOf(texture), sceneTexture) ? "" : " hidden"}>
         <label title="The floor's pattern, as the map preview shows it">Pattern ${optionsHTML(patternOptions(floor), `data-pattern="${id}"`, patternOf(floor, pattern))}</label>
         <label title="How far the texture fades out past the region's line, in squares. 0 is a hard edge.">Soft edge <span class="an-range"><input type="range" min="0" max="${STEP_EDGE.max}" step="0.1" value="${soft}" data-edge="${id}"><output data-edge-value>${soft ? soft.toFixed(1) : "Hard"}</output></span></label>
       </div>
@@ -327,18 +329,19 @@ export function areaListHTML(proposals, optionsFor, floorOf) {
 export const markTip = (learned) => learned > 0
   ? `Mark the areas on this map that look like the ${learned} region${learned === 1 ? "" : "s"} you saved, of any floor. Untick or remove a wrong one before saving and it won't be marked again.`
   : "Nothing learned yet: save some floor regions (here or on another scene) and this marks the areas that look like them. It also runs by itself when the window opens.";
-export function floorWindowHTML({ proposals, width, height, reason = "", picked = [], shared = {}, sceneTexture = "", learned = 0 }) {
+export function floorWindowHTML({ proposals, width, height, reason = "", picked = [], shared = {}, sceneTexture = "", learned = 0, pictures = [], pictureKey = "", overhead = false }) {
   const rows = [...proposals].sort((a, b) => b.share - a.share || String(a.id).localeCompare(String(b.id)));
   const choices = new Map(picked.map((choice) => [choice.id, choice]));
   const selected = rows.filter((proposal) => choices.get(proposal.id)?.checked ?? proposal.preselected).length;
   const prefs = readPrefs();
   const addFloor = pickable(shared.addFloor) ? shared.addFloor : pickable(prefs.addFloor) ? prefs.addFloor : AUTO_FLOOR;
   const selection = shared.selection ?? (prefs.selection === "smart" ? "smart" : "colour");
-  const floorOf = (p) => { const f = choices.get(p.id)?.floor ?? p.savedChoices?.floor ?? p.floor; return isAreaFloor(f) ? f : "water"; };
+  const floorOf = (p) => { if (overhead) return NO_FLOOR; const f = choices.get(p.id)?.floor ?? p.savedChoices?.floor ?? p.floor; if (f === NO_FLOOR) return NO_FLOOR; return isAreaFloor(f) ? f : "water"; };
   const anyWater = rows.some((p) => floorOf(p) === "water" && (choices.get(p.id)?.checked ?? p.preselected));
   const radio = (name, value, attr, on, body, title = "") => `<label class="an-chip"${title ? ` title="${esc(title)}"` : ""}><input type="radio" name="${name}" value="${value}" ${attr}${on ? " checked" : ""}>${body}</label>`;
-  const optionsFor = (proposal) => ({ sceneTexture, ...(proposal.regionId ? {} : { texture: textureOf(shared.texture) }), ...choices.get(proposal.id) });
+  const optionsFor = (proposal) => ({ sceneTexture, overhead, ...(proposal.regionId ? {} : { texture: textureOf(shared.texture) }), ...choices.get(proposal.id) });
   const ticked = new Set(rows.filter((p) => choices.get(p.id)?.checked ?? p.preselected).map((p) => p.id));
+  const pictureSelect = pictures.length ? `<label class="an-picture">Picture <select data-plane>${pictures.map((picture) => `<option value="${esc(picture.key)}"${picture.key === pictureKey ? " selected" : ""}>${esc(picture.label)}</option>`).join("")}</select></label>` : "";
   return `<div class="an-floors">
   <div class="an-floors-workspace">
     <section class="an-floors-map" aria-label="Map preview">
@@ -348,7 +351,7 @@ export function floorWindowHTML({ proposals, width, height, reason = "", picked 
           ${radio("an-select-mode", "colour", "data-select-mode-option", selection !== "smart", `<i class="fa-solid fa-eye-dropper"></i><span>Colour</span>`, "Follows the clicked colour. Fast, no download. Best on water.")}
         </div>
         <span class="an-tool-divider"></span>
-        <div class="an-floor-picker" data-floor-picker>
+        <div class="an-floor-picker" data-floor-picker${overhead ? " hidden" : ""}>
           <span class="an-tool-label">Floor</span>
           <button type="button" class="an-floor-current" data-floor-toggle aria-haspopup="true" aria-expanded="false" title="The floor your next click adds"><i class="an-floor-swatch" data-floor-current-swatch style="--swatch:${pickColour(addFloor)}"></i><span data-floor-current-name>${esc(pickName(addFloor))}</span><i class="fa-solid fa-chevron-down an-chev"></i></button>
           <div class="an-floor-pop an-floor-bar" role="radiogroup" aria-label="Floor to add" data-floor-pop hidden>${radio("an-add-floor", AUTO_FLOOR, "data-add-floor-option", addFloor === AUTO_FLOOR, `<i class="an-floor-swatch" style="--swatch:${AUTO_SWATCH}"></i><span>Auto</span>`, AUTO_TIP)}${FLOOR_OPTIONS.map(([floor, name]) => radio("an-add-floor", floor, "data-add-floor-option", floor === addFloor, `<i class="an-floor-swatch" style="--swatch:${floorColour(floor)}"></i><span>${name}</span>`, `Add ${name.toLowerCase()}`)).join("")}</div>
@@ -356,7 +359,7 @@ export function floorWindowHTML({ proposals, width, height, reason = "", picked 
         <label class="an-keep-colours" data-smart-only${selection === "smart" ? "" : " hidden"} title="${esc(KEEP_COLOURS_TIP)}"><input type="checkbox" data-keep-colours${prefs.keepColours === false ? "" : " checked"}> Same colours</label>
         <label class="an-colour-range" data-colour-only${selection === "smart" ? " hidden" : ""} title="Wide can join touching grass, banks or other similar colours"><span class="an-tool-label">Range</span> ${optionsHTML([["narrow", "Narrow"], ["wide", "Wide"]], "data-click-range", shared.range ?? "narrow")}</label>
         <span class="an-tool-divider"></span>
-        <button type="button" class="an-mark-button" data-auto-mark title="${esc(markTip(learned))}" aria-disabled="${learned > 0 ? "false" : "true"}"><i class="fa-solid fa-layer-group" inert></i><span>Mark areas</span></button>
+        <button type="button" class="an-mark-button" data-auto-mark title="${esc(markTip(learned))}" aria-disabled="${learned > 0 ? "false" : "true"}"${overhead ? " hidden" : ""}><i class="fa-solid fa-layer-group" inert></i><span>Mark areas</span></button>
         <button type="button" class="an-icon-button" data-undo-toolbar title="Undo the last change (Ctrl+Z)" aria-label="Undo" disabled><i class="fa-solid fa-rotate-left" inert></i></button>
         <span class="an-tool-grow"></span>
         <div class="an-floors-zoom" title="Or scroll over the map to zoom. Drag or middle-drag to pan.">
@@ -376,7 +379,7 @@ export function floorWindowHTML({ proposals, width, height, reason = "", picked 
       </div>
     </section>
     <section class="an-floors-review" aria-label="Areas">
-      <div class="an-floors-toolbar an-panel-head"><h3>Areas</h3><span class="an-count" data-area-total>${rows.length}</span><span class="an-tool-grow"></span><span data-area-count>${rows.length} found · ${selected} selected</span></div>
+      <div class="an-floors-toolbar an-panel-head"><h3>Areas</h3>${pictureSelect}<span class="an-count" data-area-total>${rows.length}</span><span class="an-tool-grow"></span><span data-area-count>${rows.length} found · ${selected} selected</span></div>
       <details class="an-water-all" data-shared-water${anyWater ? "" : " hidden"}><summary>Water settings for ticked water areas</summary><div class="an-water-shared-fields">
         <label>Kind ${optionsHTML(WATER_KINDS, 'data-all-kind=""', shared.waterKind ?? "still")}</label>
         <label data-shared-flow>Flows ${optionsHTML(FLOW_OPTIONS, 'data-all-flow=""', shared.flowTo || "s")}</label>
@@ -394,7 +397,7 @@ export function floorWindowHTML({ proposals, width, height, reason = "", picked 
   </div>
   <footer class="an-floors-foot">
     <button type="button" class="an-ghost" data-tidy-all title="Drop the small separate pieces of every area at once. Ctrl+Z brings them back."${rows.length ? "" : " disabled"}><i class="fa-solid fa-broom" inert></i> Remove all small spots</button>
-    <label class="an-foot-texture" title="Whether the ticked regions paint their floor's texture over the map, and what new areas start with. Don't paint suits a map that is already painted; each area can differ in its settings."><span class="an-tool-label">Floor texture</span> ${optionsHTML(textureOptions(sceneTexture), 'data-all-texture=""', textureOf(shared.texture))}</label>
+    <label class="an-foot-texture" title="Whether the ticked regions paint their floor's texture over the map, and what new areas start with. Don't paint suits a map that is already painted; each area can differ in its settings."${overhead ? " hidden" : ""}><span class="an-tool-label">Floor texture</span> ${optionsHTML(textureOptions(sceneTexture), 'data-all-texture=""', textureOf(shared.texture))}</label>
     <span class="an-tool-grow"></span>
     <button type="button" class="an-secondary" data-combine-ticked title="Merge the ticked areas into one region, keeping the largest area's floor and settings"${selected < 2 ? " disabled" : ""}>Combine ticked</button>
     <button type="button" class="an-primary" data-create${selected ? "" : " disabled"}>${saveLabel(proposals, ticked)}</button>
@@ -427,7 +430,7 @@ export function choicesFromElement(root) {
     rows.push({
       id: row.dataset.id,
       checked: row.querySelector("[data-pick]")?.checked === true,
-      floor: floor === NO_FLOOR && row.hasAttribute?.("data-needs-floor") !== true ? "water" : floor, // no floor only on a row asking for one
+      floor: row.hasAttribute?.("data-overhead") === true ? NO_FLOOR : floor === NO_FLOOR && row.hasAttribute?.("data-needs-floor") !== true ? "water" : floor,
       waterKind: row.querySelector("[data-kind]")?.value ?? row.dataset.kind ?? "still",
       flowTo: row.querySelector("[data-flow]")?.value ?? "",
       current: row.querySelector("[data-current]")?.value ?? "",
@@ -443,17 +446,180 @@ export function choicesFromElement(root) {
   return readAreaChoices(rows);
 }
 
-export function savedAreaProposals(regions, { levelId, sceneRect, width, height }) {
+function tileDocument(tile) {
+  if (!tile || typeof tile !== "object") return null;
+  return {
+    id: tile.id ?? tile._id,
+    name: typeof tile.name === "string" ? tile.name : "",
+    hidden: tile.hidden === true,
+    levels: levelList(tile.levels),
+    x: tile.x,
+    y: tile.y,
+    width: tile.width,
+    height: tile.height,
+    rotation: tile.rotation,
+    elevation: tile.elevation,
+    texture: { src: tile.texture?.src ?? "", scaleX: tile.texture?.scaleX, scaleY: tile.texture?.scaleY, fit: tile.texture?.fit },
+    restrictions: { light: tile.restrictions?.light === true, weather: tile.restrictions?.weather === true },
+  };
+}
+
+export function floorPictures({ levelId, sceneRect, backgroundSrc, tiles = [], regions = [] } = {}) {
+  const docs = [];
+  for (const tile of tiles) {
+    const doc = tileDocument(tile);
+    if (doc) docs.push(doc);
+  }
+  const shown = docs.filter((tile) => tile.hidden !== true);
+  const hidden = docs.filter((tile) => tile.hidden === true);
+  const planes = planesFrom({ levelId, sceneRect, backgroundSrc, tiles: shown });
+  for (const plane of planesFrom({ levelId, sceneRect, backgroundSrc: "", tiles: hidden, allowHidden: true })) {
+    if (plane.id.kind === "tile") planes.push(plane);
+  }
+  const pictures = planes.map((plane) => {
+    const doc = plane.id.kind === "tile" ? docs.find((tile) => String(tile.id) === plane.id.tileId) : null;
+    const file = String(plane.src).split("/").pop();
+    return {
+      key: plane.id.kind === "map" ? `map:${plane.id.levelId}` : `tile:${plane.id.tileId}`,
+      label: plane.id.kind === "map" ? "Map" : (doc?.name || file || plane.id.tileId),
+      plane,
+    };
+  });
+  const seen = new Set(pictures.filter((picture) => picture.plane.id.kind === "tile").map((picture) => picture.plane.id.tileId));
+  const list = Array.isArray(regions) ? regions : regions?.contents ?? [];
+  for (const region of list) {
+    const source = region?.flags?.animater?.imageRegion?.source;
+    if (source?.kind !== "tile" || seen.has(source.tileId)) continue;
+    seen.add(source.tileId);
+    const turned = docs.find((tile) => String(tile.id) === source.tileId);
+    pictures.push({
+      key: `tile:${source.tileId}`,
+      label: turned ? `${turned.name || "Tile"} (rotated or scaled)` : "Missing tile",
+      plane: {
+        id: { kind: "tile", tileId: source.tileId },
+        src: "",
+        frame: { x: 0, y: 0, width: 1, height: 1 },
+        role: region?.flags?.animater?.floor ? "floor" : "overhead",
+        elevation: null,
+        blocksLight: false,
+        blocksWeather: false,
+        missing: true,
+      },
+    });
+  }
+  return pictures;
+}
+
+export function traceSolid(rgba, width, height) {
+  const mask = solidMask(rgba, width, height);
+  const proposals = traceProposals(mask, width, height);
+  let solid = 0;
+  for (let i = 0; i < mask.length; i++) solid += mask[i];
+  if (!solid) return proposals;
+  return proposals.map((proposal) => ({ ...proposal, share: proposal.pixels.length / solid }));
+}
+
+function tracedOn(plane, loaded, detect) {
+  if (plane.id.kind === "tile") {
+    const traced = traceSolid(loaded.rgba, loaded.width, loaded.height);
+    // A hull is not water. The GM picks the floor; an unticked row cannot be saved as Water.
+    const proposals = plane.role === "overhead" ? traced : traced.map((proposal) => ({ ...proposal, floor: NO_FLOOR, preselected: false }));
+    return { proposals, reason: "" };
+  }
+  const result = detect(loaded.rgba, loaded.width, loaded.height) ?? {};
+  return { proposals: result.proposals ?? [], reason: result.reason ?? "" };
+}
+
+function assembleProposals(saved, fresh, width, height) {
+  const next = saved.length
+    ? fresh.map((proposal) => mergeAreaProposals([proposal], width, height, { claimed: saved, dropSmallComponents: true }))
+      .filter((proposal) => proposal.share >= WATER_TUNING.componentMinShare)
+      .map((proposal, i) => ({ ...proposal, id: `area-${saved.length + i + 1}`, preselected: false }))
+    : fresh ?? [];
+  return [...saved, ...next];
+}
+
+function pictureState(plane, loaded, base, detect) {
+  const traced = tracedOn(plane, loaded, detect);
+  const saved = savedAreaProposals(base.scene?.regions, { levelId: base.levelId, sceneRect: base.sceneRect, width: loaded.width, height: loaded.height, plane });
+  return {
+    proposals: assembleProposals(saved, traced.proposals, loaded.width, loaded.height),
+    reason: traced.reason,
+    rgba: loaded.rgba,
+    width: loaded.width,
+    height: loaded.height,
+    scene: base.scene,
+    sceneRect: base.sceneRect,
+    levelId: base.levelId,
+    grid: base.grid,
+  };
+}
+
+function onLevel(region, levelId) {
+  const levels = Array.from(region?.levels ?? []);
+  return levels.length === 1 && levels[0] === levelId;
+}
+
+function onPicture(region, plane, levelId, editable) {
+  const source = region?.flags?.animater?.imageRegion?.source;
+  const levels = Array.from(region?.levels ?? []);
+  if (source?.kind === "tile") return plane?.id?.kind === "tile" && source.tileId === plane.id.tileId && (onLevel(region, levelId) || !levels.length);
+  if (plane?.id?.kind === "tile") return false;
+  if (source?.kind === "map") return source.levelId === (plane?.id?.levelId ?? levelId) && onLevel(region, levelId);
+  return editable.has(region.id);
+}
+
+function loopsFromBinding(binding, width, height) {
+  const loops = [];
+  for (const loop of binding?.loops ?? []) {
+    const src = loop.points ?? [];
+    const points = [];
+    for (let i = 0; i + 1 < src.length; i += 2) points.push(src[i] * width, src[i + 1] * height);
+    if (points.length >= 6) loops.push({ hole: loop.hole === true, points });
+  }
+  return loops;
+}
+
+function projectedShapes(plane, proposal, imageWidth, imageHeight) {
+  const shapes = [];
+  for (const loop of proposal?.loops ?? []) {
+    const src = loop.points ?? [];
+    const points = [];
+    for (let i = 0; i + 1 < src.length; i += 2) {
+      const at = project(plane.frame, src[i] / imageWidth, src[i + 1] / imageHeight);
+      points.push(at.x, at.y);
+    }
+    if (points.length >= 6 && points.length % 2 === 0) shapes.push({ type: "polygon", points, hole: loop.hole === true });
+  }
+  return shapes;
+}
+
+function coverDocument(proposal, plane, { imageWidth, imageHeight, levelId }) {
+  const image = { width: imageWidth, height: imageHeight };
+  return {
+    name: "Overhead",
+    color: NO_FLOOR_COLOUR,
+    shapes: projectedShapes(plane, proposal, imageWidth, imageHeight),
+    levels: levelId ? [levelId] : [],
+    flags: { animater: { generated: GENERATED_MARK, imageRegion: bindingFromProposal(plane, proposal, image) } },
+  };
+}
+
+export function savedAreaProposals(regions, { levelId, sceneRect, width, height, plane = null } = {}) {
   const editable = new Set(editableFloorRegionIds(regions, levelId));
   const list = Array.isArray(regions) ? regions : regions?.contents ?? [];
-  return list.filter((region) => editable.has(region.id)).map((region, index) => {
+  const overhead = plane?.role === "overhead";
+  return list.filter((region) => onPicture(region, plane, levelId, editable)).map((region, index) => {
+    const binding = region.flags?.animater?.imageRegion;
     const loops = [];
     const add = (points, hole) => loops.push({ hole, points: Array.from(points, (value, i) => {
       const limit = i % 2 ? height : width;
       const at = (value - (i % 2 ? sceneRect.y : sceneRect.x)) * limit / (i % 2 ? sceneRect.height : sceneRect.width);
       return Math.abs(at) < 1e-8 ? 0 : Math.abs(at - limit) < 1e-8 ? limit : at;
     }) });
-    if (region.polygonTree?.children) {
+    if (plane?.id?.kind === "tile" && binding?.loops?.length) {
+      loops.push(...loopsFromBinding(binding, width, height));
+    } else if (region.polygonTree?.children) {
       const visit = (node) => { for (const child of node.children ?? []) { add(child.points, child.isHole); visit(child); } };
       visit(region.polygonTree);
     } else {
@@ -464,29 +630,50 @@ export function savedAreaProposals(regions, { levelId, sceneRect, width, height 
     }
     const own = region.flags?.animater ?? {};
     const kind = waterKindOf(own);
-    const floor = isAreaFloor(own.floor) ? own.floor : "water";
-    const savedChoices = { floor, generated: own.generated, waterKind: kind, flowTo: flowDefault(kind, own.flowTo), current: currentDefault(kind, own.current), waveTo: own.waveTo ?? "", seaBeach: own.seaBeach === "off" ? "off" : "", texture: textureOf(own.texture), pattern: patternOf(floor, own.textureStyles?.[floor]), edge: String(own.stepEdgeOff === true ? 0 : stepEdge(own)), overWater: own.overWater === true, stepsOwn: own.steps ? { steps: own.steps, stepsFloor: own.stepsFloor, step: own.step, stepsEdited: own.stepsEdited } : null };
+    const floor = overhead ? NO_FLOOR : (isAreaFloor(own.floor) ? own.floor : "water");
+    const savedChoices = { floor, overhead, generated: own.generated, waterKind: kind, flowTo: flowDefault(kind, own.flowTo), current: currentDefault(kind, own.current), waveTo: own.waveTo ?? "", seaBeach: own.seaBeach === "off" ? "off" : "", texture: textureOf(own.texture), pattern: patternOf(floor, own.textureStyles?.[floor]), edge: String(own.stepEdgeOff === true ? 0 : stepEdge(own)), overWater: own.overWater === true, stepsOwn: own.steps ? { steps: own.steps, stepsFloor: own.stepsFloor, step: own.step, stepsEdited: own.stepsEdited } : null };
     savedChoices.step = stepStart(floor, savedChoices.stepsOwn);
-    return { ...areaProposalFromLoops(loops, width, height), id: `area-${index + 1}`, regionId: region.id, name: region.name ?? floorName(floor), floor, savedChoices, preselected: false };
+    return { ...areaProposalFromLoops(loops, width, height), id: `area-${index + 1}`, regionId: region.id, name: region.name ?? (overhead ? "Cover" : floorName(floor)), floor, overhead, savedChoices, preselected: false };
   }).filter((proposal) => proposal.loops.length).map((proposal, i) => ({ ...proposal, id: `area-${i + 1}` }));
 }
 
-export function planFloorCreate({ proposals, picked, sceneRect, imageWidth, imageHeight, levelId, regions }) {
+export function planFloorCreate({ proposals, picked, sceneRect, imageWidth, imageHeight, levelId, regions, plane = null }) {
   const byId = new Map((proposals ?? []).map((proposal) => [proposal.id, proposal]));
   const editable = new Set(editableFloorRegionIds(regions, levelId));
+  const overhead = plane?.role === "overhead";
+  const bound = plane?.id?.kind === "tile" && !overhead;
   const creates = [], updates = [], sources = []; // sources: the area each create comes from
   for (const pickedRow of [...(picked ?? [])].sort((a, b) => (byId.get(b.id)?.share ?? 0) - (byId.get(a.id)?.share ?? 0))) {
     const row = { ...pickedRow, flowTo: flowDefault(pickedRow.waterKind, pickedRow.flowTo), current: currentDefault(pickedRow.waterKind, pickedRow.current) };
     if (!row.checked) continue;
     const proposal = byId.get(row.id);
     if (!proposal) continue;
+    if (overhead) {
+      const data = coverDocument(proposal, plane, { imageWidth, imageHeight, levelId });
+      if (!proposal.regionId) { creates.push(data); sources.push(proposal.id); continue; }
+      if (!editable.has(proposal.regionId)) throw new Error("The saved region is no longer editable on this level. Reopen the generator.");
+      const patch = { _id: proposal.regionId };
+      if (proposal.geometryChanged) {
+        patch.shapes = data.shapes;
+        patch["flags.animater.imageRegion"] = data.flags.animater.imageRegion;
+      }
+      if (Object.keys(patch).length > 1) updates.push(patch);
+      continue;
+    }
     const data = toRegionData(proposal, { sceneRect, imageWidth, imageHeight, levelId, floor: row.floor,
       waterKind: row.waterKind, flowTo: row.flowTo, current: row.current, waveTo: row.waveTo, seaBeach: row.seaBeach, texture: row.texture,
       pattern: row.pattern ? patternOf(row.floor, row.pattern) : "", edge: row.edge, overWater: row.overWater === true, steps: proposal.regionId ? null : stepPatch(row.floor, row.step) });
+    if (bound) {
+      data.shapes = projectedShapes(plane, proposal, imageWidth, imageHeight);
+      data.flags.animater.imageRegion = bindingFromProposal(plane, proposal, { width: imageWidth, height: imageHeight });
+    }
     if (!proposal.regionId) { creates.push(data); sources.push(proposal.id); continue; }
     if (!editable.has(proposal.regionId)) throw new Error("The saved region is no longer editable on this level. Reopen the generator.");
     const patch = { _id: proposal.regionId };
-    if (proposal.geometryChanged) patch.shapes = data.shapes;
+    if (proposal.geometryChanged) {
+      patch.shapes = data.shapes;
+      if (bound) patch["flags.animater.imageRegion"] = data.flags.animater.imageRegion;
+    }
     const before = proposal.savedChoices;
     const own = data.flags.animater;
     const wasFloor = before.floor ?? "water";
@@ -519,8 +706,13 @@ export function planFloorCreate({ proposals, picked, sceneRect, imageWidth, imag
   // Named by floor: "Water", or "Grass 1", "Grass 2" when one save makes several of the same floor.
   // Numbers carry on after the regions already on the scene, so a second save never makes another "Grass 1".
   const perFloor = new Map(), taken = new Map();
-  for (const data of creates) perFloor.set(data.flags.animater.floor, (perFloor.get(data.flags.animater.floor) ?? 0) + 1);
-  for (const region of Array.isArray(regions) ? regions : regions?.contents ?? []) {
+  for (const data of creates) {
+    const floor = data.flags.animater.floor;
+    if (!floor) continue;
+    perFloor.set(floor, (perFloor.get(floor) ?? 0) + 1);
+  }
+  const regionList = Array.isArray(regions) ? regions : regions?.contents ?? [];
+  for (const region of regionList) {
     for (const floor of perFloor.keys()) {
       const base = floorName(floor), m = String(region.name ?? "").match(new RegExp(`^${base} ?(\\d*)$`));
       if (m) taken.set(floor, Math.max(taken.get(floor) ?? 0, Number(m[1]) || 1));
@@ -528,9 +720,24 @@ export function planFloorCreate({ proposals, picked, sceneRect, imageWidth, imag
   }
   const seen = new Map();
   for (const data of creates) {
-    const floor = data.flags.animater.floor, n = (seen.get(floor) ?? taken.get(floor) ?? 0) + 1;
+    const floor = data.flags.animater.floor;
+    if (!floor) continue;
+    const n = (seen.get(floor) ?? taken.get(floor) ?? 0) + 1;
     seen.set(floor, n);
     data.name = perFloor.get(floor) === 1 && !taken.has(floor) ? floorName(floor) : `${floorName(floor)} ${n}`;
+  }
+  const covers = creates.filter((data) => !data.flags.animater.floor);
+  if (covers.length) {
+    let used = 0;
+    for (const region of regionList) {
+      if (region?.flags?.animater?.floor || !region?.flags?.animater?.imageRegion) continue;
+      const m = String(region.name ?? "").match(/^Overhead ?(\d*)$/);
+      used = Math.max(used + 1, m ? Number(m[1]) || 1 : 0);
+    }
+    for (let i = 0; i < covers.length; i++) {
+      const n = used + i + 1;
+      covers[i].name = covers.length === 1 && used === 0 ? "Overhead" : `Overhead ${n}`;
+    }
   }
   return { creates, updates, sources };
 }
@@ -783,10 +990,11 @@ function updateRowMeta(row) {
   const meta = row?.querySelector?.("[data-row-meta]");
   if (!meta) return;
   const saved = !!meta.querySelector(".an-dot.is-saved"), floor = row.querySelector("[data-floor]")?.value ?? "water";
-  meta.lastChild.textContent = rowMeta({ saved, checked: row.querySelector("[data-pick]")?.checked === true, floor, kind: row.querySelector("[data-kind]")?.value, overWater: row.querySelector("[data-over-water]")?.checked === true, learned: row.hasAttribute?.("data-learned") === true });
-  for (const badge of row.querySelectorAll(".an-area-num")) badge.style.setProperty("--swatch", shadeOfFloor(floor));
+  const overhead = row.hasAttribute?.("data-overhead") === true;
+  meta.lastChild.textContent = rowMeta({ saved, checked: row.querySelector("[data-pick]")?.checked === true, floor, kind: row.querySelector("[data-kind]")?.value, overWater: row.querySelector("[data-over-water]")?.checked === true, learned: row.hasAttribute?.("data-learned") === true, overhead });
+  for (const badge of row.querySelectorAll(".an-area-num")) badge.style.setProperty("--swatch", shadeOfFloor(overhead ? NO_FLOOR : floor));
   const name = row.querySelector(".an-row-name strong");
-  if (name && !saved) name.textContent = nameOfFloor(floor);
+  if (name && !saved && !overhead) name.textContent = nameOfFloor(floor);
 }
 
 // `detect` is what the window works on: the pixels, the rows so far, and the scene and level as they were at open.
@@ -803,14 +1011,18 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
 
     async _renderHTML() {
       const { proposals, width, height, reason } = this.detect;
-      return floorWindowHTML({ proposals, width, height, reason: proposals.length ? "" : reason, sceneTexture: this.sceneTexture(), learned: this.learnedCount() });
+      return floorWindowHTML({ proposals, width, height, reason: proposals.length ? "" : reason, sceneTexture: this.sceneTexture(), learned: this.learnedCount(), ...this.pictureHTML() });
     }
 
     sceneTexture() { return this.detect?.scene?.flags?.animater?.floorTextures ?? ""; }
 
+    pictureHTML() {
+      return { pictures: this.pictures ?? [], pictureKey: this.planeKey ?? "", overhead: this.plane?.role === "overhead" };
+    }
+
     _replaceHTML(html, content) {
       const before = choicesFromElement(content);
-      content.innerHTML = before.length ? floorWindowHTML({ ...this.detect, reason: this.detect.proposals.length ? "" : this.detect.reason, picked: before, learned: this.learnedCount(), shared: sharedChoices(content), sceneTexture: this.sceneTexture() }) : html;
+      content.innerHTML = before.length ? floorWindowHTML({ ...this.detect, reason: this.detect.proposals.length ? "" : this.detect.reason, picked: before, learned: this.learnedCount(), shared: sharedChoices(content), sceneTexture: this.sceneTexture(), ...this.pictureHTML() }) : html;
       this.paint();
       this.updateSummary();
       this.zoomMap(this.zoom ?? 1);
@@ -997,8 +1209,9 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       const byId = new Map(choices.map((choice) => [choice.id, choice]));
       const texture = sharedChoices(this.element).texture, sceneTexture = this.sceneTexture();
       const before = new Set(choices.map((c) => c.id)), added = this.detect.proposals.filter((p) => !before.has(p.id));
-      const floorOf = (p) => { const f = byId.get(p.id)?.floor ?? p.savedChoices?.floor ?? p.floor; return isAreaFloor(f) ? f : "water"; };
-      this.element.querySelector(".an-floors-list").innerHTML = areaListHTML(this.detect.proposals, (proposal) => ({ sceneTexture, ...(proposal.regionId ? {} : { texture }), ...byId.get(proposal.id) }), floorOf);
+      const overhead = this.plane?.role === "overhead";
+      const floorOf = (p) => { if (overhead) return NO_FLOOR; const f = byId.get(p.id)?.floor ?? p.savedChoices?.floor ?? p.floor; return isAreaFloor(f) ? f : "water"; };
+      this.element.querySelector(".an-floors-list").innerHTML = areaListHTML(this.detect.proposals, (proposal) => ({ sceneTexture, overhead, ...(proposal.regionId ? {} : { texture }), ...byId.get(proposal.id) }), floorOf);
       if (added.length === 1) this.selectedId = added[0].id;
       this.updateSummary();
       this.paint();
@@ -1284,6 +1497,15 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       this.element.addEventListener("mouseover", (event) => this.setHighlight(event.target.closest?.("[data-id]")?.dataset.id ?? ""));
       this.element.addEventListener("mouseleave", () => this.setHighlight(""));
       this.element.addEventListener("change", (event) => {
+        if (event.target.closest?.("[data-plane]")) {
+          if (this.pictureBusy || this.smartBusy) {
+            const select = this.element.querySelector("[data-plane]");
+            if (select) select.value = this.planeKey;
+            return;
+          }
+          void this.showPicture(event.target.value);
+          return;
+        }
         if (["[data-id]", "[data-all-kind]", "[data-all-flow]", "[data-all-current]", "[data-all-texture]"].some((sel) => event.target.closest?.(sel)) && this.lastChoices) {
           this.history ??= [];
           this.history.push({ proposals: [...this.detect.proposals], choices: this.lastChoices, excluded: { ...(this.excluded ?? {}) }, settings: true });
@@ -1355,8 +1577,16 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       if (this.pageUndo) { globalThis.removeEventListener?.("keydown", this.pageUndo, { capture: true }); this.pageUndo = null; }
       clearTimeout(this.tileTimer); clearTimeout(this.snapTimer); this.snap = null;
       if (openWindow === this) openWindow = null;
-      this.detect?.image?.close?.();
+      const seen = new Set();
+      const closeImage = (detect) => {
+        if (!detect || seen.has(detect)) return;
+        seen.add(detect);
+        detect.image?.close?.();
+      };
+      closeImage(this.detect);
+      for (const draft of this.drafts?.values() ?? []) closeImage(draft.detect);
       this.detect = null;
+      this.drafts = new Map();
       this.history = [];
       return out;
     }
@@ -1479,7 +1709,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       if (proposal.floor === NO_FLOOR) this.smartStatus("Auto doesn't know this floor yet: pick its floor in the list. Saving it teaches Auto for next time.");
       detect.proposals.push(proposal);
       this.element.querySelector(".an-floors-reason")?.remove();
-      this.element.querySelector(".an-floors-list").insertAdjacentHTML("afterbegin", areaRowHTML(proposal, { ...shared, ...look?.look, ...(textureOf(shared.texture) ? { texture: shared.texture } : {}) }));
+      this.element.querySelector(".an-floors-list").insertAdjacentHTML("afterbegin", areaRowHTML(proposal, { ...shared, ...look?.look, ...(textureOf(shared.texture) ? { texture: shared.texture } : {}), overhead: this.plane?.role === "overhead" }));
       this.element.querySelector(".an-floors-list").scrollTop = 0;
       this.paint();
       this.updateSummary();
@@ -1498,6 +1728,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
 
     // Every ticked area teaches the memory its floor and look, keyed by its region so a later save replaces it.
     async learnFrom(picked, plan, createdDocs) {
+      if (this.plane?.role === "overhead") return;
       if (!hooks.memory?.save) return;
       const { detect } = this, sceneId = detect.scene?.id ?? "";
       const byId = new Map(detect.proposals.map((p) => [p.id, p]));
@@ -1568,7 +1799,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
           delete proposal.look;
           detect.proposals.push(proposal);
           this.element.querySelector(".an-floors-reason")?.remove();
-          this.element.querySelector(".an-floors-list")?.insertAdjacentHTML("beforeend", areaRowHTML(proposal, { ...shared, ...area.look, ...(textureOf(shared.texture) ? { texture: shared.texture } : {}) }));
+          this.element.querySelector(".an-floors-list")?.insertAdjacentHTML("beforeend", areaRowHTML(proposal, { ...shared, ...area.look, ...(textureOf(shared.texture) ? { texture: shared.texture } : {}), overhead: this.plane?.role === "overhead" }));
         }
         if (found.length) { this.paint(); this.updateSummary(); }
         const msg = found.length ? `Marked ${found.length} area${found.length === 1 ? "" : "s"} like the regions you saved. Untick or remove the wrong ones: they won't be marked next time.` : "Nothing here looks like the regions you saved yet.";
@@ -1917,6 +2148,119 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       this.updateSummary();
     }
 
+    stashPicture() {
+      if (!this.planeKey || !this.detect) return;
+      this.drafts ??= new Map();
+      this.drafts.set(this.planeKey, {
+        detect: this.detect,
+        history: this.history ?? [],
+        choices: this.element ? choicesFromElement(this.element) : [],
+        shared: this.element?.querySelector ? sharedChoices(this.element) : null,
+        mode: this.mode,
+        excluded: this.excluded,
+        smartLast: this.smartLast,
+        rejected: this.rejected,
+        highlight: this.highlight ?? "",
+        selectedId: this.selectedId ?? "",
+      });
+    }
+
+    adopt(draft) {
+      this.detect = draft.detect;
+      this.history = draft.history ?? [];
+      this.mode = draft.mode ?? { kind: "inspect" };
+      this.gesture = null;
+      this.selectedVertex = null;
+      this.excluded = draft.excluded ?? {};
+      this.smartLast = draft.smartLast ?? null;
+      this.rejected = draft.rejected ?? [];
+      this.highlight = draft.highlight ?? "";
+      this.selectedId = draft.selectedId ?? "";
+      this.paintPicture(draft.choices ?? [], draft.shared ?? null);
+    }
+
+    paintPicture(choices, shared = null) {
+      const root = this.element;
+      if (!root?.querySelector) return;
+      const shell = root.querySelector(".an-floors");
+      if (shell) {
+        shell.outerHTML = floorWindowHTML({
+          ...this.detect,
+          reason: this.detect.proposals.length ? "" : (this.detect.reason ?? ""),
+          picked: choices ?? [],
+          learned: this.learnedCount(),
+          shared: shared ?? {},
+          sceneTexture: this.sceneTexture(),
+          ...this.pictureHTML(),
+        });
+      } else if (root.querySelector(".an-floors-list")) this.drawRows(choices ?? []);
+      const canvas = root.querySelector("canvas.an-floors-preview");
+      if (canvas) { canvas.width = this.detect.width; canvas.height = this.detect.height; }
+      this.zoom = 1;
+      this.paint();
+      this.updateSummary();
+      this.zoomMap(1);
+    }
+
+    restorePicture(key, plane) {
+      const back = this.drafts?.get(key);
+      if (!back) return;
+      this.drafts.delete(key);
+      this.planeKey = key;
+      this.plane = plane ?? (this.pictures ?? []).find((item) => item.key === key)?.plane ?? this.plane;
+      this.adopt(back);
+    }
+
+    async showPicture(key) {
+      if (!key || key === this.planeKey || this.pictureBusy || this.smartBusy || !this.detect) return;
+      const picture = (this.pictures ?? []).find((item) => item.key === key);
+      if (!picture) return;
+      const previousKey = this.planeKey;
+      const previousPlane = this.plane;
+      this.stashPicture();
+      const draft = this.drafts.get(key);
+      this.planeKey = key;
+      this.plane = picture.plane;
+      if (draft) {
+        this.drafts.delete(key);
+        this.adopt(draft);
+        return;
+      }
+      const base = this.drafts.get(previousKey)?.detect;
+      if (!base) {
+        this.planeKey = previousKey;
+        this.plane = previousPlane;
+        return;
+      }
+      if (picture.plane.missing || !picture.plane.src) {
+        const saved = savedAreaProposals(base.scene?.regions, { levelId: base.levelId, sceneRect: base.sceneRect, width: 1, height: 1, plane: picture.plane });
+        this.adopt({ detect: { ...base, proposals: saved, reason: "That tile is no longer on the scene. These regions stay so you can remove them.", rgba: new Uint8ClampedArray(4), width: 1, height: 1 }, history: [], choices: [], shared: null, mode: { kind: "inspect" }, excluded: {}, smartLast: null, rejected: [], highlight: "", selectedId: "" });
+        return;
+      }
+      this.pictureBusy = true;
+      try {
+        const loaded = await hooks.load(picture.plane.src, fitSize(picture.plane.frame.width, picture.plane.frame.height));
+        if (this.planeKey !== key || this.detect == null) return;
+        if (!loaded?.ok) {
+          hooks.warn?.(failureMessage(loaded?.reason ?? "fetch"));
+          this.restorePicture(previousKey, previousPlane);
+          return;
+        }
+        const next = pictureState(picture.plane, loaded, base, hooks.detect);
+        this.adopt({ detect: next, history: [], choices: [], shared: null, mode: { kind: "inspect" }, excluded: {}, smartLast: null, rejected: [], highlight: "", selectedId: "" });
+        if (hooks.view) void Promise.resolve(hooks.view(picture.plane.src, { width: loaded.width, height: loaded.height })).then((image) => {
+          if (this.planeKey !== key || !image) { image?.close?.(); return; }
+          if (this.detect && !this.detect.image) { this.detect.image = image; this.zoomMap?.(this.zoom ?? 1); }
+          else image.close?.();
+        }, () => {});
+      } catch (error) {
+        console.warn("Animater floor regions:", error);
+        if (this.planeKey === key && this.detect) this.restorePicture(previousKey, previousPlane);
+      } finally {
+        this.pictureBusy = false;
+      }
+    }
+
     async create() {
       if (this.saving) return;
       this.saving = true;
@@ -1924,7 +2268,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       try {
         const { detect } = this;
         const picked = choicesFromElement(this.element);
-        const floorless = picked.filter((row) => row.checked && row.floor === NO_FLOOR);
+        const floorless = this.plane?.role === "overhead" ? [] : picked.filter((row) => row.checked && row.floor === NO_FLOOR);
         if (floorless.length) { hooks.notify?.(`Pick a floor for ${floorless.length === 1 ? "the ticked area" : `the ${floorless.length} ticked areas`} that Auto didn't know.`); return; }
         const lost = untickedGeometryEdits(detect.proposals, picked);
         if (lost.length && !(await hooks.confirm?.(untickedGeometryMessage(lost.length)))) return;
@@ -1936,6 +2280,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
           imageHeight: detect.height,
           levelId: detect.levelId,
           regions: detect.scene.regions,
+          plane: this.plane ?? null,
         });
         let createdDocs = [];
         const outcome = await commitFloorPlan(plan, { scene: detect.scene, notify: hooks.notify, created: (docs) => { createdDocs = docs; } });
@@ -2001,6 +2346,7 @@ async function openOnce({
   snapshot = null,
   memory = floorMemoryStore(),
   autoMark = true,
+  tiles = [],
   Application = globalThis.foundry?.applications?.api?.ApplicationV2,
 } = {}, signal) {
   if (!src) {
@@ -2015,6 +2361,12 @@ async function openOnce({
     warn("Experimental. This level's background is moved, scaled or rotated in its configuration, so shapes read from the image would land in the wrong place. Reset its position to use this tool.");
     return { opened: false, reason: "transformed" };
   }
+  const regionList = Array.isArray(scene?.regions) ? scene.regions : scene?.regions?.contents ?? [];
+  const bound = new Set(regionList.map((region) => region?.flags?.animater?.imageRegion?.source?.tileId).filter(Boolean));
+  const skewed = (Array.isArray(tiles) ? tiles : []).filter((tile) => tile && tile.hidden !== true && tile.texture?.src && !tileFrameIsPlain(tile) && bound.has(String(tile.id ?? tile._id))).length;
+  if (skewed) warn(`Experimental. ${skewed === 1 ? "One tile with regions is" : `${skewed} tiles with regions are`} rotated or scaled, so ${skewed === 1 ? "it is" : "they are"} left out of Floor regions. Reset ${skewed === 1 ? "it" : "them"} to trace ${skewed === 1 ? "it" : "them"}.`);
+  const pictures = floorPictures({ levelId, sceneRect, backgroundSrc: src, tiles, regions: scene?.regions });
+  const map = pictures[0].plane;
   const loaded = await load(src, fitSize(sceneRect.width, sceneRect.height), { signal });
   if (signal?.aborted) return { opened: false, reason: "superseded" };
   if (!loaded.ok) {
@@ -2022,13 +2374,14 @@ async function openOnce({
     return { opened: false, reason: loaded.reason };
   }
   const result = detect(loaded.rgba, loaded.width, loaded.height);
-  const saved = savedAreaProposals(scene?.regions, { levelId, sceneRect, width: loaded.width, height: loaded.height });
-  const fresh = saved.length ? (result.proposals ?? []).map((proposal) => mergeAreaProposals([proposal], loaded.width, loaded.height, { claimed: saved, dropSmallComponents: true }))
-    .filter((proposal) => proposal.share >= WATER_TUNING.componentMinShare)
-    .map((proposal, i) => ({ ...proposal, id: `area-${saved.length + i + 1}`, preselected: false })) : result.proposals ?? [];
-  const proposals = [...saved, ...fresh];
-  const Window = floorRegionsWindow(Application, { notify, warn, select, confirm, smart, smartCached, tile, snapshot, memory });
+  const saved = savedAreaProposals(scene?.regions, { levelId, sceneRect, width: loaded.width, height: loaded.height, plane: map });
+  const proposals = assembleProposals(saved, result.proposals ?? [], loaded.width, loaded.height);
+  const Window = floorRegionsWindow(Application, { notify, warn, select, confirm, smart, smartCached, tile, snapshot, memory, load, detect, view });
   const app = new Window();
+  app.pictures = pictures;
+  app.plane = map;
+  app.planeKey = pictures[0].key;
+  app.drafts = new Map();
   app.memory = await learnSaved(memory, saved, { scene, rgba: loaded.rgba, width: loaded.width, height: loaded.height });
   app.detect = {
     proposals,

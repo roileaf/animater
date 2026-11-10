@@ -195,7 +195,7 @@ const boxAround = (areas, margin) => { let x0 = Infinity, y0 = Infinity, x1 = -I
  * The layer. sync(list): `list` what casts, [{ id, areas, kind (OVER_SHADOWS), soft, dark, across, lift (px), blockers: [areas, ...] (where its shadow may not fall, itself among them), floor,
  * tile (its painted tile, none: nothing of its body yet), tileSize, style (DOCK_STYLES), painted, onWater, above: [areas, ...] (what stands higher),
  * edges (longEdges), posts: [{ x, y, size, water, ex, ey, nx, ny }] }]. tick(seconds, { sky, shade, view, weather }) while busy.
- * ripples(seconds) gives the posts in water due a ring now. clear(). `root()` lies under what lies on the floors; `edges()` over the floors.
+ * ripples(seconds) gives the posts in water due a ring now. clear(). `root(spec)` lies under what lies on the floors. A root that ignores the argument stays the map layer. `edges()` over the floors.
  */
 export function createFloorShadows({ PIXI, root, edges = root, grid = () => 100 }) {
   const known = new Map();
@@ -218,7 +218,9 @@ export function createFloorShadows({ PIXI, root, edges = root, grid = () => 100 
     for (const areas of spec.blockers ?? [spec.areas]) { const barred = shapeOf(areas, box, k, 0); for (let i = 0; i < barred.data.length; i++) pixels[i * 4 + 1] = Math.max(pixels[i * 4 + 1], barred.data[i]); }
     const shape = textureOf(pixels, shown.w, shown.h);
     const mesh = new PIXI.Mesh(quadOf(box), PIXI.Shader.from(VERT, SHADOW_FRAG, { ...sunUniforms(PIXI), uShape: shape, uBox: [box.x, box.y, box.w, box.h], uToSun: [1, 0], uLift: lift, uLow: 0, uSun: 0, uDark: spec.dark ?? 0.45, uKind: Math.max(0, OVER_SHADOWS.indexOf(spec.kind)), uAcross: spec.across ? 1 : 0, uGrid: size, uTime: clock, uOverSoft: soft * 0.3 }));
-    mesh.eventMode = 'none'; root().addChild(mesh);
+    mesh.eventMode = 'none';
+    if (spec?.plane?.zIndex != null) mesh.zIndex = spec.plane.zIndex;
+    root(spec).addChild(mesh);
     // Its body wants its tile: till that is ready, none.
     let outline = null, deck = null, strips = null, pieces = null;
     const posts = spec.posts ?? [];
@@ -243,7 +245,7 @@ export function createFloorShadows({ PIXI, root, edges = root, grid = () => 100 
       for (const spec of list) {
         seen.add(spec.id);
         const key = JSON.stringify([spec.areas, spec.areas.map((a) => a.holes ?? null), spec.kind, spec.soft, spec.dark, !!spec.across, spec.lift, (spec.blockers ?? []).map((list_) => [list_, list_.map((a) => a.holes ?? null)]), spec.floor, !!spec.tile, spec.tile?.baseTexture?.uid ?? null, spec.tileSize, spec.posts ?? [], spec.style ?? '', !!spec.painted, !!spec.onWater, (spec.above ?? []).map((list_) => [list_, list_.map((a) => a.holes ?? null)]), spec.edges ?? []]), had = known.get(spec.id);
-        if (had?.key === key) continue;
+        if (had?.key === key && had.mesh?.parent === root(spec)) continue;
         if (had) { drop(had); known.delete(spec.id); }
         try { const entry = make(spec); if (entry) { entry.key = key; known.set(spec.id, entry); } } catch (error) { console.warn('Animater | floor shadow', error); }
       }
