@@ -301,7 +301,20 @@ What happens to each kind of prop:
 - **Other systems** have no Force open roll here: the GM smashes the door with Shift+right-click.
 - **Tested so far:** the PF2e roll has been tried at the table. The SF2e, D&D 5e, Daggerheart and Draw Steel rolls follow each system's own roll but have not been tried in play yet; if one shows a warning instead of a roll, report it.
 
-**Repair broken props** puts back everything: props, their walls, doors (locked ones locked again), windows, the lights that went out, and rubble regions; burning oil's lights go too.
+**Decorations.** A region's painted decorations can break too, the same way prop tiles do. Right-click the region → **Decorations** and tick **Decorations can break** (off by default, for each region). Nothing breaks unless the scene's **Breakable props** is on as well; the panel says so when it is off. They break from the same things as props: an area once its damage is rolled, a melee strike that misses beside its target (never on the attacker's side), a creature shoved, blasted or charging into one, and a powder keg's burst.
+
+- **Crates** and **Barrels** are wood: they shatter into pieces where they stand.
+- **Crystals** are glass: they shatter from almost any damage.
+- **Bushes**, **Ferns**, **Spiky plants** and **Reeds** are plants: only fire burns them away. A creature shoved through a bush leaves it standing.
+- **Cobwebs** burn from fire, and a slashing hit cuts them apart.
+- **Stalagmites** and **Rock columns** are stone: force, or a Large or bigger creature slammed into one, topples it along the hit. With **Rubble is difficult terrain** on, the fallen strip is difficult terrain, and the GM gets a whisper naming any tokens under it.
+- Every other kind (rocks, boulders, trees, stumps, logs, mushrooms, bones, mine timbers and the rest) never breaks.
+
+The wreck is cut from the decoration's own painting, and every screen sees the same one; after a reload it lies there settled and silent. Breaks are stored on the region. Turning the switch off stops new breaks, but the ones already made stay. The region panel's **Repair decorations** button (GM) puts back every broken decoration in that region and removes their rubble. **Repair broken props** puts back every region's decorations too.
+
+A scattered decoration is known by where it stands. Editing the region so its decorations move (its shape, **How dense**, **Size**, a kind's size or how many, ticking kinds, **Reshuffle**, or rubbing out with the brush) brings its decorations back whole. Undoing that edit brings the breaks back. Decorations you painted by hand keep their breaks for as long as they stay.
+
+**Repair broken props** puts back everything: props, their walls, doors (locked ones locked again), windows, the lights that went out, broken decorations, and rubble regions; burning oil's lights go too.
 
 What breaks what: glass and clay break from any bludgeoning, piercing, slashing, fire, cold, electricity, acid, sonic or force damage; wood from bludgeoning, slashing, fire, electricity or force; metal from bludgeoning, force or acid; stone from force. A creature forced into wood, glass or clay breaks it; into metal or stone, only a Large or bigger creature does. Poison, mental, spirit, vitality, void and bleed never break a prop. Deleting a broken tile puts its walls back as they were.
 
