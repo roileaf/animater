@@ -196,3 +196,37 @@ test("Review fix: moving a broken door is not a hand edit; it keeps its note and
   assert.ok(moved.flags.animater.breakWall.broken);
   assert.deepEqual(wallRepairUpdates([moved]), [{ _id: "d1", door: 1, ds: 2, move: 20, sight: 20, light: 20, sound: 20, "flags.animater.breakWall.-=broken": null }]);
 });
+
+test("Review Focus 5: a forged Force Open is refused", () => {
+  const forceOpen = (author = "p", options = ["action:force-open"], outcome = "success") =>
+    ({ id: "m1", author: { id: author }, speaker: { token: "t1", scene: "s" }, flags: { pf2e: { context: { options, outcome } } } });
+  const adjacent = { x: 300, y: 200, w: 100, h: 100 }, farAway = { x: 300, y: 500, w: 100, h: 100 };
+  const cause = { kind: "force-open", messageId: "m1" };
+  const note = wallNoteFor({ wall: wall(), scene: scene(), cause, seed: 5, from: { x: 350, y: 250 } });
+  const ask = (x) => validWallBreakRequest({ cause, note }, { wall: wall(), scene: scene(), grid: 100, sender, message: forceOpen(), token: adjacent, walls: [wall()], ...x });
+  // the message is not a Force Open, failed, or is missing
+  assert.equal(ask({ message: forceOpen("p", ["action:grapple"]) }).why, "note");
+  assert.equal(ask({ message: forceOpen("p", ["action:force-open"], "failure") }).why, "note");
+  assert.equal(ask({ message: undefined }).why, "note");
+  // someone else's roll
+  assert.equal(ask({ message: forceOpen("other") }).why, "sender");
+  // the token stands 3 squares from the door
+  assert.equal(ask({ token: farAway }).why, "far");
+  assert.equal(ask({ token: undefined }).why, "far");
+  // another door is closer: this one is not the door that roll opens
+  const below = { x: 300, y: 250, w: 100, h: 100 };
+  assert.equal(ask({ token: below, walls: [wall()] }).ok, true);
+  assert.equal(ask({ token: below, walls: [wall(), wall({ id: "d2", c: [300, 300, 400, 300] })] }).why, "far");
+  // a success on a metal door does not open it; a critical success does (R1: Force Open's own material rule)
+  const metal = wall({ flags: { animater: { breakWall: { material: "metal" } } } });
+  assert.equal(ask({ wall: metal, walls: [metal] }).why, "far");
+  assert.equal(ask({ wall: metal, walls: [metal], message: forceOpen("p", ["action:force-open"], "criticalSuccess") }).ok, true);
+  // "Doors and windows break" off
+  assert.equal(ask({ scene: scene({ breakWalls: false }) }).why, "kind");
+  // a good message and an adjacent token
+  const r = ask({});
+  assert.equal(r.ok, true);
+  assert.equal(r.update.door, 0);
+  assert.equal(r.note.material, "wood");
+  assert.equal(r.note.mark, "dust");
+});

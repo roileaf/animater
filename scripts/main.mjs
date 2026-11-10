@@ -22,11 +22,12 @@ import { createPropWreckage } from "./engines/props/prop-wreck.mjs";
 import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
 import { propMaterial } from "./engines/props/prop-material.mjs";
-import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf } from "./engines/props/prop-requests.mjs";
+import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propNextToMiss, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls } from "./engines/props/prop-walls.mjs";
-import { wallMid, readWallNote, wallRepairUpdates } from "./engines/props/wall-break.mjs";
-import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest, handEdited, handEditUpdate } from "./engines/props/wall-break-requests.mjs";
+import { wallMid, readWallNote, wallRepairUpdates, wallTraits } from "./engines/props/wall-break.mjs";
+import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest, handEdited, handEditUpdate, slamSenderOk } from "./engines/props/wall-break-requests.mjs";
+import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, forceOpenDoor, smashFrom } from "./engines/props/wall-triggers.mjs";
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
@@ -2961,18 +2962,19 @@ const fireBlast = (p, kind, radius, variant = null) => {
   playBlast(blast);
   game.socket?.emit(`module.${ID}`, { type: BLAST_MESSAGE, blast });
   if (push) {
-    // A pushed creature smashes through breakable props (their own walls never stop it); each is asked for before the push is written.
-    const grid = canvas.grid.size, scene = canvas.scene, slammed = [];
+    // A pushed creature smashes through breakable props and doors (their walls never stop it); each is asked for before the push is written.
+    const grid = canvas.grid.size, scene = canvas.scene, slammed = [], doorsHit = [];
     const blocked = (doc) => (from, to) => { try { return moveBlocked(from, to, propSafe("blast push", () => slamWalls(doc, from, to)), canvas.level ? { level: canvas.level } : {}) === true; } catch { return true; } };
     const caught = caughtBy({ x: blast.x, y: blast.y, radius }, (canvas.tokens?.placeables ?? []).filter((t) => !t.document.hidden).map((t) => ({ id: t.id, x: t.center.x, y: t.center.y, w: t.w, h: t.h })));
     const updates = caught.flatMap((c) => {
       const doc = scene?.tokens?.get(c.id), to = pushedTo(c, grid, blocked(doc));
       if (!to) return [];
       for (const t of propSafe("blast push", () => slamProps(doc, { x: c.x, y: c.y }, to)) ?? []) slammed.push({ t, cause: { kind: "path", slam: { size: moverSize(doc) }, moverUuid: doc.uuid, path: { from: { x: c.x, y: c.y }, to: { x: to.x, y: to.y } } }, from: { x: c.x, y: c.y } });
+      for (const w of propSafe("blast push", () => slamDoors(doc, { x: c.x, y: c.y }, to)) ?? []) doorsHit.push({ id: w.id, cause: { kind: "path", slam: { size: moverSize(doc) }, moverUuid: doc.uuid, path: { from: { x: c.x, y: c.y }, to: { x: to.x, y: to.y } } }, from: { x: c.x, y: c.y } });
       return [{ _id: c.id, x: Math.round(to.x - c.w / 2), y: Math.round(to.y - c.h / 2) }];
     });
     if (updates.length) setTimeout(async () => {
-      await Promise.all(slammed.map((s) => askProp(scene, s.t.id, s.cause, s.from)));
+      await Promise.all([...slammed.map((s) => askProp(scene, s.t.id, s.cause, s.from)), ...doorsHit.map((s) => askWall(scene, s.id, s.cause, s.from))]);
       void scene?.updateEmbeddedDocuments("Token", updates, { animate: true });
     }, 250);
   }
@@ -7210,6 +7212,7 @@ function settleWallHere(id, refused) {
 // a player may claim a slam of a creature they shove from beside it).
 async function wallPlace(cause, scene, grid, user) {
   const place = await propPlace(cause, scene, grid);
+  if (cause.kind === "force-open") return { ...place, ...forceOpenPlace(cause, scene, grid) };
   if (cause.kind !== "path" || user?.isGM) return place;
   const owns = (d) => { try { return d?.testUserPermission?.(user, "OWNER") === true; } catch { return false; } };
   const m = cause.moverUuid ? await fromUuid(cause.moverUuid).catch(() => null) : null;
@@ -7217,7 +7220,16 @@ async function wallPlace(cause, scene, grid, user) {
   const senderTokens = (scene.tokens?.contents ?? []).filter(owns).map((t) => ({ x: t.x, y: t.y, w: t.width * grid, h: t.height * grid }));
   return { ...place, mover, senderTokens };
 }
-// Breaks a door for a cause {kind: "area"|"path"|"smash", damageType?, slam?, at?, path?, moverUuid?, ...}; from: where
+// Force Open: this screen's own copy of the roll's message, its speaker's footprint on this scene, and the scene's walls
+// (the door the roll opens is the one forceOpenDoor picks from them).
+function forceOpenPlace(cause, scene, grid) {
+  const message = cause.messageId ? game.messages?.get(cause.messageId) : null, speaker = message?.speaker ?? {};
+  const t = speaker.token && (!speaker.scene || speaker.scene === scene.id) ? scene.tokens?.get(speaker.token) : null;
+  return { message: message ?? undefined, token: t ? { x: t.x, y: t.y, w: t.width * grid, h: t.height * grid, level: t.level } : undefined,
+    walls: (scene.walls?.contents ?? []).map(wallView) };
+}
+const forceOpenUsed = new Set(); // messages whose Force Open already broke a door (GM): one roll, one door
+// Breaks a door for a cause {kind: "area"|"path"|"smash"|"force-open", damageType?, slam?, at?, path?, moverUuid?, ...}; from: where
 // the blow came from (the area's centre, the path's start). True once it is asked of (or written by) the GM.
 async function requestWallBreak(wall, cause, { from } = {}) {
   const doc = wall?.document ?? wall, scene = doc?.parent;
@@ -7238,10 +7250,12 @@ async function applyWallBreak(scene, doc, cause, rawNote, user) {
   wallWriting.add(doc.id);
   try {
     const grid = propGrid(scene);
+    if (cause.kind === "force-open" && forceOpenUsed.has(cause.messageId)) { runtime?.trace("props", "door not broken: used"); return false; }
     const check = validWallBreakRequest({ cause, note: rawNote }, { wall: wallView(doc), scene, grid, sender: user, ...await wallPlace(cause, scene, grid, user) });
     if (!check.ok) { runtime?.trace("props", `door not broken: ${check.why}`); return false; }
     const { _id, ...update } = check.update;
     await doc.update(update, { animater: { wallBreak: true }, sound: false });
+    if (cause.kind === "force-open") forceOpenUsed.add(cause.messageId);
     return true;
   } finally { wallWriting.delete(doc.id); }
 }
@@ -7278,6 +7292,7 @@ async function repairAllProps(scene = canvas?.scene) {
 const propSafe = (label, fn) => { try { return fn(); } catch (e) { runtime?.trace("props", `${label}: ${e?.message ?? e}`); return undefined; } };
 const propsOn = (scene) => scene?.flags?.[ID]?.breakableProps === true;
 const askProp = (scene, id, cause, from) => { const doc = scene.tiles.get(id); return doc ? requestPropBreak(doc, cause, { from }).catch((e) => { runtime?.trace("props", `ask: ${e?.message ?? e}`); return false; }) : Promise.resolve(false); };
+const askWall = (scene, id, cause, from) => { const doc = scene.walls?.get(id); return doc ? requestWallBreak(doc, cause, { from }).catch((e) => { runtime?.trace("props", `ask door: ${e?.message ?? e}`); return false; }) : Promise.resolve(false); };
 // Placed areas wait for their spell's damage roll: every screen remembers them, the roller asks.
 const propAreas = createAreaWaits({ trace: (m) => runtime?.trace("props", m) });
 // Whether a point lies in a placed area: a Region (v14 templates are Regions) or an old template.
@@ -7310,8 +7325,9 @@ for (const hook of ["createMeasuredTemplate", "createRegion"]) Hooks.on(hook, (d
   if (itemUuid && actorUuid && at) propAreas.remember({ templateId: doc.uuid, itemUuid, actorUuid, testPoint: areaTestOf(doc), at, scene: doc.parent, levels: [...(doc.levels ?? [])] });
 }));
 for (const hook of ["deleteMeasuredTemplate", "deleteRegion"]) Hooks.on(hook, (doc) => propAreas.forget(doc.uuid));
-// A damage roll of this client's for an area still on its scene: each prop inside it the damage can break, at the
-// area's impact when its recipe is still playing, else now. Areas break nothing on placement.
+// A damage roll of this client's for an area still on its scene: each prop inside it the damage can break, and each
+// door whose middle it covers, at the area's impact when its recipe is still playing, else now. Areas break nothing on
+// placement.
 function breakAreaProps(message) {
   if ((message?.author ?? message?.user)?.id !== game.user.id) return;
   // Cheap first: the roller's scene has breakable props.
@@ -7324,12 +7340,52 @@ function breakAreaProps(message) {
   const scene = area?.scene;
   if (!area || !propsOn(scene) || !game.scenes.get(scene.id)) return;
   const hits = propsInArea(tilesOnLevel(scene.tiles.contents.map(propTileView), area.levels), area.testPoint, propGrid(scene), d.type).filter((t) => propAreas.claim(area.templateId, t.id));
-  if (!hits.length) return;
-  const ask = () => { for (const t of hits) void askProp(scene, t.id, { kind: "area", damageType: d.type, at: area.at }, area.at); };
+  const doors = (propSafe("area doors", () => doorsInArea((scene.walls?.contents ?? []).map(wallView), area.testPoint, scene, d.type, area.levels)) ?? [])
+    .filter((w) => propAreas.claim(area.templateId, `wall:${w.id}`));
+  if (!hits.length && !doors.length) return;
+  const ask = () => {
+    for (const t of hits) void askProp(scene, t.id, { kind: "area", damageType: d.type, at: area.at }, area.at);
+    for (const w of doors) void askWall(scene, w.id, { kind: "area", damageType: d.type, at: area.at }, area.at);
+  };
   const wait = propAreas.delayFor(area);
   if (wait > 0) setTimeout(ask, wait); else ask();
 }
 Hooks.on("createChatMessage", (message) => propSafe("area damage", () => breakAreaProps(message)));
+// A PF2e Force Open of this client's that succeeded: the door beside its token that the roll breaks (forceOpenDoor),
+// asked of the GM, who reads the roll again from its own copy of the message.
+async function breakDoorsOnForceOpen(message) {
+  if (game.system.id !== "pf2e" || (message?.author ?? message?.user)?.id !== game.user.id) return;
+  const roll = forceOpenOf(message);
+  if (!roll) return;
+  const scene = (roll.sceneId ? game.scenes.get(roll.sceneId) : null) ?? canvas?.scene, tok = scene?.tokens?.get(roll.tokenId);
+  if (!propsOn(scene) || !tok) return;
+  const grid = propGrid(scene), foot = { x: tok.x, y: tok.y, w: tok.width * grid, h: tok.height * grid, level: tok.level };
+  const door = forceOpenDoor(foot, (scene.walls?.contents ?? []).map(wallView), scene, grid, roll.outcome), doc = door ? scene.walls.get(door.id) : null;
+  if (!doc) return;
+  await afterDice({ type: "check", messageId: message.id });
+  await requestWallBreak(doc, { kind: "force-open", messageId: message.id }, { from: { x: foot.x + foot.w / 2, y: foot.y + foot.h / 2 } });
+}
+Hooks.on("createChatMessage", (message) => { void propSafe("force open", () => breakDoorsOnForceOpen(message))?.catch?.((e) => runtime?.trace("props", `force open: ${e?.message ?? e}`)); });
+// The GM's Shift+right-click on a door control: the door smashes, from the GM's one controlled token, else half a square
+// off its left-hand side. False when the door cannot break, so Foundry's own lock toggle goes ahead.
+function smashDoor(wall) {
+  const doc = wall?.document ?? wall, scene = doc?.parent;
+  if (doc?.documentName !== "Wall" || !scene || !wallTraits(wallView(doc), scene).kind) return false;
+  const grid = propGrid(scene), mine = canvas?.tokens?.controlled ?? [], t = mine.length === 1 ? mine[0].document : null;
+  const from = smashFrom(wallView(doc), t ? { x: t.x, y: t.y, w: t.width * grid, h: t.height * grid } : null, grid);
+  void requestWallBreak(doc, { kind: "smash" }, { from }).catch((e) => runtime?.trace("props", `smash: ${e?.message ?? e}`));
+  return true;
+}
+Hooks.once("setup", () => {
+  try {
+    const proto = foundry.canvas?.containers?.DoorControl?.prototype, own = proto?._onRightDown;
+    if (typeof own !== "function") return;
+    proto._onRightDown = function (event, ...rest) {
+      if (game.user?.isGM && event?.shiftKey && propSafe("smash", () => smashDoor(this.wall)) === true) { event.stopPropagation?.(); return; }
+      return own.call(this, event, ...rest);
+    };
+  } catch (e) { runtime?.trace("props", `door control: ${e?.message ?? e}`); }
+});
 // A melee strike of this client's that missed (or critically failed) its one target: the prop beside the target
 // nearest the line of the swing, if the weapon's own damage type can break it. The GM rolls a plain miss's chance.
 async function breakPropOnMiss(event) {
@@ -7359,10 +7415,31 @@ function slamProps(doc, a, b) {
   const grid = propGrid(scene), path = { from: a, to: b }, mover = { x: a.x, y: a.y, size: moverSize(doc) };
   return propsOnPath([a, b], mover.size, tilesOnLevel(scene.tiles.contents.map(propTileView), doc.level), grid).filter((t) => slamPlausible(t, path, mover, grid));
 }
-// The walls that move's wall test leaves out: those props' own walls. Any other prop's walls still stop it.
+// A forced move's breakable doors (wall documents): those a mover of its size crosses from a to b (centres), on its
+// level, in path order, when the GM will take this client's word for the slam (slamSenderOk) and the path is not too
+// long for it. None while the scene's doors cannot break or no GM could write them.
+function slamDoors(doc, a, b) {
+  const scene = doc?.parent;
+  if (!propsOn(scene) || !game.users.activeGM || ![a?.x, a?.y, b?.x, b?.y].every(Number.isFinite) || (a.x === b.x && a.y === b.y)) return [];
+  const grid = propGrid(scene);
+  if (Math.hypot(b.x - a.x, b.y - a.y) > PATH_SQUARES * grid) return [];
+  if (!game.user.isGM) {
+    const owns = (d) => { try { return d?.testUserPermission?.(game.user, "OWNER") === true; } catch { return false; } };
+    const senderTokens = (scene.tokens?.contents ?? []).filter(owns).map((t) => ({ x: t.x, y: t.y, w: t.width * grid, h: t.height * grid }));
+    if (!slamSenderOk({ sender: game.user, mover: { isOwner: owns(doc) }, from: a, senderTokens, grid })) return [];
+  }
+  return wallsCrossed({ from: a, to: b }, moverSize(doc), (scene.walls?.contents ?? []).map(wallView), scene, doc.level)
+    .map((w) => scene.walls.get(w.id)).filter(Boolean);
+}
+// A door's middle as slamTimes reads a tile: the mover reaches it there.
+const doorAsTile = (doc) => { const m = wallMid(doc); return { id: doc.id, x: m.x, y: m.y, width: 0, height: 0 }; };
+// The walls that move's wall test leaves out: those props' own walls, and the doors it breaks on the way (R16: only
+// doors; a window still stops the mover at its frame). Any other prop's walls still stop it.
 function slamWalls(doc, a, b) {
   const scene = doc?.parent, grid = propGrid(scene), walls = scene?.walls?.contents ?? [];
-  return new Set(slamProps(doc, a, b).flatMap((t) => ownWalls(t, walls, grid).map((w) => w.id)));
+  const ids = new Set(slamProps(doc, a, b).flatMap((t) => ownWalls(t, walls, grid).map((w) => w.id)));
+  for (const w of slamDoors(doc, a, b)) if (wallTraits(wallView(w), scene).kind === "door") ids.add(w.id);
+  return ids;
 }
 // The move wall test, less the `ignore`d walls: each crossing's walls are read from the test's own report.
 function moveBlocked(a, b, ignore, options = {}) {
@@ -7381,8 +7458,11 @@ function slamAlong(doc, from, to, span) {
   const a = { x: from.x + w / 2, y: from.y + h / 2 }, b = { x: to.x + w / 2, y: to.y + h / 2 };
   const tiles = slamProps(doc, a, b), scene = doc.parent;
   const cause = { kind: "path", slam: { size: moverSize(doc) }, moverUuid: doc.uuid, path: { from: a, to: b } };
-  for (const { tile, ms } of slamTimes(a, b, tiles, { start: span.start, end: Math.max(span.start, span.end - 50) }))
+  const when = { start: span.start, end: Math.max(span.start, span.end - 50) };
+  for (const { tile, ms } of slamTimes(a, b, tiles, when))
     setTimeout(() => void askProp(scene, tile.id, cause, a), ms);
+  for (const { tile, ms } of slamTimes(a, b, slamDoors(doc, a, b).map(doorAsTile), when))
+    setTimeout(() => void askWall(scene, tile.id, cause, a), ms);
 }
 // A cosmetic ground motion (charge, roll, dodge, lunge, path) this client starts: each prop its token's centre runs
 // through is asked for as the centre gets there, the mover still at rest. Cosmetic motions ignore walls.
@@ -7393,6 +7473,9 @@ function slamUnder(stage, token, source, target) {
   const travel = groundTravel(stage, { x: token.center.x, y: token.center.y }, motionDirection(token, source, target, stage.motion, grid), grid);
   for (const { tile, p, path } of groundSlams(travel, size, tilesOnLevel(scene.tiles.contents.map(propTileView), doc.level), grid))
     setTimeout(() => void askProp(scene, tile.id, { kind: "path", slam: { size }, moverUuid: doc.uuid, path }, path.from), Math.round(p * ms));
+  // and each door it runs through
+  for (const { wall, p, path } of wallsUnderTravel(travel, size, (scene.walls?.contents ?? []).map(wallView), scene, doc.level))
+    setTimeout(() => void askWall(scene, wall.id, { kind: "path", slam: { size }, moverUuid: doc.uuid, path }, path.from), Math.round(p * ms));
 }
 const PROP_LOOK_KEYS = ["hidden", "x", "y", "width", "height", "rotation", "texture", "elevation", "sort", "levels"];
 // Its prop flags changed (set, or removed with a "-=" key); other modules' flags never redraw it.

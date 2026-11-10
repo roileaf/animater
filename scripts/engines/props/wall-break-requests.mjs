@@ -3,9 +3,11 @@
 import { wallTraits, canBreakWall, wallMid, crossesWall, wallNote, wallBreakUpdate } from "./wall-break.mjs";
 import { cleanCause, sizeOf, PATH_SQUARES } from "./prop-requests.mjs";
 import { onLevel } from "./prop-pick.mjs";
+import { forceOpenOf, forceOpenDoor } from "./wall-triggers.mjs";
 
 export const WALL_BREAK_MESSAGE = "prop-wall-break";
-const KINDS = ["area", "path", "smash"];
+const KINDS = ["area", "path", "smash", "force-open"];
+const OWN_RULE = new Set(["smash", "force-open"]); // R1: no damage type or slam; their own material rule
 const AREA_REACH = 30; // squares from the area's centre to the wall's middle
 // Not c: Repair restores no position, so a moved broken door keeps its note (and its originals) as it was.
 const EDIT_KEYS = ["door", "move", "sight", "light", "sound"];
@@ -47,7 +49,7 @@ const breakCause = (cause, mover) => (cause.kind === "path" ? { slam: { size: si
 
 // The cause has to fit where things stand on the GM's screen. A smash is the GM's own and fits anywhere.
 function plausible(cause, wall, grid, mover) {
-  if (cause.kind === "smash") return true;
+  if (OWN_RULE.has(cause.kind)) return true; // a smash fits anywhere; Force Open was placed by forceOpenDoor
   const mid = wallMid(wall);
   if (cause.kind === "area") return finite(cause.at) && Math.hypot(mid.x - cause.at.x, mid.y - cause.at.y) <= AREA_REACH * grid;
   // path: the mover stands within its size of either end, the path is not too long, it goes through the door, and the
@@ -62,7 +64,9 @@ function plausible(cause, wall, grid, mover) {
 
 // wall: the GM's wall {id, c, door, ds, move, sight, light, sound, levels, flags}; mover: {x, y} centre, size in squares,
 // level and isOwner (the sender owns it); senderTokens: footprints of the sender's own tokens on the scene; levels: the cause's own levels when the GM knows them (a wall on none of them is too far).
-export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mover, senderTokens, levels } = {}) {
+// Force Open: message, the GM's own copy of the chat message the cause names; token, its speaker's footprint
+// {x, y, w, h, level} on this scene; walls, the scene's walls (the door it opens is the one forceOpenDoor picks).
+export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mover, senderTokens, levels, message, token, walls } = {}) {
   const no = (why) => ({ ok: false, why });
   if (scene?.flags?.animater?.breakableProps !== true) return no("off");
   if (!sender) return no("sender");
@@ -74,7 +78,13 @@ export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mo
   if (cause.kind === "smash" && sender.isGM !== true) return no("sender");
   if (cause.kind === "path" && !slamSenderOk({ sender, mover, from: cause.path?.from, senderTokens, grid })) return no("sender");
   // R1: a smash has no damage type or slam; its material rule is the GM's own (forceOpenDoor's, for Force Open)
-  if (cause.kind !== "smash" && !canBreakWall(traits, breakCause(cause, mover))) return no("material");
+  if (!OWN_RULE.has(cause.kind) && !canBreakWall(traits, breakCause(cause, mover))) return no("material");
+  if (cause.kind === "force-open") {
+    const roll = forceOpenOf(message);
+    if (!roll) return no("note");
+    if ((message.author ?? message.user)?.id !== sender.id) return no("sender");
+    if (forceOpenDoor(token, walls, scene, grid, roll.outcome)?.id !== wall.id) return no("far");
+  }
   const raw = req?.note;
   if (!raw || !Number.isFinite(raw.seed) || !Number.isFinite(raw.cutAngle) || !finite(raw.from)) return no("note");
   if (levels !== undefined && !onLevel(wall.levels, levels)) return no("far");
