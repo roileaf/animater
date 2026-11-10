@@ -232,3 +232,29 @@ test("a window that breaks opens: a glass pane becomes an open window, a shutter
   // a note with junk in its window restore is refused
   assert.equal(readWallNote({ ...note, restore: { sight: 20, windowKind: 5 } }), null);
 });
+
+test("a reinforced wooden door: a door material of its own, breaking to wood's blows but only a Huge slam", () => {
+  assert.equal(wallMaterialOf("reinforced", "door"), "reinforced");
+  assert.equal(wallMaterialOf("reinforced", "window"), "glass");
+  const t = wallTraits(wall({ flags: { animater: { breakWall: { material: "reinforced" } } } }), scene(), "pf2e");
+  assert.equal(t.material, "reinforced");
+  assert.equal(t.forceDC, 20);
+  assert.equal(canBreakWall(t, { damageType: "slashing" }), true);
+  assert.equal(canBreakWall(t, { damageType: "fire" }), true);
+  assert.equal(canBreakWall(t, { damageType: "cold" }), false);
+  assert.equal(canBreakWall(t, { slam: { size: 2 } }), false);
+  assert.equal(canBreakWall(t, { slam: { size: 3 } }), true);
+  assert.equal(readWallNote({ seed: 1, cutAngle: 0, from: { x: 0, y: 0 }, kind: "door", material: "reinforced", mark: "dust" })?.material, "reinforced");
+});
+
+test("Repair restores a hit door's HP: its hp flag goes, broken or not", () => {
+  const hit = wall({ flags: { animater: { breakWall: { hp: 7, hits: ["a", "m"] } } } });
+  assert.deepEqual(wallRestoreUpdate(hit), { _id: "d1", "flags.animater.breakWall.-=hp": null });
+  assert.equal(wallRestoreUpdate(wall({ flags: { animater: { breakWall: { hits: ["a"] } } } })), null); // the hits stay: each roll applies once
+  const broken = wall({ door: 0, flags: { animater: { breakWall: { hp: 0, broken: { seed: 1, cutAngle: 0, from: { x: 0, y: 0 }, kind: "door", material: "wood", mark: "dust", restore: { door: 1, ds: 0, move: 20, sight: 20, light: 20, sound: 20 } } } } } });
+  const up = wallRestoreUpdate(broken);
+  assert.equal(up.door, 1);
+  assert.equal(up["flags.animater.breakWall.-=broken"], null);
+  assert.equal(up["flags.animater.breakWall.-=hp"], null);
+  assert.equal(wallRepairUpdates([hit, wall()]).length, 1);
+});

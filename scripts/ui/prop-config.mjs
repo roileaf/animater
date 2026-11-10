@@ -3,6 +3,7 @@ import { MATERIALS } from "../engines/props/prop-material.mjs";
 import { CONTENTS, STYLE_CHOICES, propGuesses, burstOf } from "../engines/props/prop-traits.mjs";
 import { defaultForceDC, ownForceDC, forceOpenWording } from "../engines/props/force-open.mjs";
 import { wallMaterialOf, GLASS_PANES } from "../engines/props/wall-break.mjs";
+import { DOOR_ATTACK_SYSTEMS, DOOR_STAT_KEYS, defaultDoorStats, ownDoorStat, doorStats, doorHp } from "../engines/props/door-attack.mjs";
 
 const ID = "animater";
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -41,6 +42,23 @@ export function propTileFieldsHTML({ src, material = "", contents = "", style = 
   </fieldset>`;
 }
 
+const DOOR_MATERIALS = ["wood", "reinforced", "metal", "stone"];
+const STAT_LABELS = { ac: "AC", hardness: "Hardness", maxHp: "HP", bt: "Broken Threshold" };
+
+// PF2e: the door's AC, Hardness, HP and Broken Threshold for Attack the door (door-attack.mjs), each blank = Automatic
+// by material (Table 11-4); each field carries every material's automatic value in data-auto-*, so the wall config
+// hook can follow the Material select. A hit door says how much HP it has left.
+function doorStatFields({ own, mat, system, disabled }) {
+  if (!DOOR_ATTACK_SYSTEMS.has(system)) return "";
+  const auto = defaultDoorStats(mat), stats = doorStats(own, mat), hp = doorHp(own, stats);
+  const fields = DOOR_STAT_KEYS.map((k) => {
+    const data = DOOR_MATERIALS.map((m) => `data-auto-${m}="${defaultDoorStats(m)[k]}"`).join(" "), value = ownDoorStat(own, k) ?? "";
+    return `<div class="form-group"><label>${STAT_LABELS[k]}</label><div class="form-fields"><input type="number" name="flags.${ID}.breakWall.${k}" min="0" max="999" step="1" value="${value}" placeholder="Automatic (${auto[k]})" ${data}${disabled ? " disabled" : ""}></div></div>`;
+  }).join("");
+  const left = hp < stats.maxHp ? ` This door has ${hp} of ${stats.maxHp} HP left; Repair restores it.` : "";
+  return `${fields}<p class="hint">Attack the door: right-click the closed door and pick one of your token's Strikes in reach, or in range with line of sight. A hit takes the damage less Hardness off its HP; at the Broken Threshold it cracks, at 0 it breaks. Blank goes by material.${left}</p>`;
+}
+
 function forceOpenHint(system) {
   const w = forceOpenWording(system);
   if (!w) return "This game system has no Force open roll here: the GM smashes the door with Shift+right-click.";
@@ -53,7 +71,7 @@ function forceDCField({ own, mat, system, disabled }) {
   if (!w) return "";
   if (!w.dc) return `<p class="hint">Draw Steel has no DC here: a Might test of tier 2 or 3 breaks a wooden door, only tier 3 a metal or stone one.</p>`;
   const auto = defaultForceDC(mat, system), value = ownForceDC(own) ?? "";
-  const data = ["wood", "metal", "stone"].map((m) => `data-dc-${m}="${defaultForceDC(m, system)}"`).join(" ");
+  const data = DOOR_MATERIALS.map((m) => `data-dc-${m}="${defaultForceDC(m, system)}"`).join(" ");
   return `<div class="form-group"><label>Force open ${w.dc}</label><div class="form-fields"><input type="number" name="flags.${ID}.breakWall.forceDC" min="1" max="60" step="1" value="${value}" placeholder="Automatic (${auto})" ${data}${disabled ? " disabled" : ""}></div><p class="hint">Blank goes by material. A roll from the sheet is checked against the closest door's ${w.dc}.</p></div>`;
 }
 
@@ -76,14 +94,15 @@ export function wallBreakFieldsHTML({ door, own = {}, sceneOn = false, system, w
   const mat = wallMaterialOf(own.material, "door");
   const pane = wallMaterialOf(["glass", "none"].includes(own.windowMaterial) ? own.windowMaterial : own.material, "window");
   const doors = [["", "Automatic (on when the scene has Breakable props)"], ["never", "Never"]];
-  const mats = [["wood", "Wood"], ["metal", "Metal"], ["stone", "Stone"]];
+  const mats = [["wood", "Wood"], ["reinforced", "Reinforced wood"], ["metal", "Metal"], ["stone", "Stone"]];
   const panes = [["glass", "Glass"], ["none", "Won't break"]];
   return `<fieldset data-animater-break-wall><legend>Breakable</legend>
     <div data-group="door"${isDoor ? "" : " hidden"}>
       <div class="form-group"><label>Breakable door</label><div class="form-fields"><select name="flags.${ID}.breakWall.door"${off(!isDoor)}>${options(doors, own.door === "never" ? "never" : "")}</select></div><p class="hint">${sceneOn ? "This scene has Breakable props on." : "Needs Breakable props on in the scene."} Never keeps this door whole.</p></div>
-      <div class="form-group"><label>Material</label><div class="form-fields"><select name="flags.${ID}.breakWall.material"${off(!isDoor)}>${options(mats, mat)}</select></div><p class="hint">Wood gives way to blows, fire and hard shoves; metal and stone only to force or a heavy slam.</p></div>
+      <div class="form-group"><label>Material</label><div class="form-fields"><select name="flags.${ID}.breakWall.material"${off(!isDoor)}>${options(mats, mat)}</select></div><p class="hint">Wood gives way to blows, fire and hard shoves (reinforced wood only to a Huge shove); metal and stone only to force or a heavy slam.</p></div>
       <div class="form-group"><label>Can be forced open</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.breakWall.forceOpen"${own.forceOpen === false ? "" : " checked"}${off(!isDoor)}></div><p class="hint">${forceOpenHint(system)}</p></div>
       ${forceDCField({ own, mat, system, disabled: !isDoor })}
+      ${doorStatFields({ own, mat, system, disabled: !isDoor })}
     </div>
     <div data-group="window"${isDoor ? " hidden" : ""}>
       <div class="form-group"><label>Window</label><div class="form-fields"><select name="flags.${ID}.breakWall.window"${off(isDoor)}>${options([["", `Automatic (${GLASS_PANES.includes(windowKind) ? "yes: a glass window" : "no"})`], ["yes", "Yes"], ["no", "No"]], own.window === true ? "yes" : own.window === false ? "no" : ["yes", "no"].includes(own.window) ? own.window : "")}</select></div><p class="hint">${sceneOn ? "This scene has Breakable props on." : "Needs Breakable props on in the scene."} Whether this wall is a window that can break. Automatic: yes when its Animater window (below) is glass, leaded, mosaic, rose or frosted. When it breaks it opens: a glass window becomes an open one, shutters stand open. Repair puts it back.</p></div>

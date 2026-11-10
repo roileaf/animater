@@ -504,3 +504,39 @@ test("6b: a melee miss breaks a window beside its target, never on the attacker'
   const up = win({ id: "up", c: [300, 380, 400, 380], levels: ["ground"] });
   assert.equal(validWallBreakRequest(missReq(up, swing()), missCtx(up, { target: { ...TGT, level: "upstairs" } })).why, "far");
 });
+
+// Attacking a door (door-attack.mjs): the hit that takes its last HP breaks it through this relay, cause "attack".
+const d20a = (total, natural = 10) => ({ total, dice: [{ faces: 20, total: natural, results: [{ result: natural, active: true }] }] });
+const strikeMsgs = ({ total = 20 } = {}) => ({
+  attack: { id: "a1", author: { id: "p" }, rolls: [d20a(15)], flags: { pf2e: { context: { type: "attack-roll", identifier: "it.longsword.melee", actor: "act" } }, animater: { doorAttack: { wallId: "d1", tokenId: "t1" } } } },
+  damage: { id: "m1", author: { id: "p" }, rolls: [{ total }], flags: { pf2e: { context: { type: "damage-roll", sourceType: "attack", actor: "act", outcome: "success" }, origin: { uuid: "Actor.act.Item.it" } }, animater: { doorAttack: { wallId: "d1", tokenId: "t1", attackId: "a1" } } } },
+});
+const attackPlace = (over = {}) => ({ ...strikeMsgs(over), token: { x: 300, y: 200, w: 100, h: 100, authorOwns: true, actorId: "act" }, strike: { ranged: false, feet: 5 }, sight: true, system: "pf2e" });
+const attackNote = (w) => wallNoteFor({ wall: w, scene: scene(), cause: { kind: "attack" }, seed: 9, from: { x: 350, y: 250 } });
+
+test("attack: the hit that takes a door's last HP breaks it, its HP and the rolls kept on the wall", () => {
+  const w = wall({ flags: { animater: { breakWall: { hp: 6 } } } });
+  const r = validWallBreakRequest({ cause: { kind: "attack", messageId: "m1" }, note: attackNote(w) }, { wall: w, scene: scene(), grid: 100, sender, ...attackPlace() });
+  assert.equal(r.ok, true);
+  assert.equal(r.note.kind, "door");
+  assert.equal(r.note.messageId, "m1");
+  assert.equal(r.update.door, 0);
+  assert.equal(r.update["flags.animater.breakWall.hp"], 0);
+  assert.deepEqual(r.update["flags.animater.breakWall.hits"], ["a1", "m1"]);
+});
+
+test("attack: a hit that leaves HP, a refused hit, a window or another system does not break it", () => {
+  const ask = (w, over = {}, place = {}) => validWallBreakRequest({ cause: { kind: "attack", messageId: "m1" }, note: attackNote(w) }, { wall: w, scene: scene(), grid: 100, sender, ...attackPlace(), ...place, ...over });
+  assert.equal(ask(wall()).why, "hp"); // 20 - (20 - 5) = 5 left
+  assert.equal(ask(wall({ flags: { animater: { breakWall: { hp: 6 } } } }), {}, { token: { x: 300, y: 600, w: 100, h: 100, authorOwns: true, actorId: "act" } }).why, "far");
+  assert.equal(ask(wall({ flags: { animater: { breakWall: { hp: 6, hits: ["m1"] } } } })).why, "used");
+  assert.equal(ask(wall({ flags: { animater: { breakWall: { hp: 6 } } } }), { system: "dnd5e" }).why, "system");
+  assert.equal(ask(wall({ door: 0, flags: { animater: { breakWall: { window: true, hp: 6 } } } })).why, "kind");
+  // a whole door breaks from one huge hit
+  assert.equal(ask(wall(), {}, strikeMsgs({ total: 40 })).ok, true);
+});
+
+test("a hand-edited broken door forgets its HP too", () => {
+  const w = wall({ door: 2, flags: { animater: { breakWall: { hp: 0, broken: { seed: 1 } } } } });
+  assert.deepEqual(handEditUpdate(w), { _id: "d1", "flags.animater.breakWall.-=broken": null, "flags.animater.breakWall.-=hp": null });
+});

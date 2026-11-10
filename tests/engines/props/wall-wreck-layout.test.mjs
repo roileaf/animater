@@ -229,3 +229,30 @@ test("a stone door: 2-3 cracked stone slabs past the wall, stone chips and a pal
   assert.deepEqual([...counts].sort(), [2, 3]);
   assert.deepEqual(doorWreckLayout(stoneNote, doorWall, 100), doorWreckLayout(stoneNote, doorWall, 100));
 });
+
+// A door hit to its Broken Threshold shows cracks painted on its own segment (door-attack.mjs doorCracked).
+import { doorCrackLayout, crackSeed } from "../../../scripts/engines/props/wall-wreck-layout.mjs";
+test("cracks: seeded from the wall alone, ink lines with a pale edge lying on the door's own segment", () => {
+  const w = { id: "d1", c: [300, 200, 400, 200] };
+  const a = doorCrackLayout(w, crackSeed("d1"), 100), b = doorCrackLayout(w, crackSeed("d1"), 100);
+  assert.deepEqual(a, b);
+  assert.notDeepEqual(doorCrackLayout(w, crackSeed("d2"), 100), a);
+  assert.ok(a.lines.length >= 3);
+  for (const l of a.lines) {
+    assert.ok(l.pts.length >= 4 && l.pts.length % 2 === 0);
+    for (let i = 0; i < l.pts.length; i += 2) {
+      assert.ok(l.pts[i] >= 300 - 0.01 && l.pts[i] <= 400 + 0.01, "along the door");
+      assert.ok(Math.abs(l.pts[i + 1] - 200) <= 9.01, "within the painted door's thickness");
+    }
+  }
+  assert.equal(typeof a.edge, "number"); // the fresh edge's tone
+  assert.ok(a.chips.length >= 2);
+  // scaled with the grid, along any wall
+  const big = doorCrackLayout({ id: "d1", c: [0, 0, 0, 200] }, crackSeed("d1"), 200);
+  for (const l of big.lines) for (let i = 0; i < l.pts.length; i += 2) assert.ok(Math.abs(l.pts[i]) <= 18.01);
+  // a metal or stone door's edge is not fresh wood
+  assert.notEqual(doorCrackLayout(w, 1, 100, "metal").edge, doorCrackLayout(w, 1, 100, "wood").edge);
+  assert.equal(doorCrackLayout(w, 1, 100, "reinforced").edge, doorCrackLayout(w, 1, 100, "wood").edge);
+  assert.equal(crackSeed("d1"), crackSeed("d1"));
+  assert.ok(Number.isInteger(crackSeed("anything")));
+});

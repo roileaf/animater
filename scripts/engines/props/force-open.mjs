@@ -5,8 +5,8 @@ import { wallTraits } from "./wall-break.mjs";
 import { onLevel, segRectDist } from "./prop-pick.mjs";
 
 export const FORCE_OPEN_SYSTEMS = new Set(["pf2e", "sf2e", "dnd5e", "daggerheart", "draw-steel"]);
-const D20_DC = { wood: 15, metal: 20, stone: 25 }; // PF2e, SF2e and D&D 5e
-const DAGGERHEART_DC = { wood: 13, metal: 16, stone: 19 };
+const D20_DC = { wood: 15, reinforced: 20, metal: 20, stone: 25 }; // PF2e, SF2e and D&D 5e
+const DAGGERHEART_DC = { wood: 13, reinforced: 16, metal: 16, stone: 19 };
 const DCS = { pf2e: D20_DC, sf2e: D20_DC, dnd5e: D20_DC, daggerheart: DAGGERHEART_DC };
 const WORDING = {
   pf2e: { skill: "Athletics", label: "Force Open", dc: "DC" },
@@ -19,7 +19,7 @@ const MAX_DC = 60;
 const PF2E_WINS = ["success", "criticalSuccess"];
 const DRAW_STEEL_TIERS = [12, 17]; // the power roll's tier 2 and tier 3 thresholds
 const isNum = (n) => typeof n === "number" && Number.isFinite(n);
-const matOf = (m) => (m === "metal" || m === "stone" ? m : "wood");
+const matOf = (m) => (m === "metal" || m === "stone" || m === "reinforced" ? m : "wood");
 
 // The DC a door of this material has in this system when the GM left it blank. Null where the system has no DC
 // (Draw Steel goes by tier) or no Force open roll here.
@@ -69,14 +69,14 @@ export function forceOpenPrompt(system, material, dc, showDC = true) {
 }
 
 // The kept d20 of a check (the die's total: the higher of a roll-twice), else null.
-function natural20(roll) {
+export function natural20(roll) {
   const die = Array.from(roll?.dice ?? []).find((d) => d?.faces === 20);
   const n = Number(die?.total ?? die?.results?.find((r) => r?.active !== false)?.result);
   return Number.isFinite(n) ? n : null;
 }
 
 // PF2e's degree of success of a total against a DC, a natural 20 a step up and a natural 1 a step down.
-function pf2eDegree(total, dc, nat) {
+export function pf2eDegree(total, dc, nat) {
   let degree = total >= dc + 10 ? 3 : total >= dc ? 2 : total <= dc - 10 ? 0 : 1;
   if (nat === 20) degree += 1; else if (nat === 1) degree -= 1;
   return Math.max(0, Math.min(3, degree));

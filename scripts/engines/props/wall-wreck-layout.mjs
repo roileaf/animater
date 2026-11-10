@@ -223,6 +223,50 @@ export function windowWreckLayout(note, wall, grid = 100) {
   return { gap, teeth, mullion, shards: { far, near }, glints, slivers, mark: note.mark === "scorch" ? { kind: "scorch", x: m.x, y: m.y, r: 40 * k } : null };
 }
 
+// A door hit down to its Broken Threshold (door-attack.mjs), still standing: cracks painted on its own segment, the
+// painted door's thickness (DOOR_HALF at grid 100) and no more. From a struck point near the middle, 3-4 jagged ink
+// cracks run out along the door, a couple forking off; each carries a pale edge (fresh wood, else bright iron or pale
+// stone) a hair beside it. A few chips lie on the floor either side. Seeded from the wall (crackSeed), so every client
+// and every reload paints the same cracks.
+const CRACK_EDGE = { wood: 0xd6b47c, reinforced: 0xd6b47c, metal: 0xc9c2b6, stone: 0xcfc9bd };
+export function crackSeed(id) {
+  let h = 2166136261;
+  for (const ch of String(id ?? "")) h = Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0;
+  return h & 0x7fffffff;
+}
+export function doorCrackLayout(wall, seed, grid = 100, material = "wood") {
+  const rand = seededRandom((seed >>> 0) * 617 + 23), k = (grid || 100) / 100, [x1, y1, x2, y2] = wall.c;
+  const L = Math.hypot(x2 - x1, y2 - y1) || 1, t = { x: (x2 - x1) / L, y: (y2 - y1) / L }, n = { x: -t.y, y: t.x };
+  const half = DOOR_HALF * k * 0.85, at = (u, v) => [x1 + t.x * u + n.x * v, y1 + t.y * u + n.y * v];
+  const hitU = L * (0.35 + rand() * 0.3), hitV = (rand() - 0.5) * half;
+  const crack = (u0, v0, dir, len, steps) => {
+    const pts = [...at(u0, v0)];
+    let u = u0, v = v0;
+    for (let i = 1; i <= steps; i++) {
+      u = clamp(u + (dir * len) / steps, 1, L - 1);
+      v = clamp(v + (rand() - 0.5) * half * 0.9, -half, half);
+      pts.push(...at(u, v));
+    }
+    return { pts, w: (1.1 + rand() * 0.5) * k, end: { u, v } };
+  };
+  const lines = [];
+  const arms = 3 + Math.floor(rand() * 2);
+  for (let i = 0; i < arms; i++) {
+    const dir = i % 2 ? -1 : 1, len = L * (0.18 + rand() * 0.22);
+    const main = crack(hitU, hitV, dir, len, 4 + Math.floor(rand() * 3));
+    lines.push(main);
+    if (rand() < 0.6) {
+      const m = Math.floor(main.pts.length / 4) * 2, p = { u: (main.pts[m] - x1) * t.x + (main.pts[m + 1] - y1) * t.y, v: (main.pts[m] - x1) * n.x + (main.pts[m + 1] - y1) * n.y };
+      lines.push(crack(p.u, clamp(p.v, -half, half), dir, len * 0.4, 2));
+    }
+  }
+  const chips = Array.from({ length: 3 + Math.floor(rand() * 3) }, (_, i) => {
+    const side = i % 2 ? 1 : -1, [x, y] = at(hitU + (rand() - 0.5) * L * 0.4, side * (DOOR_HALF + 4 + rand() * 14) * k);
+    return { x, y, r: (1.4 + rand() * 1.6) * k, rot: rand() * Math.PI };
+  });
+  return { lines: lines.map(({ pts, w }) => ({ pts, w })), edge: CRACK_EDGE[material] ?? CRACK_EDGE.wood, chips, hit: at(hitU, hitV) };
+}
+
 // The walls to draw a wreck for: those carrying a valid broken note.
 export function wallWreckTargets(walls) {
   const out = [];

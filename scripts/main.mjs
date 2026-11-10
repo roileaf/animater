@@ -33,6 +33,7 @@ import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, smashFrom, ne
 import { windowOnFlight, createMissFlights, missFlies } from "./engines/props/window-miss.mjs";
 import { hitOutcome, windowThrough, throughAt } from "./engines/props/window-through.mjs";
 import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt, forceOpenWording, showForceDC } from "./engines/props/force-open.mjs";
+import { DOOR_ATTACK_SYSTEMS, doorStats, doorCracked, doorHpLine, strikeReaches, strikeIdentifier, doorAttackOf, doorAttackCheck, doorAttackRoller, doorHitUpdate } from "./engines/props/door-attack.mjs";
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
@@ -8239,11 +8240,20 @@ const wallView = (doc) => ({ id: doc.id, c: [...(doc.c ?? [])], door: doc.door, 
 const wallViewed = (doc) => onLevel(doc?.levels, canvas?.level?.id);
 // Draws (or removes) a wall's wreck from what the wall holds now.
 const drawWallWreck = (doc, animate) => {
-  const note = doc && wallViewed(doc) ? readWallNote(doc.flags?.[ID]?.breakWall?.broken) : null;
+  const viewed = !!doc && wallViewed(doc), note = viewed ? readWallNote(doc.flags?.[ID]?.breakWall?.broken) : null;
   if (note) wallWreckage.show(doc, note, { animate }); else if (doc?.id) wallWreckage.hide(doc.id);
+  drawDoorCracks(doc, viewed && !note);
 };
+// A door hit down to its Broken Threshold that still stands shows cracks (door-attack.mjs doorCracked).
+function drawDoorCracks(doc, may = true) {
+  if (!doc?.id) return;
+  const own = doc.flags?.[ID]?.breakWall ?? {}, traits = may ? wallTraits(wallView(doc), doc.parent) : null;
+  if (traits?.kind === "door" && doorCracked(own, doorStats(own, traits.material))) wallWreckage.showCracks(doc, traits.material);
+  else wallWreckage.hideCracks(doc.id);
+}
 function breakWallHere(doc, note) {
   if (!wallViewed(doc)) return;
+  wallWreckage.hideCracks(doc.id);
   wallWreckage.show(doc, note, { animate: true });
   clearTimeout(wallPending.get(doc.id)?.timer);
   wallPending.set(doc.id, { seed: note.seed, timer: setTimeout(() => settleWallHere(doc.id, true), PROP_REFUSED_MS) });
@@ -8271,6 +8281,7 @@ async function wallPlace(cause, scene, grid, user) {
     return { ...place, attacker, walls: (scene.walls?.contents ?? []).map(wallView) };
   }
   if (cause.kind === "force-open") return { ...place, ...forceOpenPlace(cause, scene, grid) };
+  if (cause.kind === "attack") return { ...place, ...doorAttackPlace(scene, cause.messageId) };
   if (cause.kind !== "path" || user?.isGM) return place;
   const owns = (d) => { try { return d?.testUserPermission?.(user, "OWNER") === true; } catch { return false; } };
   const m = cause.moverUuid ? await fromUuid(cause.moverUuid).catch(() => null) : null;
@@ -8306,8 +8317,9 @@ async function requestWallBreak(wall, cause, { from } = {}) {
   // here); anything else shows at once (glass a strike goes through breaks always, breaksSure).
   const place = await wallPlace(clean, scene, grid, game.user);
   const here = validWallBreakRequest({ cause: clean, note }, { wall: view, scene, grid, sender: game.user, roll: 0, ...place, ...areaPlace(clean, game.user) });
-  if (!here.ok) return false;
-  if (scene === canvas?.scene && breaksSure(clean, view, place.attacker, place.target)) breakWallHere(doc, here.note);
+  const hpOnly = clean.kind === "attack" && here.why === "hp"; // a door hit that leaves it standing: the GM writes its HP
+  if (!here.ok && !hpOnly) { if (clean.kind === "attack") runtime?.trace("props", `door attack not sent: ${here.why}`); return false; }
+  if (here.ok && scene === canvas?.scene && breaksSure(clean, view, place.attacker, place.target)) breakWallHere(doc, here.note);
   game.socket.emit(`module.${ID}`, { type: WALL_BREAK_MESSAGE, sender: clientId, sceneId: scene.id, wallId: doc.id, cause: clean, note });
   return true;
 }
@@ -8316,10 +8328,24 @@ async function applyWallBreak(scene, doc, cause, rawNote, user) {
   wallWriting.add(doc.id);
   try {
     const grid = propGrid(scene);
+    let hit = null;
+    if (cause.kind === "attack") {
+      // A door hit (door-attack.mjs): one that leaves it standing writes its HP; the one that takes its last breaks it below.
+      hit = doorAttackCheck({ wall: wallView(doc), scene, grid, sender: user, ...doorAttackPlace(scene, cause.messageId) });
+      if (!hit.ok) { runtime?.trace("props", `door hit refused: ${hit.why}`); return false; }
+      if (!hit.broken) {
+        const { _id, ...up } = doorHitUpdate(doc, hit);
+        await doc.update(up, { animater: { doorHit: true } });
+        doorHitsUsed.add(cause.messageId);
+        postDoorLine(hit);
+        return true;
+      }
+    }
     const check = validWallBreakRequest({ cause, note: rawNote }, { wall: wallView(doc), scene, grid, sender: user, roll: Math.random(), ...await wallPlace(cause, scene, grid, user), ...blastPlace(cause, scene), ...areaPlace(cause, user) });
     if (!check.ok) { runtime?.trace("props", `door not broken: ${check.why}`); return false; }
     const { _id, ...update } = check.update;
     await doc.update(update, { animater: { wallBreak: true }, sound: false });
+    if (hit) { doorHitsUsed.add(cause.messageId); postDoorLine(hit); }
     if (cause.kind === "force-open") {
       forceOpenUsed.add(cause.messageId);
       void game.messages?.get(cause.messageId)?.setFlag(ID, "forceOpenUsed", true).catch((e) => runtime?.trace("props", `force open mark: ${e?.message ?? e}`));
@@ -8541,12 +8567,19 @@ function forceDCSettings(sys) {
   return sys === "pf2e" || sys === "sf2e" ? { pf2eShowDC: read("metagame_showDC") } : sys === "dnd5e" ? { dnd5eChallengeVisibility: read("challengeVisibility") } : {};
 }
 function forceOpenFromDoor(wall, event) {
-  const doc = wall?.document ?? wall, scene = doc?.parent, sys = game.system.id, w = forceOpenWording(sys);
-  if (doc?.documentName !== "Wall" || !scene || !propsOn(scene) || !w) return false;
+  const doc = wall?.document ?? wall, scene = doc?.parent, sys = game.system.id, w = forceOpenWording(sys), attackable = DOOR_ATTACK_SYSTEMS.has(sys);
+  if (doc?.documentName !== "Wall" || !scene || !propsOn(scene) || (!w && !attackable)) return false;
   if (game.user?.isGM && !(event?.altKey || game.keyboard?.isModifierActive?.("Alt"))) return false;
-  const view = wallView(doc), traits = wallTraits(view, scene, sys);
-  if (traits.kind !== "door" || !traits.forceOpen || doc.ds === 1 || view.flags?.[ID]?.breakWall?.broken) return false;
+  const view = wallView(doc), traits = wallTraits(view, scene, sys), canForce = !!w && traits.forceOpen;
+  if (traits.kind !== "door" || (!canForce && !attackable) || doc.ds === 1 || view.flags?.[ID]?.breakWall?.broken) return false;
   if (game.paused && !game.user.isGM) { ui.notifications?.warn("GAME.PausedWarning", { localize: true }); return true; }
+  // PF2e: a choice of forcing it or attacking it (door-attack.mjs); elsewhere straight to Force open.
+  if (attackable) { void doorChoice(doc, scene, traits, canForce).catch((e) => runtime?.trace("props", `door choice: ${e?.message ?? e}`)); return true; }
+  return forceOpenAsk(doc, scene, traits, true);
+}
+// Force open for the token beside the door (forceOpenRoller): confirm shows the "Force it open?" prompt first.
+function forceOpenAsk(doc, scene, traits, confirm) {
+  const sys = game.system.id, w = forceOpenWording(sys), view = wallView(doc);
   const grid = propGrid(scene), foot = (t) => ({ id: t.id, x: t.x, y: t.y, w: t.width * grid, h: t.height * grid, level: t.level });
   const controlled = (canvas?.tokens?.controlled ?? []).map((t) => t.document).filter((d) => d?.parent === scene && d.isOwner && d.actor);
   const owned = game.user.isGM ? [] : (scene.tokens?.contents ?? []).filter((d) => d.isOwner && d.actor);
@@ -8554,12 +8587,145 @@ function forceOpenFromDoor(wall, event) {
   const tokenDoc = pick.token ? scene.tokens.get(pick.token.id) : null;
   if (!tokenDoc?.actor) { ui.notifications?.info(ROLLER_WHY[pick.why] ?? ROLLER_WHY.none); return true; }
   void (async () => {
-    const ok = await foundry.applications.api.DialogV2.confirm({ window: { title: `${w.label}: ${tokenDoc.name}` }, content: `<p>${forceOpenPrompt(sys, traits.material, traits.forceDC, showForceDC({ system: sys, isGM: !!game.user.isGM, settings: forceDCSettings(sys) }))}</p>`, rejectClose: false });
+    const ok = !confirm || await foundry.applications.api.DialogV2.confirm({ window: { title: `${w.label}: ${tokenDoc.name}` }, content: `<p>${forceOpenPrompt(sys, traits.material, traits.forceDC, showForceDC({ system: sys, isGM: !!game.user.isGM, settings: forceDCSettings(sys) }))}</p>`, rejectClose: false });
     if (ok && !(await rollForceOpen(tokenDoc.actor, tokenDoc, doc, traits))) ui.notifications?.warn("This game system's roll for forcing a door is not available.");
   })().catch((e) => runtime?.trace("props", `force open from door: ${e?.message ?? e}`));
   return true;
 }
 Hooks.on("createChatMessage", (message) => { void propSafe("force open", () => breakDoorsOnForceOpen(message))?.catch?.((e) => runtime?.trace("props", `force open: ${e?.message ?? e}`)); });
+// Attacking a door (PF2e, engines/props/door-attack.mjs). The door's prompt: Force it open (when it can be) or Attack the door.
+async function doorChoice(doc, scene, traits, canForce) {
+  const sys = game.system.id, showDC = showForceDC({ system: sys, isGM: !!game.user.isGM, settings: forceDCSettings(sys) });
+  const stats = doorStats(doc.flags?.[ID]?.breakWall, traits.material), lines = [];
+  if (canForce) lines.push(forceOpenPrompt(sys, traits.material, traits.forceDC, showDC));
+  lines.push(showDC ? `Attack the door? A Strike vs AC ${stats.ac}` : "Attack the door? A Strike");
+  const buttons = [...(canForce ? [{ action: "force", label: "Force it open", icon: "fa-solid fa-door-open" }] : []),
+    { action: "attack", label: "Attack the door", icon: "fa-solid fa-hammer", default: true }, { action: "cancel", label: "Cancel", icon: "fa-solid fa-xmark" }];
+  const choice = await foundry.applications.api.DialogV2.wait({ window: { title: "Door" }, content: lines.map((l) => `<p>${l}</p>`).join(""), buttons, rejectClose: false });
+  if (choice === "force") forceOpenAsk(doc, scene, traits, false);
+  else if (choice === "attack") await attackDoorFromDoor(doc, scene, stats);
+}
+const ATTACKER_WHY = { many: "Select the token that attacks the door.", none: "Select your token to attack the door." };
+const DOOR_NO_TARGET = { document: null }; // a PF2e Strike at the door, never at the user's current target
+// The actor's Strikes a door can be attacked with: each ready Strike and its other uses (a thrown dagger), with its shape
+// {ranged, feet}: reach for a melee Strike, maximum range for a ranged or thrown one.
+function doorStrikes(actor) {
+  const out = [];
+  for (const a of actor?.system?.actions ?? []) {
+    if (a?.type !== "strike" || a.ready === false || a.canAttack === false || !a.item) continue;
+    for (const [s, alt] of [[a, false], ...(a.altUsages ?? []).map((u) => [u, true])]) {
+      if (typeof s?.variants?.[0]?.roll !== "function") continue;
+      const shape = strikeShape(actor, s);
+      out.push({ strike: s, shape, label: `${s.label ?? s.item?.name ?? "Strike"}${alt ? (shape.ranged ? " (thrown)" : " (melee)") : ""}` });
+    }
+  }
+  return out;
+}
+function strikeShape(actor, s) {
+  const item = s?.item, ranged = !!item?.isRanged;
+  let feet = ranged ? Number(item?.range?.max) : Number(actor?.getReach?.({ action: "attack", weapon: item }));
+  if (!Number.isFinite(feet) || feet <= 0) feet = ranged ? NaN : 5;
+  return { ranged, feet };
+}
+// The Strike an attack roll names (its identifier: item id and melee or ranged use), as the actor has it now.
+function doorStrikeOf(actor, identifier) {
+  const sid = strikeIdentifier(identifier), a = sid ? (actor?.system?.actions ?? []).find((x) => x?.type === "strike" && x.item?.id === sid.itemId) : null;
+  if (!a) return null;
+  const ranged = sid.use === "ranged";
+  return !!a.item.isRanged === ranged ? a : (a.altUsages ?? []).find((u) => !!u?.item?.isRanged === ranged) ?? null;
+}
+// Line of sight from the token's centre to the door: nothing blocks sight up to just short of the door's middle, on the
+// token's level.
+function doorInSight(tokenDoc, wallDoc) {
+  try {
+    const grid = propGrid(wallDoc.parent), o = { x: tokenDoc.x + (tokenDoc.width * grid) / 2, y: tokenDoc.y + (tokenDoc.height * grid) / 2 }, m = wallMid(wallDoc);
+    const len = Math.hypot(o.x - m.x, o.y - m.y) || 1, to = { x: m.x + ((o.x - m.x) / len) * 2, y: m.y + ((o.y - m.y) / len) * 2 };
+    const level = typeof tokenDoc.level === "string" ? wallDoc.parent?.levels?.get?.(tokenDoc.level) : undefined;
+    return !CONFIG.Canvas.polygonBackends.sight.testCollision(o, to, { type: "sight", mode: "any", ...(level ? { level } : {}) });
+  } catch (e) { runtime?.trace("props", `door sight: ${e?.message ?? e}`); return false; }
+}
+async function attackDoorFromDoor(doc, scene, stats) {
+  const grid = propGrid(scene), DialogV2 = foundry.applications.api.DialogV2;
+  const controlled = (canvas?.tokens?.controlled ?? []).map((t) => t.document).filter((d) => d?.parent === scene && d.isOwner && d.actor);
+  const owned = game.user.isGM ? [] : (scene.tokens?.contents ?? []).filter((d) => d.isOwner && d.actor);
+  const pick = doorAttackRoller({ controlled, owned }), tokenDoc = pick.tokenId ? scene.tokens.get(pick.tokenId) : null;
+  if (!tokenDoc?.actor) { ui.notifications?.info(ATTACKER_WHY[pick.why] ?? ATTACKER_WHY.none); return; }
+  const view = wallView(doc), foot = { x: tokenDoc.x, y: tokenDoc.y, w: tokenDoc.width * grid, h: tokenDoc.height * grid, level: tokenDoc.level };
+  const all = doorStrikes(tokenDoc.actor), gridDistance = Number(scene.grid?.distance) || 5;
+  const reach = all.filter((s) => !strikeReaches({ token: foot, wall: view, grid, gridDistance, strike: s.shape, sight: s.shape.ranged ? doorInSight(tokenDoc, doc) : true }));
+  if (!reach.length) { ui.notifications?.info(all.length ? `None of ${tokenDoc.name}'s Strikes reach the door from here.` : `${tokenDoc.name} has no Strike to attack the door with.`); return; }
+  const esc = (s) => foundry.utils?.escapeHTML?.(String(s)) ?? String(s);
+  const options = reach.map((s, i) => `<option value="${i}">${esc(s.label)}</option>`).join("");
+  const picked = await DialogV2.wait({ window: { title: `Attack the door: ${tokenDoc.name}` }, content: `<div class="form-group"><label>Strike</label><div class="form-fields"><select name="strike">${options}</select></div></div>`,
+    buttons: [{ action: "attack", label: "Strike", icon: "fa-solid fa-hand-fist", default: true, callback: (_e, button) => button.form?.elements?.strike?.value ?? "0" }, { action: "cancel", label: "Cancel", icon: "fa-solid fa-xmark" }], rejectClose: false });
+  const s = picked === "cancel" || picked === null || picked === undefined ? null : reach[Number(picked)];
+  if (s) await rollDoorStrike(tokenDoc, doc, s, stats.ac);
+}
+// The Strike's attack and damage messages carry flags.animater.doorAttack {wallId, tokenId, sceneId, attackId?}: PF2e
+// takes no message data, so the next matching message this client creates for that actor is stamped (once; each
+// stamp lapses after DOOR_STAMP_MS).
+const DOOR_STAMP_MS = 600000; // ten minutes: the damage may wait on the roll dialog or the card's button
+const doorStamps = []; // {actorId, flag, match(doc), until}
+const stampDoor = (actor, flag, match) => { const s = { actorId: actor.id, flag, match, until: Date.now() + DOOR_STAMP_MS }; doorStamps.push(s); return s; };
+const unstampDoor = (s) => { const i = doorStamps.indexOf(s); if (i >= 0) doorStamps.splice(i, 1); };
+Hooks.on("preCreateChatMessage", (doc, _data, _options, userId) => propSafe("door attack stamp", () => {
+  if (userId !== game.user.id || !doorStamps.length) return;
+  const now = Date.now();
+  for (const s of [...doorStamps]) if (now > s.until) unstampDoor(s);
+  const s = doorStamps.find((x) => doc?.speaker?.actor === x.actorId && x.match(doc));
+  if (!s) return;
+  doc.updateSource({ [`flags.${ID}.doorAttack`]: s.flag });
+  unstampDoor(s);
+}));
+// The Strike against the door's AC (the AC as the roll's DC, so PF2e shows the degree of success); on a hit, the damage
+// (critical on a critical hit) from a prompt here or the attack card's own button.
+async function rollDoorStrike(tokenDoc, wallDoc, s, ac) {
+  const actor = tokenDoc.actor, itemId = s.strike.item?.id, flag = { wallId: wallDoc.id, tokenId: tokenDoc.id, sceneId: wallDoc.parent.id };
+  const ctxOf = (doc) => doc?.flags?.pf2e?.context;
+  const stamp = stampDoor(actor, flag, (doc) => { const c = ctxOf(doc); return c?.type === "attack-roll" && Number(c?.dc?.value) === ac && strikeIdentifier(c.identifier)?.itemId === itemId; });
+  const rolled = await s.strike.variants[0].roll({ dc: { value: ac, label: "Door" }, target: DOOR_NO_TARGET, callback: (_roll, outcome, message) => {
+    unstampDoor(stamp);
+    if ((outcome !== "success" && outcome !== "criticalSuccess") || !message?.id) return;
+    stampDoor(actor, { ...flag, attackId: message.id }, (doc) => { const c = ctxOf(doc); return c?.type === "damage-roll" && c.sourceType === "attack" && String(doc.flags?.pf2e?.origin?.uuid ?? "").endsWith(`Item.${itemId}`); });
+    void (async () => {
+      const ok = await foundry.applications.api.DialogV2.confirm({ window: { title: `Attack the door: ${tokenDoc.name}` }, content: `<p>${outcome === "criticalSuccess" ? "A critical hit!" : "A hit!"} Roll damage against the door?</p>`, rejectClose: false });
+      if (ok) await (outcome === "criticalSuccess" ? s.strike.critical : s.strike.damage)?.({ target: DOOR_NO_TARGET });
+    })().catch((e) => runtime?.trace("props", `door damage: ${e?.message ?? e}`));
+  } });
+  if (!rolled) unstampDoor(stamp);
+}
+// The GM's view of a door hit: its copies of the damage message and the attack it names, the striker's footprint (with
+// whether the author owns it and whose actor it is), the Strike's shape as the actor has it, line of sight for a ranged
+// Strike, feet a square, and whether this GM applied that damage already.
+const doorHitsUsed = new Set();
+function doorAttackPlace(scene, damageId) {
+  const damage = damageId ? game.messages?.get(damageId) : null, f = doorAttackOf(damage), attack = f?.attackId ? game.messages?.get(f.attackId) : null;
+  const author = damage?.author ?? damage?.user, grid = propGrid(scene), wallDoc = f ? scene.walls?.get(f.wallId) : null;
+  const t = f && (!f.sceneId || f.sceneId === scene.id) ? scene.tokens?.get(f.tokenId) : null;
+  let authorOwns = false;
+  try { authorOwns = !!t && !!author && t.testUserPermission?.(author, "OWNER") === true; } catch { authorOwns = false; }
+  const s = t?.actor && attack ? doorStrikeOf(t.actor, attack.flags?.pf2e?.context?.identifier) : null, strike = s ? strikeShape(t.actor, s) : undefined;
+  return { attack: attack ?? undefined, damage: damage ?? undefined, strike, system: game.system.id, gridDistance: Number(scene.grid?.distance) || 5,
+    token: t ? { x: t.x, y: t.y, w: t.width * grid, h: t.height * grid, level: t.level, authorOwns, actorId: t.actorId } : undefined,
+    sight: t && wallDoc && strike?.ranged ? doorInSight(t, wallDoc) : true, used: !!damageId && doorHitsUsed.has(damageId) };
+}
+// The GM's line on each hit, whispered to the GMs.
+function postDoorLine(hit) {
+  void ChatMessage.create({ content: `<p>${doorHpLine(hit)}</p>`, speaker: { alias: "Door" }, whisper: ChatMessage.getWhisperRecipients("GM").map((u) => u.id) })
+    .catch((e) => runtime?.trace("props", `door line: ${e?.message ?? e}`));
+}
+// A damage roll of this client's from a door attack: asked of the GM through the wall relay (cause "attack").
+async function hitDoorOnDamage(message) {
+  if (!DOOR_ATTACK_SYSTEMS.has(game.system.id) || (message?.author ?? message?.user)?.id !== game.user.id) return;
+  const f = doorAttackOf(message);
+  if (!f?.attackId) return;
+  const scene = (f.sceneId ? game.scenes.get(f.sceneId) : null) ?? canvas?.scene, doc = scene?.walls?.get(f.wallId), tok = scene?.tokens?.get(f.tokenId);
+  if (!propsOn(scene) || !doc) return;
+  await afterDice({ type: "damage", messageId: message.id });
+  const grid = propGrid(scene), from = tok ? { x: tok.x + (tok.width * grid) / 2, y: tok.y + (tok.height * grid) / 2 } : undefined;
+  await requestWallBreak(doc, { kind: "attack", messageId: message.id }, { from });
+}
+Hooks.on("createChatMessage", (message) => { void propSafe("door attack", () => hitDoorOnDamage(message))?.catch?.((e) => runtime?.trace("props", `door attack: ${e?.message ?? e}`)); });
 // The GM's Shift+right-click on a door control: the door smashes, from the GM's one controlled token, else half a square
 // off its left-hand side. False when the door cannot break, so Foundry's own lock toggle goes ahead.
 function smashDoor(wall) {
@@ -8830,6 +8996,7 @@ Hooks.on("updateWall", (doc, changes, options) => {
     const seed = readWallNote(doc.flags?.[ID]?.breakWall?.broken)?.seed;
     const mine = wallPending.get(doc.id)?.seed === seed, late = !mine && wallLate.get(doc.id)?.seed === seed;
     settleWallHere(doc.id, false); forgetLateWall(doc.id);
+    wallWreckage.hideCracks(doc.id);
     if (!mine) drawWallWreck(doc, !late);
     return;
   }
@@ -8837,8 +9004,12 @@ Hooks.on("updateWall", (doc, changes, options) => {
   if (options?.animater?.wallRepair || "c" in changes || "levels" in changes || changes.flags?.[ID]) drawWallWreck(doc, false);
 });
 Hooks.on("createWall", (doc) => { if (doc.parent === canvas?.scene) drawWallWreck(doc, false); });
-Hooks.on("deleteWall", (doc) => { settleWallHere(doc.id, false); forgetLateWall(doc.id); wallWreckage.hide(doc.id); });
-Hooks.on("canvasReady", () => { wallWreckage.sync((canvas.walls?.placeables ?? []).map((w) => w.document).filter(wallViewed)); });
+Hooks.on("deleteWall", (doc) => { settleWallHere(doc.id, false); forgetLateWall(doc.id); wallWreckage.hide(doc.id); wallWreckage.hideCracks(doc.id); });
+Hooks.on("canvasReady", () => {
+  const walls = (canvas.walls?.placeables ?? []).map((w) => w.document);
+  wallWreckage.sync(walls.filter(wallViewed));
+  for (const d of walls) propSafe("door cracks", () => drawDoorCracks(d, wallViewed(d) && !d.flags?.[ID]?.breakWall?.broken));
+});
 Hooks.on("canvasTearDown", () => {
   for (const w of [...wallPending.values(), ...wallLate.values()]) clearTimeout(w.timer);
   wallPending.clear(); wallLate.clear(); wallWreckage.clear();
@@ -10987,7 +11158,12 @@ Hooks.on("renderWallConfig", (app, html) => {
   const windowGroup = fieldset.querySelector('[data-group="window"]');
   // The Force open DC's "Automatic (N)" follows the door's Material select.
   const dcField = group.querySelector(`[name="flags.${ID}.breakWall.forceDC"]`), doorMaterial = group.querySelector(`select[name="flags.${ID}.breakWall.material"]`);
-  doorMaterial?.addEventListener("change", () => { const n = dcField?.dataset?.[`dc${String(doorMaterial.value).replace(/^./, (c) => c.toUpperCase())}`]; if (dcField && n) dcField.placeholder = `Automatic (${n})`; });
+  doorMaterial?.addEventListener("change", () => {
+    const cap = String(doorMaterial.value).replace(/^./, (c) => c.toUpperCase()), n = dcField?.dataset?.[`dc${cap}`];
+    if (dcField && n) dcField.placeholder = `Automatic (${n})`;
+    // PF2e's AC, Hardness, HP and Broken Threshold (door-attack.mjs)
+    for (const el of group.querySelectorAll("[data-auto-wood]")) { const v = el.dataset[`auto${cap}`]; if (v) el.placeholder = `Automatic (${v})`; }
+  });
   // The group matching Door Type shows; the other's inputs are disabled, so Material submits from one select only.
   const sync = () => {
     const isDoor = [1, 2].includes(wallFormDoor(doc, select?.value));

@@ -66,7 +66,7 @@ test("door fieldset: Can be forced open, and a Force open DC that shows its auto
   assert.match(html, /data-group="door"[\s\S]*breakWall\.forceDC[\s\S]*data-group="window"/);
   assert.equal((html.match(/breakWall\.forceDC/g) ?? []).length, 1);
   // each material's automatic DC rides on the field, so the placeholder follows the Material select
-  assert.match(html, /data-dc-wood="15" data-dc-metal="20" data-dc-stone="25"/);
+  assert.match(html, /data-dc-wood="15" data-dc-reinforced="20" data-dc-metal="20" data-dc-stone="25"/);
   assert.match(wallBreakFieldsHTML({ door: 1, system: "pf2e", own: { material: "metal" } }), /placeholder="Automatic \(20\)"/);
   assert.match(wallBreakFieldsHTML({ door: 1, system: "daggerheart", own: { material: "stone" } }), /placeholder="Automatic \(19\)"/);
   assert.match(wallBreakFieldsHTML({ door: 1, system: "dnd5e", own: { forceDC: 18 } }), /forceDC"[^>]*value="18"/);
@@ -176,4 +176,32 @@ test("the window group's Material is its own field, so one material name submits
   assert.match(wallBreakFieldsHTML({ door: 0, own: { window: true, material: "none" } }), /windowMaterial"[^>]*>[\s\S]*?<option value="none" selected>/);
   // a door saved with the old array shows its metal
   assert.match(wallBreakFieldsHTML({ door: 1, own: { material: ["metal", "glass"] } }), /<option value="metal" selected>Metal/);
+});
+
+test("door fieldset: Reinforced wood is a material choice", () => {
+  assert.match(wallBreakFieldsHTML({ door: 1 }), /<option value="reinforced">Reinforced wood</);
+  assert.match(wallBreakFieldsHTML({ door: 1, own: { material: "reinforced" } }), /<option value="reinforced" selected>Reinforced wood</);
+  assert.match(wallBreakFieldsHTML({ door: 1, system: "pf2e", own: { material: "reinforced" } }), /forceDC"[^>]*placeholder="Automatic \(20\)"/);
+});
+test("door fieldset (PF2e): AC, Hardness, HP and Broken Threshold, blank = Automatic by material", () => {
+  const html = wallBreakFieldsHTML({ door: 1, system: "pf2e" });
+  for (const [key, label, auto] of [["ac", "AC", 10], ["hardness", "Hardness", 5], ["maxHp", "HP", 20], ["bt", "Broken Threshold", 10]]) {
+    assert.match(html, new RegExp(`<label>${label}</label><div class="form-fields"><input type="number" name="flags\\.animater\\.breakWall\\.${key}"[^>]*value=""[^>]*placeholder="Automatic \\(${auto}\\)"`));
+  }
+  // each material's automatic value rides on the field, so the placeholder follows the Material select
+  assert.match(html, /breakWall\.hardness"[^>]*data-auto-wood="5" data-auto-reinforced="10" data-auto-metal="9" data-auto-stone="14"/);
+  const iron = wallBreakFieldsHTML({ door: 1, system: "pf2e", own: { material: "metal", ac: 15 } });
+  assert.match(iron, /breakWall\.ac"[^>]*value="15"/);
+  assert.match(iron, /breakWall\.maxHp"[^>]*placeholder="Automatic \(36\)"/);
+  assert.match(iron, /breakWall\.bt"[^>]*placeholder="Automatic \(18\)"/);
+  // the stats sit in the door group, disabled on a window's form
+  assert.match(html, /data-group="door"[\s\S]*breakWall\.maxHp[\s\S]*data-group="window"/);
+  assert.match(wallBreakFieldsHTML({ door: 0, system: "pf2e" }), /breakWall\.maxHp"[^>]*disabled/);
+  assert.match(html, /Attack the door/);
+  // a hit door says how much it has left
+  assert.match(wallBreakFieldsHTML({ door: 1, system: "pf2e", own: { hp: 7 } }), /7 of 20 HP left/);
+  assert.doesNotMatch(html, /HP left/);
+});
+test("door fieldset: no attack stats outside PF2e", () => {
+  for (const sys of ["dnd5e", "sf2e", "daggerheart", "draw-steel", undefined]) assert.doesNotMatch(wallBreakFieldsHTML({ door: 1, system: sys }), /breakWall\.(ac|hardness|maxHp|bt)"/);
 });

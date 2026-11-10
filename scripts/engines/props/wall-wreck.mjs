@@ -3,7 +3,7 @@
 // shattered window: the pane gone dark with glass teeth in the frame, pale shards fanned out past the wall (a few on the
 // near side), a handful of glints that twinkle once. One Container per wreck on the primary canvas, on the wall's
 // level's floor, sorted above the tiles.
-import { doorWreckLayout, windowWreckLayout, wallWreckTargets, wallLevelBase, DOOR_COLOUR, IRON_TONES, STONE_TONES } from "./wall-wreck-layout.mjs";
+import { doorWreckLayout, windowWreckLayout, wallWreckTargets, wallLevelBase, doorCrackLayout, crackSeed, DOOR_COLOUR, IRON_TONES, STONE_TONES, SPLINTER_TONES } from "./wall-wreck-layout.mjs";
 import { flatMark } from "./prop-wreck-layout.mjs";
 import { paintMark, paintShard } from "./prop-wreck.mjs";
 import { wallSound } from "./prop-sounds.mjs";
@@ -351,7 +351,42 @@ export function createWallWreckage({ PIXI, layer, grid, playSound = () => {} }) 
     }
   }
 
-  function clear() { for (const id of [...wrecks.keys()]) hide(id); }
+  // A cracked door (hit to its Broken Threshold, still standing): its cracks painted over its segment, on its floor.
+  // One Graphics per door, redrawn only when the wall moves or its material changes.
+  const cracks = new Map(); // wall id -> { g, key }
+  const hideCracks = (id) => { const e = cracks.get(id); if (e) { cracks.delete(id); quiet(() => e.g.destroy()); } };
+  function showCracks(wallDoc, material = "wood") {
+    const d = wallDoc?.document ?? wallDoc, id = d?.id;
+    if (!id || !Array.isArray(d.c)) return;
+    const key = `${material}:${d.c.join(",")}:${gridOf()}`;
+    if (cracks.get(id)?.key === key) return;
+    hideCracks(id);
+    try {
+      const L = doorCrackLayout(d, crackSeed(id), gridOf(), material), k = gridOf() / 100, [x1, y1, x2, y2] = d.c;
+      const len = Math.hypot(x2 - x1, y2 - y1) || 1, nx = -(y2 - y1) / len, ny = (x2 - x1) / len;
+      const g = new PIXI.Graphics(), scene = d.parent;
+      g.elevation = wallLevelBase(d.levels, scene?.levels?.contents ?? scene?.levels ?? [], scene?.initialLevel?.id ?? null);
+      g.sort = ABOVE_TILES;
+      const sl = sortLayer();
+      if (sl !== undefined) g.sortLayer = sl;
+      // the struck hollow: a dark stepped bruise where the blows landed
+      const [hx, hy] = L.hit;
+      g.lineStyle(0).beginFill(0x1a1410, 0.35).drawEllipse(hx, hy, 7 * k, 4 * k).endFill();
+      g.beginFill(0x1a1410, 0.5).drawEllipse(hx, hy, 3.5 * k, 2 * k).endFill();
+      const path = (pts, ox, oy) => { g.moveTo(pts[0] + ox, pts[1] + oy); for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i] + ox, pts[i + 1] + oy); };
+      for (const l of L.lines) { g.lineStyle(l.w * 0.9, L.edge, 0.85); path(l.pts, nx * 1.1 * k, ny * 1.1 * k); }
+      for (const l of L.lines) { g.lineStyle(l.w, INK, 0.95); path(l.pts, 0, 0); }
+      const tones = material === "metal" ? IRON_TONES : material === "stone" ? STONE_TONES : SPLINTER_TONES;
+      L.chips.forEach((c, i) => {
+        const pts = [0, 1, 2, 3].flatMap((j) => { const a = c.rot + (j * Math.PI) / 2, r = c.r * (j % 2 ? 0.55 : 1.25); return [c.x + Math.cos(a) * r, c.y + Math.sin(a) * r]; });
+        g.lineStyle(0.7, INK, 0.7).beginFill(tones[i % tones.length], 1).drawPolygon(pts).endFill();
+      });
+      layerOf().addChild(g);
+      cracks.set(id, { g, key });
+    } catch (error) { console.warn("Animater wall wreckage: could not draw cracks", error); }
+  }
 
-  return { show, hide, sync, clear };
+  function clear() { for (const id of [...wrecks.keys()]) hide(id); for (const id of [...cracks.keys()]) hideCracks(id); }
+
+  return { show, hide, sync, clear, showCracks, hideCracks };
 }

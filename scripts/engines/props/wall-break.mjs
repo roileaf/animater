@@ -6,7 +6,7 @@ import { closesWindow } from "../motion/window-state.mjs";
 import { forceDCOf } from "./force-open.mjs"; // a cycle of function declarations only (force-open reads wallTraits)
 
 const KINDS = ["door", "window"];
-const MATERIALS = ["wood", "metal", "stone"];
+const MATERIALS = ["wood", "reinforced", "metal", "stone"]; // reinforced: a reinforced wooden door
 const NOTE_MATERIALS = [...MATERIALS, "glass", "none"]; // a window's note carries glass (or none)
 const MARKS = ["dust", "scorch"];
 const RESTORE_KEYS = ["door", "ds", "move", "sight", "light", "sound"];
@@ -41,7 +41,7 @@ export function windowOn(wall) {
   return GLASS_PANES.includes(wall?.flags?.animater?.window);
 }
 
-// A wall's stored material for a door (wood, metal or stone; wood when unknown) or a window (glass or none). A list
+// A wall's stored material for a door (wood, reinforced, metal or stone; wood when unknown) or a window (glass or none). A list
 // (a Wall Configuration that submitted both groups' selects, door group first) gives the door group's value to a door
 // and the window group's (the last) to a window, so walls saved that way read as the GM chose.
 const PANES = ["glass", "none"];
@@ -83,6 +83,8 @@ export function canBreakWall(traits, cause = {}) {
   if (traits?.kind === "window") return traits.material === "glass" && (canBreak("glass", { damageType: cause.damageType }) || slam > 0);
   if (traits?.kind !== "door") return false;
   if (traits.material === "wood") return WOOD_DAMAGE.has(cause.damageType) || slam >= 2;
+  // reinforced wood: the blows and fire that break wood, but only a Huge or bigger slam
+  if (traits.material === "reinforced") return WOOD_DAMAGE.has(cause.damageType) || slam >= 3;
   return cause.damageType === "force" || slam >= 3;
 }
 
@@ -149,13 +151,16 @@ export function wallBreakUpdate(wall, note) {
   return { _id: wall.id, door: 0, ds: 0, move: 0, sight: 0, light: 0, sound: 0, "flags.animater.breakWall.broken": { ...note, restore } };
 }
 
+// Repair: a broken wall back as it was, and a hit door back to full HP (its hp flag goes; the hits it remembers stay,
+// so a roll already applied never applies again).
 export function wallRestoreUpdate(wall) {
-  const note = readWallNote(wall?.flags?.animater?.breakWall?.broken);
-  if (!note?.restore) return null;
+  const own = wall?.flags?.animater?.breakWall, note = readWallNote(own?.broken), hp = own?.hp !== undefined && own?.hp !== null;
+  const healed = hp ? { "flags.animater.breakWall.-=hp": null } : {};
+  if (!note?.restore) return hp ? { _id: wall.id, ...healed } : null;
   const { windowKind, windowOpen, ...fields } = note.restore, up = { _id: wall.id, ...fields };
   if (windowKind !== undefined) { if (windowKind === null) up["flags.animater.-=window"] = null; else up["flags.animater.window"] = windowKind; }
   if (windowOpen !== undefined) up["flags.animater.windowOpen"] = windowOpen;
-  return { ...up, "flags.animater.breakWall.-=broken": null };
+  return { ...up, "flags.animater.breakWall.-=broken": null, ...healed };
 }
 
 export function wallRepairUpdates(walls) {

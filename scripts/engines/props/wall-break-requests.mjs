@@ -10,12 +10,14 @@ import { closestForcedDoor, forceOpenResult } from "./force-open.mjs";
 import { missBreaks } from "./prop-break.mjs";
 import { blastFrom, inBurst } from "./prop-blast.mjs";
 import { areaCauseRefusal } from "./prop-areas.mjs";
+import { doorAttackCheck } from "./door-attack.mjs";
 
 export const WALL_BREAK_MESSAGE = "prop-wall-break";
-const KINDS = ["area", "path", "smash", "force-open", "miss", "through", "blast"];
+const KINDS = ["area", "path", "smash", "force-open", "miss", "through", "blast", "attack"];
 const ATTACKS = new Set(["miss", "through"]); // a strike's: windows only, read from the attacker and target tokens
 const MISS_CHANCE = 25; // percent: a plain ranged miss breaks a window (the scene's propMissChance overrides)
-const OWN_RULE = new Set(["smash", "force-open"]); // R1: no damage type or slam; their own rule (Force Open: the door's DC)
+// R1: no damage type or slam; their own rule (Force Open: the door's DC; an attack: the door's HP, door-attack.mjs)
+const OWN_RULE = new Set(["smash", "force-open", "attack"]);
 // Not c: Repair restores no position, so a moved broken door keeps its note (and its originals) as it was.
 const EDIT_KEYS = ["door", "move", "sight", "light", "sound"];
 const SHOVE_REACH = 2; // squares from the slam's start to a token of the sender's
@@ -58,7 +60,7 @@ const breakCause = (cause, mover) => (cause.kind === "path" ? { slam: { size: si
 // The cause has to fit where things stand on the GM's screen. A smash is the GM's own and fits anywhere.
 // A blast reaches the wall's middle from its source keg (blastFrom: one that exploded), on the blast's levels.
 function plausible(cause, wall, grid, mover, { scene, walls, attacker, target, source, levels } = {}) {
-  if (OWN_RULE.has(cause.kind)) return true; // a smash fits anywhere; Force Open was placed by forceOpenCheck
+  if (OWN_RULE.has(cause.kind)) return true; // a smash fits anywhere; Force Open and an attack were placed by their own check
   const mid = wallMid(wall);
   if (cause.kind === "blast") {
     const b = blastFrom(source);
@@ -106,9 +108,13 @@ function plausible(cause, wall, grid, mover, { scene, walls, attacker, target, s
 // {x, y, w, h, level, authorOwns} on this scene (authorOwns: the message's author owns that token, and it is the speaker's
 // actor's); walls, the scene's walls; system, game.system.id; used, this GM already broke a door with that message.
 // A blast {kind: "blast", sourceId}: the GM's only (runBlast); source, the GM's view of the keg tile it names.
+// An attack {kind: "attack", messageId} (PF2e, door-attack.mjs): attack and damage, the GM's copies of the Strike's
+// attack and damage messages (messageId names the damage); token, the striker's footprint {x, y, w, h, level, authorOwns,
+// actorId}; strike {ranged, feet} as the GM reads it; sight, the GM's line of sight to the door; gridDistance, feet a
+// square. Breaks only the hit that takes the door's last HP (else "hp").
 // An area {kind: "area", areaUuid}: area, the GM's own record of the placed area it names, and now, the GM's clock
 // (prop-areas.mjs areaRefusal): refused as "area" unless it holds the wall's middle, on the wall's level.
-export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mover, senderTokens, levels, message, token, walls, attacker, target, roll = 1, source, system, used = false, area, now } = {}) {
+export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mover, senderTokens, levels, message, token, walls, attacker, target, roll = 1, source, system, used = false, area, now, attack, damage, strike, sight, gridDistance } = {}) {
   const no = (why) => ({ ok: false, why });
   if (scene?.flags?.animater?.breakableProps !== true || scene.flags.animater.breakWalls === false) return no("off");
   if (!sender) return no("sender");
@@ -130,6 +136,13 @@ export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mo
     const why = forceOpenCheck({ wall, scene, grid, sender, message, token, walls, system, used, traits });
     if (why) return no(why);
   }
+  let hit = null;
+  if (cause.kind === "attack") {
+    if (!damage || damage.id !== cause.messageId) return no("roll");
+    hit = doorAttackCheck({ wall, scene, grid, gridDistance, sender, attack, damage, token, strike, sight, system, used });
+    if (!hit.ok) return no(hit.why);
+    if (!hit.broken) return no("hp");
+  }
   const raw = req?.note;
   if (!raw || !Number.isFinite(raw.seed) || !Number.isFinite(raw.cutAngle) || !finite(raw.from)) return no("note");
   if (cause.kind === "area") {
@@ -150,6 +163,10 @@ export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mo
   // A blast scorches.
   const note = wallNote({ seed: raw.seed, cutAngle: raw.cutAngle, from: raw.from, kind: traits.kind, material: traits.material, damageType: cause.kind === "blast" ? "fire" : cause.damageType });
   if (cause.kind === "force-open") note.messageId = message.id; // one break per message, kept on the wall
+  if (hit) {
+    note.messageId = damage.id;
+    return { ok: true, note, update: { ...wallBreakUpdate(wall, note), "flags.animater.breakWall.hp": 0, "flags.animater.breakWall.hits": hit.hits } };
+  }
   return { ok: true, note, update: wallBreakUpdate(wall, note) };
 }
 
@@ -189,6 +206,9 @@ export function handEdited(changes, options) {
 }
 
 // The write that forgets a hand-edited broken wall's note (its wreck goes, Repair leaves the edit alone).
+// A door that had been hit forgets its HP with it (it stands whole again).
 export function handEditUpdate(wall) {
-  return wall?.flags?.animater?.breakWall?.broken ? { _id: wall.id, "flags.animater.breakWall.-=broken": null } : null;
+  const own = wall?.flags?.animater?.breakWall;
+  if (!own?.broken) return null;
+  return { _id: wall.id, "flags.animater.breakWall.-=broken": null, ...(own.hp !== undefined && own.hp !== null ? { "flags.animater.breakWall.-=hp": null } : {}) };
 }
