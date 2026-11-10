@@ -1,0 +1,72 @@
+// tests/engines/props/decor-break-wiring.test.mjs
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const main = readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8");
+
+test("the decor relay: asked of the GM, checked twice, written coalesced", () => {
+  assert.match(main, /if \(data\?\.type === DECOR_BREAK_MESSAGE\) \{ void receiveDecorBreak\(data, senderId\)/);
+  assert.match(main, /async function requestDecorBreak\(regionDoc, key, cause, \{ from \} = \{\}\)/);
+  assert.match(main, /async function applyDecorBreak\(scene, regionDoc, key, cause, rawNote, user\)/);
+  assert.ok((main.match(/validDecorBreakRequest\(/g) ?? []).length >= 2, "requester and GM");
+  assert.match(main, /breakNoteFor\(\{ tile: view, walls: \[\]/);
+  assert.match(main, /decorBrokenAfter\(/);
+  assert.match(main, /\{ animater: \{ decorBreak: true \} \}/);
+  assert.match(main, /makeRubbleRegion\(scene, \{ id: decorRubbleId\(/);
+});
+test("the painter and the wreck layer", () => {
+  assert.match(main, /broken: decorBrokenKeys\(region\)/);
+  assert.match(main, /const decorWreckage = createPropWreckage\(\{[^]*?layer: floorLayer\("decorWrecks", 656\)/);
+  assert.match(main, /decorWreckTile\(view, decorations\.art\(/);
+  assert.match(main, /syncDecorWrecks\(options\?\.animater\?\.decorBreak === true\)/);
+});
+test("Repair clears every region's breaks; a deleted region takes its rubble", () => {
+  assert.match(main, /decorRepairUpdates\(sceneRegions\(scene\)\)/);
+  assert.match(main, /async function repairDecorRegion\(regionDoc\)/);
+  assert.match(main, /Hooks\.on\("deleteRegion", [^\n]*decor/);
+  assert.match(main, /breakDecor: \(regionId, key, cause = \{\}\) =>/);
+});
+
+// The controller's rulings (progress.md D5, D7, D11) and the Task 2/3 notes.
+const body = (name) => {
+  const at = main.indexOf(`function ${name}(`);
+  assert.ok(at >= 0, `${name} exists`);
+  return main.slice(at, main.indexOf("\n}", at));
+};
+test("a key is held from the GM's check until its region write lands (D5)", () => {
+  const apply = body("applyDecorBreak");
+  assert.match(apply, /decorWriting\.has\(/);
+  assert.match(apply, /decorWriting\.add\(/);
+  assert.match(apply, /finally \{ decorWriting\.delete\(/);
+  assert.match(apply, /queued: queuedDecorKeys\(regionDoc\.id\)/);
+  // the hold lasts until the coalesced write resolves
+  assert.ok(apply.indexOf("await queueDecorWrite(") > 0 && apply.indexOf("await queueDecorWrite(") < apply.indexOf("finally"));
+  // the rubble and whisper come only after the GM's check, the whisper only once the write landed
+  assert.ok(apply.indexOf("makeRubbleRegion(") > apply.indexOf("validDecorBreakRequest("));
+  assert.ok(apply.indexOf("whisperTopple(") > apply.indexOf("await queueDecorWrite("));
+  assert.match(main, /const decorQueue = createDecorQueue\(/);
+  assert.match(main, /const queuedDecorKeys = \(regionId\) => decorQueue\.keys\(regionId\)/);
+});
+test("the GM's write is fed validated adds over the parsed stored breaks (Task 2 note)", () => {
+  assert.match(main, /decorBrokenAfter\(readDecorBroken\(region\.broken\), adds, keys\)/);
+});
+test("invisible decorations neither break nor draw wrecks (D7)", () => {
+  assert.match(body("decorViews"), /!propsOn\(scene\) \|\| !regionStepsOn\(\)/);
+  assert.match(body("syncDecorWrecks"), /regionStepsOn\(\)/);
+});
+test("the wreck is cut from the painter's own picture (Task 3 ruling)", () => {
+  assert.match(main, /const decorArtLook = \(settings\) => \(\{ \.\.\.decorLook\(settings\), snow: 0 \}\)/);
+  assert.doesNotMatch(main, /decorations\.art\([^)]*decorLook\(/);
+});
+test("Repair decorations deletes the region's own rubble; the toolbar Repair keeps every rubble region's delete", () => {
+  const one = body("repairDecorRegion");
+  assert.match(one, /decorRegionRepair\(/);
+  assert.match(one, /deletePropRegions\(scene, deleteRegions\)/);
+  assert.match(one, /withDeletes\(/);
+  const all = body("repairAllProps");
+  assert.match(all, /r\.deleteRegions\?\.length\) await deletePropRegions/);
+  assert.match(all, /updateEmbeddedDocuments\("Region", decorFixes\.map\(\(u\) => withDeletes\(u, del\)\)/);
+});
+test("a torn-down canvas forgets every decoration wreck and timer", () => {
+  assert.match(main, /decorWrecksShown\.clear\(\); decorPending\.clear\(\); decorLate\.clear\(\); decorWreckage\.clear\(\)/);
+});

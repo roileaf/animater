@@ -150,3 +150,31 @@ export function decorWreckChanges({ shown, wanted, pending, late, animate } = {}
   const hide = [...(shown?.keys() ?? [])].filter((id) => !want.has(id) && !pending?.has(id));
   return { show, hide, settle };
 }
+
+/**
+ * The GM's coalesced writes of decoration breaks, one region at a time (pure; the tick and the write are handed in).
+ * add(id, entry, target) queues an entry; on the next tick one write(target, entries) carries every entry queued for
+ * that region, to the target last handed in. A region's next write waits for the one in flight, so each reads the
+ * stored breaks the last one left. keys(id) are the queued and in-flight keys, kept until their write resolves.
+ * add resolves true once its write landed, false when the write threw (traced) or returned false.
+ */
+export function createDecorQueue({ write, later = (fn) => setTimeout(fn, 0), trace = () => {} } = {}) {
+  const regions = new Map(); // id -> { target, queued: [{ entry, done }], flying: [...], busy, timed }
+  const of = (id) => { let r = regions.get(id); if (!r) { r = { target: null, queued: [], flying: [], busy: false, timed: false }; regions.set(id, r); } return r; };
+  const plan = (id, r) => { if (r.timed || r.busy || !r.queued.length) return; r.timed = true; later(() => { r.timed = false; void flush(id, r); }); };
+  async function flush(id, r) {
+    if (r.busy || !r.queued.length) return;
+    r.busy = true; r.flying = r.queued; r.queued = [];
+    let ok = false;
+    try { ok = (await write(r.target, r.flying.map((q) => q.entry))) !== false; }
+    catch (e) { trace(`decor write: ${e?.message ?? e}`); }
+    const done = r.flying;
+    r.flying = []; r.busy = false;
+    if (r.queued.length) plan(id, r); else if (regions.get(id) === r) regions.delete(id);
+    for (const q of done) q.done(ok);
+  }
+  return {
+    add(id, entry, target) { const r = of(id); r.target = target; return new Promise((done) => { r.queued.push({ entry, done }); plan(id, r); }); },
+    keys(id) { const r = regions.get(id); return r ? [...r.flying, ...r.queued].map((q) => q.entry.key) : []; },
+  };
+}

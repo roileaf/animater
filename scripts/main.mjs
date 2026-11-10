@@ -35,6 +35,7 @@ import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
+import { DECOR_BREAK_MESSAGE, DECOR_NAMES, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, decorWreckChanges, createDecorQueue } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
 import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
@@ -267,7 +268,7 @@ import { createLightFlames, flameUnit, fireKindOf, underTile, tileDrawnAt } from
 import { draftField, sceneOpenings, draftStrength, draftPixels, gustDelays, createSmokeAir, MIST_AIR } from "./engines/motion/indoor-air.mjs";
 import { createCavern, fungusTouches, skylightShare } from "./engines/motion/cavern.mjs";
 import { createWebs, webCorners } from "./engines/motion/webs.mjs";
-import { createDecorations } from "./engines/motion/decorations.mjs";
+import { createDecorations, decorWreckTile } from "./engines/motion/decorations.mjs";
 import { decorSettings, strokeShapes, circleArea as decorCircle } from "./engines/motion/decor-regions.mjs";
 import { openBrushBar, brushChoices } from "./ui/decor-brush-bar.mjs";
 import { DECOR_KINDS, stampDecor } from "./engines/motion/decor-paint.mjs";
@@ -2394,7 +2395,7 @@ const syncDecorations = () => {
       let settings = decorSettings(region.flags?.[ID]?.decor);
       // While the brush paints this region, what it has painted shows at once, before it is saved.
       if (settings && decorBrushing?.id === region.id) settings = { ...settings, brushed: decorBrushing.brushed, erased: decorBrushing.erased };
-      if (settings) list.push({ id: region.id, settings, areas: regionAreas(region), look: decorLook(settings) });
+      if (settings) list.push({ id: region.id, settings, areas: regionAreas(region), look: decorLook(settings), broken: decorBrokenKeys(region) });
     } catch { /* a broken region never breaks the rest */ }
   }
   // A stroke on open ground, before its region is made: what it has painted, within the circles it has swept.
@@ -7889,6 +7890,200 @@ async function receivePropBreak(data, senderId) {
   if (!user || !doc) return;
   await applyPropBreak(scene, doc, cleanCause(data.cause), data.note, user);
 }
+// Breakable decorations (engines/props/decor-break.mjs): a region's painted crates, barrels, crystals, plants, cobwebs and
+// stalagmites, dressed as prop tiles for the prop rules. A break is asked of the active GM the same way, who checks it
+// against the region as the GM's own copy holds it and stores it on the region (flags.animater.decorBroken), each
+// region's writes coalesced into one update a tick. Every screen leaves the broken ones out of the painting and draws
+// their wrecks, cut from their own pictures, on a layer just over the decorations and under the creatures.
+// The region as decor-break.mjs reads it; null without decorations.
+const decorRegionOf = (doc) => {
+  const settings = doc ? decorSettings(doc.flags?.[ID]?.decor) : null;
+  return settings ? { id: doc.id, levels: [...(doc.levels ?? [])], settings, areas: regionAreas(doc), broken: doc.flags?.[ID]?.decorBroken, doc } : null;
+};
+const decorRegionsOf = (scene) => (scene?.regions?.contents ?? []).map((doc) => { try { return decorRegionOf(doc); } catch { return null; } }).filter(Boolean);
+// One memo of each region's placements and views, shared by the triggers, the GM and the wrecks.
+const decorIndex = createDecorIndex();
+// The decorations a cause on these levels can reach (none while decorations are not drawn at all).
+function decorViews(scene, levels) {
+  if (!propsOn(scene) || !regionStepsOn()) return [];
+  return tilesOnLevel(decorTargets(decorRegionsOf(scene), propGrid(scene), decorIndex), levels);
+}
+// The look the painter painted a decoration with (snow is baked on separately), so a wreck is cut from that very picture.
+const decorArtLook = (settings) => ({ ...decorLook(settings), snow: 0 });
+// A decoration's wreck as a tile, cut from that picture; null while it has none (art() gives null, decorWreckTile throws).
+const decorWreckOf = (view, settings) => { try { return decorWreckTile(view, decorations.art(view.decor.d, decorArtLook(settings))); } catch { return null; } };
+// The walls a decoration's wreckage stops at: those on its level that stop movement or sight, less open doors. A
+// decoration owns no walls.
+const decorStopWalls = (d) => {
+  const levels = [...(d?.levels ?? [])], walls = (canvas?.scene?.walls?.contents ?? []).filter((w) => onLevel(w.levels, levels));
+  return blockingWalls(walls.map(wallView), new Set());
+};
+const decorWreckage = createPropWreckage({ PIXI: globalThis.PIXI, layer: floorLayer("decorWrecks", 656), grid: () => canvas?.grid?.size ?? 100,
+  renderer: createFragmentRenderer({ PIXI: globalThis.PIXI, grid: () => canvas?.grid?.size ?? 100 }),
+  materialOf: (d) => d.flags?.animater?.prop?.material ?? "wood",
+  playSound: (file, at, { volume = 0.8, reach = 20 } = {}) => { void playUnder("propBreak", at, { file, volume, reach, rate: 0.95 + Math.random() * 0.1, walls: true, gmAlways: true, room: 0.8 }); },
+  shake: (at, burst) => { cameraShake.tremor({ at, weight: 6, sceneId: canvas.scene?.id, level: canvas?.level?.id, seed: `keg:${Math.round(at.x)}:${Math.round(at.y)}`, scale: 0.8 + 0.2 * (Number(burst) || 2) }); },
+  fireRoot: () => (canvas?.ready ? torchLightRootOf() : null), fireSeen: fireSeenHere, fireLean: (key, at) => fireLeanAt(key, at.x, at.y),
+  fireTongues: () => qualityRank(localQuality()) >= 2, fireForget: (key) => forgetFlame(key),
+  wallsFor: (d) => decorStopWalls(d) });
+// Wreck id ("decor:<regionId>:<key>") -> seed: drawn and stored; broken here, waiting on the GM; shown again after
+// PROP_REFUSED_MS (a GM write that still comes is drawn at rest). Named apart from decorations.mjs's decorShown.
+const decorWrecksShown = new Map(), decorPending = new Map(), decorLate = new Map();
+const decorPendingTimers = new Map(), decorLateTimers = new Map();
+// Region id|key being checked and written by the GM: held from the check until its region write resolves.
+const decorWriting = new Set();
+const decorIdPrefix = (regionId) => `decor:${regionId}:`;
+// The keys a region's painting leaves out: those stored, and those broken on this screen and waiting on the GM.
+function decorBrokenKeys(regionDoc) {
+  const out = readDecorBroken(regionDoc?.flags?.[ID]?.decorBroken).map((e) => e.key), prefix = decorIdPrefix(regionDoc?.id);
+  for (const id of decorPending.keys()) if (id.startsWith(prefix)) out.push(id.slice(prefix.length));
+  return out;
+}
+const forgetDecorPending = (id) => { clearTimeout(decorPendingTimers.get(id)); decorPendingTimers.delete(id); decorPending.delete(id); };
+const forgetDecorLate = (id) => { clearTimeout(decorLateTimers.get(id)); decorLateTimers.delete(id); decorLate.delete(id); };
+// Draws, settles and takes away this screen's decoration wrecks from what the viewed regions store now.
+function syncDecorWrecks(animate = false) {
+  if (!canvas?.ready) return;
+  const wanted = [], regionOfWreck = new Map(), grid = propGrid(canvas.scene);
+  if (regionStepsOn()) for (const doc of regionsHere()) {
+    try {
+      const region = decorRegionOf(doc);
+      if (!region) continue;
+      const { keys, views } = decorIndex(region, grid), byKey = new Map(views.map((v) => [v.decor.key, v]));
+      for (const e of liveBroken(readDecorBroken(region.broken), keys)) {
+        const view = byKey.get(e.key);
+        if (view) { wanted.push({ id: view.id, note: e.note, view }); regionOfWreck.set(view.id, region); }
+      }
+    } catch (e) { runtime?.trace("props", `decor wrecks: ${e?.message ?? e}`); }
+  }
+  const { show, hide, settle } = decorWreckChanges({ shown: decorWrecksShown, wanted, pending: decorPending, late: decorLate, animate });
+  for (const id of hide) { decorWrecksShown.delete(id); decorWreckage.hide(id); }
+  // Stored as it was shown here: it is already lying there.
+  for (const id of settle) { decorWrecksShown.set(id, decorPending.get(id)); forgetDecorPending(id); forgetDecorLate(id); }
+  for (const { id, note, view, animate: playing } of show) {
+    forgetDecorPending(id); forgetDecorLate(id);
+    const tile = decorWreckOf(view, regionOfWreck.get(id).settings);
+    if (!tile) { decorWrecksShown.delete(id); decorWreckage.hide(id); continue; }
+    decorWrecksShown.set(id, note.seed);
+    void decorWreckage.show(tile, note, "none", { animate: playing });
+  }
+}
+// Broken on this screen the moment it is asked: the decoration goes and its wreck plays. It comes back if the GM never writes it.
+function breakDecorHere(regionDoc, view, note) {
+  if (regionDoc?.parent !== canvas?.scene || !regionStepsOn() || !regionsHere().some((r) => r.id === regionDoc.id)) return;
+  const region = decorRegionOf(regionDoc);
+  if (!region) return;
+  const id = view.id;
+  forgetDecorPending(id); forgetDecorLate(id);
+  decorPending.set(id, note.seed);
+  decorPendingTimers.set(id, setTimeout(() => refuseDecorHere(id), PROP_REFUSED_MS));
+  syncDecorations();
+  // Not drawn yet as stored: the stored write settles it (decorWreckChanges).
+  decorWrecksShown.delete(id);
+  const tile = decorWreckOf(view, region.settings);
+  if (tile) void decorWreckage.show(tile, note, "none", { animate: true });
+}
+// The GM never wrote it: the decoration stands again, and a late write of the same note is drawn at rest.
+function refuseDecorHere(id) {
+  if (!decorPending.has(id)) return;
+  const seed = decorPending.get(id);
+  forgetDecorPending(id);
+  if (!decorWrecksShown.has(id)) decorWreckage.hide(id);
+  propSafe("decor refused", () => syncDecorations());
+  forgetDecorLate(id);
+  decorLate.set(id, seed);
+  decorLateTimers.set(id, setTimeout(() => forgetDecorLate(id), PROP_LATE_MS));
+}
+// The GM's writes, one per region a tick: the stored live breaks with the checked adds (decorBrokenAfter). A region
+// gone, or no longer holding decorations, writes nothing.
+const decorQueue = createDecorQueue({ trace: (m) => runtime?.trace("props", m), write: async (regionDoc, adds) => {
+  const scene = regionDoc?.parent, region = scene?.regions?.get(regionDoc.id) ? decorRegionOf(regionDoc) : null;
+  if (!region) return false;
+  const { keys } = decorIndex(region, propGrid(scene));
+  await regionDoc.update({ [`flags.${ID}.decorBroken`]: decorBrokenAfter(readDecorBroken(region.broken), adds, keys) }, { animater: { decorBreak: true } });
+  return true;
+} });
+const queueDecorWrite = (regionDoc, entry) => decorQueue.add(regionDoc.id, entry, regionDoc);
+const queuedDecorKeys = (regionId) => decorQueue.keys(regionId);
+// Breaks a region's decoration (its key, decor-break.mjs decorKeyed) for a cause as requestPropBreak takes one. True once
+// it is asked of (or written by) the GM.
+async function requestDecorBreak(regionDoc, key, cause, { from } = {}) {
+  const scene = regionDoc?.parent;
+  if (regionDoc?.documentName !== "Region" || !propsOn(scene) || typeof key !== "string") return false;
+  const gm = game.users.activeGM;
+  if (!gm) { if (!propNoGmTraced) { propNoGmTraced = true; runtime?.trace("props", "no GM connected"); } return false; }
+  const region = decorRegionOf(regionDoc);
+  if (!region) return false;
+  const clean = cleanCause(cause), grid = propGrid(scene), view = decorIndex(region, grid).views.find((v) => v.decor.key === key);
+  if (!view) return false;
+  const note = breakNoteFor({ tile: view, walls: [], grid, cause: clean, seed: Math.floor(Math.random() * 0x7fffffff), from: from ?? clean.at, scene });
+  if (gm.isSelf) return applyDecorBreak(scene, regionDoc, key, clean, note, game.user);
+  // Checked here first (one already broken here counts as queued), then again by the GM. A plain miss waits for the
+  // GM's roll; anything else shows at once.
+  const waiting = decorBrokenKeys(regionDoc);
+  const here = validDecorBreakRequest({ key, cause: clean, note }, { region, scene, grid, sender: game.user, ...await propPlace(clean, scene, grid), ...areaPlace(clean, game.user),
+    roll: 0, queued: waiting, index: decorIndex });
+  if (!here.ok) return false;
+  if (scene === canvas?.scene && clean.kind !== "ignite" && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakDecorHere(regionDoc, view, here.entry.note);
+  game.socket.emit(`module.${ID}`, { type: DECOR_BREAK_MESSAGE, sender: clientId, sceneId: scene.id, regionId: regionDoc.id, key, cause: clean, note });
+  return true;
+}
+async function applyDecorBreak(scene, regionDoc, key, cause, rawNote, user) {
+  if (!game.users.activeGM?.isSelf || !scene || !regionDoc || typeof key !== "string") return false;
+  const held = `${regionDoc.id}|${key}`;
+  if (decorWriting.has(held)) return false;
+  decorWriting.add(held);
+  try {
+    const grid = propGrid(scene), place = await propPlace(cause, scene, grid);
+    // Read after the wait: the region as it stands now, with the breaks queued or in flight for it.
+    const region = decorRegionOf(regionDoc);
+    const check = validDecorBreakRequest({ key, cause, note: rawNote }, { region, scene, grid, sender: user, ...place, ...blastPlace(cause, scene), ...areaPlace(cause, user),
+      roll: Math.random(), queued: queuedDecorKeys(regionDoc.id), index: decorIndex });
+    if (!check.ok) { runtime?.trace("props", `decoration not broken: ${check.why}`); return false; }
+    // A toppled stalagmite's rubble is made first, so the entry that names it is written with the break. A region that
+    // cannot be made only costs the rubble.
+    let entry = check.entry, rubble = null;
+    if (check.rubble) {
+      rubble = await makeRubbleRegion(scene, { id: decorRubbleId(region.id), levels: [...region.levels] }, check.rubble);
+      if (rubble) entry = { ...entry, note: { ...entry.note, region: rubble.id } };
+    }
+    if (!await queueDecorWrite(regionDoc, entry)) {
+      if (rubble) await deletePropRegions(scene, [rubble.id]);
+      return false;
+    }
+    if (check.fall) void whisperTopple(scene, { name: DECOR_NAMES[entry.kind], levels: [...region.levels] }, check.fall).catch((e) => runtime?.trace("props", `topple whisper: ${e?.message ?? e}`));
+    return true;
+  } finally { decorWriting.delete(held); }
+}
+async function receiveDecorBreak(data, senderId) {
+  if (data?.type !== DECOR_BREAK_MESSAGE || !game.users.activeGM?.isSelf) return;
+  const user = senderId ? game.users.get(senderId) : null, scene = game.scenes.get(String(data.sceneId ?? ""));
+  const doc = scene?.regions?.get(String(data.regionId ?? ""));
+  if (!user || !doc || typeof data.key !== "string") return;
+  await applyDecorBreak(scene, doc, data.key, cleanCause(data.cause), data.note, user);
+}
+// A region's decorations whole again (GM): its breaks cleared and its own rubble taken away. How many breaks it cleared.
+async function repairDecorRegion(regionDoc) {
+  const scene = regionDoc?.parent;
+  if (!game.user?.isGM || !scene) return 0;
+  const stored = regionDoc.flags?.[ID]?.decorBroken, cleared = Array.isArray(stored) ? stored.length : 0;
+  const { update, deleteRegions } = decorRegionRepair({ id: regionDoc.id, flags: regionDoc.flags ?? {} }, sceneRegions(scene));
+  if (update) { const { _id, ...change } = withDeletes(update, propDel()); await regionDoc.update(change); }
+  if (deleteRegions.length) await deletePropRegions(scene, deleteRegions);
+  return cleared;
+}
+// A region gone: its wrecks go on every screen, and the active GM takes its rubble away.
+function decorRegionGone(doc) {
+  const prefix = decorIdPrefix(doc.id);
+  for (const id of new Set([...decorWrecksShown.keys(), ...decorPending.keys(), ...decorLate.keys()])) {
+    if (!id.startsWith(prefix)) continue;
+    decorWrecksShown.delete(id); forgetDecorPending(id); forgetDecorLate(id); decorWreckage.hide(id);
+  }
+  const scene = doc.parent;
+  if (!game.users.activeGM?.isSelf || !scene) return;
+  const { deleteRegions } = decorRegionRepair(doc, sceneRegions(scene));
+  if (deleteRegions.length) void deletePropRegions(scene, deleteRegions);
+}
 // Breakable doors (engines/props/wall-break-requests.mjs): asked of the active GM the same way, who writes the wall
 // open with its note (the restrictions it had kept for Repair). Every screen draws the wreck of a wall with a note.
 const wallWreckage = createWallWreckage({ PIXI: globalThis.PIXI, layer: () => canvas.primary, grid: () => canvas?.grid?.size ?? 100,
@@ -8015,6 +8210,9 @@ async function repairAllProps(scene = canvas?.scene) {
   const walls = scene.walls?.contents ?? [], r = repairUpdates(scene.tiles.contents.map(propTileView), walls, { lights: sceneLights(scene), regions: sceneRegions(scene), grid: propGrid(scene) }), del = propDel();
   const wallFixes = mergeWallFixes(r.walls, wallRepairUpdates(walls));
   if (r.tiles.length) await scene.updateEmbeddedDocuments("Tile", r.tiles.map((t) => withDeletes(t, del)));
+  // Every region's broken decorations too, in one region batch (their rubble goes with every prop's, below).
+  const decorFixes = decorRepairUpdates(sceneRegions(scene));
+  if (decorFixes.length) await scene.updateEmbeddedDocuments("Region", decorFixes.map((u) => withDeletes(u, del)));
   if (wallFixes.length) await scene.updateEmbeddedDocuments("Wall", wallFixes.map((w) => withDeletes(w, del)), { animater: { wallRepair: true }, sound: false });
   if (r.lights.length) await scene.updateEmbeddedDocuments("AmbientLight", r.lights).catch((e) => runtime?.trace("props", `lights not relit: ${e?.message ?? e}`));
   for (const t of r.tiles) forgetPropFire(t._id);
@@ -8027,6 +8225,8 @@ async function repairAllProps(scene = canvas?.scene) {
 const propSafe = (label, fn) => { try { return fn(); } catch (e) { runtime?.trace("props", `${label}: ${e?.message ?? e}`); return undefined; } };
 const propsOn = (scene) => scene?.flags?.[ID]?.breakableProps === true;
 const askProp = (scene, id, cause, from) => { const doc = scene.tiles.get(id); return doc ? requestPropBreak(doc, cause, { from }).catch((e) => { runtime?.trace("props", `ask: ${e?.message ?? e}`); return false; }) : Promise.resolve(false); };
+// A decoration view (decorViews): asked of its region, by its key.
+const askDecor = (scene, view, cause, from) => { const doc = scene?.regions?.get(view?.decor?.regionId); return doc ? requestDecorBreak(doc, view.decor.key, cause, { from }).catch((e) => { runtime?.trace("props", `ask decoration: ${e?.message ?? e}`); return false; }) : Promise.resolve(false); };
 const askWall = (scene, id, cause, from) => { const doc = scene.walls?.get(id); return doc ? requestWallBreak(doc, cause, { from }).catch((e) => { runtime?.trace("props", `ask door: ${e?.message ?? e}`); return false; }) : Promise.resolve(false); };
 // Placed areas wait for their spell's damage roll: every screen remembers them, the roller asks.
 const propAreas = createAreaWaits({ trace: (m) => runtime?.trace("props", m) });
@@ -8395,6 +8595,23 @@ Hooks.on("canvasReady", () => { propWreckage.sync((canvas.tiles?.placeables ?? [
 Hooks.on("canvasTearDown", () => {
   for (const w of [...propPending.values(), ...propLate.values()]) clearTimeout(w.timer);
   propPending.clear(); propLate.clear(); propWreckage.clear();
+});
+// Decoration breaks: a region's stored breaks (or its decorations, shape or levels) changed on the viewed scene: the
+// painting and the wrecks follow (a GM's break write plays where it was not already shown).
+const decorFlagsChanged = (changes) => Object.keys(changes?.flags?.[ID] ?? {}).some((k) => /^(-=)?decor(Broken)?$/.test(k));
+Hooks.on("updateRegion", (doc, changes, options) => { propSafe("decor region", () => {
+  if (doc.parent !== canvas?.scene || !(decorFlagsChanged(changes) || "shapes" in (changes ?? {}) || "levels" in (changes ?? {}))) return;
+  syncDecorations(); syncDecorWrecks(options?.animater?.decorBreak === true);
+}); });
+Hooks.on("deleteRegion", (doc) => { propSafe("decor region gone", () => decorRegionGone(doc)); });
+Hooks.on("canvasReady", () => { propSafe("decor wrecks", () => syncDecorWrecks(false)); });
+// Decorations turned off or on (Region steps, here or for the world): their wrecks follow.
+Hooks.on("updateSetting", (setting) => { if (/\.regionSteps(Local)?$/.test(setting?.key ?? "")) propSafe("decor wrecks", () => syncDecorWrecks(false)); });
+Hooks.on("clientSettingChanged", (key) => { if (/\.regionSteps(Local)?$/.test(String(key ?? ""))) propSafe("decor wrecks", () => syncDecorWrecks(false)); });
+Hooks.on("canvasTearDown", () => {
+  for (const t of [...decorPendingTimers.values(), ...decorLateTimers.values()]) clearTimeout(t);
+  decorPendingTimers.clear(); decorLateTimers.clear();
+  decorWrecksShown.clear(); decorPending.clear(); decorLate.clear(); decorWreckage.clear();
 });
 // A broken door: the GM's break write is drawn on every screen (once: not again where it was asked). The GM's own edit
 // of its door type or restrictions forgets its note, so its wreck goes and Repair never undoes that edit.
@@ -11203,6 +11420,7 @@ Hooks.once("ready", () => {
   game.socket?.on(`module.${ID}`, (data, senderId) => {
     if (data?.type === WINDOW_MESSAGE) { const asked = game.users.get(senderId); const wall = canvas?.scene?.walls?.get(data.wallId); if (game.users.activeGM?.isSelf && data.sceneId === canvas?.scene?.id && wall && asked && mayUseWindow({ canDoors: asked.can("WALL_DOORS"), paused: game.paused, inReach: windowReachedBy(asked, wall) }) && windowClick({ locked: wall.flags?.[ID]?.windowLocked === true }) === "toggle") void toggleWindow(wall); return; }
     if (data?.type === PROP_BREAK_MESSAGE) { void receivePropBreak(data, senderId).catch((e) => console.warn("Animater props:", e?.message ?? e)); return; }
+    if (data?.type === DECOR_BREAK_MESSAGE) { void receiveDecorBreak(data, senderId).catch((e) => console.warn("Animater props (decoration):", e?.message ?? e)); return; }
     if (data?.type === WALL_BREAK_MESSAGE) { void receiveWallBreak(data, senderId).catch((e) => console.warn("Animater props (door):", e?.message ?? e)); return; }
     if (data?.type === BLAST_MESSAGE) { if (data.blast?.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) playBlast(data.blast); return; }
     if (data?.type === SHOTS_MESSAGE) { shotsHeard(data); return; }
@@ -11615,6 +11833,19 @@ Hooks.once("ready", () => {
         return requestWallBreak(doc, { kind: "area", damageType: "bludgeoning", at: side, ...cause }, { from: cause.at ?? side });
       },
       repairProps: () => repairAllProps(canvas?.scene),
+      // GM: break a region's decoration (a key from decorKeys) as a bludgeoning area at its centre would (both switches still
+      // apply); and the region's breakable decorations, with their keys.
+      breakDecor: (regionId, key, cause = {}) => {
+        const doc = canvas?.scene?.regions?.get(regionId), region = doc ? decorRegionOf(doc) : null;
+        const view = region ? decorIndex(region, propGrid(canvas.scene)).views.find((v) => v.decor.key === key) : null;
+        if (!game.user?.isGM || !view) return false;
+        return requestDecorBreak(doc, key, { kind: "area", damageType: "bludgeoning", at: { x: view.decor.d.x, y: view.decor.d.y }, ...cause });
+      },
+      decorKeys: (regionId) => {
+        const doc = canvas?.scene?.regions?.get(regionId), region = doc ? decorRegionOf(doc) : null;
+        if (!game.user?.isGM || !region) return [];
+        return decorIndex(region, propGrid(canvas.scene)).views.map((v) => ({ key: v.decor.key, kind: v.decor.kind, x: Math.round(v.decor.d.x), y: Math.round(v.decor.d.y) }));
+      },
       // The Tokenshade looks on a token, by their key (region:, nature:, lit:, weather:, a lasting state's...).
       tokenLooks: (token) => {
         const t = typeof token === "string" ? canvas.tokens?.get(token) : token;
