@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { wreckLayout, wreckTargets, LIQUIDS, SPILL_FAN, POTION_COLOURS, PAGE_COLOURS, SPINE_COLOURS, POWDER_TONES, collapseDust, spillExtent, patchTongues } from "../../../scripts/engines/props/prop-wreck-layout.mjs";
-import { tileToWorld } from "../../../scripts/engines/props/prop-wreck.mjs";
+import { tileToWorld, localStop } from "../../../scripts/engines/props/prop-wreck.mjs";
 import { propGuesses } from "../../../scripts/engines/props/prop-traits.mjs";
 import { tileRect } from "../../../scripts/engines/props/prop-geometry.mjs";
 
@@ -247,4 +247,71 @@ test("an explosion's burst defaults to the keg default when its note has none", 
   const a = wreckLayout({ ...note, powder: "exploded" }, { ...at, contents: "powder" }), b = wreckLayout({ ...note, powder: "exploded", burst: 2 }, { ...at, contents: "powder" });
   assert.deepEqual(a, b);
   assert.notDeepEqual(wreckLayout({ ...note, powder: "exploded", burst: 3 }, { ...at, contents: "powder" }).mark, b.mark);
+});
+
+// Task 21 (D2): every thrown or spilled position stops short of a wall between the prop and where it lands.
+import { wallStop } from "../../../scripts/engines/props/prop-walls.mjs";
+test("a wall beside the prop stops every spill, book, page, shard, speck, flame and blast bit on the prop's side", () => {
+  // the prop's centre is 500,300; a wall 40 px away on the side the hit throws things (cutAngle 0.4 → down-right)
+  const wall = { id: "w", c: [540, 0, 540, 1000], move: 20, sight: 20, door: 0, ds: 0 };
+  const stop = wallStop(at.centre, [wall], 4);
+  const left = (p, what) => assert.ok(p.x < 540, `${what} at ${p.x}`); // short of it along the throw
+  for (const seed of [1, 2, 3, 9]) {
+    const n = { ...note, seed };
+    for (const contents of ["wine", "grain", "goods", "powder", "books", "potions", "lampoil"]) {
+      const free = wreckLayout(n, { ...at, contents });
+      const L = wreckLayout(n, { ...at, contents, stop });
+      for (const s of L.specks) { left(s, `${contents} speck`); for (let i = 0; i < s.pts.length; i += 2) assert.ok(s.pts[i] <= 540 - 4 + 20, "speck outline"); }
+      const sp = L.spill;
+      if (sp?.marks) for (const m of sp.marks) left(m, `${contents} mark`);
+      if (sp?.kind === "books") for (const b of [...sp.closed, ...sp.small, ...sp.pages]) left(b, "book");
+      if (sp?.kind === "potions") for (const b of [...sp.shards, ...sp.stains]) left(b, "potion");
+      // without a stop the same wreck goes past the wall (so the test means something)
+      const past = (free.spill?.marks ?? [...(free.spill?.closed ?? []), ...(free.spill?.pages ?? []), ...(free.spill?.shards ?? [])]).some((m) => m.x > 540);
+      if (contents !== "lampoil") assert.ok(past || free.specks.some((s) => s.x > 540), `${contents} seed ${seed}: nothing would cross`);
+    }
+    const fire = wreckLayout({ ...n, fire: true }, { ...at, contents: "lampoil", stop }).fire;
+    left(fire.at, "fire centre");
+    for (const f of fire.flames) left(f, "flame");
+    const keg = wreckLayout({ ...n, powder: "exploded", burst: 2 }, { ...at, contents: "powder", stop }).blast;
+    for (const b of [...keg.hoops, ...keg.slivers, ...keg.grains]) left(b, "blast bit");
+  }
+  // no stop: unchanged from before
+  assert.deepEqual(wreckLayout(note, { ...at, contents: "books" }), wreckLayout(note, { ...at, contents: "books", stop: (p) => p }));
+});
+test("the burning patch's centre follows the stopped spill (its glow goes where it burns)", () => {
+  const wall = { id: "w", c: [0, 330, 1000, 330], move: 20, sight: 20, door: 0, ds: 0 };
+  const n = { ...note, seed: 4, cutAngle: Math.PI / 2, fire: true };
+  const free = wreckLayout(n, { ...at, contents: "lampoil" }).fire, held = wreckLayout(n, { ...at, contents: "lampoil", stop: wallStop(at.centre, [wall], 4) }).fire;
+  assert.ok(free.at.y > 330, `free patch at ${free.at.y}`);
+  assert.ok(held.at.y < 330, `held patch at ${held.at.y}`);
+});
+
+test("localStop: a tile-local point (a stave, a coal) stops at the wall in world px, turned with the tile", () => {
+  const wall = { id: "w", c: [540, 0, 540, 1000], move: 20, sight: 20, door: 0, ds: 0 };
+  const centre = { x: 500, y: 300 }, stop = wallStop(centre, [wall], 4);
+  for (const rotation of [0, 30, 90, 200]) {
+    const d = { x: 500, y: 300, width: 100, height: 100, rotation, texture: { anchorX: 0.5, anchorY: 0.5 } };
+    const held = localStop(d, centre, stop);
+    for (const p of [{ x: 150, y: 50, rot: 2 }, { x: 50, y: 160 }, { x: -60, y: 50 }, { x: 50, y: -60 }]) {
+      const q = held(p), w = tileToWorld(d, centre, q), want = stop(tileToWorld(d, centre, p));
+      assert.ok(Math.abs(w.x - want.x) < 1e-6 && Math.abs(w.y - want.y) < 1e-6, `rot ${rotation}`);
+      assert.ok(w.x < 540);
+      if (p.rot !== undefined) assert.equal(q.rot, p.rot);
+    }
+    const inside = { x: 60, y: 50 };
+    assert.equal(held(inside), inside);
+  }
+});
+import { firePatchAt } from "../../../scripts/engines/props/prop-wreck-layout.mjs";
+test("firePatchAt: the fire light goes on the burning patch (stopped by the walls), the tile's centre without one", () => {
+  const n = { ...note, seed: 4, cutAngle: Math.PI / 2, fire: true };
+  assert.deepEqual(firePatchAt(n, { ...at, contents: "lampoil" }), wreckLayout(n, { ...at, contents: "lampoil" }).fire.at);
+  assert.notDeepEqual(firePatchAt(n, { ...at, contents: "lampoil" }), at.centre);
+  const wall = { id: "w", c: [0, 330, 1000, 330], move: 20, sight: 20, door: 0, ds: 0 }, stop = wallStop(at.centre, [wall], 4);
+  assert.deepEqual(firePatchAt(n, { ...at, contents: "lampoil", stop }), wreckLayout(n, { ...at, contents: "lampoil", stop }).fire.at);
+  assert.ok(firePatchAt(n, { ...at, contents: "lampoil", stop }).y < 330);
+  // a note without fire is asked as if burning (the GM lights it as it writes the note)
+  assert.deepEqual(firePatchAt({ ...n, fire: undefined }, { ...at, contents: "lampoil" }), firePatchAt(n, { ...at, contents: "lampoil" }));
+  assert.deepEqual(firePatchAt(n, { ...at, contents: "none" }), { x: 500, y: 300 });
 });

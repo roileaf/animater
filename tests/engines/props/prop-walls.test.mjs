@@ -35,3 +35,59 @@ test("a tile's own walls never include a window", () => {
   assert.deepEqual(ownWalls(tile, [w], 100), []);
   assert.deepEqual(ownWalls(tile, [w, wall("plain", [110, 150, 190, 150])], 100).map((x) => x.id), ["plain"]);
 });
+
+// Task 21 (D2): wreckage stops short of the first wall between the prop and where it lands.
+import { blockingWalls, stopShort, wallStop } from "../../../scripts/engines/props/prop-walls.mjs";
+const seg = (id, c, extra = {}) => ({ id, c, door: 0, ds: 0, move: 20, sight: 20, ...extra });
+
+test("blockingWalls: move- or sight-blocking walls only, open doors and the prop's own walls left out", () => {
+  const walls = [
+    seg("solid", [0, 0, 100, 0]),
+    seg("moveOnly", [0, 10, 100, 10], { sight: 0 }),
+    seg("sightOnly", [0, 20, 100, 20], { move: 0 }),
+    seg("open", [0, 30, 100, 30], { move: 0, sight: 0 }),
+    seg("openDoor", [0, 40, 100, 40], { door: 1, ds: 1 }),
+    seg("closedDoor", [0, 50, 100, 50], { door: 1, ds: 0 }),
+    seg("lockedDoor", [0, 60, 100, 60], { door: 2, ds: 2 }),
+    seg("own", [0, 70, 100, 70]),
+  ];
+  assert.deepEqual(blockingWalls(walls, ["own"]).map((w) => w.id), ["solid", "moveOnly", "sightOnly", "closedDoor", "lockedDoor"]);
+  assert.deepEqual(blockingWalls(walls, new Set(["own", "solid"])).map((w) => w.id), ["moveOnly", "sightOnly", "closedDoor", "lockedDoor"]);
+  assert.deepEqual(blockingWalls(undefined), []);
+  assert.deepEqual(blockingWalls([{ id: "bad" }, seg("ok", [0, 0, 1, 1])]).map((w) => w.id), ["ok"]);
+});
+
+test("stopShort: a landing point past a wall comes back short of it along the throw", () => {
+  const walls = [seg("north", [0, 300, 1000, 300])];
+  const p = stopShort({ x: 500, y: 400 }, { x: 500, y: 200 }, walls, 6);
+  assert.equal(p.x, 500);
+  assert.ok(Math.abs(p.y - 306) < 1e-9, `y ${p.y}`);
+  // a diagonal throw keeps its direction
+  const q = stopShort({ x: 500, y: 400 }, { x: 700, y: 200 }, walls, 0);
+  assert.ok(Math.abs(q.x - 600) < 1e-9 && Math.abs(q.y - 300) < 1e-9);
+  // not blocked: unchanged (same object values)
+  assert.deepEqual(stopShort({ x: 500, y: 400 }, { x: 520, y: 350 }, walls, 6), { x: 520, y: 350 });
+  // the nearest of two walls wins
+  const two = [seg("far", [0, 100, 1000, 100]), seg("near", [0, 250, 1000, 250])];
+  assert.ok(Math.abs(stopShort({ x: 500, y: 400 }, { x: 500, y: 0 }, two, 5).y - 255) < 1e-9);
+  // a wall the throw starts almost on stops it at the start, never behind it
+  const r = stopShort({ x: 500, y: 302 }, { x: 500, y: 200 }, walls, 6);
+  assert.deepEqual(r, { x: 500, y: 302 });
+  // the wall's end is not passed: a throw just past its end flies on
+  assert.deepEqual(stopShort({ x: 1010, y: 400 }, { x: 1010, y: 200 }, walls, 6), { x: 1010, y: 200 });
+  // extra fields of the landing point are kept
+  assert.deepEqual(stopShort({ x: 0, y: 0 }, { x: 5, y: 5, rot: 2 }, [], 6), { x: 5, y: 5, rot: 2 });
+  assert.equal(stopShort({ x: 500, y: 400 }, { x: 500, y: 200, rot: 2 }, walls, 6).rot, 2);
+});
+
+test("wallStop: a clamp from one origin; null walls give the identity", () => {
+  const stop = wallStop({ x: 500, y: 400 }, [seg("north", [0, 300, 1000, 300])], 6);
+  assert.ok(Math.abs(stop({ x: 500, y: 100 }).y - 306) < 1e-9);
+  assert.deepEqual(stop({ x: 450, y: 420 }), { x: 450, y: 420 });
+  const none = wallStop({ x: 0, y: 0 }, [], 6);
+  const p = { x: 9, y: 9 };
+  assert.equal(none(p), p);
+  // the share kept of the throw (for pieces whose flight is scaled)
+  assert.ok(Math.abs(stop.share({ x: 500, y: 100 }) - (94 / 300)) < 1e-9);
+  assert.equal(stop.share({ x: 450, y: 420 }), 1);
+});

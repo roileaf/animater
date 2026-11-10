@@ -91,3 +91,15 @@ test("burning away sounds of fire (fire-sear placeholder); a cut web is silent",
   assert.deepEqual(propSound("plant", "none", () => 0.5, { style: "split" }), { file: null });
   assert.ok(BREAK_SOUNDS.wood.includes(propSound("plant", "none", () => 0.5).file), "a plant with no style breaks like the default");
 });
+
+// Task 21 (D4): a metal door clatters like metal, a stone one falls like stone; wood keeps the door burst.
+test("a door's sound follows its material", () => {
+  for (let i = 0; i < 10; i++) {
+    const r = () => i / 10;
+    assert.ok(TIP_SOUNDS.includes(wallSound("door", r, "metal").file));
+    assert.ok(TOPPLE_SOUNDS.includes(wallSound("door", r, "stone").file));
+    assert.ok(DOOR_SOUNDS.includes(wallSound("door", r, "wood").file));
+    assert.ok(DOOR_SOUNDS.includes(wallSound("door", r).file));
+    assert.ok(BREAK_SOUNDS.glass.includes(wallSound("window", r, "glass").file));
+  }
+});

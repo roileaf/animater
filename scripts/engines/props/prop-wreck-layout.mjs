@@ -276,15 +276,33 @@ function blastLayout(note, c, width, height, grid, burst) {
   return { staves, hoops, slivers, grains, puffs: [...fire, ...smoke], embers, flash: 1.1 * burst * grid, glow: 1.2 * burst * grid };
 }
 
-// rotation: the tile's turn in degrees (where spilled books and bottles start across the hit).
-export function wreckLayout(note, { centre, width, height, grid = 100, contents = "none", rotation = 0 }) {
+// Everything thrown or spilled stops short of the walls (stop: prop-walls wallStop from the prop's centre, the same walls
+// on every client, so every screen lays it out the same); a speck moves whole.
+function stopped(spill, stop) {
+  if (!spill) return spill;
+  const each = (list) => list.map((m) => stop(m));
+  if (spill.kind === "books") return { ...spill, closed: each(spill.closed), small: each(spill.small), pages: each(spill.pages) };
+  if (spill.kind === "potions") return { ...spill, shards: each(spill.shards), stains: each(spill.stains) };
+  return { ...spill, marks: each(spill.marks) };
+}
+const stoppedSpeck = (s, stop) => {
+  const p = stop(s);
+  if (p === s || (p.x === s.x && p.y === s.y)) return s;
+  const dx = p.x - s.x, dy = p.y - s.y;
+  return { ...s, x: p.x, y: p.y, pts: s.pts.map((v, i) => v + (i % 2 ? dy : dx)) };
+};
+
+// rotation: the tile's turn in degrees (where spilled books and bottles start across the hit). stop: where a thrown
+// point comes to rest (walls), the identity when there are none.
+export function wreckLayout(note, { centre, width, height, grid = 100, contents = "none", rotation = 0, stop = null }) {
   const rand = seededRandom(note.seed * 977 + 13), r = Math.max(width, height) / 2, extent = spillExtent(width, height, note.cutAngle, rotation);
   const mark = groundMark(note.mark, centre, r, rand); // drawn first even for a fire, so the rest lays out the same
   const spill = Object.hasOwn(LIQUIDS, contents) ? liquidSpill(contents, centre, r, grid, note.cutAngle, note.seed, rand)
     : contents === "grain" || contents === "goods" || contents === "powder" ? pouredSpill(contents, centre, r, grid, note.cutAngle, rand)
     : contents === "books" ? booksSpill(centre, width, height, extent, grid, note.cutAngle, rand)
     : contents === "potions" ? potionsSpill(centre, extent, grid, note.cutAngle, rand) : null;
-  const out = { mark, specks: specks(centre, r, rand), spill, fire: null, blast: null };
+  const spilled = stop ? stopped(spill, stop) : spill, flecks = specks(centre, r, rand);
+  const out = { mark, specks: stop ? flecks.map((k) => stoppedSpeck(k, stop)) : flecks, spill: spilled, fire: null, blast: null };
   // An exploded keg spills nothing (its powder went up): a big scorch, and the blast's debris for its splinters. Laid
   // out after the rest from their own streams, so everything above runs the same.
   if (contents === "powder" && note.powder === "exploded") {
@@ -292,11 +310,13 @@ export function wreckLayout(note, { centre, width, height, grid = 100, contents 
     out.spill = null; out.specks = [];
     out.mark = blastScorch(centre, burst, grid, note.seed);
     out.blast = blastLayout(note, centre, width, height, grid, burst);
+    if (stop) for (const k of ["hoops", "slivers", "grains"]) out.blast[k] = out.blast[k].map((b) => stop(b));
     return out;
   }
   // A fire note scorches: under the burning patch when the oil spilled (mock: a flattened scorch about a prop's size), else at the prop.
   if (note.fire) {
-    out.fire = spill?.color !== undefined ? burningPatch(spill, r, grid, note.cutAngle, note.seed) : null;
+    out.fire = spilled?.color !== undefined ? burningPatch(spilled, r, grid, note.cutAngle, note.seed) : null;
+    if (out.fire && stop) out.fire.flames = out.fire.flames.map((f) => stop(f)); // the patch's edge tongues too
     const burnRand = seededRandom((note.seed >>> 0) * 53 + 29);
     out.mark = out.fire ? flatMark("scorch", { x: out.fire.at.x, y: out.fire.at.y, r, squash: 0.8, angle: note.cutAngle }, burnRand) : groundMark("scorch", centre, r, burnRand);
   }
@@ -311,4 +331,10 @@ export function wreckTargets(tiles) {
     if (note) out.push({ id: d.id, note });
   }
   return out;
+}
+
+// Where burning lamp oil burns (the patch's middle, after the walls stopped its spill): the GM's fire light goes there,
+// so its glow sits on the flames. The tile's centre when the note lays out no patch. opts: as wreckLayout's.
+export function firePatchAt(note, opts) {
+  return wreckLayout({ ...note, fire: true }, opts).fire?.at ?? { x: opts.centre.x, y: opts.centre.y };
 }

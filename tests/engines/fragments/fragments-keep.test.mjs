@@ -62,3 +62,18 @@ test("the renderer cuts a tile-shaped target and keeps every piece visible", () 
   handle.destroy();
   assert.ok(boxes.every((b) => b.destroyed));
 });
+
+// Task 21 (D2): a broken prop's pieces stop short of the walls; their flight is shortened by the stopped share.
+import { reachOf } from "../../../scripts/engines/fragments/fragment-render.mjs";
+import { wallStop } from "../../../scripts/engines/props/prop-walls.mjs";
+test("reachOf: the share of a piece's flight kept before a wall", () => {
+  const stop = wallStop({ x: 500, y: 300 }, [{ id: "w", c: [600, 0, 600, 1000], move: 20, sight: 20, door: 0, ds: 0 }], 0);
+  // starts at 500,300 and would land 2 squares right (700): the wall at 600 keeps half of it
+  assert.equal(reachOf(stop, { x: 500, y: 300 }, { x: 2, y: 0 }, 100), 0.5);
+  // away from the wall: all of it
+  assert.equal(reachOf(stop, { x: 500, y: 300 }, { x: -2, y: 0 }, 100), 1);
+  // no flight, a broken stop: all of it
+  assert.equal(reachOf(stop, { x: 500, y: 300 }, { x: 0, y: 0 }, 100), 1);
+  assert.equal(reachOf(() => { throw new Error("x"); }, { x: 0, y: 0 }, { x: 1, y: 0 }, 100), 1);
+  assert.equal(reachOf(() => ({ x: NaN, y: 0 }), { x: 0, y: 0 }, { x: 1, y: 0 }, 100), 1);
+});

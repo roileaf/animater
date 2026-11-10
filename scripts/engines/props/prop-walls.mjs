@@ -25,3 +25,49 @@ export function openUpdates(walls) {
 export function restoreUpdates(walls) {
   return walls.filter(saved).map(w => ({ _id: w.id, ...Object.fromEntries(KEYS.map(k => [k, saved(w)[k]])), "flags.animater.prop.-=restore": null }));
 }
+
+// Wreckage stops at walls (Task 21): a thrown piece, a spill or burning oil never lands past the first wall between the
+// prop's centre and where it would land. A wall blocks when it stops movement or sight; an open door does not, nor the
+// prop's own walls (excludeIds: ids, an array or a Set).
+export function blockingWalls(walls, excludeIds = []) {
+  const skip = excludeIds instanceof Set ? excludeIds : new Set(excludeIds ?? []);
+  return (walls ?? []).filter((w) => Array.isArray(w?.c) && w.c.length === 4 && w.c.every(Number.isFinite) && !skip.has(w.id)
+    && (w.move > 0 || w.sight > 0) && !(w.door > 0 && w.ds === 1));
+}
+
+// The share (0-1) of the throw from `from` to `to` before it meets the first wall, or 1 when nothing is in the way.
+function firstHit(from, to, walls) {
+  const dx = to.x - from.x, dy = to.y - from.y;
+  let best = 1;
+  for (const w of walls) {
+    const [x1, y1, x2, y2] = w.c, ex = x2 - x1, ey = y2 - y1, den = dx * ey - dy * ex;
+    if (!den) continue; // parallel
+    const t = ((x1 - from.x) * ey - (y1 - from.y) * ex) / den, u = ((x1 - from.x) * dy - (y1 - from.y) * dx) / den;
+    if (t >= 0 && t <= best && u >= 0 && u <= 1) best = t;
+  }
+  return best;
+}
+
+// Where something thrown from `from` toward `to` comes to rest: `to` itself, or `margin` px short of the first wall
+// on the way (never behind the start). Other fields of `to` are kept.
+export function stopShort(from, to, walls, margin = 0) {
+  const len = Math.hypot(to.x - from.x, to.y - from.y);
+  if (!len) return to;
+  const t = firstHit(from, to, walls);
+  if (t >= 1) return to;
+  const k = Math.max(0, t - margin / len);
+  return { ...to, x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k };
+}
+
+// stopShort from one origin, as a function of the landing point; share(p): how much of the throw to p is kept.
+export function wallStop(from, walls, margin = 0) {
+  const list = walls ?? [];
+  const stop = list.length ? (p) => stopShort(from, p, list, margin) : (p) => p;
+  stop.share = (p) => {
+    const len = Math.hypot(p.x - from.x, p.y - from.y);
+    if (!len || !list.length) return 1;
+    const t = firstHit(from, p, list);
+    return t >= 1 ? 1 : Math.max(0, t - margin / len);
+  };
+  return stop;
+}

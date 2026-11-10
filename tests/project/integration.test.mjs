@@ -438,6 +438,29 @@ test("PF2e bootstrap: GM-only settings, source-token safety, effect/region hooks
   assert.equal(controls.animater.tools.select.control, true, "Foundry only lets a tool with this select tokens");
   for (const tool of ["animaterCaveIn", "animaterEnergyBlast", "animaterClearRubble", "animaterClearBlood", "animaterSplatBlood", "animaterBakeBlood", "animaterClearGroundMarks", "animaterClouds"]) assert.ok(controls.animater.tools[tool], tool);
   assert.deepEqual(Object.keys(controls.tokens.tools), []);
+  // Task 21: Repair broken props beside Clear rubble, a GM button with its own show setting.
+  const repair = controls.animater.tools.animaterRepairProps;
+  assert.ok(repair, "Repair broken props button");
+  assert.equal(repair.icon, "fa-solid fa-hammer");
+  assert.equal(repair.button, true);
+  assert.equal(repair.visible, true);
+  assert.equal(typeof repair.onChange, "function");
+  assert.ok(Math.abs(repair.order - controls.animater.tools.animaterClearRubble.order) <= 1, "beside Clear rubble");
+  await f.settings.set("toolRepairProps", false);
+  const noRepair = { tokens: { tools: {} } };
+  await f.fire("getSceneControlButtons", noRepair);
+  assert.equal(noRepair.animater.tools.animaterRepairProps.visible, false);
+  await f.settings.set("toolRepairProps", true);
+  // Task 21 (D1): a Wall Configuration save carries both groups' Material; the shown group's is the one kept.
+  const doorSave = { flags: { animater: { breakWall: { material: "metal", windowMaterial: "glass", forceOpen: true } } } };
+  await f.fire("preUpdateWall", { door: 1 }, doorSave);
+  assert.deepEqual(doorSave.flags.animater.breakWall, { material: "metal", forceOpen: true });
+  const windowSave = { door: 0, flags: { animater: { breakWall: { material: "wood", windowMaterial: "none", window: true } } } };
+  await f.fire("preUpdateWall", { door: 1 }, windowSave);
+  assert.deepEqual(windowSave.flags.animater.breakWall, { material: "none", window: true });
+  const flatSave = { "flags.animater.breakWall.material": ["stone", "glass"] };
+  await f.fire("preUpdateWall", { door: 2 }, flatSave);
+  assert.deepEqual(flatSave, { "flags.animater.breakWall.material": "stone" });
   game.user.isGM = false;
   const playerControls = { tokens: { tools: {} } };
   await f.fire("getSceneControlButtons", playerControls);

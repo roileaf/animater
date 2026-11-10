@@ -3,7 +3,7 @@
 // shattered window: the pane gone dark with glass teeth in the frame, pale shards fanned out past the wall (a few on the
 // near side), a handful of glints that twinkle once. One Container per wreck on the primary canvas, on the wall's
 // level's floor, sorted above the tiles.
-import { doorWreckLayout, windowWreckLayout, wallWreckTargets, wallLevelBase, DOOR_COLOUR } from "./wall-wreck-layout.mjs";
+import { doorWreckLayout, windowWreckLayout, wallWreckTargets, wallLevelBase, DOOR_COLOUR, IRON_TONES, STONE_TONES } from "./wall-wreck-layout.mjs";
 import { flatMark } from "./prop-wreck-layout.mjs";
 import { paintMark, paintShard } from "./prop-wreck.mjs";
 import { wallSound } from "./prop-sounds.mjs";
@@ -58,6 +58,66 @@ function plankCanvas(p, rand) {
   return c;
 }
 
+// A metal door's slab painted from above, its length along x about its centre: dark iron in stepped bands (lit top
+// edge, shaded lower edge), a raised rim, rivets with a glint, the dent where it was hit (a dark hollow with a bright
+// rim on its lit side), a scuffed bright scrape across it, all inked.
+function ironCanvas(p, rand) {
+  const { len, wid } = p, c = document.createElement("canvas");
+  c.width = Math.ceil((len + 8) * K); c.height = Math.ceil((wid + 8) * K);
+  const g = c.getContext("2d"); g.scale(K, K); g.translate(4, 4);
+  const base = p.tone ?? IRON_TONES[1];
+  g.fillStyle = hex(base); g.fillRect(0, 0, len, wid);
+  g.fillStyle = hex(shade(base, 1.3)); g.fillRect(0, 0, len, wid * 0.18);
+  g.fillStyle = hex(shade(base, 0.72)); g.fillRect(0, wid * 0.8, len, wid * 0.2);
+  g.fillStyle = hex(shade(base, 0.86)); g.fillRect(0, wid * 0.46, len, wid * 0.08); // the middle band's shadow
+  g.strokeStyle = hex(shade(base, 1.45)); g.lineWidth = 1; g.strokeRect(2.5, 2.5, len - 5, wid - 5); // the rim
+  const at = (u, v) => [len / 2 + u * len, wid / 2 + v * wid];
+  // The dent: a darker hollow, stepped, with a bright crescent on its upper-left rim and a crumpled ink line.
+  const [dx, dy] = at(p.dent.u, p.dent.v), r = p.dent.r;
+  g.fillStyle = hex(shade(base, 0.8)); g.beginPath(); g.ellipse(dx, dy, r, r * 0.8, 0.3, 0, Math.PI * 2); g.fill();
+  g.fillStyle = hex(shade(base, 0.58)); g.beginPath(); g.ellipse(dx + r * 0.12, dy + r * 0.1, r * 0.62, r * 0.48, 0.3, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = "rgba(200,190,175,0.75)"; g.lineWidth = 1.4; g.beginPath(); g.ellipse(dx, dy, r, r * 0.8, 0.3, Math.PI * 0.95, Math.PI * 1.7); g.stroke();
+  g.strokeStyle = "rgba(20,15,10,0.8)"; g.lineWidth = 0.9; g.beginPath(); g.moveTo(dx - r * 0.5, dy + r * 0.1);
+  for (let i = 1; i <= 4; i++) g.lineTo(dx - r * 0.5 + i * r * 0.25, dy + r * 0.1 + (rand() - 0.5) * r * 0.4);
+  g.stroke();
+  // Rivets: a dark head, a pale glint up-left.
+  for (const q of p.rivets) {
+    const [x, y] = at(q.u, q.v);
+    g.fillStyle = "#1c1916"; g.beginPath(); g.arc(x, y, 1.7, 0, Math.PI * 2); g.fill();
+    g.fillStyle = "rgba(190,180,165,0.8)"; g.beginPath(); g.arc(x - 0.5, y - 0.5, 0.7, 0, Math.PI * 2); g.fill();
+  }
+  // A bright scrape where it hit the floor.
+  g.strokeStyle = "rgba(205,195,180,0.55)"; g.lineWidth = 0.8; g.beginPath();
+  const sx = len * (0.2 + rand() * 0.5), sy = wid * (0.25 + rand() * 0.5); g.moveTo(sx, sy); g.lineTo(sx + len * 0.18, sy + (rand() - 0.5) * wid * 0.2); g.stroke();
+  g.strokeStyle = "rgba(20,15,10,0.95)"; g.lineWidth = 1.6; g.strokeRect(0, 0, len, wid);
+  return c;
+}
+
+// A stone door's slab painted from above about its centre: its broken outline (p.poly) in stepped stone shading, a
+// pale fresh edge, hairline cracks, a few pits, inked.
+function stoneCanvas(p, rand) {
+  const poly = p.poly;
+  let mx = 0, my = 0;
+  for (let i = 0; i < poly.length; i += 2) { mx = Math.max(mx, Math.abs(poly[i])); my = Math.max(my, Math.abs(poly[i + 1])); }
+  const c = document.createElement("canvas");
+  c.width = Math.ceil((2 * mx + 8) * K); c.height = Math.ceil((2 * my + 8) * K);
+  const g = c.getContext("2d"); g.scale(K, K); g.translate(mx + 4, my + 4);
+  const path = () => { g.beginPath(); g.moveTo(poly[0], poly[1]); for (let i = 2; i < poly.length; i += 2) g.lineTo(poly[i], poly[i + 1]); g.closePath(); };
+  g.save(); path(); g.clip();
+  g.fillStyle = hex(p.tone); g.fillRect(-mx - 4, -my - 4, 2 * mx + 8, 2 * my + 8);
+  g.fillStyle = hex(shade(p.tone, 1.2)); g.fillRect(-mx - 4, -my - 4, 2 * mx + 8, my * 0.55 + 4);
+  g.fillStyle = hex(shade(p.tone, 0.78)); g.fillRect(-mx - 4, my * 0.55, 2 * mx + 8, my);
+  g.fillStyle = hex(shade(p.tone, 0.65));
+  for (let i = 0; i < 6; i++) { g.beginPath(); g.arc((rand() - 0.5) * mx * 1.6, (rand() - 0.5) * my * 1.6, 0.8 + rand() * 1.2, 0, Math.PI * 2); g.fill(); }
+  g.strokeStyle = "rgba(20,15,10,0.7)"; g.lineWidth = 0.9;
+  for (const q of p.cracks) { g.beginPath(); g.moveTo(q[0] * 2 * mx, q[1] * 2 * my); for (let i = 2; i < q.length; i += 2) g.lineTo(q[i] * 2 * mx, q[i + 1] * 2 * my); g.stroke(); }
+  g.restore();
+  g.strokeStyle = "rgba(205,200,190,0.9)"; g.lineWidth = 2; path(); g.stroke();
+  g.strokeStyle = "rgba(20,15,10,0.95)"; g.lineWidth = 1.5; path(); g.stroke();
+  return c;
+}
+const SLAB_PAINT = { wood: plankCanvas, iron: ironCanvas, stone: stoneCanvas };
+
 // grid() and layer() as in prop-wreck.mjs (a number or object works too); playSound(file, at) plays a recording at a point.
 export function createWallWreckage({ PIXI, layer, grid, playSound = () => {} }) {
   const wrecks = new Map(); // wall id -> { box, textures, stop, key }
@@ -81,12 +141,21 @@ export function createWallWreckage({ PIXI, layer, grid, playSound = () => {} }) 
     g.lineStyle(0).beginFill(0x2e2620, 0.8).drawPolygon(L.gap.inner).endFill();
     // Each stub in its own frame: x along its rot into the doorway, y across the wall (half the door's thickness).
     const profile = [[0, -1], [12, -1], [7, -0.45], [15, 0], [6, 0.55], [10, 1], [0, 1]];
+    const stone = L.look === "stone", body = stone ? STONE_TONES[1] : DOOR_COLOUR, fresh = stone ? 0xcfc9bd : FRESH;
     for (const s of L.stubs) {
       const c = Math.cos(s.rot), sn = Math.sin(s.rot), h = L.doorHalf, f = s.len / 15;
       const pts = profile.flatMap(([x, y]) => { const px = x * f, py = y * h; return [s.x + px * c - py * sn, s.y + px * sn + py * c]; });
-      g.lineStyle(1.3, INK, 1).beginFill(DOOR_COLOUR).drawPolygon(pts).endFill();
-      g.lineStyle(1.6, FRESH, 0.9).moveTo(pts[2], pts[3]);
+      g.lineStyle(1.3, INK, 1).beginFill(body).drawPolygon(pts).endFill();
+      g.lineStyle(1.6, fresh, 0.9).moveTo(pts[2], pts[3]);
       for (let i = 4; i <= 10; i += 2) g.lineTo(pts[i], pts[i + 1]);
+    }
+    // A metal door's hinges: two iron straps left on the frame, bent through the doorway (ink, iron, a lit edge).
+    for (const hg of L.hinges ?? []) {
+      const a = hg.rot, b = hg.rot + hg.bend, mid = { x: hg.x + Math.cos(a) * hg.len * 0.45, y: hg.y + Math.sin(a) * hg.len * 0.45 };
+      const tip = { x: mid.x + Math.cos(b) * hg.len * 0.55, y: mid.y + Math.sin(b) * hg.len * 0.55 };
+      const strap = (w, colour, alpha) => g.lineStyle(w * k, colour, alpha).moveTo(hg.x, hg.y).lineTo(mid.x, mid.y).lineTo(tip.x, tip.y);
+      strap(5.2, INK, 1); strap(3.2, IRON_TONES[1], 1); strap(1, IRON_TONES[2] + 0x303030, 0.8);
+      g.lineStyle(0).beginFill(0x1c1916, 1).drawCircle(hg.x, hg.y, 2.4 * k).endFill();
     }
     return g;
   }
@@ -112,7 +181,7 @@ export function createWallWreckage({ PIXI, layer, grid, playSound = () => {} }) 
 
   // Dust (or smoke, from a fire) billowing out of the far side of the doorway, gone by the end.
   function puffDrawer(g, mid, n, k, mark, seed) {
-    const tones = mark === "scorch" ? [0x5a524a, 0x6d6660] : [0x9d8b6e, 0xb3a184];
+    const tones = mark === "scorch" ? [0x5a524a, 0x6d6660] : mark === "stone" ? [0xa59b8a, 0xbdb3a2] : [0x9d8b6e, 0xb3a184];
     const along = { x: -n.y, y: n.x };
     const list = [0, 1, 2, 3].map((i) => ({
       x: mid.x + along.x * (i - 1.5) * 22 * k + n.x * 12 * k, y: mid.y + along.y * (i - 1.5) * 22 * k + n.y * 12 * k,
@@ -164,7 +233,7 @@ export function createWallWreckage({ PIXI, layer, grid, playSound = () => {} }) 
     let heard = false;
     const hear = () => {
       heard = true;
-      try { playSound(wallSound(note.kind, seededRandom(note.seed)).file, mid); }
+      try { playSound(wallSound(note.kind, seededRandom(note.seed), note.material).file, mid); }
       catch (error) { console.warn("Animater wall wreckage: no sound", error); }
     };
     const t0 = performance.now(); let raf = 0;
@@ -189,7 +258,7 @@ export function createWallWreckage({ PIXI, layer, grid, playSound = () => {} }) 
     const shadows = new PIXI.Container(), boards = new PIXI.Container();
     box.addChild(shadows, boards);
     const planks = L.planks.map((p, i) => {
-      const tex = PIXI.Texture.from(plankCanvas(p, seededRandom((note.seed >>> 0) * 53 + 7 + i)));
+      const tex = PIXI.Texture.from((SLAB_PAINT[p.look] ?? plankCanvas)(p, seededRandom((note.seed >>> 0) * 53 + 7 + i)));
       entry.textures.push(tex);
       const body = new PIXI.Sprite(tex), sh = new PIXI.Sprite(tex);
       for (const s of [body, sh]) s.anchor.set(0.5);
@@ -208,16 +277,28 @@ export function createWallWreckage({ PIXI, layer, grid, playSound = () => {} }) 
     const chips = new PIXI.Graphics(); box.addChild(chips);
     const far = splinterDrawer(chips, L.splinters.far, mid), nearG = new PIXI.Graphics(); box.addChild(nearG);
     const near = splinterDrawer(nearG, L.splinters.near, mid);
-    let dust = null, puffs = null;
+    let dust = null, puffs = null, sparkG = null;
     if (animate) {
       const n = { x: (L.mark.x - mid.x) / (40 * k), y: (L.mark.y - mid.y) / (40 * k) }; // toward the far side
       dust = new PIXI.Graphics(); box.addChild(dust);
       puffs = puffDrawer(dust, mid, n, k, L.mark.kind, note.seed);
+      // A metal door's sparks: short hot streaks off the hit, yellow cooling to red as they fade.
+      if (L.sparks?.length) { sparkG = new PIXI.Graphics(); sparkG.blendMode = PIXI.BLEND_MODES?.ADD ?? 1; box.addChild(sparkG); }
     }
+    const sparksAt = (ms) => {
+      if (!sparkG) return;
+      sparkG.clear();
+      for (const q of L.sparks) {
+        const r = span(ms, q.at, q.life);
+        if (r <= 0 || r >= 1) continue;
+        const u = outQuart(r), tail = outQuart(Math.max(0, r - 0.18)), x = lerp(q.x0, q.x, u), y = lerp(q.y0, q.y, u);
+        sparkG.lineStyle(q.w * 1.6, r < 0.5 ? 0xffd27a : 0xff7a2a, 0.9 * (1 - r)).moveTo(lerp(q.x0, q.x, tail), lerp(q.y0, q.y, tail)).lineTo(x, y);
+      }
+    };
     return {
       end: END_MS, soundAt: THROW_MS / 2,
-      frame: (ms) => { throwAt(ms); far(ms); near(ms); mark.alpha = span(ms, 0, 500); puffs?.(ms); },
-      done: () => { if (dust) quiet(() => dust.destroy()); },
+      frame: (ms) => { throwAt(ms); far(ms); near(ms); sparksAt(ms); mark.alpha = span(ms, 0, 500); puffs?.(ms); },
+      done: () => { if (dust) quiet(() => dust.destroy()); if (sparkG) quiet(() => sparkG.destroy()); },
     };
   }
 

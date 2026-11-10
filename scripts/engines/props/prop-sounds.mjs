@@ -44,9 +44,11 @@ export function propSound(material, contents, rand, { powder, style } = {}) {
 }
 
 // The sound of a door or window breaking, by the wall note's kind. A door bursts with the door-burst family; a window shatters with the glass family; an unknown kind sounds like a door. Played by
-// wall-wreck.mjs.
+// wall-wreck.mjs. material: a metal door clatters (the metal-clatter family), a stone one falls like stone (stone-topple).
 const WALL_SOUNDS = { door: DOOR_SOUNDS, window: BREAK_SOUNDS.glass };
-export function wallSound(kind, rand) {
+const DOOR_MATERIAL_SOUNDS = { metal: TIP_SOUNDS, stone: TOPPLE_SOUNDS };
+export function wallSound(kind, rand, material) {
+  if (kind === "door" && Object.hasOwn(DOOR_MATERIAL_SOUNDS, material)) return { file: pick(DOOR_MATERIAL_SOUNDS[material], rand) };
   return { file: pick(Object.hasOwn(WALL_SOUNDS, kind) ? WALL_SOUNDS[kind] : WALL_SOUNDS.door, rand) };
 }
 

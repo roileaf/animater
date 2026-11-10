@@ -18,15 +18,16 @@ import { matchFinishers, killFinisher, critFinishers, usePasses, finisherMoment,
 import { playFinisher, previewFinisher } from "./engines/finishers/finisher-play.mjs";
 import { STRIKE_FLAG, strikeKey, strikeOf, strikePick, picksOnActor } from "./engines/finishers/strike-finishers.mjs";
 import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs";
-import { createPropWreckage } from "./engines/props/prop-wreck.mjs";
+import { createPropWreckage, WALL_GAP } from "./engines/props/prop-wreck.mjs";
 import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
 import { BURN_MS, burnLightData, fireTimers } from "./engines/props/prop-lights.mjs";
 import { propMaterial } from "./engines/props/prop-material.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propNextToMiss, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
-import { ownWalls } from "./engines/props/prop-walls.mjs";
-import { wallMid, readWallNote, wallRepairUpdates, wallTraits } from "./engines/props/wall-break.mjs";
+import { ownWalls, blockingWalls, wallStop } from "./engines/props/prop-walls.mjs";
+import { wallMid, readWallNote, wallRepairUpdates, wallTraits, wallBreakFormMerge } from "./engines/props/wall-break.mjs";
+import { firePatchAt } from "./engines/props/prop-wreck-layout.mjs";
 import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest, handEdited, handEditUpdate, slamSenderOk } from "./engines/props/wall-break-requests.mjs";
 import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, smashFrom, windowOnLine } from "./engines/props/wall-triggers.mjs";
 import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt, forceOpenWording } from "./engines/props/force-open.mjs";
@@ -1996,6 +1997,8 @@ const flameCovered = (key, at, elevation = 0) => {
   } catch { return false; }
 };
 Hooks.on("canvasTearDown", () => { flameCover.clear(); });
+// A fire that went (a prop's wreck cleared or burnt out, a keg's blast done): its key, and its tongues' "key:i", leave the cache.
+const forgetFlame = (key) => { for (const k of [...flameCover.keys()]) if (k === key || k.startsWith(`${key}:`)) flameCover.delete(k); };
 // The wind on a fire out of doors (engines/motion/flame-wind.mjs). Whether it is sheltered is looked at once a second a fire: a roof or a room stops the wind.
 const fireShelter = new Map();
 const windOnFire = (key, x, y) => {
@@ -3275,6 +3278,8 @@ Hooks.on("getSceneControlButtons", (controls) => {
       onChange: () => askBlast() });
     add({ name: "animaterClearRubble", title: "Clear rubble: take away every cave-in's rubble", icon: "fa-solid fa-broom", order: order + 1, button: true, visible: toolShown("toolClearRubble"),
       onChange: () => clearRubbleAsk() });
+    add({ name: "animaterRepairProps", title: "Repair broken props: put every broken prop, door and window in this scene back", icon: "fa-solid fa-hammer", order: order + 1.5, button: true, visible: toolShown("toolRepairProps"),
+      onChange: () => repairPropsAsk() });
     add({ name: "animaterClearBlood", title: "Clear blood: wipe the blood off the floor, on every screen", icon: "fa-solid fa-droplet-slash", order: order + 2, button: true, visible: toolShown("toolClearBlood"),
       onChange: () => clearBloodEverywhere() });
     add({ name: "animaterSplatBlood", title: "Splat blood: fresh blood on the ground around the selected tokens, kept with the scene", icon: "fa-solid fa-droplet", order: order + 2.25, button: true, visible: toolShown("toolSplatBlood"),
@@ -3329,6 +3334,17 @@ const openFloorRegionsTool = async () => {
 };
 // Changed in the settings window: the button in the Animater controls follows.
 Hooks.on("updateSetting", (setting) => { if (setting?.key === `${ID}.weatherClouds` && game.user?.isGM) ui.controls?.render({ reset: true }); });
+// The toolbar's Repair broken props: the scene configuration's Repair button's question, then the same repair.
+let repairAsking = false;
+const repairPropsAsk = async () => {
+  if (repairAsking || !game.user?.isGM || !canvas?.scene) return;
+  repairAsking = true;
+  try {
+    const scene = canvas.scene;
+    if (!await foundry.applications.api.DialogV2.confirm({ window: { title: "Repair broken props" }, content: "<p>Unhide every broken prop in this scene and put its walls, doors and windows back?</p>", rejectClose: false })) return;
+    await repairAllProps(scene);
+  } catch (e) { runtime?.trace("props", `repair: ${e?.message ?? e}`); } finally { repairAsking = false; }
+};
 let rubbleAsking = false;
 const clearRubbleAsk = async () => {
   if (rubbleAsking || !sceneRubble().length) { if (!sceneRubble().length) ui.notifications?.info("No rubble in this scene."); return; }
@@ -7104,7 +7120,9 @@ const propWreckage = createPropWreckage({ PIXI: globalThis.PIXI, layer: () => ca
   // Its fires burn with the torch flame over the lighting, by a fire light's rules, whatever "Flames on fire lights" says;
   // the quality tier that draws a fire light's tongues draws theirs.
   fireRoot: () => (canvas?.ready ? torchLightRootOf() : null), fireSeen: fireSeenHere, fireLean: (key, at) => fireLeanAt(key, at.x, at.y),
-  fireTongues: () => qualityRank(localQuality()) >= 2 });
+  fireTongues: () => qualityRank(localQuality()) >= 2, fireForget: (key) => forgetFlame(key),
+  // Its pieces, spills and burning oil stop short of the walls round it: the same walls on every screen.
+  wallsFor: (doc) => propStopWalls(doc) });
 const PROP_REFUSED_MS = 3000, PROP_LATE_MS = 30000;
 const propPending = new Map(), propWriting = new Set(); // broken on this screen, waiting on the GM; being written by the GM
 const propLate = new Map(); // shown again after PROP_REFUSED_MS: a GM write that still comes is drawn without playing again
@@ -7135,6 +7153,17 @@ async function propPlace(cause, scene, grid) {
 }
 // A wreck shows where its tile would: only while the tile's level is the one viewed (a tile on no level, always).
 const propViewed = (doc) => onLevel(doc.levels, canvas?.level?.id);
+// The walls a tile's wreckage stops at (prop-walls blockingWalls): those on its level that stop movement or sight, less
+// open doors and the prop's own walls (its note's, and those it owns now, so a wreck drawn before its walls open lays
+// out as one drawn after).
+const propStopWalls = (doc) => {
+  const scene = doc?.parent;
+  if (!scene) return [];
+  const levels = [...(doc.levels ?? [])], walls = (scene.walls?.contents ?? []).filter((w) => onLevel(w.levels, levels));
+  const noted = doc.flags?.[ID]?.prop?.broken?.walls, own = new Set(Array.isArray(noted) ? noted : []);
+  try { for (const w of ownWalls(propTileView(doc), walls, propGrid(scene))) own.add(w.id); } catch { /* none of its own */ }
+  return blockingWalls(walls.map(wallView), own);
+};
 // Draws (or removes) a tile's wreckage from what the tile holds now. ignite: spilled powder going off, played over the
 // wreck already there (which stays until the explosion covers it).
 const drawPropWreck = (doc, animate, { ignite = false } = {}) => {
@@ -7298,7 +7327,14 @@ function timePropFire(scene, id, tileId, ms) {
   propFires.set(id, { tileId, timer: setTimeout(() => { propFires.delete(id); if (game.users.activeGM?.isSelf) void deletePropFires(scene, [id]); }, Math.max(0, ms)) });
 }
 async function lightPropFire(scene, doc) {
-  const r = tileRect(doc), data = burnLightData({ centre: { x: r.x + r.width / 2, y: r.y + r.height / 2 }, distance: Number(scene.grid?.distance) || 5,
+  // On the burning patch (where the spill stopped, walls and all), as every screen lays it out from the note.
+  const r = tileRect(doc), centre = { x: r.x + r.width / 2, y: r.y + r.height / 2 }, note = readNote(doc.flags?.[ID]?.prop?.broken);
+  let at = centre;
+  try {
+    if (note) at = firePatchAt(note, { centre, width: doc.width, height: doc.height, grid: propGrid(scene), contents: propContents(doc), rotation: doc.rotation ?? 0,
+      stop: wallStop(centre, propStopWalls(doc), WALL_GAP * propGrid(scene)) });
+  } catch { at = centre; }
+  const data = burnLightData({ centre: at, distance: Number(scene.grid?.distance) || 5,
     levels: [...(doc.levels ?? [])], elevation: Number(doc.elevation) || 0, tileId: doc.id, now: fireNow() });
   const [light] = await scene.createEmbeddedDocuments("AmbientLight", [data]).catch((e) => { runtime?.trace("props", `fire light not made: ${e?.message ?? e}`); return []; });
   if (light) timePropFire(scene, light.id, doc.id, BURN_MS);
@@ -8569,6 +8605,7 @@ Hooks.once("init", () => {
     ['toolCaveIn','Show the Cave-in button','In the Animater controls. Hidden, a Region can still bring a ceiling down.'],
     ['toolEnergyBlast','Show the Energy Blast button','In the Animater controls.'],
     ['toolClearRubble','Show the Clear rubble button','In the Animater controls.'],
+    ['toolRepairProps','Show the Repair broken props button','In the Animater controls, for the GM: unhides every broken prop in the scene and puts its walls, doors and windows back, as the scene configuration\'s Repair button does.'],
     ['toolClearBlood','Show the Clear blood button','In the Animater controls. Blood still fades by itself.'],
     ['toolSplatBlood','Show the Splat blood button','In the Animater controls, for the GM: old blood on the ground around the selected tokens, kept with the scene until Clear blood.'],
     ['toolBakeBlood','Show the Bake blood button','In the Animater controls, for the GM: the blood on the floor becomes one tile the scene keeps, saved in the world\'s files.'],
@@ -9941,6 +9978,34 @@ Hooks.on("renderWallConfig", (app, html) => {
   };
   select?.addEventListener("change", sync);
   sync();
+});
+// Saving it (wall-break wallBreakFormMerge): Foundry submits the hidden group's inputs too, so the door group's Material
+// and the window group's (windowMaterial) arrive together; they become one material by the Door Type being saved.
+const mergeWallBreakForm = (changes, door) => {
+  const bw = changes?.flags?.[ID]?.breakWall;
+  if (bw && typeof bw === "object") {
+    const merged = wallBreakFormMerge(bw, door);
+    if (merged !== bw) changes.flags[ID].breakWall = merged;
+  }
+  // The same in flat keys ("flags.animater.breakWall.material"), should an update come that way.
+  const mk = `flags.${ID}.breakWall.material`, wk = `flags.${ID}.breakWall.windowMaterial`;
+  if (changes && (Object.hasOwn(changes, wk) || Array.isArray(changes[mk]))) {
+    const flat = {};
+    if (Object.hasOwn(changes, mk)) flat.material = changes[mk];
+    if (Object.hasOwn(changes, wk)) flat.windowMaterial = changes[wk];
+    const merged = wallBreakFormMerge(flat, door);
+    delete changes[wk];
+    if (merged.material !== undefined) changes[mk] = merged.material;
+  }
+};
+Hooks.on("preUpdateWall", (doc, changes) => { try { mergeWallBreakForm(changes, Number(changes?.door ?? doc?.door)); } catch { /* saved as sent */ } });
+Hooks.on("preCreateWall", (doc, data) => {
+  try {
+    const bw = data?.flags?.[ID]?.breakWall;
+    if (!bw || typeof bw !== "object") return;
+    const merged = wallBreakFormMerge(bw, Number(data.door ?? doc?.door));
+    if (merged !== bw) doc.updateSource({ [`flags.${ID}.breakWall.material`]: merged.material ?? null, [`flags.${ID}.breakWall.windowMaterial`]: null });
+  } catch { /* created as sent */ }
 });
 
 // Wall configuration: what fills this wall's window (wall-shadows.mjs windowOpening), for the light through it by day and

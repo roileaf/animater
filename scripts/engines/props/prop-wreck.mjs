@@ -16,6 +16,7 @@ import { createPosedPieces, tileFrame } from "./prop-pieces.mjs";
 import { propSound, tipSound } from "./prop-sounds.mjs";
 import { seededRandom } from "../fragments/fragments.mjs";
 import { tileRect, tileArtScale } from "./prop-geometry.mjs";
+import { wallStop } from "./prop-walls.mjs";
 
 const FALLBACK = { mid: 0x7a6a55, dark: 0x433a2f, light: 0x9a8a72 };
 const FLIGHT_MS = 1400;
@@ -35,6 +36,17 @@ export function tileToWorld(d, centre, { x, y }) {
   const ax = fin(d.texture?.anchorX, 0.5), ay = fin(d.texture?.anchorY, 0.5), turn = ((Number(d.rotation) || 0) * Math.PI) / 180;
   const px = fin(Number(d.x), centre.x), py = fin(Number(d.y), centre.y), dx = x - ax * d.width, dy = y - ay * d.height;
   return { x: px + dx * Math.cos(turn) - dy * Math.sin(turn), y: py + dx * Math.sin(turn) + dy * Math.cos(turn) };
+}
+
+// A world-px stop (prop-walls wallStop) for tile-local points: the point in world px is stopped, and the move it
+// makes is turned back into the tile's frame. Other fields are kept; a point not stopped comes back as it was.
+export function localStop(d, centre, stop) {
+  const turn = ((Number(d.rotation) || 0) * Math.PI) / 180, c = Math.cos(turn), s = Math.sin(turn);
+  return (p) => {
+    const w = tileToWorld(d, centre, p), q = stop(w), dx = q.x - w.x, dy = q.y - w.y;
+    if (!dx && !dy) return p;
+    return { ...p, x: p.x + dx * c + dy * s, y: p.y - dx * s + dy * c };
+  };
 }
 
 // The ground mark painted once into its own texture: each tone step is the union of its lobes, filled once with
@@ -94,14 +106,23 @@ export function paintMark(PIXI, mark, held) {
 // (main.mjs, with room acoustics); shake(at, burst) jolts the view for an explosion seen happening (optional).
 // The fires a break starts burn with the torch flame over the lighting (prop-fire.mjs): fireRoot() the container over
 // the lighting (null: in the wreck), fireSeen(key, at, elevation) whether this screen sees one, fireLean(key, at) the
-// air on it, fireTongues() whether the quality tier draws flame tongues.
+// air on it, fireTongues() whether the quality tier draws flame tongues, fireForget(key) that a fire under key is gone.
+// wallsFor(tile doc): the walls that stop its wreckage (prop-walls blockingWalls: move or sight walls on its level, open
+// doors and its own walls left out); pieces, spills, books, shards, coals and burning oil land short of them.
+export const WALL_GAP = 0.06; // squares short of a wall that something thrown at it comes to rest
 export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = () => "wood", playSound = () => {}, shake = () => {},
-  fireRoot = () => null, fireSeen = () => true, fireLean = () => 0, fireTongues = () => true }) {
+  fireRoot = () => null, fireSeen = () => true, fireLean = () => 0, fireTongues = () => true, fireForget = () => {}, wallsFor = () => [] }) {
   const wrecks = new Map(); // tile id -> { box, handle, stop }
   const artTextures = new Map(), colours = new Map();
   const posed = createPosedPieces({ PIXI });
   const fx = createPropFx({ PIXI });
-  const torch = createTorchFires({ PIXI, root: fireRoot, seen: fireSeen, lean: fireLean, tongues: fireTongues });
+  const torch = createTorchFires({ PIXI, root: fireRoot, seen: fireSeen, lean: fireLean, tongues: fireTongues, forget: fireForget });
+  // What stops this tile's wreckage: the same walls on every screen, so every screen lays it out the same.
+  const stopFor = (d, centre) => {
+    let walls = [];
+    try { walls = wallsFor(d) ?? []; } catch { walls = []; }
+    return wallStop(centre, walls, WALL_GAP * (grid() || 100));
+  };
 
   const artTexture = (art, n, color) => {
     const key = `${art}:${n}:${color}`;
@@ -323,7 +344,8 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
   const TIP_TINT = 0x7a6e66, TIP_MS = 520, COOL_START = 150, COOL_MS = 900, COAL_IN = 150, COAL_DARK = 0x2a211c, COAL_ASH = 0x6a5646; // cooled coals keep a pale ash fleck so they read on a dark floor
   function tipped({ tile, d, note, entry, box, texture, centre, sortLayer, animate }) {
     const size = { width: d.width, height: d.height }, side = Math.max(d.width, d.height);
-    const L = tipLayout(note, { ...size, grid: grid() || 100, rotation: d.rotation ?? 0 });
+    const L0 = tipLayout(note, { ...size, grid: grid() || 100, rotation: d.rotation ?? 0 }), held = localStop(d, centre, stopFor(d, centre));
+    const L = { ...L0, coals: L0.coals.map((c) => held(c)) }; // coals stop at the walls
     const home = { x: d.width / 2, y: d.height / 2 }, rest = { x: home.x + L.lying.dx, y: home.y + L.lying.dy };
     const restW = tileToWorld(d, centre, rest), ux = Math.cos(note.cutAngle), uy = Math.sin(note.cutAngle);
     // Ash and soot where the bowl spilled, under everything.
@@ -527,7 +549,8 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     let staves = null;
     if (texture) {
       const stand = standFor(tile, d, texture, centre, box, sortLayer);
-      const pieces = B.staves.map((s) => ({ poly: s.poly, home: s.home, to: s.to, delay: 0, dur: s.dur / FLIGHT_MS, hop: s.hop, shadow: 0.32, fresh: STAVE_EDGE }));
+      const held = localStop(d, centre, stopFor(d, centre)); // staves stop at the walls
+      const pieces = B.staves.map((s) => ({ poly: s.poly, home: s.home, to: held(s.to), delay: 0, dur: s.dur / FLIGHT_MS, hop: s.hop, shadow: 0.32, fresh: STAVE_EDGE }));
       try { staves = posed.cut(stand, pieces, { width: d.width, height: d.height }); entry.handle = staves; }
       catch (error) { console.warn("Animater prop wreckage: no staves", error); }
     }
@@ -574,20 +597,24 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     const air = new PIXI.Container(); air.sortableChildren = true;
     air.elevation = box.elevation; air.sort = box.sort + 1; if (sortLayer !== undefined) air.sortLayer = sortLayer;
     layer().addChild(air); entry.extras.push(air);
-    const glow = fx.glow(air, centre, B.glow, 0xff8a30, { alpha: 0.8, flicker: false });
-    const fire = fx.puffs(air, B.puffs.filter((p) => p.kind === "fire"), fireTones, { inkA: 0.18 });
+    // The fireball, its glow, sparks and flash give light: drawn over the lighting where this screen sees the keg, as a
+    // fire is (prop-fire over); its smoke stays in the scene under the lighting.
+    const hot = torch.over(air, { key: `blast:${d.id}`, at: centre, elevation: d.elevation ?? 0 });
     const smoke = fx.puffs(air, B.puffs.filter((p) => p.kind === "smoke"), SMOKE_TONES);
-    const sparks = fx.embers(air, B.embers), flash = fx.flash(air, centre, B.flash, { dur: 260 });
+    const glow = fx.glow(hot.box, centre, B.glow, 0xff8a30, { alpha: 0.8, flicker: false });
+    const fire = fx.puffs(hot.box, B.puffs.filter((p) => p.kind === "fire"), fireTones, { inkA: 0.18 });
+    const sparks = fx.embers(hot.box, B.embers), flash = fx.flash(hot.box, centre, B.flash, { dur: 260 });
     try { playSound(propSound(materialOf(d), contents, seededRandom(note.seed), { powder: "exploded" }).file, centre, { volume: 1, reach: 40 }); }
     catch (error) { console.warn("Animater prop wreckage: no sound", error); }
     try { shake(centre, burst); } catch { /* no shake */ }
     const end = Math.max(FLIGHT_MS, ...B.puffs.map((p) => p.at + p.life), ...B.embers.map((e) => e.at + e.life));
     const t0 = performance.now(); let raf = 0;
     const swap = () => { box.visible = true; dropPrior(entry); };
-    const done = () => { entry.stop = null; swap(); quiet(() => air.destroy({ children: true })); entry.extras = entry.extras.filter((x) => x !== air); };
+    const done = () => { entry.stop = null; swap(); hot.destroy(); quiet(() => air.destroy({ children: true })); entry.extras = entry.extras.filter((x) => x !== air); };
     entry.stop = () => { cancelAnimationFrame(raf); done(); };
     const step = (ms) => {
       if (!swapIn) settle(Math.min(ms, FLIGHT_MS)); else if (ms >= BLAST_SWAP_MS) swap();
+      hot.update(ms);
       glow.sprite.visible = ms < HOOP_MS; glow.sprite.alpha = 0.8 * (1 - span(ms, 0, HOOP_MS));
       flash.update(ms); fire.update(ms); smoke.update(ms); sparks.update(ms);
     };
@@ -731,7 +758,7 @@ void main() {
     const local = art ? frontSpots(art, L, w, h, note.seed) : [];
     // Torch-flame tongues riding the front, side by side across it, each burning only where the picture is painted.
     const { painted, reach } = paintOf(art, L), lanes = frontTongues(L, { grid: grid() || 100, seed: note.seed, reach });
-    const flames = torch.fire(air, { key: `prop:${d.id}`, at: centre, elevation: d.elevation ?? 0, unit: side * (web ? 0.1 : 0.2), spread: side * 0.3,
+    const flames = torch.fire(air, { key: `prop:${d.id}`, at: centre, elevation: d.elevation ?? 0, perTongue: true, unit: side * (web ? 0.1 : 0.2), spread: side * 0.3,
       tongues: lanes.map((l) => ({ x: centre.x, y: centre.y, scale: l.scale })) });
     const lit = lanes.map(() => ({ level: 0, x: centre.x, y: centre.y }));
     // each ember rises off the painted point nearest its place, when the front reaches that point
@@ -870,7 +897,8 @@ void main() {
     if (note.style === "topple") { dropPrior(entry); toppled({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate }); return; }
     if (note.style === "burn") { dropPrior(entry); burned({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
     if (note.style === "split") { dropPrior(entry); cutApart({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate }); return; }
-    const layout = wreckLayout(note, { centre, width: d.width, height: d.height, grid: grid() || 100, contents, rotation: d.rotation ?? 0 });
+    const stop = stopFor(d, centre);
+    const layout = wreckLayout(note, { centre, width: d.width, height: d.height, grid: grid() || 100, contents, rotation: d.rotation ?? 0, stop });
     if (layout.blast) { exploded({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate, layout, contents, prior: entry.prior }); return; }
     dropPrior(entry); // anything else drawn over a wreck it replaces: the old one goes now
     const marks = new PIXI.Container(); marks.zIndex = -1; box.addChild(marks);
@@ -900,7 +928,7 @@ void main() {
       } else {
         // No behaviour: the default burst, whose pieces end lying where they land (keep).
         const stage = { pattern: note.pattern, pieces: note.pieces, spread: note.spread, spin: note.spin, fall: 0, duration: FLIGHT_MS, keep: true, tint: note.tint, seed: note.seed };
-        try { entry.handle = renderer.start({ mesh: stand, center: centre, w: d.width, h: d.height, id, document: { elevation: box.elevation } }, stage, note.cutAngle); }
+        try { entry.handle = renderer.start({ mesh: stand, center: centre, w: d.width, h: d.height, id, document: { elevation: box.elevation } }, stage, note.cutAngle, undefined, { stop }); }
         catch (error) { console.warn("Animater prop wreckage: no pieces", error); }
       }
     }

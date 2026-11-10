@@ -4,6 +4,17 @@
 import { prepareFragments, fragmentPieces, fragmentFlight, fragmentPose, FRAGMENT_TINT_LOOKS } from "./fragments.mjs";
 import { presetFilters } from "../tokenshade/engine.mjs";
 
+// How much of its flight a piece starting at `start` keeps (0-1) when its landing (start + last pose, in squares of
+// size g) is stopped by `stop`: the stopped distance over the full one.
+export function reachOf(stop, start, last, g) {
+  const land = { x: start.x + (last?.x ?? 0) * g, y: start.y + (last?.y ?? 0) * g }, full = Math.hypot(land.x - start.x, land.y - start.y);
+  if (!(full > 0)) return 1;
+  let q;
+  try { q = stop(land); } catch { return 1; }
+  if (!q || !Number.isFinite(q.x) || !Number.isFinite(q.y)) return 1;
+  return Math.max(0, Math.min(1, Math.hypot(q.x - start.x, q.y - start.y) / full));
+}
+
 // `tokenshade(name)`: the Tokenshade token preset a stage's `fragmentFx` names (or null), drawn over all its pieces.
 export function createFragmentRenderer({ PIXI, grid, tokenshade = () => null }) {
   // Stone's greyscale: one filter shared by every piece this renderer draws, made on first use.
@@ -33,7 +44,9 @@ export function createFragmentRenderer({ PIXI, grid, tokenshade = () => null }) 
   return {
     // `base` is the transform the token is drawn at ({ x, y, rotation, sx, sy }), or a getter for it;
     // without it the live mesh is used. A getter is read every frame, so the pieces follow a rebase.
-    start(token, rawStage, cutAngle, baseOrGetter) {
+    // `stop(p)` (optional, world px -> world px): where a piece landing at p comes to rest instead (a broken prop's
+    // pieces stop short of the walls); each piece's whole flight is shortened to match.
+    start(token, rawStage, cutAngle, baseOrGetter, { stop = null } = {}) {
       const baseAt = typeof baseOrGetter === "function" ? baseOrGetter : () => baseOrGetter;
       // A copy: the getter may hand back the same object it later changes.
       const first = baseAt(), base = first ? { ...first } : first;
@@ -115,7 +128,8 @@ export function createFragmentRenderer({ PIXI, grid, tokenshade = () => null }) 
           for (const [key, value] of Object.entries(sorting)) if (value !== undefined) box[key] = value;
           if (mesh.zIndex !== undefined) box.zIndex = mesh.zIndex + 1;
           into.addChild(box);
-          return { box, spin, crop, piece, flight: fragmentFlight(stage, piece, i, cutAngle, turn, size), cx, cy };
+          const flight = fragmentFlight(stage, piece, i, cutAngle, turn, size);
+          return { box, spin, crop, piece, flight, cx, cy, reach: stop ? reachOf(stop, start, fragmentPose(stage, piece, flight, 1), g) : 1 };
         });
       } catch (error) {
         for (const box of boxes) { try { box.destroy({ children: true }); } catch { /* keep cleaning */ } }
@@ -135,7 +149,7 @@ export function createFragmentRenderer({ PIXI, grid, tokenshade = () => null }) 
           for (const part of parts) {
             // The flight is already in screen terms: only the piece's own offset turns with the art.
             const pose = fragmentPose(stage, part.piece, part.flight, p), at = place(part.cx, part.cy);
-            part.box.position.set(at.x + moved.x + pose.x * g, at.y + moved.y + pose.y * g); part.spin.rotation = turn + (pose.rotation * Math.PI) / 180; part.box.alpha = pose.alpha * look.alpha;
+            part.box.position.set(at.x + moved.x + pose.x * g * part.reach, at.y + moved.y + pose.y * g * part.reach); part.spin.rotation = turn + (pose.rotation * Math.PI) / 180; part.box.alpha = pose.alpha * look.alpha;
             // The box's origin is the piece's centroid, so it scales and stretches about it, mask included, along screen axes.
             part.box.scale?.set(pose.scale * pose.stretchX, pose.scale * pose.stretchY);
           }

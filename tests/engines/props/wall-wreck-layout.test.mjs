@@ -167,3 +167,65 @@ test("the window wreck scales with the grid; a fire leaves a scorch, else no mar
   assert.equal(scorch.kind, "scorch");
   assert.ok(scorch.y > 200 && scorch.r > 10);
 });
+
+// Task 21 (D4): a metal door falls as one dented iron slab with bent hinges and sparks; a stone door as 2-3 cracked slabs.
+import { IRON_TONES, STONE_TONES } from "../../../scripts/engines/props/wall-wreck-layout.mjs";
+const metalNote = { ...doorNote, material: "metal" }, stoneNote = { ...doorNote, material: "stone" };
+test("a wooden door is unchanged: planks of wood, its stubs and splinters", () => {
+  const L = doorWreckLayout(doorNote, doorWall, 100);
+  assert.ok(L.planks.every((p) => p.look === "wood"));
+  assert.equal(L.look, "wood");
+  assert.deepEqual(L.hinges, []);
+  assert.deepEqual(L.sparks, []);
+  assert.equal(L.stubs.length, 2);
+  // a note without a material reads as wood
+  assert.deepEqual(doorWreckLayout({ ...doorNote, material: undefined }, doorWall, 100), L);
+});
+test("a metal door: one dented iron slab knocked flat past the wall, two bent hinges, sparks back at the hit", () => {
+  for (let seed = 1; seed <= 20; seed++) {
+    const L = doorWreckLayout({ ...metalNote, seed }, doorWall, 100);
+    assert.equal(L.look, "iron");
+    assert.equal(L.planks.length, 1);
+    const [slab] = L.planks;
+    assert.equal(slab.look, "iron");
+    assert.ok(slab.y - (slab.wid / 2) * Math.abs(Math.cos(slab.rot)) - (slab.len / 2) * Math.abs(Math.sin(slab.rot)) > 200 - 1e-6, `seed ${seed}: slab crosses the wall`);
+    assert.ok(slab.len >= 80 && slab.len <= 100, `len ${slab.len}`);
+    assert.ok(slab.rivets.length >= 8);
+    for (const r of slab.rivets) assert.ok(Math.abs(r.u) <= 0.5 && Math.abs(r.v) <= 0.5);
+    assert.ok(Math.abs(slab.dent.u) < 0.35 && Math.abs(slab.dent.v) < 0.35 && slab.dent.r > 0);
+    assert.equal(L.hinges.length, 2);
+    for (const h of L.hinges) assert.ok(Math.abs(h.x - 300) < 8 || Math.abs(h.x - 400) < 8, "hinges stand at one end of the doorway");
+    assert.equal(new Set(L.hinges.map((h) => Math.round(h.x))).size, 1, "both on the same end");
+    assert.ok(L.hinges.every((h) => h.bend !== 0));
+    assert.deepEqual(L.stubs, []);
+    assert.ok(L.sparks.length >= 10 && L.sparks.length <= 16);
+    for (const s of L.sparks) { assert.ok(s.y0 <= 200 && s.y < s.y0 + 1e-6, "sparks spray back toward the hitter"); assert.ok(s.life > 0); }
+    for (const s of [...L.splinters.far, ...L.splinters.near]) assert.ok(IRON_TONES.includes(s.tone));
+    assert.ok(L.splinters.far.length <= 10);
+  }
+});
+test("a stone door: 2-3 cracked stone slabs past the wall, stone chips and a pale dust mark", () => {
+  const counts = new Set();
+  for (let seed = 1; seed <= 20; seed++) {
+    const L = doorWreckLayout({ ...stoneNote, seed }, doorWall, 100);
+    assert.equal(L.look, "stone");
+    counts.add(L.planks.length);
+    assert.ok(L.planks.length >= 2 && L.planks.length <= 3);
+    for (const p of L.planks) {
+      assert.equal(p.look, "stone");
+      assert.ok(p.y > 200, "slab past the wall");
+      assert.ok(p.poly.length >= 8 && p.poly.length % 2 === 0);
+      assert.ok(STONE_TONES.includes(p.tone));
+      assert.ok(Array.isArray(p.cracks));
+      assert.ok(p.home && Number.isFinite(p.spin));
+    }
+    for (const s of [...L.splinters.far, ...L.splinters.near]) assert.ok(STONE_TONES.includes(s.tone));
+    assert.equal(L.mark.kind, "stone");
+    assert.equal(doorWreckLayout({ ...stoneNote, seed, mark: "scorch" }, doorWall, 100).mark.kind, "scorch");
+    assert.equal(L.stubs.length, 2);
+    assert.deepEqual(L.hinges, []);
+    assert.deepEqual(L.sparks, []);
+  }
+  assert.deepEqual([...counts].sort(), [2, 3]);
+  assert.deepEqual(doorWreckLayout(stoneNote, doorWall, 100), doorWreckLayout(stoneNote, doorWall, 100));
+});

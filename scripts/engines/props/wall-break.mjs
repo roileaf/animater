@@ -21,9 +21,35 @@ export function wallTraits(wall, scene, system) {
   const sf = scene?.flags?.animater ?? {}, own = wall?.flags?.animater?.breakWall ?? {};
   const on = sf.breakableProps === true && sf.breakWalls !== false;
   const door = on && (wall?.door === 1 || wall?.door === 2) && own.door !== "never";
-  if (!door && on && wall?.door === 0 && own.window === true) return { kind: "window", material: own.material === "none" ? "none" : "glass", forceOpen: false, forceDC: null };
-  const material = MATERIALS.includes(own.material) ? own.material : "wood";
+  if (!door && on && wall?.door === 0 && own.window === true) {
+    const pane = PANES.includes(own.windowMaterial) ? own.windowMaterial : own.material;
+    return { kind: "window", material: wallMaterialOf(pane, "window"), forceOpen: false, forceDC: null };
+  }
+  const material = wallMaterialOf(own.material, "door");
   return { kind: door ? "door" : null, material, forceOpen: own.forceOpen !== false, forceDC: forceDCOf(own, material, system) };
+}
+
+// A wall's stored material for a door (wood, metal or stone; wood when unknown) or a window (glass or none). A list
+// (a Wall Configuration that submitted both groups' selects, door group first) gives the door group's value to a door
+// and the window group's (the last) to a window, so walls saved that way read as the GM chose.
+const PANES = ["glass", "none"];
+export function wallMaterialOf(raw, kind) {
+  const list = Array.isArray(raw) ? raw : [raw];
+  if (kind === "window") return [...list].reverse().find((m) => PANES.includes(m)) === "none" ? "none" : "glass";
+  return list.find((m) => MATERIALS.includes(m)) ?? "wood";
+}
+
+// What a Wall Configuration save writes under breakWall (pure; main.mjs's preCreateWall/preUpdateWall): the door group's
+// Material and the window group's (windowMaterial) become one material by the Door Type being saved (1, 2 door; else a
+// window). A material list that reached the save anyway is resolved the same way. Anything else comes back unchanged.
+export function wallBreakFormMerge(breakWall, door) {
+  if (!breakWall || typeof breakWall !== "object") return breakWall;
+  const has = Object.hasOwn(breakWall, "windowMaterial");
+  if (!has && !Array.isArray(breakWall.material)) return breakWall;
+  const isDoor = door === 1 || door === 2, { windowMaterial, ...out } = breakWall;
+  if (isDoor) { if (out.material !== undefined) out.material = wallMaterialOf(out.material, "door"); }
+  else if (has || out.material !== undefined) out.material = wallMaterialOf(has && PANES.includes(windowMaterial) ? windowMaterial : out.material, "window");
+  return out;
 }
 
 // Whether this cause breaks a wall of these traits. A pure damage and slam rule: Force Open and smash have their own rule.

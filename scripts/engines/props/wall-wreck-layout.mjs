@@ -18,6 +18,9 @@ export const SPLINTER_TONES = [shade(DOOR_COLOUR, 0.75), DOOR_COLOUR, 0xc9a571, 
 // Window glass: pale blue-greys; the frame's wood for the splinters it sheds.
 export const GLASS_TONES = [0xcfe3ea, 0xb8d6de, 0xe8f3f6];
 const FRAME_TONES = [0x5a3e26, 0x7a5a3a];
+// A metal door's iron (dark, mid, worn) and a stone door's stone (shadowed, mid, pale): its slabs, flakes and chips.
+export const IRON_TONES = [0x2e2b29, 0x46413d, 0x5c5650];
+export const STONE_TONES = [0x6f6a62, 0x8a847a, 0xa49e93];
 const FAR_SHARDS = 60, NEAR_SHARDS = 9, FAR_GLINTS = 7, NEAR_GLINTS = 2; // mock scene 3
 
 // The planks a door breaks into, at grid 100: length, width, turn off the throw, distance (squares), spin as it lands.
@@ -89,8 +92,93 @@ export function doorWreckLayout(note, wall, grid = 100) {
     near: Array.from({ length: nearCount }, () => splinter(near, F.dir(Math.PI + (rand() - 0.5) * 2.2), rand, k, { dist: [0.05, 0.4], len: [4, 10] })),
   };
 
-  const m = F.at(L / 2, 40 * k);
-  return { gap, stubs, planks, splinters, mark: { kind: note.mark === "scorch" ? "scorch" : "dust", x: m.x, y: m.y, r: 55 * k }, doorHalf: DOOR_HALF * k };
+  const m = F.at(L / 2, 40 * k), mark = { kind: note.mark === "scorch" ? "scorch" : "dust", x: m.x, y: m.y, r: 55 * k };
+  const wood = { look: "wood", gap, stubs, planks: planks.map((p) => ({ ...p, look: "wood" })), splinters, hinges: [], sparks: [], mark, doorHalf: DOOR_HALF * k };
+  // Metal and stone doors keep the gap and the mark's place, and lay the rest out from their own stream, so a wooden
+  // door lays out exactly as it always has.
+  if (note.material === "metal") return { ...wood, ...ironDoor(note, F, k) };
+  if (note.material === "stone") return { ...wood, ...stoneDoor(note, F, k), mark: { ...mark, kind: note.mark === "scorch" ? "scorch" : "stone" } };
+  return wood;
+}
+
+// The door's face knocked flat past the wall, seen from above: as long as the doorway (a little less), half as deep,
+// lying beside the frame along the wall (turned by turn), its near edge a few px past it. Same in the wall's frame
+// whichever side it was hit from.
+function fallenFace(F, k, rand) {
+  const L = F.len, len = L * 0.9, wid = clamp(L * 0.5, 30 * k, 60 * k), turn = (rand() - 0.5) * 0.5, slide = (rand() - 0.5) * L * 0.15;
+  const rot = Math.atan2(F.t.y, F.t.x) + turn, out = (wid / 2) * Math.abs(Math.cos(turn)) + (len / 2) * Math.abs(Math.sin(turn)) + (6 + rand() * 12) * k;
+  const at = F.at(L / 2 + slide, out), home = F.at(L / 2, 0);
+  // It stands in the doorway, upright (seen edge-on: along the wall), then falls flat away from the frame.
+  return { x: at.x, y: at.y, rot, len, wid, home: { x: home.x, y: home.y, rot: Math.atan2(F.t.y, F.t.x) }, spin: turn };
+}
+
+// A metal door: one dented iron slab (rivets round its edge and along a middle band, the dent where it was hit), two
+// bent hinge stubs left on the hinge end, a few iron flakes and a short spray of sparks back toward the hitter.
+function ironDoor(note, F, k) {
+  const rand = seededRandom((note.seed >>> 0) * 389 + 113), L = F.len, face = fallenFace(F, k, rand);
+  const rivets = [];
+  for (const v of [-0.4, 0.4]) for (let i = 0; i < 5; i++) rivets.push({ u: -0.42 + i * 0.21, v });
+  for (const u of [-0.12, 0.12]) rivets.push({ u, v: 0 });
+  const dent = { u: (rand() - 0.5) * 0.4, v: (rand() - 0.5) * 0.3, r: (0.16 + rand() * 0.08) * Math.min(face.len, face.wid) };
+  const slab = { ...face, look: "iron", tone: IRON_TONES[1], rivets, dent };
+  // The hinges stay on one end of the doorway, one each side of the wall's line, bent through toward the far side.
+  const end = rand() < 0.5 ? 3 * k : L - 3 * k, inward = end < L / 2 ? F.t : { x: -F.t.x, y: -F.t.y };
+  const hinges = [-1, 1].map((side) => {
+    const p = F.at(end, side * 4 * k);
+    return { x: p.x, y: p.y, rot: Math.atan2(inward.y, inward.x), len: (9 + rand() * 4) * k, bend: (0.5 + rand() * 0.4) * (end < L / 2 ? 1 : -1) };
+  });
+  const hit = F.at(L / 2 + (rand() - 0.5) * L * 0.3, -3 * k);
+  const sparks = Array.from({ length: 10 + Math.floor(rand() * 7) }, () => {
+    const dir = F.dir(Math.PI + (rand() - 0.5) * 1.8), d = 100 * k * lerp(0.15, 0.6, rand() ** 1.3);
+    return { x0: hit.x, y0: hit.y, x: hit.x + dir.x * d, y: hit.y + dir.y * d, at: Math.round(rand() * 80), life: Math.round(250 + rand() * 250), w: (0.8 + rand() * 0.8) * k };
+  });
+  const far = F.at(L / 2, 4 * k), near = F.at(L / 2, -6 * k);
+  const splinters = {
+    far: Array.from({ length: 5 + Math.floor(rand() * 4) }, () => splinter(far, F.dir(F.lean + (rand() - 0.5) * 1.6), rand, k, { dist: [0.1, 0.9], len: [3, 7], tones: IRON_TONES })),
+    near: Array.from({ length: Math.floor(rand() * 3) }, () => splinter(near, F.dir(Math.PI + (rand() - 0.5) * 2), rand, k, { dist: [0.05, 0.3], len: [3, 5], tones: IRON_TONES })),
+  };
+  return { look: "iron", planks: [slab], stubs: [], hinges, sparks, splinters };
+}
+
+// A stone door: its face lies past the wall broken into 2-3 slabs along jagged cracks across it, drifted a little
+// apart, each with a hairline crack or two; stone chips everywhere, stone stubs left in the frame.
+function stoneDoor(note, F, k) {
+  const rand = seededRandom((note.seed >>> 0) * 433 + 59), L = F.len, face = fallenFace(F, k, rand), n = rand() < 0.5 ? 2 : 3;
+  const { len, wid } = face, c = Math.cos(face.rot), sn = Math.sin(face.rot);
+  // The cracks across the face, at shares along it, each a jagged line from one long edge to the other.
+  const cuts = Array.from({ length: n - 1 }, (_, i) => -0.5 + ((i + 1) / n) * (1 + (rand() - 0.5) * 0.25));
+  const crack = (u) => Array.from({ length: 5 }, (_, j) => ({ x: u * len + (j === 0 || j === 4 ? (rand() - 0.5) * 6 * k : (rand() - 0.5) * 10 * k), y: -wid / 2 + (j / 4) * wid }));
+  const lines = [{ pts: [{ x: -len / 2, y: -wid / 2 }, { x: -len / 2, y: wid / 2 }] }, ...cuts.map((u) => ({ pts: crack(u) })), { pts: [{ x: len / 2, y: -wid / 2 }, { x: len / 2, y: wid / 2 }] }];
+  const planks = [];
+  for (let i = 0; i < n; i++) {
+    const a = lines[i].pts, b = lines[i + 1].pts, chip = (p) => ({ x: p.x + (rand() - 0.5) * 3 * k, y: p.y });
+    const pts = [...a.map(chip), ...[...b].reverse().map(chip)];
+    let cx = 0, cy = 0;
+    for (const p of pts) { cx += p.x / pts.length; cy += p.y / pts.length; }
+    const drift = { x: (i - (n - 1) / 2) * (4 + rand() * 6) * k, y: (rand() - 0.5) * 6 * k }, turn = (rand() - 0.5) * 0.18;
+    const lx = cx + drift.x, ly = cy + drift.y, wx = face.x + lx * c - ly * sn, wy = face.y + lx * sn + ly * c;
+    const poly = pts.flatMap((p) => [p.x - cx, p.y - cy]);
+    // Hairline cracks: short bent lines inside the slab, as shares of its size about its centre.
+    const cracks = Array.from({ length: 1 + Math.floor(rand() * 2) }, () => {
+      const x0 = (rand() - 0.5) * 0.5, y0 = (rand() - 0.5) * 0.6, a2 = rand() * Math.PI, l2 = 0.25 + rand() * 0.3;
+      return [x0, y0, x0 + Math.cos(a2) * l2 * 0.5, y0 + Math.sin(a2) * l2 * 0.5, x0 + Math.cos(a2 + 0.5) * l2, y0 + Math.sin(a2 + 0.5) * l2];
+    });
+    const home = F.at(L / 2 + (lx / len) * L * 0.9, 0);
+    planks.push({ look: "stone", x: wx, y: wy, rot: face.rot + turn, poly, w: len, h: wid, cracks, tone: STONE_TONES[Math.floor(rand() * STONE_TONES.length)],
+      home: { x: home.x, y: home.y, rot: face.home.rot }, spin: face.spin + turn });
+  }
+  const far = F.at(L / 2, 4 * k), near = F.at(L / 2, -8 * k);
+  const chips = (origin, spread, count, dist, lenR) => Array.from({ length: count }, () => {
+    const s = splinter(origin, F.dir(spread()), rand, k, { dist, len: lenR, tones: STONE_TONES });
+    let cx = 0, cy = 0;
+    for (let j = 0; j < 8; j += 2) { cx += s.pts[j] / 4; cy += s.pts[j + 1] / 4; }
+    return { ...s, pts: s.pts.map((v, j) => (j % 2 ? cy + (v - cy) * 1.8 : cx + (v - cx) * 0.8)) }; // chunkier than a splinter
+  });
+  const splinters = {
+    far: chips(far, () => F.lean + (rand() - 0.5) * 1.9, 18 + Math.floor(rand() * 8), [0.1, 1.3], [4, 9]),
+    near: chips(near, () => Math.PI + (rand() - 0.5) * 2.2, 2 + Math.floor(rand() * 4), [0.05, 0.35], [3, 6]),
+  };
+  return { look: "stone", planks, hinges: [], sparks: [], splinters };
 }
 
 // One glass shard at rest: a thin triangle about its centre (pts, unturned), turned by rot, flown from `from` (a point

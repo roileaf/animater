@@ -100,12 +100,12 @@ test("window fieldset: off by default, glass by default", () => {
   assert.doesNotMatch(wallBreakFieldsHTML({ door: 1 }), /data-group="door" hidden/);
   assert.match(wallBreakFieldsHTML({ door: 0, own: { window: true, material: "none" } }), /breakWall\.window"[^>]*checked[\s\S]*<option value="none" selected>Won't break</);
 });
-test("window fieldset: the hidden group's material select is disabled so one name submits", () => {
+test("window fieldset: the hidden group's material select is disabled (and has its own name)", () => {
   assert.match(wallBreakFieldsHTML({ door: 0 }), /data-group="door" hidden[\s\S]*?<select name="flags\.animater\.breakWall\.material" disabled>/);
   const doorShown = wallBreakFieldsHTML({ door: 1 });
-  assert.match(doorShown, /data-group="window" hidden[\s\S]*?<select name="flags\.animater\.breakWall\.material" disabled>/);
-  assert.equal((doorShown.match(/breakWall\.material" disabled/g) ?? []).length, 1);
-  assert.equal((wallBreakFieldsHTML({ door: 0 }).match(/breakWall\.material" disabled/g) ?? []).length, 1);
+  assert.match(doorShown, /data-group="window" hidden[\s\S]*?<select name="flags\.animater\.breakWall\.windowMaterial" disabled>/);
+  assert.equal((doorShown.match(/breakWall\.(window)?[mM]aterial" disabled/g) ?? []).length, 1);
+  assert.equal((wallBreakFieldsHTML({ door: 0 }).match(/breakWall\.(window)?[mM]aterial" disabled/g) ?? []).length, 1);
 });
 
 test("Light prop select", () => {
@@ -158,4 +158,20 @@ test("Plant and Burn away in the tile fields", () => {
   assert.match(html, /Automatic \(burn away\)/);
   assert.match(propTileFieldsHTML({ src: "Web.webp", style: "burn" }), /<option value="burn" selected>Burn away</);
   assert.match(propTileFieldsHTML({ src: "Bush.webp", material: "wood" }), /Automatic \(shatter\)/, "a guessed burn needs the plant material");
+});
+
+// Task 21 (D1): Foundry submits disabled inputs too, so the two groups' Material selects carry different names; the
+// wall hooks merge them into one material on save (wall-break wallBreakFormMerge).
+test("the window group's Material is its own field, so one material name submits per group", () => {
+  for (const door of [0, 1]) {
+    const html = wallBreakFieldsHTML({ door });
+    assert.equal((html.match(/name="flags\.animater\.breakWall\.material"/g) ?? []).length, 1);
+    assert.equal((html.match(/name="flags\.animater\.breakWall\.windowMaterial"/g) ?? []).length, 1);
+    assert.match(html, /data-group="door"[\s\S]*breakWall\.material"[\s\S]*data-group="window"[\s\S]*breakWall\.windowMaterial"/);
+  }
+  // a window saved Won't break (or with the old array) shows Won't break
+  assert.match(wallBreakFieldsHTML({ door: 0, own: { window: true, material: ["wood", "none"] } }), /windowMaterial"[^>]*>[\s\S]*?<option value="none" selected>/);
+  assert.match(wallBreakFieldsHTML({ door: 0, own: { window: true, material: "none" } }), /windowMaterial"[^>]*>[\s\S]*?<option value="none" selected>/);
+  // a door saved with the old array shows its metal
+  assert.match(wallBreakFieldsHTML({ door: 1, own: { material: ["metal", "glass"] } }), /<option value="metal" selected>Metal/);
 });

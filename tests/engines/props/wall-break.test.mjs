@@ -111,3 +111,47 @@ test("a window's note reads back (glass, none), and Repair restores only its sen
   const broken = win({ sight: 0, light: 0, sound: 0, flags: { animater: { breakWall: { window: true, broken: { ...n, restore: { sight: 20, light: 20, sound: 20 } } } } } });
   assert.deepEqual(wallRestoreUpdate(broken), { _id: "w1", sight: 20, light: 20, sound: 20, "flags.animater.breakWall.-=broken": null });
 });
+
+// Task 21 (D1): a Material saved as an array (both groups' selects submitted) still reads as the shown group's choice.
+import { wallMaterialOf, wallBreakFormMerge } from "../../../scripts/engines/props/wall-break.mjs";
+test("a door saved with Material [metal, glass] is metal; a window with [wood, none] won't break", () => {
+  assert.equal(wallTraits(wall(own({ material: ["metal", "glass"] })), scene()).material, "metal");
+  assert.equal(wallTraits(wall(own({ material: ["stone", "none"] })), scene(), "pf2e").forceDC, 25);
+  const win = (o) => wall({ door: 0, ...own({ window: true, ...o }) });
+  assert.equal(wallTraits(win({ material: ["wood", "none"] }), scene()).material, "none");
+  assert.equal(wallTraits(win({ material: ["metal", "glass"] }), scene()).material, "glass");
+  // the window group's own field wins for a window
+  assert.equal(wallTraits(win({ material: "wood", windowMaterial: "none" }), scene()).material, "none");
+  assert.equal(wallTraits(win({ material: "none", windowMaterial: "glass" }), scene()).material, "glass");
+  // unknown values: a door is wood, a window glass
+  assert.equal(wallTraits(wall(own({ material: ["junk"] })), scene()).material, "wood");
+  assert.equal(wallTraits(wall(own({ material: { x: 1 } })), scene()).material, "wood");
+  assert.equal(wallTraits(win({ material: ["junk", 3] }), scene()).material, "glass");
+});
+test("wallMaterialOf: the door group's value for a door, the window group's for a window", () => {
+  assert.equal(wallMaterialOf(["metal", "glass"], "door"), "metal");
+  assert.equal(wallMaterialOf(["glass", "stone"], "door"), "stone");
+  assert.equal(wallMaterialOf("stone", "door"), "stone");
+  assert.equal(wallMaterialOf(undefined, "door"), "wood");
+  assert.equal(wallMaterialOf(["wood", "none"], "window"), "none");
+  assert.equal(wallMaterialOf(["none", "glass"], "window"), "glass"); // the later (window group's) value
+  assert.equal(wallMaterialOf("none", "window"), "none");
+  assert.equal(wallMaterialOf("metal", "window"), "glass");
+});
+test("wallBreakFormMerge: the form's two Material fields become one material by the Door Type saved", () => {
+  // a door: the door group's Material is kept, the window group's dropped
+  assert.deepEqual(wallBreakFormMerge({ material: "metal", windowMaterial: "glass", door: "", forceOpen: true }, 1), { material: "metal", door: "", forceOpen: true });
+  // a wall with no door: the window group's
+  assert.deepEqual(wallBreakFormMerge({ material: "wood", windowMaterial: "none", window: true }, 0), { material: "none", window: true });
+  // secret doors are doors
+  assert.deepEqual(wallBreakFormMerge({ material: "stone", windowMaterial: "glass" }, 2), { material: "stone" });
+  // an array that reached the update anyway is resolved too
+  assert.deepEqual(wallBreakFormMerge({ material: ["metal", "glass"] }, 1), { material: "metal" });
+  assert.deepEqual(wallBreakFormMerge({ material: ["wood", "none"] }, 0), { material: "none" });
+  // a door update without a Material (unchanged) keeps none
+  assert.deepEqual(wallBreakFormMerge({ windowMaterial: "glass", forceOpen: false }, 1), { forceOpen: false });
+  // nothing to merge: the same object back
+  const plain = { material: "stone" };
+  assert.equal(wallBreakFormMerge(plain, 1), plain);
+  assert.equal(wallBreakFormMerge(undefined, 1), undefined);
+});

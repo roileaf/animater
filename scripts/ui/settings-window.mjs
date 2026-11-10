@@ -194,6 +194,7 @@ export const SETTINGS_TABS = Object.freeze([
     { local: "toolCaveIn" },
     { local: "toolEnergyBlast" },
     { local: "toolClearRubble" },
+    { local: "toolRepairProps", gmOnly: true },
     { local: "toolClearBlood" },
     { local: "toolSplatBlood", gmOnly: true },
     { local: "toolBakeBlood", gmOnly: true },
