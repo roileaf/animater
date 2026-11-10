@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { propGuesses, propTraits, breakStyle } from "../../../scripts/engines/props/prop-traits.mjs";
 import { guessMaterial } from "../../../scripts/engines/props/prop-material.mjs";
-import { toppleStrip, stripPolygon, rubbleRegionData, tokensUnderStrip, toppleWhisper, toppleLayout, TOPPLE_MS } from "../../../scripts/engines/props/prop-topple.mjs";
+import { toppleStrip, stripPolygon, rubbleRegionData, tokensUnderStrip, toppleWhisper, toppleLayout, TOPPLE_MS, TOPPLE_REACH } from "../../../scripts/engines/props/prop-topple.mjs";
 import { propSound, BREAK_SOUNDS, TOPPLE_SOUNDS } from "../../../scripts/engines/props/prop-sounds.mjs";
 import { flatMark } from "../../../scripts/engines/props/prop-wreck-layout.mjs";
 import { validBreakRequest, breakNoteFor, undoUpdates, repairUpdates } from "../../../scripts/engines/props/prop-requests.mjs";
@@ -25,19 +25,20 @@ test("tall stone props topple from force or a big slam", () => {
   assert.equal(propTraits({ ...wooden, flags: {} }, 100).style, "topple");
   assert.equal(propGuesses("Rock.webp").style, "shatter");
 });
-test("the strip runs from the centre along the hit, as long as the longer side", () => {
+test("the strip runs from the centre along the hit, as far as the mock's statue lies (1.375 longer sides)", () => {
   const s = strip();
-  assert.deepEqual(s, { from: { x: 250, y: 300 }, angle: 0, length: 200, width: 100 });
-  assert.deepEqual(stripPolygon(s), [250, 250, 450, 250, 450, 350, 250, 350]);
+  assert.equal(TOPPLE_REACH, 1.375);
+  assert.deepEqual(s, { from: { x: 250, y: 300 }, angle: 0, length: 275, width: 100 });
+  assert.deepEqual(stripPolygon(s), [250, 250, 525, 250, 525, 350, 250, 350]);
   const down = stripPolygon(toppleStrip(rect, Math.PI / 2));
-  assert.deepEqual(down.map(Math.round), [300, 300, 300, 500, 200, 500, 200, 300]);
+  assert.deepEqual(down.map(Math.round), [300, 300, 300, 575, 200, 575, 200, 300]);
 });
 test("the rubble region doubles walking cost, on the statue's level", () => {
   const d = rubbleRegionData({ strip: strip(), tileId: "t1", levels: ["l1"], bottom: 0, top: 10 });
   assert.deepEqual(d.behaviors, [{ type: "modifyMovementCost", name: "Rubble", system: { difficulties: { walk: 2 } } }]);
   assert.deepEqual([d.shapes[0].type, d.levels, d.flags.animater.propRubble], ["polygon", ["l1"], "t1"]);
   assert.deepEqual([d.name, d.color, d.elevation], ["Rubble", "#7a6a55", { bottom: 0, top: 10 }]);
-  assert.deepEqual(d.shapes[0].points, [250, 250, 450, 250, 450, 350, 250, 350]);
+  assert.deepEqual(d.shapes[0].points, [250, 250, 525, 250, 525, 350, 250, 350]);
 });
 test("rubble: the tile's choice beats the scene's", () => {
   const t = (rubble) => ({ texture: { src: "Statue_Stone.webp" }, width: 100, height: 200, flags: { animater: { prop: { rubble } } } });
@@ -52,7 +53,7 @@ test("whisper names who is under it; nobody, no whisper", () => {
   const tk = (name, x, y, level) => ({ name, x, y, w: 100, h: 100, level });
   assert.deepEqual(tokensUnderStrip([tk("Kyra", 350, 250), tk("Far", 900, 900)], s), ["Kyra"]);
   // a token that only touches the strip's edge is not under it; one that overlaps a corner is
-  assert.deepEqual(tokensUnderStrip([tk("Edge", 450, 250), tk("Corner", 400, 320)], s), ["Corner"]);
+  assert.deepEqual(tokensUnderStrip([tk("Edge", 525, 250), tk("Corner", 400, 320)], s), ["Corner"]);
   // another level is not under it
   assert.deepEqual(tokensUnderStrip([tk("Up", 350, 250, "l2"), tk("Here", 350, 250, "l1")], s, ["l1"]), ["Here"]);
   assert.equal(toppleWhisper("Statue", []), "");
@@ -77,7 +78,7 @@ test("a toppled statue writes a topple note and, with rubble on, a strip along t
   assert.equal(note.style, "topple");
   assert.equal(check.ok, true);
   assert.equal(check.note.style, "topple");
-  assert.equal(check.rubble.length, 200);
+  assert.equal(check.rubble.length, 275);
   assert.equal(check.rubble.width, 100);
   assert.deepEqual(check.rubble.from, { x: 250, y: 300 });
   // the hit came from above (y 150): the statue falls away from it, down the page
@@ -86,7 +87,7 @@ test("a toppled statue writes a topple note and, with rubble on, a strip along t
 test("no rubble when the setting is off, the tile says no, or it does not topple", () => {
   assert.equal(ask(statue(), scene()).check.rubble, null);
   assert.equal(ask(statue({ flags: { animater: { prop: { rubble: "no" } } } }), scene({ rubbleDifficult: true })).check.rubble, null);
-  assert.equal(ask(statue({ flags: { animater: { prop: { rubble: "yes" } } } }), scene()).check.rubble.length, 200);
+  assert.equal(ask(statue({ flags: { animater: { prop: { rubble: "yes" } } } }), scene()).check.rubble.length, 275);
   assert.equal(ask(barrel(), scene({ rubbleDifficult: true })).check.rubble, null);
   // a statue hit by fire does not topple (stone only breaks from force)
   const fire = { kind: "area", damageType: "fire", at: { x: 250, y: 150 } };
@@ -182,7 +183,7 @@ test("5-8 big chunks lie along the strip; same note, same fall", () => {
   const n = { ...note, style: "topple", cutAngle: 0 };
   const L = toppleLayout(n, { width: 100, height: 200, grid: 100 });
   assert.ok(L.chunks.length >= 5 && L.chunks.length <= 8);
-  assert.ok(L.chunks.every((c) => c.to.x >= 50 - 25 && c.to.x <= 250 + 25 && c.to.y >= 50 - 25 && c.to.y <= 150 + 25));
+  assert.ok(L.chunks.every((c) => c.to.x >= 50 - 25 && c.to.x <= 325 + 25 && c.to.y >= 50 - 25 && c.to.y <= 150 + 25));
   assert.equal(L.fall.ms, 600);
   assert.deepEqual(toppleLayout(n, { width: 100, height: 200, grid: 100 }), L);
 });
@@ -192,7 +193,7 @@ test("the fall lengthens from the plinth's edge to the strip's end, and the chun
   assert.deepEqual(L.fall.from, { rot: 0 });
   // it starts as long as the figure seen from above and ends reaching the strip's end (the tile's longer side from its centre)
   assert.ok(L.fall.to.stretch > 1.2 && L.fall.to.stretch < 3, `stretch ${L.fall.to.stretch}`);
-  assert.ok(Math.abs(L.fall.at.x + L.fall.length - (120 + 240)) < 1e-6);
+  assert.ok(Math.abs(L.fall.at.x + L.fall.length - (120 + 330)) < 1e-6);
   assert.ok(L.fall.at.x > 120 && L.fall.at.x < 240, "it breaks off at the plinth's edge");
   assert.ok(Math.abs(L.fall.length - L.fall.along * L.fall.to.stretch) < 1e-6);
   assert.ok(L.fall.width > 0 && L.fall.width <= 240 * 0.85);
@@ -251,4 +252,15 @@ test("the stone mark: pale grey lobes, flattened and turned", () => {
   assert.deepEqual(m.blobs[0].steps.map((s) => s.color), [0x9a948a, 0xb3ada3]);
   assert.equal(m.blobs[0].steps[0].polys.length, 9);
   assert.equal(flatMark("dust", { x: 0, y: 0, r: 10 }, () => 0.5).blobs[0].steps[0].polys.length, 7);
+});
+test("the mock's statue lies as long as in mock scene 6, filling the strip from its plinth's edge", () => {
+  // mock scene 6: a 240 px statue whose plinth is [103, 104, 372, 345] of its 450 px picture breaks off about 60 px from
+  // its centre and lies 270 px, 83 px wide
+  const L = toppleLayout({ ...note, cutAngle: 0 }, { width: 240, height: 240, grid: 100, box: [103 / 450, 104 / 450, 372 / 450, 345 / 450] });
+  assert.ok(Math.abs(L.fall.length - 270) < 6, `length ${L.fall.length}`);
+  assert.ok(Math.abs(L.fall.at.x - 120 - 60) < 6, `break ${L.fall.at.x}`);
+  assert.ok(Math.abs(L.fall.width - 83) < 3, `width ${L.fall.width}`);
+  assert.equal(L.chunks.length, 5);
+  const s = toppleStrip({ x: 0, y: 0, width: 240, height: 240 }, 0);
+  assert.ok(Math.abs(L.fall.at.x + L.fall.length - (s.from.x + s.length)) < 1e-6, "the figure ends where the rubble strip ends");
 });

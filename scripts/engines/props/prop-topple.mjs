@@ -7,11 +7,15 @@ const RUBBLE_COLOR = "#7a6a55";
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const tidy = (v) => Math.round(v * 1000) / 1000 + 0; // no float dust, no -0
 
-// The strip the statue falls along: from the rect's centre along cutAngle (away from the blow), as long as the rect's
-// longer side and as wide as its shorter side. rect: {x, y, width, height} (top-left).
+// How far a toppled statue reaches from its centre, in its longer sides. It lies its full height from its base: in the
+// approved mock (scene 6) the 240 px statue breaks off 60 px from its centre and lies 270 px on, to 330 px (1.375).
+export const TOPPLE_REACH = 1.375;
+
+// The strip the statue falls along: from the rect's centre along cutAngle (away from the blow), TOPPLE_REACH times the
+// rect's longer side long and as wide as its shorter side. rect: {x, y, width, height} (top-left).
 export function toppleStrip(rect, cutAngle) {
   const { x, y, width, height } = rect;
-  return { from: { x: x + width / 2, y: y + height / 2 }, angle: cutAngle, length: Math.max(width, height), width: Math.min(width, height) };
+  return { from: { x: x + width / 2, y: y + height / 2 }, angle: cutAngle, length: TOPPLE_REACH * Math.max(width, height), width: Math.min(width, height) };
 }
 
 // The strip's four corners as x, y pairs: the start edge's left, the far edge's left, its right, the start edge's right.
@@ -119,7 +123,7 @@ export function toppleLayout(note, { width, height, grid = 100, rotation = 0, bo
   const strip = toppleStrip({ x: 0, y: 0, width: tw, height: th }, a);
   const length = strip.length - ((at.x - strip.from.x) * ux + (at.y - strip.from.y) * uy);
   const along = Math.min(sideways ? src[3] : src[2], length / 1.4), across = sideways ? src[2] : src[3];
-  const wid = Math.min(0.78 * across, 0.85 * strip.width, 0.38 * length); // slender, as the mock's (0.31 of its length)
+  const wid = Math.min(0.78 * across, 0.85 * strip.width, 0.31 * length); // slender: the mock's is 0.31 of its length
   const outline = [];
   for (let i = 0; i <= 40; i++) outline.push((i / 40) * length, -profile(i / 40) * (wid / 2) * (0.94 + rand() * 0.1));
   for (let i = 40; i >= 0; i--) outline.push((i / 40) * length, profile(i / 40) * (wid / 2) * (0.94 + rand() * 0.1));
