@@ -7,7 +7,9 @@ import { onLevel } from "./prop-pick.mjs";
 export const WALL_BREAK_MESSAGE = "prop-wall-break";
 const KINDS = ["area", "path", "smash"];
 const AREA_REACH = 30; // squares from the area's centre to the wall's middle
-const EDIT_KEYS = ["door", "move", "sight", "light", "sound", "c"];
+// Not c: Repair restores no position, so a moved broken door keeps its note (and its originals) as it was.
+const EDIT_KEYS = ["door", "move", "sight", "light", "sound"];
+const SHOVE_REACH = 2; // squares from the slam's start to a token of the sender's
 const finite = (p) => Number.isFinite(p?.x) && Number.isFinite(p?.y);
 
 // A cause as sent over the socket: the prop cause's fields, plus the chat message and the source tile it names.
@@ -24,6 +26,20 @@ export function wallNoteFor({ wall, scene, cause = {}, seed, from }) {
   const mid = wallMid(wall), at = finite(from) ? from : finite(cause.at) ? cause.at : mid;
   const { kind, material } = wallTraits(wall, scene);
   return wallNote({ seed, cutAngle: Math.atan2(mid.y - at.y, mid.x - at.x), from: at, kind, material, damageType: cause.damageType });
+}
+
+// Whether this sender may claim a slam: the GM; the mover's owner; or a player whose own token stands within
+// SHOVE_REACH squares of where the mover set off (a shove moves a creature its shover does not own).
+// mover.isOwner: whether the sender owns the mover; senderTokens: [{x, y, w, h}] footprints of the sender's tokens.
+export function slamSenderOk({ sender, mover, from, senderTokens = [], grid = 100 } = {}) {
+  if (sender?.isGM === true) return true;
+  if (mover?.isOwner === true) return true;
+  if (!finite(from)) return false;
+  return (senderTokens ?? []).some((t) => {
+    if (![t?.x, t?.y, t?.w, t?.h].every(Number.isFinite)) return false;
+    const dx = Math.max(t.x - from.x, 0, from.x - (t.x + t.w)), dy = Math.max(t.y - from.y, 0, from.y - (t.y + t.h));
+    return Math.hypot(dx, dy) <= SHOVE_REACH * grid;
+  });
 }
 
 // What canBreakWall is asked: a slam uses the mover's own size when the GM knows it.
@@ -44,9 +60,9 @@ function plausible(cause, wall, grid, mover) {
   return crossesWall(path.from, path.to, wall) && onLevel(wall.levels, mover.level);
 }
 
-// wall: the GM's wall {id, c, door, ds, move, sight, light, sound, levels, flags}; mover: {x, y} centre, size in squares
-// and level; levels: the cause's own levels when the GM knows them (a wall on none of them is too far).
-export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mover, levels } = {}) {
+// wall: the GM's wall {id, c, door, ds, move, sight, light, sound, levels, flags}; mover: {x, y} centre, size in squares,
+// level and isOwner (the sender owns it); senderTokens: footprints of the sender's own tokens on the scene; levels: the cause's own levels when the GM knows them (a wall on none of them is too far).
+export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mover, senderTokens, levels } = {}) {
   const no = (why) => ({ ok: false, why });
   if (scene?.flags?.animater?.breakableProps !== true) return no("off");
   if (!sender) return no("sender");
@@ -56,6 +72,7 @@ export function validWallBreakRequest(req, { wall, scene, grid = 100, sender, mo
   const traits = wallTraits(wall, scene), cause = req?.cause ?? {};
   if (!traits.kind || !KINDS.includes(cause.kind)) return no("kind");
   if (cause.kind === "smash" && sender.isGM !== true) return no("sender");
+  if (cause.kind === "path" && !slamSenderOk({ sender, mover, from: cause.path?.from, senderTokens, grid })) return no("sender");
   // R1: a smash has no damage type or slam; its material rule is the GM's own (forceOpenDoor's, for Force Open)
   if (cause.kind !== "smash" && !canBreakWall(traits, breakCause(cause, mover))) return no("material");
   const raw = req?.note;

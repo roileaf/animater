@@ -7206,6 +7206,17 @@ function settleWallHere(id, refused) {
   forgetLateWall(id);
   wallLate.set(id, { seed: waiting.seed, timer: setTimeout(() => wallLate.delete(id), PROP_LATE_MS) });
 }
+// Where a slam's mover stands, whether the sender owns it, and where the sender's own tokens stand (slamSenderOk:
+// a player may claim a slam of a creature they shove from beside it).
+async function wallPlace(cause, scene, grid, user) {
+  const place = await propPlace(cause, scene, grid);
+  if (cause.kind !== "path" || user?.isGM) return place;
+  const owns = (d) => { try { return d?.testUserPermission?.(user, "OWNER") === true; } catch { return false; } };
+  const m = cause.moverUuid ? await fromUuid(cause.moverUuid).catch(() => null) : null;
+  const mover = place.mover ? { ...place.mover, isOwner: m?.parent === scene && owns(m) } : undefined;
+  const senderTokens = (scene.tokens?.contents ?? []).filter(owns).map((t) => ({ x: t.x, y: t.y, w: t.width * grid, h: t.height * grid }));
+  return { ...place, mover, senderTokens };
+}
 // Breaks a door for a cause {kind: "area"|"path"|"smash", damageType?, slam?, at?, path?, moverUuid?, ...}; from: where
 // the blow came from (the area's centre, the path's start). True once it is asked of (or written by) the GM.
 async function requestWallBreak(wall, cause, { from } = {}) {
@@ -7216,7 +7227,7 @@ async function requestWallBreak(wall, cause, { from } = {}) {
   const clean = cleanWallCause(cause), grid = propGrid(scene), view = wallView(doc);
   const note = wallNoteFor({ wall: view, scene, cause: clean, seed: Math.floor(Math.random() * 0x7fffffff), from: from ?? clean.at ?? clean.path?.from });
   if (gm.isSelf) return applyWallBreak(scene, doc, clean, note, game.user);
-  const here = validWallBreakRequest({ cause: clean, note }, { wall: view, scene, grid, sender: game.user, ...await propPlace(clean, scene, grid) });
+  const here = validWallBreakRequest({ cause: clean, note }, { wall: view, scene, grid, sender: game.user, ...await wallPlace(clean, scene, grid, game.user) });
   if (!here.ok) return false;
   if (scene === canvas?.scene && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakWallHere(doc, here.note);
   game.socket.emit(`module.${ID}`, { type: WALL_BREAK_MESSAGE, sender: clientId, sceneId: scene.id, wallId: doc.id, cause: clean, note });
@@ -7227,7 +7238,7 @@ async function applyWallBreak(scene, doc, cause, rawNote, user) {
   wallWriting.add(doc.id);
   try {
     const grid = propGrid(scene);
-    const check = validWallBreakRequest({ cause, note: rawNote }, { wall: wallView(doc), scene, grid, sender: user, ...await propPlace(cause, scene, grid) });
+    const check = validWallBreakRequest({ cause, note: rawNote }, { wall: wallView(doc), scene, grid, sender: user, ...await wallPlace(cause, scene, grid, user) });
     if (!check.ok) { runtime?.trace("props", `door not broken: ${check.why}`); return false; }
     const { _id, ...update } = check.update;
     await doc.update(update, { animater: { wallBreak: true }, sound: false });
@@ -7429,7 +7440,7 @@ Hooks.on("updateWall", (doc, changes, options) => {
     return;
   }
   // Repair, a moved wall, a changed level or note redraws it (or takes it away).
-  if ("c" in changes || "levels" in changes || changes.flags?.[ID]) drawWallWreck(doc, false);
+  if (options?.animater?.wallRepair || "c" in changes || "levels" in changes || changes.flags?.[ID]) drawWallWreck(doc, false);
 });
 Hooks.on("createWall", (doc) => { if (doc.parent === canvas?.scene) drawWallWreck(doc, false); });
 Hooks.on("deleteWall", (doc) => { settleWallHere(doc.id, false); forgetLateWall(doc.id); wallWreckage.hide(doc.id); });
