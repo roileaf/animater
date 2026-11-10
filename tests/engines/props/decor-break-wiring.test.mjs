@@ -114,7 +114,9 @@ test("every trigger asks for decorations too; decorations never free walls", () 
   assert.match(main, /slammed\.map\(\(s\) => \(s\.t\.decor \? askDecor\(scene, s\.t,/);
   assert.match(main, /scene\.regions\.get\(view\.decor\.regionId\)/);
   assert.match(main, /applyDecorBreak\(scene, region, view\.decor\.key, cause, note, game\.user\)/);
-  assert.match(main, /const cause = \{ kind: "blast", sourceId: doc\.id \}, look/);
+  // (a keg tile's blast runs runBlastAt with its own id; a decoration's with its view id)
+  assert.match(main, /return runBlastAt\(scene, \{ centre, burst, levels, sourceId: doc\.id \}\);/);
+  assert.match(main, /const cause = \{ kind: "blast", sourceId \}, look/);
 });
 
 // Task 8: the town and dungeon kinds, the lights, and the live check's fixes.
@@ -151,7 +153,8 @@ test("only drawn decorations break (D1): the cavern records what it drew; the tr
 });
 test("a wreck spills what its decoration held", () => {
   assert.match(main, /const decorContents = \(view\) => view\?\.flags\?\.animater\?\.prop\?\.contents \?\? "none";/);
-  assert.equal((main.match(/decorWreckage\.show\(tile, note, decorContents\(view\)/g) ?? []).length, 2);
+  // (drawn as stored, broken here, and an ignite played over a spilled wreck)
+  assert.equal((main.match(/decorWreckage\.show\(tile, note, decorContents\(view\)/g) ?? []).length, 3);
   assert.doesNotMatch(main, /decorWreckage\.show\(tile, note, "none"/);
   const wreck = readFileSync(new URL("../../../scripts/engines/props/prop-wreck.mjs", import.meta.url), "utf8");
   assert.match(wreck, /cutApart\(\{ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate, contents \}\)/);

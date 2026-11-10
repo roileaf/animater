@@ -13,7 +13,9 @@ const note = { seed: 1, cutAngle: 0, pattern: "diced", pieces: 3, spread: 0.4, s
 
 test("which kinds break, and as what", () => {
   assert.deepEqual(Object.keys(DECOR_BREAKS).sort(), ["agave", "altar", "barrel", "bathtub", "bed", "bedroll", "beehive", "bench", "bookshelf", "brazier", "bush", "cage", "candles", "cart", "cattails", "cobweb", "coffin", "column", "counter", "crate", "crystals", "desk", "fence", "fern", "firewood", "haystack", "kennel", "lampPost", "marketStall", "mooringPost", "nest", "planter", "pottedPlant", "produce", "reeds", "rowboat", "rug", "sacks", "sarcophagus", "signpost", "stakeFence", "stalagmite", "statue", "strawBed", "strongbox", "tableStools", "tent", "throne", "tombstone", "trough", "urns", "washtub"]);
-  assert.deepEqual(DECOR_BREAKS.crate, { material: "wood", style: "shatter" });
+  // (spec Amendment 3: a crate holds loose goods, a barrel water)
+  assert.deepEqual(DECOR_BREAKS.crate, { material: "wood", style: "shatter", contents: "goods" });
+  assert.deepEqual(DECOR_BREAKS.barrel, { material: "wood", style: "shatter", contents: "water" });
   assert.deepEqual(DECOR_BREAKS.crystals, { material: "glass", style: "shatter" });
   assert.deepEqual(DECOR_BREAKS.cobweb, { material: "plant", style: "burn" });
   assert.deepEqual(DECOR_BREAKS.column, { material: "stone", style: "topple" });

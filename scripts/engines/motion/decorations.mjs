@@ -10,7 +10,7 @@ import { gustAt } from './flame-wind.mjs';
 import { DECOR_KINDS, DECOR_VARIANTS, paintDecor, paintSeedOf, waterOutline } from './decor-paint.mjs';
 import { CAVERN_KINDS, canopyKindOf, decorPlacements, decorRole } from './decor-regions.mjs';
 import { SNOW_LOOK } from './snow-look.mjs';
-import { decorKeyed } from '../props/decor-break.mjs';
+import { decorKeyed, decorLightOut } from '../props/decor-break.mjs';
 
 // Snow on the decorations: the ground's own snow (snow-look.mjs, as sky-light.mjs lays it), on each one's top. A region's
 // standing decorations baked small twice: their pictures (where snow can catch: their lighter parts) and their silhouettes
@@ -129,6 +129,20 @@ export function decorShown(spec, grid) {
   return { placements: keyed.map((k) => k.d), shown: keyed.filter((k) => !gone.has(k.key)).map((k) => k.d) };
 }
 /**
+ * The lights a region's decorations carry (pure): each lamp post, brazier or candle among `placements` at its place, scaled with its
+ * size. One not `shown` (broken) is out while it is a light prop (decor-break decorLightOut: its own Light prop, the region's
+ * `prop`, its kind's), and still lit when set not to be. The ids count through every placement, so the others keep theirs.
+ */
+export function decorLightList(id, placements, shown, prop) {
+  const out = [], standing = shown === placements ? null : new Set(shown);
+  placements.forEach((d, i) => {
+    const l = DECOR_KINDS[d.kind]?.light; if (!l || (standing && !standing.has(d) && decorLightOut(d, prop))) return;
+    const k = Math.sqrt(d.size / DECOR_KINDS[d.kind].size);
+    out.push({ id: `decor:${id}:${i}:${d.seed}`, x: d.x, y: d.y, dim: l.dim * k, bright: l.bright * k, color: l.color, animation: l.animation ?? null });
+  });
+  return out;
+}
+/**
  * A broken decoration's wreck as a tile (pure), shaped as createPropWreckage reads one: its picture (`art`, from the engine's
  * art()) at its drawn size, centred where it stands, turned and mirrored as the painter draws it.
  */
@@ -226,15 +240,16 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
       const seen = new Set(), g = grid();
       for (const spec of list) {
         seen.add(spec.id);
-        // (The switch that lets them break draws nothing: flipping it never rebuilds. A break does, from the cached pictures.)
-        const { canBreak: _switch, ...drawn } = spec.settings ?? {};
+        // (The switch that lets them break and the region's breaking options draw nothing: changing them never rebuilds. A break
+        // does, from the cached pictures. The options are kept on the region for its lights, below.)
+        const { canBreak: _switch, prop: _options, ...drawn } = spec.settings ?? {};
         // (An area's holes are a property of its array, which JSON drops: written out, so a new hole rebuilds too.)
         const shape = (spec.areas ?? []).map((a) => [Array.from(a), a.holes ?? []]);
         const key = JSON.stringify([drawn, shape, spec.look, g, spec.broken ?? []]), had = regions.get(spec.id);
-        if (had?.key === key) continue;
+        if (had?.key === key) { had.prop = spec.settings?.prop; continue; }
         if (had) dropRegion(had);
         const { placements, shown } = decorShown(spec, g), where = spec.settings?.where ?? 'surface';
-        const r = { key, placements, shown, where, look: spec.look, sprites: [], shadowSprites: [], crowns: [], cloth: [], castLayer: null };
+        const r = { key, placements, shown, where, look: spec.look, prop: spec.settings?.prop, sprites: [], shadowSprites: [], crowns: [], cloth: [], castLayer: null };
         // Shadows: the soft dark at each standing one's foot whatever the light, then the cast ones in a layer of their own (one alpha for all, so overlaps never stack darker).
         const contact = new PIXI.Container(), cast = new PIXI.Container(), Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter;
         if (PIXI.BlurFilter) { contact.filters = [new PIXI.BlurFilter(g * 0.05)]; cast.filters = [new PIXI.BlurFilter(g * 0.015), ...(Alpha ? [new Alpha(1)] : [])]; }
@@ -324,7 +339,7 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
     // the ids still count through every placement, so the others keep theirs.
     lights() {
       const out = [];
-      for (const [id, r] of regions) { const standing = r.shown === r.placements ? null : new Set(r.shown); r.placements.forEach((d, i) => { const l = DECOR_KINDS[d.kind]?.light; if (!l || (standing && !standing.has(d))) return; const k = Math.sqrt(d.size / DECOR_KINDS[d.kind].size); out.push({ id: `decor:${id}:${i}:${d.seed}`, x: d.x, y: d.y, dim: l.dim * k, bright: l.bright * k, color: l.color, animation: l.animation ?? null }); }); }
+      for (const [id, r] of regions) out.push(...decorLightList(id, r.placements, r.shown, r.prop));
       return out;
     },
     // What the cavern and the webs draw in place of their paintings, underground: a small round area each. A broken cobweb's
