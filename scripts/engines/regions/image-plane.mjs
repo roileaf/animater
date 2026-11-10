@@ -59,6 +59,17 @@ function planeFor(planes, source) {
   return planes.find((plane) => sameSource(plane.id, source)) ?? null;
 }
 
+// The regions that still have their picture: one traced on a tile that was deleted or hidden draws nothing until the tile is back.
+export function regionsWithPicture(regions, planes) {
+  const out = [];
+  for (const region of regions ?? []) {
+    const source = region?.flags?.animater?.imageRegion?.source;
+    if (source?.kind === "tile" && !planeFor(planes ?? [], source)) continue;
+    out.push(region);
+  }
+  return out;
+}
+
 function mapFor(planes, region) {
   const maps = planes.filter((plane) => plane.id.kind === "map");
   const levels = region?.levels;

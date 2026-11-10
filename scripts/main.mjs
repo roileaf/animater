@@ -21,7 +21,7 @@ import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs"
 import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
 import { streakLayout } from "./engines/motion/afterimages.mjs";
 import { FLOOR_CHOICES, sceneFloor, regionFloor, floorAt, movementDensity, footstepFile, gaitStep, gaitStepFiles, bodyStep, bodyStepFiles, footstepVolume, footstepVariation, stepWeight, createStepPacer, thudFile, thudLevel, audioPeakMs, thudDelayMs, THUD_FILES, FOOTSTEP_FILES, MOVE_SOUND_FILES, moveSoundFile, moveSoundGap, moveSoundShape, createMovementFeel, perceive, footstepReach, FOOTSTEP_RANGES, rainFloor, RAIN_SPLASH_GAIN, markedFloor, snowFloor, frozenFloor } from "./engines/motion/movement-feel.mjs";
-import { planesFrom, surfaceAt, regionsForSurface, weatherSheltered, indoorPolygonsOf, sameSource, levelList } from "./engines/regions/image-plane.mjs";
+import { planesFrom, surfaceAt, regionsForSurface, weatherSheltered, indoorPolygonsOf, sameSource, levelList, regionsWithPicture } from "./engines/regions/image-plane.mjs";
 import { floorSlot, shadowFloor, TILE_SORT_LAYER, MAP_SORT } from "./engines/motion/floor-slot.mjs";
 import { createMovementFeelLayer } from "./engines/motion/movement-feel-render.mjs";
 import { createBurrowSink, poseMesh, drawnBeforeSink } from "./engines/motion/burrow-sink.mjs";
@@ -1203,6 +1203,8 @@ const buildPlanes = () => {
     return planesFrom({ levelId: canvas.level?.id ?? "", sceneRect, backgroundSrc: canvas.level?.background?.src ?? "", tiles });
   } catch { return []; }
 };
+// The regions drawn on the map: one traced on a tile that was deleted or hidden draws nothing (its look, shadow, over-water cut) until the tile is back.
+const drawnRegions = () => regionsWithPicture(regionsHere(), planesHere());
 const floorViews = () => {
   const cache = floorCacheHere();
   return (cache.views ??= buildFloorViews());
@@ -2461,8 +2463,8 @@ const movingWaterList = () => {
   const list = [], sceneChoice = canvas.scene?.flags?.[ID]?.floorTextures;
   const on = movingWaterOn();
   // What stands over the water (a dock, a bridge): its regions are taken out of what moves beneath them; and what casts a shadow shades it, hidden or not.
-  const over = on ? regionsHere().filter((r) => r.flags?.[ID]?.overWater === true || castsShadow(r.flags?.[ID])) : [];
-  if (on) for (const region of regionsHere()) {
+  const over = on ? drawnRegions().filter((r) => r.flags?.[ID]?.overWater === true || castsShadow(r.flags?.[ID])) : [];
+  if (on) for (const region of drawnRegions()) {
     try {
       const own = region.flags?.[ID] ?? {};
       if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water") continue;
@@ -2489,7 +2491,7 @@ const floorBodyOf = (region, own, floor, areas, bottom, base) => {
 };
 // What casts a shadow on the ground and floors below it: by how far above them it stands, and never on itself, on what stands as high, or on moving water (the water draws its own).
 const syncFloorShadows = (moving) => {
-  const list = [], on = floorLevel.show && regionStepsOn(), here = regionsHere(), floors = here.filter((r) => plainFloorOf(r)), base = Number(canvas.level?.elevation?.base) || 0, bottomOf = (r) => { const n = Number(r.elevation?.bottom); return Number.isFinite(n) ? n : base; };
+  const list = [], on = floorLevel.show && regionStepsOn(), here = drawnRegions(), floors = here.filter((r) => plainFloorOf(r)), base = Number(canvas.level?.elevation?.base) || 0, bottomOf = (r) => { const n = Number(r.elevation?.bottom); return Number.isFinite(n) ? n : base; };
   if (on) for (const region of here) {
     try {
       const own = region.flags?.[ID], floor = plainFloorOf(region), caster = planeOfRegion(region);
@@ -4042,7 +4044,7 @@ const wildGround = (grid, area, { own = false } = {}) => {
   // Where they may go is the exact floor under that very point, not its square: a square of bank is part river.
   // What stands over the water is no water to swim in, at any height: what swims there would be drawn over it.
   const sceneBase = sceneFloorNow(), regions = regionsHere().map((doc) => ({ name: doc.name, flag: floorFlagOf(doc), doc })).sort((a, b) => (a.doc.flags?.[ID]?.overWater === true ? 1 : 0) - (b.doc.flags?.[ID]?.overWater === true ? 1 : 0)), elevation = canvas.level?.elevation?.base ?? 0;
-  const docks = regionsHere().filter((doc) => doc.flags?.[ID]?.overWater === true).flatMap((doc) => regionAreas(doc)), overDock = (x, y) => docks.some((a) => pointInPolygon({ x, y }, a));
+  const docks = drawnRegions().filter((doc) => doc.flags?.[ID]?.overWater === true).flatMap((doc) => regionAreas(doc)), overDock = (x, y) => docks.some((a) => pointInPolygon({ x, y }, a));
   const testPoint = (r, p) => r.doc.testPoint({ x: p.x, y: p.y, elevation }), floorHere = (x, y) => floorAt({ x, y }, { sceneFloor: sceneBase, regions, testPoint });
   const outside = (x, y) => x >= area.x && y >= area.y && x < area.x + area.width && y < area.y + area.height && !closed(x, y);
   return { cell, closed, flooded, walled, spots, waters: docks.length ? waters.filter((p) => !overDock(p.x, p.y)) : waters, seaAt, share: spots.length / (cols * rows), at: (x, y) => outside(x, y) && !flooded(x, y) && standOn(floorHere(x, y)), inWater: (x, y) => outside(x, y) && !flooded(x, y) && floorHere(x, y) === "water" && !onBeach(x, y) && !overDock(x, y) };
@@ -4357,7 +4359,7 @@ const rebuildWater = () => {
   placeAreas.surf = [...(useSea ? seasHeard : []), ...seaSounds]; placeAreas.waterfall = [...(useFalls ? fallsHeard.map((f) => f.area) : []), ...fallSounds]; placeAreas.waterfallLouds = [...(useFalls ? fallsHeard.map((f) => f.loud) : []), ...fallLouds];
   const useBeaches = bothSettingsOn("coast") && !undergroundScene();
   // What stands over the water (a dock, a bridge): nothing reflects on it, and a creature on it is not wading.
-  const decks = canvas?.ready ? regionsHere().filter((r) => r.flags?.[ID]?.overWater === true).flatMap((r) => regionAreas(r).map((a) => Array.from(a))) : [];
+  const decks = canvas?.ready ? drawnRegions().filter((r) => r.flags?.[ID]?.overWater === true).flatMap((r) => regionAreas(r).map((a) => Array.from(a))) : [];
   const key = JSON.stringify([canvas?.scene?.id, canvas?.level?.id, useSea && seas, useFalls && falls, useMirror && calm, useMirror && decks, useBeaches && beaches]);
   if (key === waterKey) return; waterKey = key;
   coast.clear(); beachLife.clear(); waterfalls.clear(); waterMirror.clear(); calmWater = useMirror ? calm : []; waterLookAt = 0; mirrorTilesAt = 0; mirrorTilesKey = "";
