@@ -106,3 +106,13 @@ test('decorations feed the other engines: canopy trees, moving water, the cavern
   assert.match(main, /decor = decorations\.cavern\(\)/);
   assert.match(main, /decorations\.creatures\(tokensOnFloor\(\)\); decorations\.tick\(seconds\)/);
 });
+
+test('a ghost of the next dab follows the brush, changes with the bar, and a click lays exactly it', () => {
+  const main = read('scripts/main.mjs');
+  assert.match(main, /floorLayer\("decorBrush", 1102\)\(\)\.addChild\(ghost, ring\)/);
+  assert.match(main, /openBrushBar\(\{ onClose: \(\) => stopDecorBrush\(\), onChange: \(\) => draw\(\) \}\)/);
+  assert.match(main, /const showGhost = !!state\.at && !state\.down && !state\.erasing; ghost\.visible = showGhost;/);
+  assert.match(main, /if \(first && state\.ghostItems\.length\) \{ for \(const g of state\.ghostItems\)/);
+  assert.match(main, /dab\(p, e\.shiftKey, true\)/);
+  assert.match(read('scripts/engines/motion/decorations.mjs'), /sprite\(d, look = \{\}\) \{ const \{ pic, scale \} = picture\(d, look\);/);
+});

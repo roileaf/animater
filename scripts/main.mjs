@@ -2400,12 +2400,32 @@ const startDecorBrush = (doc = null) => {
   stopDecorBrush();
   if (!canvas?.ready || !game.user?.isGM) return;
   const free = !doc, view = canvas.app.view, ring = new PIXI.Graphics(), grid = () => canvas.grid.size;
-  ring.eventMode = "none"; floorLayer("decorBrush", 1102)().addChild(ring);
-  const state = decorBrushing = { id: null, doc: null, brushed: [], erased: [], circles: [], fresh: null, size: DECOR_BRUSH.usual, down: false, last: null, at: null, seed: Date.now() % 1e6, ring, bar: null };
-  state.bar = free ? openBrushBar({ onClose: () => stopDecorBrush() }) : null;
+  // A ghost of what the next click lays, under the ring, following the pointer and changing as the bar's choices change.
+  const ghost = new PIXI.Container(); ghost.eventMode = "none"; ghost.alpha = 0.55;
+  ring.eventMode = "none"; floorLayer("decorBrush", 1102)().addChild(ghost, ring);
+  const state = decorBrushing = { id: null, doc: null, brushed: [], erased: [], circles: [], fresh: null, size: DECOR_BRUSH.usual, down: false, last: null, at: null, seed: Date.now() % 1e6, ring, ghost, ghostKey: null, ghostItems: [], ghostSeed: Date.now() % 1e5, bar: null };
+  state.bar = free ? openBrushBar({ onClose: () => stopDecorBrush(), onChange: () => draw() }) : null;
   const sizeNow = () => (free ? brushChoices().size : state.size);
   const at = (e) => { const p = canvas.canvasCoordinatesFromClient?.({ x: e.clientX, y: e.clientY }) ?? canvas.stage.toLocal({ x: e.clientX, y: e.clientY }); return { x: p.x, y: p.y }; };
-  const draw = () => { ring.clear(); if (!state.at) return; ring.lineStyle(2, state.erasing ? 0xff7a64 : 0xffffff, 0.9); ring.drawCircle(state.at.x, state.at.y, (sizeNow() * grid()) / 2); };
+  // The ghost: one dab's worth laid out round the pointer (the very ones a click puts down), drawn again only when the choices change.
+  const refreshGhost = () => {
+    const radius = (sizeNow() * grid()) / 2, using = paintWith(), key = JSON.stringify([using, radius, state.ghostSeed]);
+    if (key === state.ghostKey) return;
+    state.ghostKey = key;
+    for (const c of ghost.removeChildren()) { try { c.destroy(); } catch { /* gone */ } }
+    const placed = [];
+    for (let i = 0, n = dabCount(using.density); i < n; i++) { const d = stampDecor({ x: 0, y: 0, radius, grid: grid(), kinds: using.kinds, seed: state.ghostSeed * 131 + i * 7919, existing: placed, scale: using.scale }); if (d) placed.push(d); }
+    state.ghostItems = placed;
+    const look = decorLook({ where: free ? brushChoices().where : decorSettings((state.doc ?? doc)?.flags?.[ID]?.decor)?.where ?? "surface" });
+    for (const d of [...placed].sort((a, b) => (DECOR_KINDS[a.kind].flat ? 0 : 1) - (DECOR_KINDS[b.kind].flat ? 0 : 1) || a.size - b.size)) { const s = decorations.sprite(d, look); if (s) ghost.addChild(s); }
+  };
+  const draw = () => {
+    ring.clear();
+    const showGhost = !!state.at && !state.down && !state.erasing; ghost.visible = showGhost;
+    if (!state.at) return;
+    if (showGhost) { refreshGhost(); ghost.position.set(state.at.x, state.at.y); }
+    ring.lineStyle(2, state.erasing ? 0xff7a64 : 0xffffff, 0.9); ring.drawCircle(state.at.x, state.at.y, (sizeNow() * grid()) / 2);
+  };
   // Where a stroke goes: the region the brush was opened on; else the region it starts in; else a new one round it.
   const begin = (p) => {
     const target = doc ?? decorBrushTarget(p);
@@ -2414,16 +2434,19 @@ const startDecorBrush = (doc = null) => {
   };
   const paintWith = () => {
     if (free) { const c = brushChoices(); return { kinds: c.kinds.filter((id) => DECOR_KINDS[id]).map((id) => ({ id, size: 1, amount: 1 })), density: c.thick, scale: c.scale }; }
-    const s = decorSettings(state.doc?.flags?.[ID]?.decor);
+    const s = decorSettings((state.doc ?? doc)?.flags?.[ID]?.decor);
     return s ? { kinds: Object.entries(s.kinds).filter(([id]) => DECOR_KINDS[id].set === "both" || DECOR_KINDS[id].set === s.where).map(([id, k]) => ({ id, size: k.size, amount: k.amount })), density: s.density, scale: s.scale * brushChoices().scale } : { kinds: [], density: 0, scale: 1 };
   };
-  const dab = (p, erase) => {
+  const dabCount = (density) => Math.max(1, Math.round(sizeNow() * Math.max(0.2, density) * 1.5));
+  const dab = (p, erase, first = false) => {
     const radius = (sizeNow() * grid()) / 2;
     if (erase) { state.brushed = state.brushed.filter((b) => (b.x - p.x) ** 2 + (b.y - p.y) ** 2 > radius * radius); if (state.doc) state.erased.push([Math.round(p.x), Math.round(p.y), Math.round(radius)]); }
     else {
       if (!state.doc) state.circles.push([Math.round(p.x), Math.round(p.y), Math.round(radius)]);
       const areas = state.doc ? regionAreas(state.doc) : null, { kinds, density, scale } = paintWith();
-      for (let i = 0, n = Math.max(1, Math.round(sizeNow() * Math.max(0.2, density) * 1.5)); i < n; i++) { const d = stampDecor({ x: p.x, y: p.y, radius, grid: grid(), kinds, seed: state.seed++, existing: state.brushed, scale }); if (d && (!areas || regionPointIn(d, areas))) state.brushed.push(d); }
+      // A click lays exactly what its ghost showed; then a new ghost is dealt for the next.
+      if (first && state.ghostItems.length) { for (const g of state.ghostItems) { const d = { ...g, x: Math.round(p.x + g.x), y: Math.round(p.y + g.y), seed: (g.seed ^ state.seed++) >>> 0 }; if (!areas || regionPointIn(d, areas)) state.brushed.push(d); } state.ghostSeed++; }
+      else for (let i = 0, n = dabCount(density); i < n; i++) { const d = stampDecor({ x: p.x, y: p.y, radius, grid: grid(), kinds, seed: state.seed++, existing: state.brushed, scale }); if (d && (!areas || regionPointIn(d, areas))) state.brushed.push(d); }
     }
     syncDecorations();
   };
@@ -2446,9 +2469,9 @@ const startDecorBrush = (doc = null) => {
   // (A right-drag pans the map as ever; only a right-click that stays put stops the brush.)
   // (Heard on the window before Foundry's canvas hears them, and kept from it while painting, so a stroke never draws
   // Foundry's drag-select box or selects what it passes over.)
-  const down = (e) => { if (e.target !== view) return; if (e.button === 2) { state.rightAt = { x: e.clientX, y: e.clientY }; return; } if (e.button !== 0) return; e.stopImmediatePropagation(); e.preventDefault(); const p = at(e); begin(p); state.down = true; state.erasing = e.shiftKey; state.last = p; dab(p, e.shiftKey); };
+  const down = (e) => { if (e.target !== view) return; if (e.button === 2) { state.rightAt = { x: e.clientX, y: e.clientY }; return; } if (e.button !== 0) return; e.stopImmediatePropagation(); e.preventDefault(); const p = at(e); begin(p); state.down = true; state.erasing = e.shiftKey; state.last = p; draw(); dab(p, e.shiftKey, true); };
   const move = (e) => { if (!state.down && e.target !== view) return; const p = at(e); state.at = p; state.erasing = e.shiftKey; draw(); if (!state.down) return; e.stopImmediatePropagation(); if (Math.hypot(p.x - state.last.x, p.y - state.last.y) > sizeNow() * grid() * 0.35) { state.last = p; dab(p, e.shiftKey); } };
-  const up = (e) => { if (!state.down) return; e.stopImmediatePropagation(); state.down = false; void finish(); };
+  const up = (e) => { if (!state.down) return; e.stopImmediatePropagation(); state.down = false; draw(); void finish(); };
   const key = (e) => {
     if (e.target?.closest?.("input, textarea")) return;
     // Ctrl+Z takes back the last stroke, Ctrl+Shift+Z or Ctrl+Y puts it back (Foundry's own undo waits while the brush is out).
@@ -2470,7 +2493,7 @@ const startDecorBrush = (doc = null) => {
   };
   const menu = (e) => { const from = state.rightAt; state.rightAt = null; if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > 6) return; e.preventDefault(); stopDecorBrush(); };
   window.addEventListener("pointerdown", down, true); window.addEventListener("pointermove", move, true); window.addEventListener("pointerup", up, true); window.addEventListener("keydown", key, true); view.addEventListener("contextmenu", menu, true); window.addEventListener("wheel", wheel, { capture: true, passive: false });
-  state.stop = () => { window.removeEventListener("pointerdown", down, true); window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", key, true); view.removeEventListener("contextmenu", menu, true); window.removeEventListener("wheel", wheel, { capture: true }); try { ring.destroy(); } catch { /* gone */ } state.bar?.close(); };
+  state.stop = () => { window.removeEventListener("pointerdown", down, true); window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", key, true); view.removeEventListener("contextmenu", menu, true); window.removeEventListener("wheel", wheel, { capture: true }); try { ring.destroy(); ghost.destroy({ children: true }); } catch { /* gone */ } state.bar?.close(); };
   if (!free) ui.notifications?.info?.("Decorations brush: drag to paint, Shift-drag to rub out, [ and ] to resize, right-click or Esc to stop.");
 };
 const stopDecorBrush = () => { const s = decorBrushing; decorBrushing = null; if (s) { s.stop?.(); syncDecorations(); } };

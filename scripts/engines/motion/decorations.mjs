@@ -144,6 +144,8 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
     if (r.castLayer) r.castLayer.alpha = sun ? Math.min(0.6, sun.strength) : 0;
   };
   return {
+    /** A sprite of one decoration's picture, placed and turned as it would stand (for the brush's ghost), or null. */
+    sprite(d, look = {}) { const { pic, scale } = picture(d, look); return pic?.art ? place(new PIXI.Sprite(pic.art), d, pic, scale) : null; },
     sync(list = []) {
       const seen = new Set(), g = grid();
       for (const spec of list) {
