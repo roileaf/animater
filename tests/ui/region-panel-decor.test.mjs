@@ -162,9 +162,9 @@ test('Decorations can break: a switch saved in the decor flags, the scene warnin
 });
 test('both Repair broken props questions name decorations', () => {
   const main = read('scripts/main.mjs');
-  assert.equal((main.match(/put its walls, doors, windows and decorations back/g) ?? []).length, 2);
+  assert.equal((main.match(/put its walls, doors, windows, breached walls and decorations back/g) ?? []).length, 2);
   assert.doesNotMatch(main, /put its walls, doors and windows back\?/);
-  assert.match(main, /put every broken prop, decoration, door and window in this scene back/);
+  assert.match(main, /put every broken prop, decoration, door, window and breached wall in this scene back/);
 });
 
 test('the brush bar has a search over its kinds', async () => {

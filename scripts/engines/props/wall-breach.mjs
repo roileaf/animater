@@ -85,14 +85,57 @@ export function wallRepairPlan(walls) {
   return { updates, deletes };
 }
 
-// The GM tool's pick: the nearest intact breakable plain wall within half a square of the click p, on the levels.
+// The GM tool's pick: the nearest intact breakable plain wall within half a square of the click p, on the levels (a tie
+// goes to the first). A click in a breach's own gap picks nothing.
 export function breachWallAt(p, walls, scene, grid = 100, levels) {
   if (!finite(p)) return null;
-  let best = null, bestD = PICK_REACH * grid;
+  const reach = PICK_REACH * grid, dist = (c) => { const q = projectOnWall(c, p); return Math.hypot(q.x - p.x, q.y - p.y); };
+  for (const w of walls ?? []) {
+    const gap = readWallNote(w?.flags?.animater?.breakWall?.broken)?.gap;
+    if (gap && onLevel(w.levels, levels) && dist(gap) < reach) return null;
+  }
+  let best = null, bestD = reach;
   for (const w of walls ?? []) {
     if (!segment(w?.c) || !intact(w) || !onLevel(w.levels, levels) || wallTraits(w, scene).kind !== "wall") continue;
-    const q = projectOnWall(w.c, p), d = Math.hypot(q.x - p.x, q.y - p.y);
-    if (d <= bestD) { best = w; bestD = d; }
+    const d = dist(w.c);
+    if (d < bestD || (d === bestD && !best)) { best = w; bestD = d; }
   }
   return best;
+}
+
+// The centre of a placed area's shape, where it breaches a wall (projected onto it): a circle's, ellipse's, ring's or
+// emanation's own point; a rectangle's middle (anchored and turned about its x, y); a polygon's vertex mean; a line's
+// half-way point; a cone's centroid (along its axis, 4r sin(a/2) / 3a out). Angles in degrees, Foundry's (0 east,
+// clockwise). Null for a shape it cannot place (a token or grid shape).
+export function areaShapeCentre(s) {
+  const fin = (...v) => v.every(Number.isFinite), rad = (d) => ((Number(d) || 0) * Math.PI) / 180;
+  if (!s || typeof s !== "object") return null;
+  if (["circle", "ellipse", "ring", "emanation"].includes(s.type) && fin(s.x, s.y)) return { x: s.x, y: s.y };
+  if (s.type === "rectangle" && fin(s.x, s.y, s.width, s.height)) {
+    const u = (0.5 - (Number(s.anchorX) || 0)) * s.width, v = (0.5 - (Number(s.anchorY) || 0)) * s.height, r = rad(s.rotation);
+    return { x: s.x + u * Math.cos(r) - v * Math.sin(r), y: s.y + u * Math.sin(r) + v * Math.cos(r) };
+  }
+  if (s.type === "polygon" && s.points?.length >= 2) {
+    const pts = Array.from(s.points), n = Math.floor(pts.length / 2);
+    let x = 0, y = 0;
+    for (let i = 0; i < n; i++) { x += pts[2 * i]; y += pts[2 * i + 1]; }
+    return n ? { x: x / n, y: y / n } : null;
+  }
+  if (s.type === "line" && fin(s.x, s.y, s.length)) { const r = rad(s.rotation); return { x: s.x + (Math.cos(r) * s.length) / 2, y: s.y + (Math.sin(r) * s.length) / 2 }; }
+  if (s.type === "cone" && fin(s.x, s.y, s.radius)) {
+    const a = Math.max(1e-6, rad(s.angle)), r = rad(s.rotation), d = (4 * s.radius * Math.sin(a / 2)) / (3 * a);
+    return { x: s.x + Math.cos(r) * d, y: s.y + Math.sin(r) * d };
+  }
+  return null;
+}
+
+// An old MeasuredTemplate as a shape areaShapeCentre reads (t: circle, cone, ray or rect; distance in scene units, px
+// per unit given; direction and angle in degrees). A rect template's distance is its diagonal along direction.
+export function templateShape(t, pxPerUnit = 20) {
+  if (!t || ![t.x, t.y].every(Number.isFinite)) return null;
+  const len = (Number(t.distance) || 0) * pxPerUnit;
+  if (t.t === "cone") return { type: "cone", x: t.x, y: t.y, radius: len, angle: Number(t.angle) || 53.13, rotation: Number(t.direction) || 0 };
+  if (t.t === "ray") return { type: "line", x: t.x, y: t.y, length: len, width: (Number(t.width) || 0) * pxPerUnit, rotation: Number(t.direction) || 0 };
+  if (t.t === "rect") { const r = ((Number(t.direction) || 0) * Math.PI) / 180; return { type: "circle", x: t.x + (Math.cos(r) * len) / 2, y: t.y + (Math.sin(r) * len) / 2 }; }
+  return { type: "circle", x: t.x, y: t.y, radius: len };
 }

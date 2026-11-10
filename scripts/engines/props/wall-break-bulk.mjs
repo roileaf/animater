@@ -15,6 +15,14 @@ export function isWindowWall(wall) {
   return foundry || (typeof kind === "string" && kind !== "") || ticked;
 }
 
+// A wall the breaking rules and Wall Configuration treat as a window, never a plain wall (wall-break wallTraits: a
+// leftover Breakable wall: Yes on it never breaches it): a window here (isWindowWall), or one the GM set to Window: No.
+// A legacy unticked Window box (false) is still a plain wall.
+export function windowLike(wall) {
+  if (!wall || Number(wall.door) > 0) return false;
+  return isWindowWall(wall) || own(wall).window === "no";
+}
+
 // The Wall updates for one button (on: make breakable, else make none) and how many doors and windows they change.
 export function bulkBreakableUpdates(walls, on) {
   const updates = [];

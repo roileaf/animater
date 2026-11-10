@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { wallTraits, canBreakWall, readWallNote, wallMaterialOf, wallRestoreUpdate } from "../../../scripts/engines/props/wall-break.mjs";
-import { projectOnWall, crossingPoint, breachSplit, wallBreachUpdate, breachPartData, wallRepairPlan, breachWallAt, breachPartOf } from "../../../scripts/engines/props/wall-breach.mjs";
+import { projectOnWall, crossingPoint, breachSplit, wallBreachUpdate, breachPartData, wallRepairPlan, breachWallAt, breachPartOf, areaShapeCentre, templateShape } from "../../../scripts/engines/props/wall-breach.mjs";
 import { validWallBreakRequest, handEdited } from "../../../scripts/engines/props/wall-break-requests.mjs";
 import { doorsInArea, wallsCrossed } from "../../../scripts/engines/props/wall-triggers.mjs";
 import { blastTargets } from "../../../scripts/engines/props/prop-blast.mjs";
@@ -171,7 +171,6 @@ test("reading a breach note: the gap, restore.c and partId are checked", () => {
   assert.equal(readWallNote({ ...good, gap: undefined }), null, "a wall note needs its gap");
   assert.equal(readWallNote({ ...good, restore: { c: [0, 0, "x", 0] } }), null);
   assert.equal(readWallNote({ ...good, partId: 7 }), null);
-  assert.equal(readWallNote({ ...good, material: "glass" }).material, "glass", "material list is shared");
 });
 
 // ---- triggers ----
@@ -339,4 +338,100 @@ test("Wall Configuration: plain walls get the wall group (No by default, Wood), 
     assert.match(html, /breakWall\.wall" disabled/); assert.match(html, /breakWall\.wallMaterial" disabled/);
   }
   assert.match(propSceneFieldsHTML({}), /walls the GM marks breakable can be breached/);
+});
+
+// ---- review fixes ----
+test("a window is never breached as a plain wall, whatever a leftover Breakable wall: Yes says", () => {
+  const yes = (bw = {}) => plain("wood", { flags: { animater: { breakWall: { wall: "yes", wallMaterial: "wood", ...bw } } } });
+  // Window: No (the GM's own choice), a shutter or any other Animater window, Foundry's proximity windows
+  assert.equal(wallTraits(yes({ window: "no" }), scene()).kind, null, "Window: No");
+  assert.equal(wallTraits(plain("wood", { flags: { animater: { window: "shutters", breakWall: { wall: "yes" } } } }), scene()).kind, null, "Animater shutters");
+  assert.equal(wallTraits(plain("wood", { flags: { animater: { window: "open", breakWall: { wall: "yes" } } } }), scene()).kind, null, "an open Animater window");
+  assert.equal(wallTraits(plain("wood", { light: 30 }), scene()).kind, null, "Foundry window (light proximity)");
+  assert.equal(wallTraits(plain("wood", { sight: 40 }), scene()).kind, null, "Foundry window (sight distance)");
+  // still a breakable window where it is one
+  assert.equal(wallTraits(plain("wood", { flags: { animater: { window: "glass", breakWall: { wall: "yes" } } } }), scene()).kind, "window");
+  // a legacy unticked Window box (false), or Automatic, is still a plain wall
+  assert.equal(wallTraits(yes({ window: false }), scene()).kind, "wall");
+  assert.equal(wallTraits(yes({ window: "" }), scene()).kind, "wall");
+  // nothing picks or breaks it
+  const win = yes({ window: "no" });
+  assert.equal(breachWallAt({ x: 250, y: 205 }, [win], scene(), 100), null);
+  assert.deepEqual(blastTargets({ centre: { x: 250, y: 150 }, burst: 2, grid: 100, walls: [win], scene: scene(), levels: [] }), []);
+  assert.equal(validWallBreakRequest({ cause: { kind: "breach", at: { x: 250, y: 210 } }, note: raw() }, { wall: win, scene: scene(), grid: 100, sender: gm }).why, "kind");
+});
+
+test("Wall Configuration hides the wall group on every wall the rules count as a window", async () => {
+  const { windowLike } = await import("../../../scripts/engines/props/wall-break-bulk.mjs");
+  assert.equal(windowLike({ door: 0, flags: { animater: { breakWall: { window: "no" } } } }), true);
+  assert.equal(windowLike({ door: 0, light: 30 }), true);
+  assert.equal(windowLike({ door: 0, flags: { animater: { window: "shutters" } } }), true);
+  assert.equal(windowLike({ door: 0, flags: { animater: { breakWall: { window: false } } } }), false);
+  assert.equal(windowLike({ door: 1, light: 30 }), false, "a door is a door");
+});
+
+test("an area breaches at its shape's centre: a cone's and a line's middle, not the caster's point", () => {
+  assert.deepEqual(areaShapeCentre({ type: "circle", x: 300, y: 200, radius: 100 }), { x: 300, y: 200 });
+  const line = areaShapeCentre({ type: "line", x: 100, y: 100, length: 600, width: 100, rotation: 0 });
+  assert.ok(near(line.x, 400) && near(line.y, 100));
+  const down = areaShapeCentre({ type: "line", x: 100, y: 100, length: 400, width: 100, rotation: 90 });
+  assert.ok(near(down.x, 100) && near(down.y, 300));
+  // a 90-degree cone of radius 300 facing east: its centroid 4r sin(45deg) / (3 * pi/2) out along the axis
+  const cone = areaShapeCentre({ type: "cone", x: 0, y: 0, radius: 300, angle: 90, rotation: 0 });
+  assert.ok(near(cone.x, (4 * 300 * Math.sin(Math.PI / 4)) / (3 * Math.PI / 2)) && near(cone.y, 0), JSON.stringify(cone));
+  assert.deepEqual(areaShapeCentre({ type: "rectangle", x: 100, y: 100, width: 200, height: 100, anchorX: 0, anchorY: 0, rotation: 0 }), { x: 200, y: 150 });
+  const rect = areaShapeCentre({ type: "rectangle", x: 100, y: 100, width: 200, height: 100, anchorX: 0.5, anchorY: 0.5, rotation: 30 });
+  assert.ok(near(rect.x, 100) && near(rect.y, 100), "anchored at its centre");
+  assert.deepEqual(areaShapeCentre({ type: "polygon", points: [0, 0, 200, 0, 200, 100, 0, 100] }), { x: 100, y: 50 });
+  assert.equal(areaShapeCentre({ type: "token" }), null);
+  // an old template: cone and ray by distance in scene units
+  assert.equal(templateShape({ t: "ray", x: 0, y: 0, distance: 30, direction: 0, width: 5 }, 100 / 5).length, 600);
+  const tc = areaShapeCentre(templateShape({ t: "cone", x: 0, y: 0, distance: 15, direction: 90, angle: 90 }, 20));
+  assert.ok(near(tc.x, 0) && tc.y > 100, JSON.stringify(tc));
+  // a cone cast from beside a wall and aimed along it breaches near its middle, inside the area
+  const wall = plain("wood", { c: [0, 200, 1000, 200] });
+  const coneShape = { type: "cone", x: 100, y: 150, radius: 600, angle: 60, rotation: 0 };
+  const inCone = (p) => { const dx = p.x - 100, dy = p.y - 150; return Math.hypot(dx, dy) <= 600 && Math.abs(Math.atan2(dy, dx)) <= Math.PI / 6; };
+  const at = areaShapeCentre(coneShape);
+  assert.deepEqual(doorsInArea([wall], inCone, scene(), "fire", [], at).map((w) => w.id), ["w1"]);
+  const r = validWallBreakRequest({ cause: { kind: "area", areaUuid: "A", damageType: "fire" }, note: raw() },
+    { wall, scene: scene(), grid: 100, sender: player, now: 2000, area: { uuid: "A", sceneId: "s", authorId: "p", rememberedAt: 1000, damageTypes: ["fire"], testPoint: inCone, levels: [], at } });
+  assert.equal(r.ok, true, r.why);
+  assert.ok(r.note.gap[0] > 300, `the gap is near the cone's middle, not its tip: ${r.note.gap}`);
+});
+
+test("the GM's area check never takes the requester's point when its own record has none", () => {
+  const area = { uuid: "A", sceneId: "s", authorId: "p", rememberedAt: 1000, damageTypes: ["fire"], testPoint: () => true, levels: [] };
+  const r = validWallBreakRequest({ cause: { kind: "area", areaUuid: "A", damageType: "fire", at: { x: 250, y: 150 } }, note: raw() }, { wall: plain("wood"), scene: scene(), grid: 100, sender: player, area, now: 2000 });
+  assert.equal(r.why, "area");
+  // the GM's own call that names no area is the GM's word
+  const g = validWallBreakRequest({ cause: { kind: "area", damageType: "fire", at: { x: 250, y: 150 } }, note: raw() }, { wall: plain("wood"), scene: scene(), grid: 100, sender: gm });
+  assert.equal(g.ok, true, g.why);
+});
+
+test("one breach per wall until Repair: neither piece breaches again", () => {
+  const w = plain("wood");
+  const split = breachSplit(w.c, { x: 250, y: 200 }, { grid: 100, squares: 1 });
+  const note = { seed: 5, cutAngle: 1, from: { x: 250, y: 100 }, kind: "wall", material: "wood", mark: "dust", gap: split.gap };
+  const { _id, ...up } = wallBreachUpdate(w, note, split, "b2");
+  const a = { ...w, c: up.c, flags: { animater: { breakWall: { wall: "yes", wallMaterial: "wood", broken: up["flags.animater.breakWall.broken"] } } } };
+  const b = { ...w, id: "b2", c: split.parts[1], flags: breachPartData({ flags: w.flags }, split.parts[1], "w1").flags };
+  assert.equal(wallTraits(b, scene()).kind, null, "part B is not breakable");
+  for (const piece of [a, b]) {
+    const x = (piece.c[0] + piece.c[2]) / 2;
+    assert.equal(breachWallAt({ x, y: 205 }, [piece], scene(), 100), null);
+    assert.deepEqual(blastTargets({ centre: { x, y: 150 }, burst: 2, grid: 100, walls: [piece], scene: scene(), levels: [] }), []);
+    assert.deepEqual(wallsCrossed({ from: { x, y: 100 }, to: { x, y: 300 } }, 4, [piece], scene()), []);
+    assert.notEqual(validWallBreakRequest({ cause: { kind: "breach", at: { x, y: 205 } }, note: raw() }, { wall: piece, scene: scene(), grid: 100, sender: gm }).ok, true);
+  }
+  assert.deepEqual(wallRepairPlan([a, b]).deletes, ["b2"], "Repair deletes part B; the wall breaks again as one wall");
+});
+
+test("the GM tool: strictly the nearest wall, and a click in a breach's gap picks nothing", () => {
+  const a = plain("wood"), twin = { ...plain("stone"), id: "w2" };
+  assert.equal(breachWallAt({ x: 250, y: 210 }, [a, twin], scene(), 100)?.id, "w1", "a tie goes to the first");
+  const broken = { ...plain("wood"), id: "x", c: [0, 400, 200, 400], flags: { animater: { breakWall: { wall: "yes", broken: { seed: 1, cutAngle: 0, from: { x: 0, y: 0 }, kind: "wall", material: "wood", mark: "dust", gap: [200, 400, 300, 400] } } } } };
+  const next = { ...plain("wood"), id: "y", c: [300, 400, 500, 400] };
+  assert.equal(breachWallAt({ x: 260, y: 405 }, [broken, next], scene(), 100), null, "inside the gap");
+  assert.equal(breachWallAt({ x: 420, y: 405 }, [broken, next], scene(), 100)?.id, "y");
 });

@@ -27,7 +27,7 @@ import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cle
 import { propsInArea, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls, blockingWalls, wallStop } from "./engines/props/prop-walls.mjs";
 import { wallMid, readWallNote, wallTraits, wallBreakFormMerge, wallFormDoor, canBreakWall } from "./engines/props/wall-break.mjs";
-import { wallBreachUpdate, breachPartData, wallRepairPlan, breachWallAt, breachPartOf, crossingPoint } from "./engines/props/wall-breach.mjs";
+import { wallBreachUpdate, breachPartData, wallRepairPlan, breachWallAt, breachPartOf, crossingPoint, areaShapeCentre, templateShape } from "./engines/props/wall-breach.mjs";
 import { firePatchAt } from "./engines/props/prop-wreck-layout.mjs";
 import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest, handEdited, handEditUpdate, slamSenderOk, breaksSure } from "./engines/props/wall-break-requests.mjs";
 import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, smashFrom, nextToMiss } from "./engines/props/wall-triggers.mjs";
@@ -41,7 +41,7 @@ import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/pro
 import { DECOR_BREAK_MESSAGE, DECOR_NAMES, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
-import { bulkBreakableUpdates, isWindowWall } from "./engines/props/wall-break-bulk.mjs";
+import { bulkBreakableUpdates, windowLike } from "./engines/props/wall-break-bulk.mjs";
 import { damageTypesOfItem, areaIdOf, areaOriginRefOf, placedRecordOf, typesBreaking, rollDamageTypes } from "./engines/props/area-damage.mjs";
 import { createPlayWatch, strikeMoment, momentWait } from "./engines/props/play-moments.mjs";
 import { askClaimed, createAreaWaits, AREA_TTL_MS, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
@@ -3818,7 +3818,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
       onChange: () => askBlast() });
     add({ name: "animaterClearRubble", title: "Clear rubble: take away every cave-in's rubble", icon: "fa-solid fa-broom", order: order + 1, button: true, visible: toolShown("toolClearRubble"),
       onChange: () => clearRubbleAsk() });
-    add({ name: "animaterRepairProps", title: "Repair broken props: put every broken prop, decoration, door and window in this scene back", icon: "fa-solid fa-hammer", order: order + 1.5, button: true, visible: toolShown("toolRepairProps"),
+    add({ name: "animaterRepairProps", title: "Repair broken props: put every broken prop, decoration, door, window and breached wall in this scene back", icon: "fa-solid fa-hammer", order: order + 1.5, button: true, visible: toolShown("toolRepairProps"),
       onChange: () => repairPropsAsk() });
     add({ name: "animaterBreachWall", title: "Breach wall: click on a wall marked breakable to smash a gap in it there", icon: "fa-solid fa-block-brick", order: order + 1.6, button: true, visible: toolShown("toolBreachWall"),
       onChange: () => aimBreach() });
@@ -3884,7 +3884,7 @@ const repairPropsAsk = async () => {
   repairAsking = true;
   try {
     const scene = canvas.scene;
-    if (!await foundry.applications.api.DialogV2.confirm({ window: { title: "Repair broken props" }, content: "<p>Unhide every broken prop in this scene and put its walls, doors, windows and decorations back?</p>", rejectClose: false })) return;
+    if (!await foundry.applications.api.DialogV2.confirm({ window: { title: "Repair broken props" }, content: "<p>Unhide every broken prop in this scene and put its walls, doors, windows, breached walls and decorations back?</p>", rejectClose: false })) return;
     await repairAllProps(scene);
   } catch (e) { runtime?.trace("props", `repair: ${e?.message ?? e}`); } finally { repairAsking = false; }
 };
@@ -8583,9 +8583,20 @@ function areaItemOf(doc) {
 const areaDamageTypes = (doc) => propSafe("area types", () => { const { item, activity } = areaItemOf(doc); return damageTypesOfItem(item, game.system.id, { activity }); }) ?? [];
 // authorId: the user who placed it (the hook's own), which the GM checks an area cause's sender against (prop-areas.mjs).
 // damageTypes: the spell's, which its animation breaks things with when it lands (breakAreaOnPlay).
+// The centre of a placed area's shape (wall-breach.mjs areaShapeCentre: a cone's or line's middle, not its origin), where it
+// breaches a wall; its origin when its shape cannot be read.
+function areaShapeCentreOf(doc) {
+  const s = doc?.shapes?.[0];
+  let c = s ? areaShapeCentre(s) : null;
+  if (!c && doc?.documentName === "MeasuredTemplate") {
+    const scene = doc.parent, per = (Number(scene?.grid?.size) || 100) / (Number(scene?.grid?.distance) || 5);
+    c = areaShapeCentre(templateShape({ t: doc.t, x: doc.x, y: doc.y, distance: doc.distance, direction: doc.direction, angle: doc.angle, width: doc.width }, per));
+  }
+  return c ?? areaCentreOf(doc);
+}
 function rememberArea(doc, authorId, rememberedAt) {
-  const { itemUuid, actorUuid } = areaOriginOf(doc), at = areaCentreOf(doc);
-  if (itemUuid && actorUuid && at) propAreas.remember({ templateId: doc.uuid, itemUuid, actorUuid, authorId: typeof authorId === "string" ? authorId : null, testPoint: areaTestOf(doc), at, scene: doc.parent, levels: [...(doc.levels ?? [])],
+  const { itemUuid, actorUuid } = areaOriginOf(doc), at = areaCentreOf(doc), centre = propSafe("area centre", () => areaShapeCentreOf(doc)) ?? at;
+  if (itemUuid && actorUuid && at) propAreas.remember({ templateId: doc.uuid, itemUuid, actorUuid, authorId: typeof authorId === "string" ? authorId : null, testPoint: areaTestOf(doc), at, centre, scene: doc.parent, levels: [...(doc.levels ?? [])],
     damageTypes: areaDamageTypes(doc), ...(Number.isFinite(rememberedAt) ? { rememberedAt } : {}) });
 }
 for (const hook of ["createMeasuredTemplate", "createRegion"]) Hooks.on(hook, (doc, _options, userId) => propSafe("area", () => rememberArea(doc, userId)));
@@ -8639,7 +8650,7 @@ function areaPlace(cause, user) {
   try { const actor = actorUuid ? fromUuidSync(actorUuid) : null; ownsOrigin = !!user && actor?.testUserPermission?.(user, "OWNER") === true; } catch { ownsOrigin = false; }
   const levels = doc ? [...(doc.levels ?? [])] : [...(rec?.levels ?? [])];
   return { now, area: { uuid, sceneId: doc?.parent?.id ?? null, authorId: placed.authorId ?? null, authorIsGM: !!(placed.authorId && game.users.get(placed.authorId)?.isGM),
-    ownsOrigin, rememberedAt: placed.rememberedAt, testPoint: rec?.testPoint ?? (doc ? areaTestOf(doc) : undefined), levels, at: rec?.at ?? (doc ? areaCentreOf(doc) : null), damageTypes: doc ? areaPlaceTypes(doc, cause, user, now) : [] } };
+    ownsOrigin, rememberedAt: placed.rememberedAt, testPoint: rec?.testPoint ?? (doc ? areaTestOf(doc) : undefined), levels, at: rec?.centre ?? (doc ? areaShapeCentreOf(doc) : null), damageTypes: doc ? areaPlaceTypes(doc, cause, user, now) : [] } };
 }
 for (const hook of ["deleteMeasuredTemplate", "deleteRegion"]) Hooks.on(hook, (doc) => propAreas.forget(doc.uuid));
 // Everything inside a remembered area on its level that one of the given damage types breaks (the first of them that
@@ -8655,7 +8666,7 @@ function breakAreaThings(area, types, { messageId } = {}) {
   const grid = propGrid(scene), tiles = tilesOnLevel(scene.tiles.contents.map(propTileView), area.levels), walls = (scene.walls?.contents ?? []).map(wallView);
   const decor = propSafe("area decorations", () => decorViews(scene, area.levels)) ?? [], id = (t) => t.id;
   const hits = typesBreaking(types, (type) => propsInArea(tiles, area.testPoint, grid, type), id).filter(({ thing }) => propAreas.claim(area.templateId, thing.id));
-  const doors = typesBreaking(types, (type) => propSafe("area doors", () => doorsInArea(walls, area.testPoint, scene, type, area.levels, area.at)) ?? [], id)
+  const doors = typesBreaking(types, (type) => propSafe("area doors", () => doorsInArea(walls, area.testPoint, scene, type, area.levels, area.centre ?? area.at)) ?? [], id)
     .filter(({ thing }) => propAreas.claim(area.templateId, `wall:${thing.id}`));
   const spills = !types.includes("fire") ? [] : (propSafe("area powder", () => ignitableInArea(tiles, area.testPoint)) ?? []).filter((t) => propAreas.claim(area.templateId, `ignite:${t.id}`));
   const decorHits = typesBreaking(types, (type) => propsInArea(decor, area.testPoint, grid, type), id).filter(({ thing }) => propAreas.claim(area.templateId, thing.id));
@@ -9235,17 +9246,21 @@ Hooks.on("canvasTearDown", () => {
 Hooks.on("updateWall", (doc, changes, options) => {
   // A breach's part B edited by hand: the wall it was split from forgets its note too (its wreck goes, Repair leaves both).
   const partOf = breachPartOf(doc);
+  // Part B goes back to a plain wall that can be breached again (breachOf off).
+  const unpart = (b) => { if (b && breachPartOf(b) && game.users.activeGM?.isSelf) void b.update(withDeletes({ _id: b.id, [`flags.${ID}.breakWall.-=breachOf`]: null }, propDel())).catch((e) => console.warn("Animater props: edited breach", e)); };
   if (partOf && handEdited(changes, options, { kind: "wall" })) {
     const a = doc.parent?.walls?.get(partOf), aNote = readWallNote(a?.flags?.[ID]?.breakWall?.broken);
     if (a && aNote?.partId === doc.id) {
       const clear = handEditUpdate(a);
       if (clear && game.users.activeGM?.isSelf) void a.update(withDeletes(clear, propDel())).catch((e) => console.warn("Animater props: edited breach", e));
       settleWallHere(a.id, false); forgetLateWall(a.id); wallWreckage.hide(a.id);
+      unpart(doc);
     }
   }
   if (doc.flags?.[ID]?.breakWall?.broken && handEdited(changes, options, readWallNote(doc.flags[ID].breakWall.broken))) {
-    const clear = handEditUpdate(doc);
+    const clear = handEditUpdate(doc), note = readWallNote(doc.flags[ID].breakWall.broken);
     if (clear && game.users.activeGM?.isSelf) void doc.update(withDeletes(clear, propDel())).catch((e) => console.warn("Animater props: edited door", e));
+    if (note?.kind === "wall" && note.partId) unpart(doc.parent?.walls?.get(note.partId));
     settleWallHere(doc.id, false); forgetLateWall(doc.id); wallWreckage.hide(doc.id);
     return;
   }
@@ -11304,7 +11319,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
     repair.disabled = !game.user?.isGM;
     repair.addEventListener("click", async (event) => {
       event.preventDefault();
-      if (!await foundry.applications.api.DialogV2.confirm({ window: { title: "Repair broken props" }, content: "<p>Unhide every broken prop in this scene and put its walls, doors, windows and decorations back?</p>", rejectClose: false })) return;
+      if (!await foundry.applications.api.DialogV2.confirm({ window: { title: "Repair broken props" }, content: "<p>Unhide every broken prop in this scene and put its walls, doors, windows, breached walls and decorations back?</p>", rejectClose: false })) return;
       await repairAllProps(app.document);
     });
     // Make every door and window on the scene breakable, or none (wall-break-bulk.mjs): asks with the counts first, one batched write.
@@ -11424,7 +11439,7 @@ Hooks.on("renderWallConfig", (app, html) => {
   if (!root || root.querySelector("[data-animater-break-wall]")) return;
   const doc = app.document ?? app.object, sceneOn = doc?.parent?.flags?.[ID]?.breakableProps === true;
   const set = document.createElement("fieldset");
-  const windowWall = isWindowWall(doc);
+  const windowWall = windowLike(doc);
   set.innerHTML = wallBreakFieldsHTML({ door: wallFormDoor(doc), own: doc?.flags?.[ID]?.breakWall, windowKind: doc?.flags?.[ID]?.window, sceneOn, system: game.system.id, windowWall });
   const fieldset = set.firstElementChild;
   appendWallSection(root, fieldset);

@@ -194,7 +194,8 @@ function breachRequest(req, cause, traits, { wall, scene, grid, sender, mover, s
   if (levels !== undefined && !onLevel(wall.levels, levels)) return no("far");
   let hit = null, from = null;
   if (cause.kind === "area") {
-    from = finite(area?.at) ? area.at : finite(cause.at) ? cause.at : null;
+    // the GM's own record of the area's centre; only the GM's own call that names no area gives its point itself
+    from = finite(area?.at) ? area.at : sender.isGM === true && !cause.areaUuid && finite(cause.at) ? cause.at : null;
     if (!from) return no("area");
     hit = projectOnWall(wall.c, from);
     const why = areaCauseRefusal(cause, hit, wall.levels, { area, sceneId: scene.id, sender, now, grid });

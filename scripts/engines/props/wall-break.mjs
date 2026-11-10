@@ -4,6 +4,7 @@
 import { canBreak } from "./prop-material.mjs";
 import { closesWindow } from "../motion/window-state.mjs";
 import { forceDCOf } from "./force-open.mjs"; // a cycle of function declarations only (force-open reads wallTraits)
+import { windowLike } from "./wall-break-bulk.mjs";
 
 const KINDS = ["door", "window", "wall"];
 const MATERIALS = ["wood", "reinforced", "metal", "stone"]; // reinforced: a reinforced wooden door
@@ -36,8 +37,10 @@ export function wallTraits(wall, scene, system) {
     const pane = PANES.includes(own.windowMaterial) ? own.windowMaterial : own.material;
     return { kind: "window", material: wallMaterialOf(pane, "window"), forceOpen: false, forceDC: null };
   }
-  // A plain wall the GM marked breakable (never by default, never in bulk): its structure is its own field.
-  if (!door && on && wall?.door === 0 && wallOn(wall)) return { kind: "wall", material: wallMaterialOf(own.wallMaterial, "wall"), forceOpen: false, forceDC: null };
+  // A plain wall the GM marked breakable (never by default, never in bulk): its structure is its own field. Never a
+  // window of any kind (windowLike: the walls Wall Configuration hides the wall group on), and never a piece of a breach
+  // (breachOf: part B) until Repair: one breach per wall.
+  if (!door && on && wall?.door === 0 && wallOn(wall) && !windowLike(wall) && !own.breachOf) return { kind: "wall", material: wallMaterialOf(own.wallMaterial, "wall"), forceOpen: false, forceDC: null };
   const material = wallMaterialOf(own.material, "door");
   return { kind: door ? "door" : null, material, forceOpen: own.forceOpen !== false, forceDC: forceDCOf(own, material, system) };
 }
