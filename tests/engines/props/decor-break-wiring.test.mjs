@@ -112,3 +112,35 @@ test("every trigger asks for decorations too; decorations never free walls", () 
   assert.match(main, /applyDecorBreak\(scene, region, view\.decor\.key, cause, note, game\.user\)/);
   assert.match(main, /const cause = \{ kind: "blast", sourceId: doc\.id \}, look/);
 });
+
+// Task 8: the town and dungeon kinds, the lights, and the live check's fixes.
+test("only drawn decorations break (D1): the cavern records what it drew; the triggers, the requester and the GM all ask", () => {
+  assert.match(main, /decorCaveDrawn = \{ sceneId: canvas\.scene\?\.id \?\? null, crystals: bothSettingsOn\("caveCrystals"\), webs: bothSettingsOn\("caveWebs"\) \? corners : \[\] \}/);
+  assert.match(main, /const corners = webAreas\.length \? webCorners\(\{ walls, areas: webAreas, grid, seed, floor \}\) : \[\];/);
+  assert.match(body("decorViews"), /decorTargets\([^\n]*decorDrawnOn\(scene\)\)/);
+  assert.match(body("requestDecorBreak"), /drawn: decorDrawnOn\(scene\)/);
+  assert.match(body("applyDecorBreak"), /drawn: decorDrawnOn\(scene\)/);
+  assert.match(main, /decorCaveDrawn\?\.sceneId && decorCaveDrawn\.sceneId === scene\?\.id \? decorCaveDrawn : \{\}/);
+});
+test("a wreck spills what its decoration held", () => {
+  assert.match(main, /const decorContents = \(view\) => view\?\.flags\?\.animater\?\.prop\?\.contents \?\? "none";/);
+  assert.equal((main.match(/decorWreckage\.show\(tile, note, decorContents\(view\)/g) ?? []).length, 2);
+  assert.doesNotMatch(main, /decorWreckage\.show\(tile, note, "none"/);
+  const wreck = readFileSync(new URL("../../../scripts/engines/props/prop-wreck.mjs", import.meta.url), "utf8");
+  assert.match(wreck, /cutApart\(\{ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate, contents \}\)/);
+  assert.match(wreck, /halves\?\.update\(u\); grow\(u\);/);
+});
+test("an edit that moved a toppled decoration takes its rubble at once (GM, quiet, not over a write in flight)", () => {
+  const prune = body("pruneToppledDecor");
+  assert.match(prune, /game\.users\.activeGM\?\.isSelf/);
+  assert.match(prune, /queuedDecorKeys\(doc\.id\)\.length/);
+  assert.match(prune, /decorToppledPrune\(stored, decorIndex\(region, propGrid\(scene\)\)\.keys, sceneRegions\(scene\), doc\.id\)/);
+  assert.match(prune, /\{ animater: \{ decorBreak: true \} \}\);\r?\n  await deletePropRegions\(scene, out\.deleteRegions\);/);
+  assert.match(main, /if \(decorOnlySave\(changes, options\) \|\| !\(decorFlagsChanged\(changes\) \|\| "shapes" in \(changes \?\? \{\}\)\)\) return;\r?\n  void pruneToppledDecor\(doc\)/);
+});
+test("a broken underground crystal or cobweb leaves the cavern and the webs (a quiet write rebuilds them for a cave region)", () => {
+  assert.match(main, /const decorCaveFollows = \(regionDoc\) => \{ if \(regionDoc\?\.flags\?\.\[ID\]\?\.decor\?\.where === "cave"\) propSafe\("decor cavern", \(\) => rebuildCavern\(\)\); \};/);
+  assert.match(main, /syncDecorWrecks\(options\?\.animater\?\.decorBreak === true\);\r?\n  if \(decorOnlySave\(changes, options\)\) decorCaveFollows\(doc\);/);
+  assert.match(body("breakDecorHere"), /syncDecorations\(\); decorCaveFollows\(regionDoc\);/);
+  assert.match(body("refuseDecorHere"), /decorCaveFollows\(/);
+});

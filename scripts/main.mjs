@@ -35,7 +35,7 @@ import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
-import { DECOR_BREAK_MESSAGE, DECOR_NAMES, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave } from "./engines/props/decor-break.mjs";
+import { DECOR_BREAK_MESSAGE, DECOR_NAMES, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
 import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
@@ -4095,6 +4095,8 @@ const fillMist = () => {
     cavern.air(mistAir.pixels, { cols: field.cols, rows: field.rows, rect: canvas.dimensions.sceneRect });
   } catch { mistAir = null; cavern.air(null); }
 };
+// The viewed scene's underground drawing as the cavern last built it: { sceneId, crystals (drawn at all), webs (the corners webbed) }.
+let decorCaveDrawn = null;
 const rebuildCavern = () => {
   cavern.clear(); webs.clear();
   const had = lavaPolygons.length; lavaPolygons = [];
@@ -4117,7 +4119,10 @@ const rebuildCavern = () => {
   fillMist();
   lavaPolygons = lava.flatMap((p) => p.areas);
   const webAreas = [...of("webs", "caveWebs").flatMap((p) => p.areas), ...(bothSettingsOn("caveWebs") ? decor.webs : [])];
-  if (webAreas.length) webs.build({ corners: webCorners({ walls, areas: webAreas, grid, seed, floor }), grid, seed });
+  const corners = webAreas.length ? webCorners({ walls, areas: webAreas, grid, seed, floor }) : [];
+  if (webAreas.length) webs.build({ corners, grid, seed });
+  // What of the decorations underground is drawn, for which of them can break (decor-break.mjs decorDrawn).
+  decorCaveDrawn = { sceneId: canvas.scene?.id ?? null, crystals: bothSettingsOn("caveCrystals"), webs: bothSettingsOn("caveWebs") ? corners : [] };
   // The underground's wear: wet walls, steam, bad air, soot over the wall torches, the rubble of cave-ins.
   try {
     const deep = undergroundScene(), flat = (kind, setting) => of(kind, setting).flatMap((p) => p.areas);
@@ -7932,8 +7937,14 @@ const decorIndex = createDecorIndex();
 // The decorations a cause on these levels can reach (none while decorations are not drawn at all).
 function decorViews(scene, levels) {
   if (!propsOn(scene) || !regionStepsOn()) return [];
-  return tilesOnLevel(decorTargets(decorRegionsOf(scene, { breaking: true }), propGrid(scene), decorIndex), levels);
+  return tilesOnLevel(decorTargets(decorRegionsOf(scene, { breaking: true }), propGrid(scene), decorIndex, decorDrawnOn(scene)), levels);
 }
+// Whether a decoration is drawn on this scene's map (decorDrawn): an underground crystal while the cavern draws crystals,
+// a cobweb where the web engine drew a web. A scene this screen is not viewing is unknown, left to the rules.
+const decorDrawnOn = (scene) => {
+  const cave = decorCaveDrawn?.sceneId && decorCaveDrawn.sceneId === scene?.id ? decorCaveDrawn : {}, grid = propGrid(scene);
+  return (view) => decorDrawn(view, { crystals: cave.crystals, webs: cave.webs, grid });
+};
 // The look the painter painted a decoration with (snow is baked on separately), so a wreck is cut from that very picture.
 const decorArtLook = (settings) => ({ ...decorLook(settings), snow: 0 });
 // What a decoration held, to spill from its wreck (grain from torn sacks and urns, water from a trough).
@@ -7998,6 +8009,9 @@ function syncDecorWrecks(animate = false) {
     void decorWreckage.show(tile, note, decorContents(view), { animate: playing });
   }
 }
+// Underground, crystals and cobwebs are drawn by the cavern and the webs (decorations.cavern()), which a quiet break or
+// repair write does not rebuild: built again so a broken one leaves them and a repaired one comes back.
+const decorCaveFollows = (regionDoc) => { if (regionDoc?.flags?.[ID]?.decor?.where === "cave") propSafe("decor cavern", () => rebuildCavern()); };
 // Broken on this screen the moment it is asked: the decoration goes and its wreck plays. It comes back if the GM never writes it.
 function breakDecorHere(regionDoc, view, note) {
   if (regionDoc?.parent !== canvas?.scene || !regionStepsOn() || !regionsHere().some((r) => r.id === regionDoc.id)) return;
@@ -8007,7 +8021,7 @@ function breakDecorHere(regionDoc, view, note) {
   forgetDecorPending(id); forgetDecorLate(id);
   decorPending.set(id, note.seed);
   decorPendingTimers.set(id, setTimeout(() => refuseDecorHere(id), PROP_REFUSED_MS));
-  syncDecorations();
+  syncDecorations(); decorCaveFollows(regionDoc);
   // Not drawn yet as stored: the stored write settles it (decorWreckChanges).
   decorWrecksShown.delete(id);
   const tile = decorWreckOf(view, region.settings);
@@ -8020,6 +8034,7 @@ function refuseDecorHere(id) {
   forgetDecorPending(id);
   if (!decorWrecksShown.has(id)) decorWreckage.hide(id);
   propSafe("decor refused", () => syncDecorations());
+  decorCaveFollows(canvas?.scene?.regions?.get(id.split(":")[1]));
   forgetDecorLate(id);
   decorLate.set(id, seed);
   decorLateTimers.set(id, setTimeout(() => forgetDecorLate(id), PROP_LATE_MS));
@@ -8055,7 +8070,7 @@ async function requestDecorBreak(regionDoc, key, cause, { from } = {}) {
   // GM's roll; anything else shows at once.
   const waiting = decorBrokenKeys(regionDoc);
   const here = validDecorBreakRequest({ key, cause: clean, note }, { region, scene, grid, sender: game.user, ...await propPlace(clean, scene, grid), ...areaPlace(clean, game.user),
-    roll: 0, queued: waiting, index: decorIndex });
+    roll: 0, queued: waiting, index: decorIndex, drawn: decorDrawnOn(scene) });
   if (!here.ok) return false;
   if (scene === canvas?.scene && clean.kind !== "ignite" && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakDecorHere(regionDoc, view, here.entry.note);
   game.socket.emit(`module.${ID}`, { type: DECOR_BREAK_MESSAGE, sender: clientId, sceneId: scene.id, regionId: regionDoc.id, key, cause: clean, note });
@@ -8071,7 +8086,7 @@ async function applyDecorBreak(scene, regionDoc, key, cause, rawNote, user) {
     // Read after the wait: the region as it stands now, with the breaks queued or in flight for it.
     const region = decorRegionOf(regionDoc);
     const check = validDecorBreakRequest({ key, cause, note: rawNote }, { region, scene, grid, sender: user, ...place, ...blastPlace(cause, scene), ...areaPlace(cause, user),
-      roll: Math.random(), queued: queuedDecorKeys(regionDoc.id), index: decorIndex });
+      roll: Math.random(), queued: queuedDecorKeys(regionDoc.id), index: decorIndex, drawn: decorDrawnOn(scene) });
     if (!check.ok) { runtime?.trace("props", `decoration not broken: ${check.why}`); return false; }
     // A toppled stalagmite's rubble is made first, so the entry that names it is written with the break. A region that
     // cannot be made only costs the rubble.
@@ -8648,7 +8663,25 @@ const decorFlagsChanged = (changes) => Object.keys(changes?.flags?.[ID] ?? {}).s
 Hooks.on("updateRegion", (doc, changes, options) => { propSafe("decor region", () => {
   if (doc.parent !== canvas?.scene || !(decorFlagsChanged(changes) || "shapes" in (changes ?? {}) || "levels" in (changes ?? {}))) return;
   syncDecorations(); syncDecorWrecks(options?.animater?.decorBreak === true);
+  if (decorOnlySave(changes, options)) decorCaveFollows(doc);
 }); });
+// An edit that moved a toppled decoration (GM): its stale entry and its rubble go at once, so a whole stalagmite never
+// stands on difficult rubble. Other stale breaks stay until the next break write or Repair (undoing the edit brings them
+// back, ruling D8). Written quietly, as a break write is; a region with breaks still being written is left to that write.
+async function pruneToppledDecor(doc) {
+  const scene = doc?.parent;
+  if (!game.users.activeGM?.isSelf || !scene || queuedDecorKeys(doc.id).length) return;
+  const stored = readDecorBroken(doc.flags?.[ID]?.decorBroken), region = stored.length ? decorRegionOf(doc) : null;
+  if (!region) return;
+  const out = decorToppledPrune(stored, decorIndex(region, propGrid(scene)).keys, sceneRegions(scene), doc.id);
+  if (!out) return;
+  await doc.update({ [`flags.${ID}.decorBroken`]: out.keep }, { animater: { decorBreak: true } });
+  await deletePropRegions(scene, out.deleteRegions);
+}
+Hooks.on("updateRegion", (doc, changes, options) => {
+  if (decorOnlySave(changes, options) || !(decorFlagsChanged(changes) || "shapes" in (changes ?? {}))) return;
+  void pruneToppledDecor(doc).catch((e) => runtime?.trace("props", `decor prune: ${e?.message ?? e}`));
+});
 Hooks.on("deleteRegion", (doc) => { propSafe("decor region gone", () => decorRegionGone(doc)); });
 // A decoration region brought back (an undone delete) with its breaks: their wrecks too.
 Hooks.on("createRegion", (doc) => { if (doc.parent === canvas?.scene && doc.flags?.[ID]?.decorBroken) propSafe("decor wrecks", () => syncDecorWrecks(false)); });
