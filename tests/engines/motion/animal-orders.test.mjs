@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { normalizeOrder, orderAim, orderChasing, orderPrep, orderHandles, perchOrderPrep, orderPerch, ORDER_PERCH_KEY, ORDERABLE } from '../../../scripts/engines/motion/animal-orders.mjs';
+import { normalizeOrder, orderAim, orderChasing, orderPrep, orderHandles, perchOrderPrep, orderPerch, ORDER_PERCH_KEY, orbitStep, ORBIT, ORDERABLE } from '../../../scripts/engines/motion/animal-orders.mjs';
 import { placedList, withOrder, withoutId, withPlaced, PLACEABLE } from '../../../scripts/ui/animals-panel.mjs';
 import { animalHudHTML } from '../../../scripts/ui/animal-hud.mjs';
 
@@ -77,6 +77,19 @@ test('a bird on a roof or in a tree hops down to its mark, sits there, and hops 
   const there = perchOrderPrep({ x: 990, y: 0, mode: 'sit', wait: 9 }, aim, { grid: 100 });
   assert.equal(there.wait, 9, 'arrived: it sits');
   assert.deepEqual(orderPerch({ x: 3, y: 4 }), { x: 3, y: 4, h: 0, kind: 'ground', on: 'ground', face: 0, key: ORDER_PERCH_KEY });
+});
+
+// Roi: "birds should circle close to tokens".
+test('a bird told to circle goes round close over the token and keeps up as it moves', () => {
+  let g = { x: 900, y: 500, angle: 0 };
+  for (let i = 0; i < 300; i++) g = orbitStep(g, { x: 500, y: 500 }, { dt: 0.05, grid: 100 });
+  assert.ok(Math.abs(Math.hypot(g.x - 500, g.y - 500) - 105) < 2, 'about a square from the token');
+  const around = [];
+  for (let i = 0; i < 60; i++) { g = orbitStep(g, { x: 500, y: 500 }, { dt: 0.05, grid: 100 }); around.push(Math.atan2(g.y - 500, g.x - 500)); }
+  assert.ok(Math.abs(around.at(-1) - around[0]) > 0.5, 'it goes round');
+  for (let i = 0; i < 100; i++) g = orbitStep(g, { x: 500 + i * 3, y: 500 }, { dt: 0.05, grid: 100 });
+  assert.ok(Math.hypot(g.x - 800, g.y - 500) < 140, 'still close round the token after it has walked off');
+  assert.ok(ORBIT.token <= 1.1, 'close to the token, not a wide sweep');
 });
 
 test('every layer shares the HUD\'s handles: orders by id, the nearest drawn, held, taken away', () => {

@@ -6,7 +6,7 @@ const TAU = Math.PI * 2;
 const between = (random, a, b) => a + random() * (b - a);
 import { perchHopStep, nextPerch, perchBirdCount, perchedBird } from './perch-hops.mjs';
 import { crowStanding } from './aftermath.mjs';
-import { orderAim, orderPrep, perchOrderPrep, orderPerch, ORDER_PERCH_KEY } from './animal-orders.mjs';
+import { orderAim, orderPrep, perchOrderPrep, orderPerch, ORDER_PERCH_KEY, ORBIT } from './animal-orders.mjs';
 
 // ---- What they sound like (assets/sounds/wildlife, each folder's License.txt) ---------------------------------------------
 const SOUND_DIR = 'modules/animater/assets/sounds/wildlife';
@@ -610,13 +610,14 @@ export function createWildlife({ PIXI, floor, sky, skyShadow = floor, restyle = 
         let x = h.cx + Math.cos(h.a) * h.r, y = h.cy + Math.sin(h.a) * h.r * 0.8, angle = h.a + Math.PI, height = 1, frame = Math.floor(time * 1.4) % 7 === 0 ? Math.floor(time * 12) % SPANS.length : 0;
         // Ordered: its circle goes over the spot or the token, tighter and quicker, and it hunts nothing meanwhile.
         const held = h.order ? aimOf({ ...h, x: h.cx, y: h.cy }) : null;
-        if (held && h.mode === 'soar') { h.tx = held.center.x; h.ty = held.center.y; h.r += (grid * (h.order.type === 'go' ? 1.4 : 1.8) - h.r) * Math.min(1, dt); h.huntIn = Math.max(h.huntIn, 30); h.lookIn = 3; }
+        // (Close round it: animal-orders.mjs ORBIT, the circle's middle keeping up with a token that moves.)
+        if (held && h.mode === 'soar') { h.tx = held.center.x; h.ty = held.center.y; h.r += (grid * (h.order.type === 'go' ? ORBIT.spot : ORBIT.token) - h.r) * Math.min(1, dt * 2); h.huntIn = Math.max(h.huntIn, 30); h.lookIn = 3; }
         if (h.mode === 'soar') {
-          h.a += dt * (held ? 0.7 : 0.26); h.huntIn -= dt;
+          h.a += dt * (held ? ORBIT.turn : 0.26); h.huntIn -= dt;
           // Its circle kept clear of anywhere keeping hawks out: it drifts off to one that is, if there is one.
           const ring = (cx, cy) => (t) => ({ x: cx + Math.cos(t * TAU) * h.r, y: cy + Math.sin(t * TAU) * h.r * 0.8 });
           if ((h.lookIn = (h.lookIn ?? 0) - dt) <= 0) { h.lookIn = 3; if (crossesKept(ring(h.tx ?? h.cx, h.ty ?? h.cy), 'hawk', kept, 16)) for (let i = 0; i < 12; i++) { const tx = area.x + area.width * between(Math.random, 0.2, 0.8), ty = area.y + area.height * between(Math.random, 0.2, 0.8); if (!crossesKept(ring(tx, ty), 'hawk', kept, 16)) { h.tx = tx; h.ty = ty; break; } } }
-          if (h.tx !== undefined) { const pull = Math.min(1, dt * (held ? 1.2 : 0.15)); h.cx += (h.tx - h.cx) * pull; h.cy += (h.ty - h.cy) * pull; }
+          if (h.tx !== undefined) { const pull = Math.min(1, dt * (held ? 4 : 0.15)); h.cx += (h.tx - h.cx) * pull; h.cy += (h.ty - h.cy) * pull; }
           if (day > 0.3 && Math.random() < dt * 0.06) sound('hawkCry', { x, y }, false);
           if (h.huntIn <= 0 && day > 0.5) {
             const prey = preyFor({ x, y }, rabbits.filter((r) => !kept('hawk', r.x, r.y)), { seen: (a, b) => { try { return inView(a, b, 0) && seen(a, b) !== false; } catch { return false; } } });

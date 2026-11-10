@@ -5,7 +5,7 @@
 
 import { noiseReaching, wayOut, shadowKeeper, overOpen, NOISE_SPEED } from './wildlife.mjs';
 import { rippleDue } from './step-ripples.mjs';
-import { orderAim, orderPrep, orderHandles } from './animal-orders.mjs';
+import { orderAim, orderPrep, orderHandles, orbitStep } from './animal-orders.mjs';
 
 const TAU = Math.PI * 2;
 const between = (random, a, b) => a + random() * (b - a);
@@ -515,10 +515,12 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
       });
       gulls = gulls.map((q0) => {
         if (held(q0)) return { ...q0 };
-        // Ordered: its stretch of sky goes over the spot or the token, and it fishes nothing meanwhile.
-        let g0 = q0;
-        if (q0.order) { const aim = aimOf(q0); if (aim) g0 = { ...q0, cx: aim.center.x, cy: aim.center.y, rx: grid * (q0.order.type === 'go' ? 1.4 : 1.8), ry: grid * (q0.order.type === 'go' ? 1.4 : 1.8), huntIn: Math.max(q0.huntIn ?? 0, 30), hang: 0 }; }
-        const g = gullStep(g0, { dt, grid, fish: !g0.order && alpha > 0.5 ? fishNow.filter((o) => !kept('gulls', o.x, o.y)) : [], air });
+        // Ordered: round and round close over the spot or the token (animal-orders.mjs orbitStep), fishing nothing meanwhile;
+        // its own stretch of sky goes with it, so let go it carries on from there.
+        const held0 = q0.order ? aimOf(q0) : null, g0 = q0;
+        const g = held0 && g0.mode === 'glide'
+          ? { ...orbitStep(g0, held0.center, { dt, grid, spot: g0.order.type === 'go' }), mode: 'glide', h: 1, hit: false, hang: 0, cx: held0.center.x, cy: held0.center.y, rx: grid * 2, ry: grid * 2, huntIn: Math.max(g0.huntIn ?? 0, 30) }
+          : gullStep(g0, { dt, grid, fish: !g0.order && alpha > 0.5 ? fishNow.filter((o) => !kept('gulls', o.x, o.y)) : [], air });
         const { x, y, angle } = g;
         if (g.mode === 'dive' && g0.mode !== 'dive') sound('gullCry', g, true);
         else if (alpha > 0.5 && Math.random() < dt * 0.1) sound('gullCry', g, false);

@@ -9,6 +9,23 @@ export const ORDER_TYPES = Object.freeze(['go', 'follow', 'circle']);
 // insects, rats and bats.
 export const ORDERABLE = Object.freeze(['rabbit', 'songbird', 'crow', 'hawk', 'deer', 'fox', 'wolf', 'squirrel', 'snake', 'duck', 'heron', 'gull', 'frog', 'pigeon', 'hen', 'dog', 'cow', 'goat', 'sheep', 'pig', 'horse']);
 
+// How close a bird circles over its mark (squares): a token's own circle, just round it; a spot's a little tighter.
+export const ORBIT = Object.freeze({ token: 1.05, spot: 0.85, turn: 0.9 });
+// One step of a bird circling its mark on an order (pure), a gull's way: round and round `center` at the orbit's radius,
+// gliding, catching up at its own pace when the mark moves on. `b` { x, y, orb (its place round the circle), angle }.
+export function orbitStep(b, center, { dt = 1 / 60, grid = 100, spot = false } = {}) {
+  const o = { ...b }, r = grid * (spot ? ORBIT.spot : ORBIT.token);
+  o.orb = (o.orb ?? Math.atan2(o.y - center.y, o.x - center.x)) + dt * ORBIT.turn;
+  const tx = center.x + Math.cos(o.orb) * r, ty = center.y + Math.sin(o.orb) * r, dx = tx - o.x, dy = ty - o.y, d = Math.hypot(dx, dy);
+  const step = Math.min(d, grid * 3.2 * dt);
+  if (d > 1e-6) { o.x += (dx / d) * step; o.y += (dy / d) * step; }
+  // Facing the way it goes (0 up the map, clockwise); on its circle, along it.
+  const mx = d > grid * 0.05 ? dx : -Math.sin(o.orb), my = d > grid * 0.05 ? dy : Math.cos(o.orb), want = Math.atan2(mx, -my);
+  const off = Math.atan2(Math.sin(want - (o.angle ?? want)), Math.cos(want - (o.angle ?? want)));
+  o.angle = (o.angle ?? want) + off * Math.min(1, dt * 8);
+  return o;
+}
+
 // A bird that goes perch to perch (perch-hops.mjs: crows, songbirds and pigeons up on roofs and in trees), ordered: it hops
 // down to the mark and sits there (a perch of its own on the ground), and hops after it again when the mark moves off.
 export const ORDER_PERCH_KEY = 'order';
