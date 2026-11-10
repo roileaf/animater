@@ -29,7 +29,8 @@ test("Repair clears every region's breaks; a deleted region takes its rubble", (
 
 // The controller's rulings (progress.md D5, D7, D11) and the Task 2/3 notes.
 const body = (name) => {
-  const at = main.indexOf(`function ${name}(`);
+  let at = main.indexOf(`function ${name}(`);
+  if (at < 0) at = main.indexOf(`const ${name} = `);
   assert.ok(at >= 0, `${name} exists`);
   return main.slice(at, main.indexOf("\n}", at));
 };
@@ -101,7 +102,7 @@ test("every trigger asks for decorations too; decorations never free walls", () 
   assert.match(main, /propsInArea\(decorViews\(scene, area\.levels\), area\.testPoint/);
   assert.match(main, /tiles: \[\.\.\.[^\]]*decorViews\(scene, target\.level\)\]/);
   assert.match(main, /pick\.tile\.decor/);
-  assert.match(main, /slamProps\(doc, a, b\)\.filter\(\(t\) => !t\.decor\)/);
+  assert.match(main, /slamProps\(doc, a, b, \{ decor: false \}\)\.filter\(\(t\) => !t\.decor\)/);
   assert.match(main, /t\.decor \? askDecor\(/);
   assert.match(main, /groundSlams\(travel, size, \[\.\.\.[^\]]*decorViews\(scene, doc\.level\)\]/);
   assert.match(main, /decorSeen = decorViews\(scene, levels\), decorHit = blastTargets\(\{[^}]*tiles: decorSeen, walls: \[\]/);
@@ -115,14 +116,24 @@ test("every trigger asks for decorations too; decorations never free walls", () 
 
 // Task 8: the town and dungeon kinds, the lights, and the live check's fixes.
 test("only drawn decorations break (D1): the cavern records what it drew; the triggers, the requester and the GM all ask", () => {
-  assert.match(main, /decorCaveDrawn = \{ sceneId: canvas\.scene\?\.id \?\? null, crystals: bothSettingsOn\("caveCrystals"\), webs: bothSettingsOn\("caveWebs"\) \? corners : \[\] \}/);
-  assert.match(main, /laid = webAreas\.length \|\| gone\.length \? webCorners\(\{ walls, areas: \[\.\.\.webAreas, \.\.\.gone\], grid, seed, floor \}\) : \[\];/);
+  // I1: what can break comes from what every screen shares, never this screen's Quality, switches or sparks and dust.
+  const now = body("decorCaveNow");
+  assert.match(now, /decorCaveBreakable\(\{ setting: \(key\) => hotSetting\(key\), webAreas, decorRegions, walls: wallsHere\(\), lights: caveLightShapes\(\), grid: canvas\.grid\.size, seed: sceneId \?\? "cave", index: decorIndex \}\)/);
+  assert.match(now, /cavernRegions\(\{ preview: false \}\)/);
+  assert.doesNotMatch(now, /bothSettingsOn|localQuality|lampLights|regionStepsOn/);
+  assert.doesNotMatch(main, /crystals: bothSettingsOn\("caveCrystals"\), webs:/);
+  assert.doesNotMatch(body("caveLightShapes"), /embersOn|motesOn|bothSettingsOn/);
+  assert.match(body("caveLightShapes"), /documentName !== "AmbientLight"/);
+  // The webs are drawn on that same floor, so every screen that draws them lays out the same corners.
+  assert.match(main, /laid = webAreas\.length \|\| gone\.length \? webCorners\(\{ walls, areas: \[\.\.\.webAreas, \.\.\.gone\], grid, seed, floor: lightFloor\(caveLightShapes\(\)\) \}\) : \[\];/);
+  assert.match(body("rebuildCavern"), /decorCaveDrawn = null;/);
+  assert.match(main, /for \(const hook of \[[^\]]*"updateAmbientLight"[^\]]*\]\) Hooks\.on\(hook, \(first, changes, options\) => \{ if \(!quietSave\(first, changes, options\)\) decorCaveDrawn = null; \}\);/);
   assert.match(main, /const corners = keptWebCorners\(laid, \{ keep: webAreas, gone, grid \}\);/);
   assert.match(main, /const gone = bothSettingsOn\("caveWebs"\) \? decor\.websGone \?\? \[\] : \[\]/);
   assert.match(body("decorViews"), /decorTargets\([^\n]*decorDrawnOn\(scene\)\)/);
   assert.match(body("requestDecorBreak"), /drawn: decorDrawnOn\(scene\)/);
   assert.match(body("applyDecorBreak"), /drawn: decorDrawnOn\(scene\)/);
-  assert.match(main, /decorCaveDrawn\?\.sceneId && decorCaveDrawn\.sceneId === scene\?\.id \? decorCaveDrawn : \{\}/);
+  assert.match(body("decorDrawnOn"), /scene\?\.id && scene\.id === canvas\?\.scene\?\.id \? decorCaveNow\(\) : null/);
 });
 test("a wreck spills what its decoration held", () => {
   assert.match(main, /const decorContents = \(view\) => view\?\.flags\?\.animater\?\.prop\?\.contents \?\? "none";/);
@@ -140,9 +151,26 @@ test("an edit that moved a toppled decoration takes its rubble at once (GM, quie
   assert.match(prune, /\{ animater: \{ decorBreak: true \} \}\);\r?\n  await deletePropRegions\(scene, out\.deleteRegions\);/);
   assert.match(main, /if \(decorOnlySave\(changes, options\) \|\| !\(decorFlagsChanged\(changes\) \|\| "shapes" in \(changes \?\? \{\}\)\)\) return;\r?\n  void pruneToppledDecor\(doc\)/);
 });
-test("a broken underground crystal or cobweb leaves the cavern and the webs (a quiet write rebuilds them for a cave region)", () => {
-  assert.match(main, /const decorCaveFollows = \(regionDoc\) => \{ if \(regionDoc\?\.flags\?\.\[ID\]\?\.decor\?\.where === "cave"\) propSafe\("decor cavern", \(\) => rebuildCavern\(\)\); \};/);
-  assert.match(main, /syncDecorWrecks\(options\?\.animater\?\.decorBreak === true\);\r?\n  if \(decorOnlySave\(changes, options\)\) decorCaveFollows\(doc\);/);
-  assert.match(body("breakDecorHere"), /syncDecorations\(\); decorCaveFollows\(regionDoc\);/);
-  assert.match(body("refuseDecorHere"), /decorCaveFollows\(/);
+test("a broken underground crystal or cobweb leaves the cavern and the webs; many at once repaint once (I2)", () => {
+  assert.match(main, /const decorRedraw = createDecorRedraw\(\{ redraw: \(\{ cave \}\) => propSafe\("decor redraw", \(\) => \(cave \? rebuildCavern\(\) : syncDecorations\(\)\)\) \}\);/);
+  assert.match(main, /const decorRedrawSoon = \(regionId, doc = canvas\?\.scene\?\.regions\?\.get\(regionId\)\) => decorRedraw\.soon\(regionId, \{ cave: doc\?\.flags\?\.\[ID\]\?\.decor\?\.where === "cave" \}\);/);
+  // The requester's break and refusal, and every screen's stored write, ask for the repaint; none repaints itself.
+  for (const fn of ["breakDecorHere", "refuseDecorHere"]) { assert.match(body(fn), /decorRedrawSoon\(/, fn); assert.doesNotMatch(body(fn), /syncDecorations\(\)|rebuildCavern\(\)/, fn); }
+  assert.match(main, /if \(decorOnlySave\(changes, options\)\) decorRedrawSoon\(doc\.id, doc\); else syncDecorations\(\);\r?\n  syncDecorWrecks\(options\?\.animater\?\.decorBreak === true\);/);
+  assert.doesNotMatch(main, /decorCaveFollows/);
+  // The wreck still plays at once.
+  assert.match(body("breakDecorHere"), /decorRedrawSoon\(regionDoc\.id, regionDoc\);[^]*decorWreckage\.show\(tile, note, decorContents\(view\), \{ animate: true \}\)/);
+});
+test("final review minors: Repair waits for the writes and holds them (M1), walls skip decorations (M2), the memo forgets (M6), a write prunes (M7)", () => {
+  assert.match(body("holdDecorWrites"), /await decorQueue\.idle\(\)/);
+  assert.match(main, /const decorQueue = createDecorQueue\(\{[^]*?write: async \(regionDoc, adds\) => \{\r?\n  await decorRepairHold;/);
+  assert.match(body("repairDecorRegion"), /holdDecorWrites\(/);
+  assert.match(body("repairAllProps"), /await holdDecorWrites\(async \(\) => \{\r?\n    const decorFixes = decorRepairUpdates\(sceneRegions\(scene\)\);/);
+  assert.match(main, /function slamProps\(doc, a, b, \{ decor = true \} = \{\}\)/);
+  assert.match(body("slamProps"), /\.\.\.\(decor \? decorViews\(scene, doc\.level\) : \[\]\)/);
+  assert.match(main, /Hooks\.on\("deleteRegion", \(doc\) => \{ decorIndex\.forget\(doc\.id\);/);
+  assert.match(main, /decorWrecksShown\.clear\(\); decorPending\.clear\(\); decorLate\.clear\(\); decorWreckage\.clear\(\); decorIndex\.clear\(\);/);
+  assert.match(body("applyDecorBreak"), /void pruneToppledDecor\(regionDoc\)\.catch\(/);
+  // The live check's look at what this screen lets break (any user; read-only).
+  assert.match(main, /decorBreakable: \(regionId\) => \{[^]*?decorTargets\(\[region\], propGrid\(scene\), decorIndex, decorDrawnOn\(scene\)\)/);
 });

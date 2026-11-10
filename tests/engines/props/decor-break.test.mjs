@@ -13,12 +13,12 @@ const note = { seed: 1, cutAngle: 0, pattern: "diced", pieces: 3, spread: 0.4, s
 
 test("which kinds break, and as what", () => {
   assert.deepEqual(Object.keys(DECOR_BREAKS).sort(), ["agave", "barrel", "bedroll", "beehive", "bench", "brazier", "bush", "cage", "candles", "cart", "cobweb", "coffin", "column", "crate", "crystals", "fence", "fern",
-    "firewood", "haystack", "kennel", "nest", "planter", "produce", "reeds", "sacks", "sarcophagus", "signpost", "stalagmite", "tent", "tombstone", "trough", "urns", "washtub"]);
+    "firewood", "haystack", "kennel", "lampPost", "marketStall", "nest", "planter", "produce", "reeds", "sacks", "sarcophagus", "signpost", "stakeFence", "stalagmite", "strawBed", "tableStools", "tent", "tombstone", "trough", "urns", "washtub"]);
   assert.deepEqual(DECOR_BREAKS.crate, { material: "wood", style: "shatter" });
   assert.deepEqual(DECOR_BREAKS.crystals, { material: "glass", style: "shatter" });
   assert.deepEqual(DECOR_BREAKS.cobweb, { material: "plant", style: "burn" });
   assert.deepEqual(DECOR_BREAKS.column, { material: "stone", style: "topple" });
-  for (const k of ["rock", "boulder", "oak", "stump", "log", "puddle", "timberProps", "campfire", "rubble"]) assert.equal(DECOR_BREAKS[k], undefined, k);
+  for (const k of ["rock", "boulder", "oak", "stump", "log", "puddle", "timberProps", "campfire", "rubble", "brokenPillar", "boneRubble"]) assert.equal(DECOR_BREAKS[k], undefined, k);
 });
 
 test("a decoration as a prop: the rules read it like a tile", () => {
@@ -177,4 +177,15 @@ test("areas, misses, paths and blasts pick decoration views like tiles", () => {
   assert.equal(propNextToMiss({ attacker: { x: target.x + 400, y: c.y }, target }, [crate], grid, "bludgeoning"), crate);
   assert.equal(propNextToMiss({ attacker: { x: c.x - 400, y: c.y }, target }, [crate], grid, "bludgeoning"), null, "never on the attacker's side");
   assert.ok(blastTargets({ centre: c, burst: 1, grid, tiles: [crate], walls: [], scene: scene(), levels: ["L1"], sourceId: "keg" }).some((t) => t.id === crate.id));
+});
+
+test("the placements memo forgets a deleted region, and everything when the canvas goes", () => {
+  const index = createDecorIndex(), r = (id) => ({ id, levels: [], settings: decorSettings({ on: true, where: "cave", density: 0, seed: 3, kinds: {}, brushed: [{ kind: "crate", x: 100, y: 100, size: 0.8, turn: 0, seed: 1, flip: false }] }), areas: [[0, 0, 500, 0, 500, 500, 0, 500]] });
+  const a = index(r("A"), 100), b = index(r("B"), 100);
+  assert.equal(index(r("A"), 100), a, "remembered");
+  index.forget("A");
+  assert.notEqual(index(r("A"), 100), a, "worked out again");
+  assert.equal(index(r("B"), 100), b, "the others kept");
+  index.clear();
+  assert.notEqual(index(r("B"), 100), b);
 });

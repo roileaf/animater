@@ -157,6 +157,8 @@ test('Decorations can break: a switch saved in the decor flags, the scene warnin
   assert.equal(findIn(SECTIONS.decor(c({ canBreak: true }, { repairDecor: null })), (n) => n.textContent === 'Repair decorations'), undefined);
   assert.match(read('scripts/main.mjs'), /repairDecor: \(doc\) => repairDecorRegionAsk\(doc\)/);
   assert.match(read('scripts/ui/region-panel.mjs'), /repairDecor = null/);
+  // The hint names the town and dungeon kinds too (final review M3).
+  assert.match(read('scripts/ui/region-panel-sections.mjs'), /'Decorations can break'[^\n]*sacks[^\n]*tables[^\n]*braziers[^\n]*street lamps/);
   assert.match(read('scripts/ui/region-panel.mjs'), /const c = \{[^\n]*\brepairDecor\b/);
 });
 test('both Repair broken props questions name decorations', () => {

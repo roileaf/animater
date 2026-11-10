@@ -98,3 +98,27 @@ test("the write goes to the region as last handed in", async () => {
   h.writes[0].resolve();
   await Promise.all([a, b]);
 });
+
+test("idle: resolves at once with nothing to write, else once the region's writes (or every region's) have landed", async () => {
+  const h = harness();
+  const order = [];
+  await h.queue.idle("R1"); order.push("empty");
+  const a = h.queue.add("R1", e("a"), "doc"), b = h.queue.add("R2", e("b"), "doc2");
+  const one = h.queue.idle("R1").then(() => order.push("R1 idle")), all = h.queue.idle().then(() => order.push("all idle"));
+  h.tick();
+  await h.settle();
+  assert.deepEqual(order, ["empty"], "nothing lands before the writes do");
+  h.writes[0].resolve(); await a; await one;
+  assert.deepEqual(order, ["empty", "R1 idle"]);
+  h.writes[1].resolve(); await b; await all;
+  assert.deepEqual(order, ["empty", "R1 idle", "all idle"]);
+  // A break queued behind one in flight: idle waits for both writes.
+  const c = h.queue.add("R1", e("c"), "doc");
+  h.tick();
+  const d = h.queue.add("R1", e("d"), "doc");
+  let done = false; const waiting = h.queue.idle("R1").then(() => { done = true; });
+  h.writes[2].resolve(); await c; await h.settle(); h.tick();
+  assert.equal(done, false, "the second write is still to come");
+  h.writes[3].resolve(); await d; await waiting;
+  assert.equal(done, true);
+});

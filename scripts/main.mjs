@@ -35,7 +35,7 @@ import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
-import { DECOR_BREAK_MESSAGE, DECOR_NAMES, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners } from "./engines/props/decor-break.mjs";
+import { DECOR_BREAK_MESSAGE, DECOR_NAMES, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, lightFloor, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
 import { createAreaWaits, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
@@ -4062,8 +4062,8 @@ const tickUnderLife = (seconds) => {
   underLife.tick(seconds, { view, ...underLook, lit: litForRats, creatures: creaturesNow(), air: airVecAt });
 };
 let lavaPolygons = [], skyOpenings = [], cavePreview = [], caveTouches = [], caveLookAt = 0;
-// The cavern parts of the scene, with any previewed on this screen: { kind, tone, areas }.
-const cavernRegions = () => {
+// The cavern parts of the scene, with any previewed on this screen (unless `preview` is false): { kind, tone, areas }.
+const cavernRegions = ({ preview = true } = {}) => {
   const out = [];
   for (const region of regionsHere()) {
     const look = caveLook(stepFlags(region.flags?.[ID])); if (!look) continue;
@@ -4072,7 +4072,7 @@ const cavernRegions = () => {
   // The light through what is open to the sky: underground, every opening; above ground, a hole in a room's roof (outdoors an opening changes nothing).
   const deep = undergroundScene(), rooms = deep ? [] : indoorPolygons(), inRoom = (areas) => areas.some((a) => { let x = 0, y = 0; const n = a.length / 2; for (let i = 0; i < a.length; i += 2) { x += a[i]; y += a[i + 1]; } return rooms.some((r) => pointInPolygon({ x: x / n, y: y / n }, r)); });
   for (const region of regionsHere()) { if (!region.flags?.[ID]?.openSky) continue; try { const areas = regionAreas(region); if (deep || inRoom(areas)) out.push({ kind: "sky", areas, under: !deep, window: skyWindowOf(region.flags[ID]), pattern: patternScaleOf(region.flags[ID].skyPattern), room: openingRoom(areas) }); } catch { /* skip */ } }
-  for (const p of cavePreview) { const [what, tone] = String(p.kind).split("-"); out.push({ kind: what, tone, areas: [[p.x, p.y, p.x + p.w, p.y, p.x + p.w, p.y + p.h, p.x, p.y + p.h]] }); }
+  for (const p of preview ? cavePreview : []) { const [what, tone] = String(p.kind).split("-"); out.push({ kind: what, tone, areas: [[p.x, p.y, p.x + p.w, p.y, p.x + p.w, p.y + p.h, p.x, p.y + p.h]] }); }
   return out;
 };
 // The cavern mist in the air (indoor-air.mjs createSmokeAir, MIST_AIR): every cell of its regions keeps it topped up, and the
@@ -4095,10 +4095,38 @@ const fillMist = () => {
     cavern.air(mistAir.pixels, { cols: field.cols, rows: field.rows, rect: canvas.dimensions.sceneRect });
   } catch { mistAir = null; cavern.air(null); }
 };
-// The viewed scene's underground drawing as the cavern last built it: { sceneId, crystals (drawn at all), webs (the corners webbed) }.
+// What of the viewed scene's decorations underground can break: { sceneId, crystals, webs (the corners laid out) }, worked
+// out when first asked (decorCaveNow) and again after the cavern is rebuilt, a lamp changes or the scene is edited.
 let decorCaveDrawn = null;
+// The scene's own lamps' shapes (flat polygons; null for one with none): AmbientLights only, not a creature's torch nor a
+// decoration's lamp, whatever this screen's sparks and dust. The underground floor the webs hang over (decor-break.mjs lightFloor).
+function caveLightShapes() {
+  const out = [];
+  for (const source of canvas?.effects?.lightSources ?? []) {
+    try {
+      if (!source?.active || source.object?.document?.documentName !== "AmbientLight" || !(Number(source.data?.radius) > 0)) continue;
+      out.push(source.shape?.points ? Array.from(source.shape.points) : null);
+    } catch { /* a broken light never breaks the rest */ }
+  }
+  return out;
+}
+// Which underground crystals and cobwebs can break (decor-break.mjs decorCaveBreakable), the same on every screen: the
+// world's switches, the regions, walls and lamps, as if drawn at full quality with every underground feature on. Never
+// this screen's Quality, its own Cave crystals / Cave webs switches or its sparks and dust (final review I1).
+function decorCaveNow() {
+  if (!canvas?.ready) return null;
+  const sceneId = canvas.scene?.id ?? null;
+  if (decorCaveDrawn && decorCaveDrawn.sceneId === sceneId) return decorCaveDrawn;
+  const webAreas = cavernRegions({ preview: false }).filter((p) => p.kind === "webs").flatMap((p) => p.areas);
+  const decorRegions = regionsHere().map((doc) => { try { return decorRegionOf(doc); } catch { return null; } }).filter(Boolean);
+  decorCaveDrawn = { sceneId, ...decorCaveBreakable({ setting: (key) => hotSetting(key), webAreas, decorRegions, walls: wallsHere(), lights: caveLightShapes(), grid: canvas.grid.size, seed: sceneId ?? "cave", index: decorIndex }) };
+  return decorCaveDrawn;
+}
+for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "createWall", "updateWall", "deleteWall", "createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "updateScene", "updateSetting"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) decorCaveDrawn = null; });
+Hooks.on("canvasTearDown", () => { decorCaveDrawn = null; });
 const rebuildCavern = () => {
   cavern.clear(); webs.clear();
+  decorCaveDrawn = null;
   const had = lavaPolygons.length; lavaPolygons = [];
   if (!canvas?.ready) return;
   const grid = canvas.grid.size, walls = wallsHere(), parts = cavernRegions(), seed = canvas.scene?.id ?? "cave";
@@ -4120,12 +4148,11 @@ const rebuildCavern = () => {
   lavaPolygons = lava.flatMap((p) => p.areas);
   const webAreas = [...of("webs", "caveWebs").flatMap((p) => p.areas), ...(bothSettingsOn("caveWebs") ? decor.webs : [])];
   // Every corner laid out with the broken cobwebs' areas too (one seeded stream runs through them all), then their webs left
-  // out: breaking one web never moves, adds or lengthens another, and every screen draws the same ones.
-  const gone = bothSettingsOn("caveWebs") ? decor.websGone ?? [] : [], laid = webAreas.length || gone.length ? webCorners({ walls, areas: [...webAreas, ...gone], grid, seed, floor }) : [];
+  // out: breaking one web never moves, adds or lengthens another. On the floor the scene's own lamps reach (not this
+  // screen's sparks and dust), so every screen that draws webs lays out the same corners, those decorCaveNow breaks.
+  const gone = bothSettingsOn("caveWebs") ? decor.websGone ?? [] : [], laid = webAreas.length || gone.length ? webCorners({ walls, areas: [...webAreas, ...gone], grid, seed, floor: lightFloor(caveLightShapes()) }) : [];
   const corners = keptWebCorners(laid, { keep: webAreas, gone, grid });
   if (webAreas.length) webs.build({ corners, grid, seed });
-  // What of the decorations underground is drawn, for which of them can break (decor-break.mjs decorDrawn).
-  decorCaveDrawn = { sceneId: canvas.scene?.id ?? null, crystals: bothSettingsOn("caveCrystals"), webs: bothSettingsOn("caveWebs") ? corners : [] };
   // The underground's wear: wet walls, steam, bad air, soot over the wall torches, the rubble of cave-ins.
   try {
     const deep = undergroundScene(), flat = (kind, setting) => of(kind, setting).flatMap((p) => p.areas);
@@ -7942,10 +7969,11 @@ function decorViews(scene, levels) {
   if (!propsOn(scene) || !regionStepsOn()) return [];
   return tilesOnLevel(decorTargets(decorRegionsOf(scene, { breaking: true }), propGrid(scene), decorIndex, decorDrawnOn(scene)), levels);
 }
-// Whether a decoration is drawn on this scene's map (decorDrawn): an underground crystal while the cavern draws crystals,
-// a cobweb where the web engine drew a web. A scene this screen is not viewing is unknown, left to the rules.
+// Whether a decoration is drawn on this scene's map (decorDrawn): an underground crystal while the world draws cave
+// crystals, a cobweb where the web layout every screen shares hangs a web (decorCaveNow). A scene this screen is not
+// viewing is unknown, left to the rules.
 const decorDrawnOn = (scene) => {
-  const cave = decorCaveDrawn?.sceneId && decorCaveDrawn.sceneId === scene?.id ? decorCaveDrawn : {}, grid = propGrid(scene);
+  const cave = (scene?.id && scene.id === canvas?.scene?.id ? decorCaveNow() : null) ?? {}, grid = propGrid(scene);
   return (view) => decorDrawn(view, { crystals: cave.crystals, webs: cave.webs, grid });
 };
 // The look the painter painted a decoration with (snow is baked on separately), so a wreck is cut from that very picture.
@@ -8012,9 +8040,11 @@ function syncDecorWrecks(animate = false) {
     void decorWreckage.show(tile, note, decorContents(view), { animate: playing });
   }
 }
-// Underground, crystals and cobwebs are drawn by the cavern and the webs (decorations.cavern()), which a quiet break or
-// repair write does not rebuild: built again so a broken one leaves them and a repaired one comes back.
-const decorCaveFollows = (regionDoc) => { if (regionDoc?.flags?.[ID]?.decor?.where === "cave") propSafe("decor cavern", () => rebuildCavern()); };
+// The painting follows a break, a refusal or a stored write, once a frame however many come together (a fireball over
+// a dozen crates): one painter rebuild, and for a region underground one cavern rebuild (it repaints too), since crystals
+// and cobwebs there are drawn by the cavern and the webs (decorations.cavern()), which a quiet write does not rebuild.
+const decorRedraw = createDecorRedraw({ redraw: ({ cave }) => propSafe("decor redraw", () => (cave ? rebuildCavern() : syncDecorations())) });
+const decorRedrawSoon = (regionId, doc = canvas?.scene?.regions?.get(regionId)) => decorRedraw.soon(regionId, { cave: doc?.flags?.[ID]?.decor?.where === "cave" });
 // Broken on this screen the moment it is asked: the decoration goes and its wreck plays. It comes back if the GM never writes it.
 function breakDecorHere(regionDoc, view, note) {
   if (regionDoc?.parent !== canvas?.scene || !regionStepsOn() || !regionsHere().some((r) => r.id === regionDoc.id)) return;
@@ -8024,7 +8054,7 @@ function breakDecorHere(regionDoc, view, note) {
   forgetDecorPending(id); forgetDecorLate(id);
   decorPending.set(id, note.seed);
   decorPendingTimers.set(id, setTimeout(() => refuseDecorHere(id), PROP_REFUSED_MS));
-  syncDecorations(); decorCaveFollows(regionDoc);
+  decorRedrawSoon(regionDoc.id, regionDoc);
   // Not drawn yet as stored: the stored write settles it (decorWreckChanges).
   decorWrecksShown.delete(id);
   const tile = decorWreckOf(view, region.settings);
@@ -8036,15 +8066,24 @@ function refuseDecorHere(id) {
   const seed = decorPending.get(id);
   forgetDecorPending(id);
   if (!decorWrecksShown.has(id)) decorWreckage.hide(id);
-  propSafe("decor refused", () => syncDecorations());
-  decorCaveFollows(canvas?.scene?.regions?.get(id.split(":")[1]));
+  decorRedrawSoon(id.split(":")[1]);
   forgetDecorLate(id);
   decorLate.set(id, seed);
   decorLateTimers.set(id, setTimeout(() => forgetDecorLate(id), PROP_LATE_MS));
 }
 // The GM's writes, one per region a tick: the stored live breaks with the checked adds (decorBrokenAfter). A region
 // gone, or no longer holding decorations, writes nothing.
+// Repair holds the writes (final review M1): it waits for those in flight (so it sees and clears them), and a write that
+// comes while it runs waits for it (so it never writes back what Repair cleared).
+let decorRepairHold = Promise.resolve();
+const holdDecorWrites = async (fn) => {
+  await decorQueue.idle();
+  let release = () => {};
+  decorRepairHold = new Promise((done) => { release = done; });
+  try { return await fn(); } finally { release(); }
+};
 const decorQueue = createDecorQueue({ trace: (m) => runtime?.trace("props", m), write: async (regionDoc, adds) => {
+  await decorRepairHold;
   const scene = regionDoc?.parent, region = scene?.regions?.get(regionDoc.id) ? decorRegionOf(regionDoc) : null;
   if (!region) return false;
   const { keys } = decorIndex(region, propGrid(scene)), stored = readDecorBroken(region.broken);
@@ -8102,6 +8141,8 @@ async function applyDecorBreak(scene, regionDoc, key, cause, rawNote, user) {
       if (rubble) await deletePropRegions(scene, [rubble.id]);
       return false;
     }
+    // An edit that landed while the write was in flight left its toppled entries to it (final review M7).
+    void pruneToppledDecor(regionDoc).catch((e) => runtime?.trace("props", `decor prune: ${e?.message ?? e}`));
     if (check.fall) void whisperTopple(scene, { name: DECOR_NAMES[entry.kind], levels: [...region.levels] }, check.fall).catch((e) => runtime?.trace("props", `topple whisper: ${e?.message ?? e}`));
     return true;
   } finally { decorWriting.delete(held); }
@@ -8117,11 +8158,13 @@ async function receiveDecorBreak(data, senderId) {
 async function repairDecorRegion(regionDoc) {
   const scene = regionDoc?.parent;
   if (!game.user?.isGM || !scene) return 0;
-  const stored = regionDoc.flags?.[ID]?.decorBroken, cleared = Array.isArray(stored) ? stored.length : 0;
-  const { update, deleteRegions } = decorRegionRepair({ id: regionDoc.id, flags: regionDoc.flags ?? {} }, sceneRegions(scene));
-  if (update) { const { _id, ...change } = withDeletes(update, propDel()); await regionDoc.update(change, { animater: { decorRepair: true } }); }
-  if (deleteRegions.length) await deletePropRegions(scene, deleteRegions);
-  return cleared;
+  return holdDecorWrites(async () => {
+    const stored = regionDoc.flags?.[ID]?.decorBroken, cleared = Array.isArray(stored) ? stored.length : 0;
+    const { update, deleteRegions } = decorRegionRepair({ id: regionDoc.id, flags: regionDoc.flags ?? {} }, sceneRegions(scene));
+    if (update) { const { _id, ...change } = withDeletes(update, propDel()); await regionDoc.update(change, { animater: { decorRepair: true } }); }
+    if (deleteRegions.length) await deletePropRegions(scene, deleteRegions);
+    return cleared;
+  });
 }
 // The region panel's Repair decorations: the GM confirms, then the region's decorations are whole again.
 let decorRepairAsking = false;
@@ -8272,8 +8315,10 @@ async function repairAllProps(scene = canvas?.scene) {
   const wallFixes = mergeWallFixes(r.walls, wallRepairUpdates(walls));
   if (r.tiles.length) await scene.updateEmbeddedDocuments("Tile", r.tiles.map((t) => withDeletes(t, del)));
   // Every region's broken decorations too, in one region batch (their rubble goes with every prop's, below).
-  const decorFixes = decorRepairUpdates(sceneRegions(scene));
-  if (decorFixes.length) await scene.updateEmbeddedDocuments("Region", decorFixes.map((u) => withDeletes(u, del)), { animater: { decorRepair: true } });
+  await holdDecorWrites(async () => {
+    const decorFixes = decorRepairUpdates(sceneRegions(scene));
+    if (decorFixes.length) await scene.updateEmbeddedDocuments("Region", decorFixes.map((u) => withDeletes(u, del)), { animater: { decorRepair: true } });
+  });
   if (wallFixes.length) await scene.updateEmbeddedDocuments("Wall", wallFixes.map((w) => withDeletes(w, del)), { animater: { wallRepair: true }, sound: false });
   if (r.lights.length) await scene.updateEmbeddedDocuments("AmbientLight", r.lights).catch((e) => runtime?.trace("props", `lights not relit: ${e?.message ?? e}`));
   for (const t of r.tiles) forgetPropFire(t._id);
@@ -8561,11 +8606,11 @@ const propMiss = (event) => { void propSafe("miss", () => breakPropOnMiss(event)
 // the GM will let it break with the mover standing at a (slamPlausible). None while the scene's props cannot break or
 // no GM could write them.
 const moverSize = (doc) => Math.max(doc?.width ?? 1, doc?.height ?? 1);
-function slamProps(doc, a, b) {
+function slamProps(doc, a, b, { decor = true } = {}) {
   const scene = doc?.parent;
   if (!propsOn(scene) || !game.users.activeGM || ![a?.x, a?.y, b?.x, b?.y].every(Number.isFinite) || (a.x === b.x && a.y === b.y)) return [];
   const grid = propGrid(scene), path = { from: a, to: b }, mover = { x: a.x, y: a.y, size: moverSize(doc) };
-  return propsOnPath([a, b], mover.size, [...tilesOnLevel(scene.tiles.contents.map(propTileView), doc.level), ...decorViews(scene, doc.level)], grid).filter((t) => slamPlausible(t, path, mover, grid));
+  return propsOnPath([a, b], mover.size, [...tilesOnLevel(scene.tiles.contents.map(propTileView), doc.level), ...(decor ? decorViews(scene, doc.level) : [])], grid).filter((t) => slamPlausible(t, path, mover, grid));
 }
 // A forced move's breakable doors (wall documents): those a mover of its size crosses from a to b (centres), on its
 // level, in path order, when the GM will take this client's word for the slam (slamSenderOk) and the path is not too
@@ -8589,7 +8634,8 @@ const doorAsTile = (doc) => { const m = wallMid(doc); return { id: doc.id, x: m.
 // doors; a window still stops the mover at its frame). Any other prop's walls still stop it.
 function slamWalls(doc, a, b) {
   const scene = doc?.parent, grid = propGrid(scene), walls = scene?.walls?.contents ?? [];
-  const ids = new Set(slamProps(doc, a, b).filter((t) => !t.decor).flatMap((t) => ownWalls(t, walls, grid).map((w) => w.id)));
+  // Decorations own no walls: not even worked out (this runs on every pointer move of a Push or Pull).
+  const ids = new Set(slamProps(doc, a, b, { decor: false }).filter((t) => !t.decor).flatMap((t) => ownWalls(t, walls, grid).map((w) => w.id)));
   for (const w of slamDoors(doc, a, b)) if (wallTraits(wallView(w), scene).kind === "door") ids.add(w.id);
   return ids;
 }
@@ -8665,8 +8711,9 @@ Hooks.on("canvasTearDown", () => {
 const decorFlagsChanged = (changes) => Object.keys(changes?.flags?.[ID] ?? {}).some((k) => /^(-=)?decor(Broken)?$/.test(k));
 Hooks.on("updateRegion", (doc, changes, options) => { propSafe("decor region", () => {
   if (doc.parent !== canvas?.scene || !(decorFlagsChanged(changes) || "shapes" in (changes ?? {}) || "levels" in (changes ?? {}))) return;
-  syncDecorations(); syncDecorWrecks(options?.animater?.decorBreak === true);
-  if (decorOnlySave(changes, options)) decorCaveFollows(doc);
+  // A break or repair write repaints with the others of its frame; an edit at once (the cavern follows it with the scene).
+  if (decorOnlySave(changes, options)) decorRedrawSoon(doc.id, doc); else syncDecorations();
+  syncDecorWrecks(options?.animater?.decorBreak === true);
 }); });
 // An edit that moved a toppled decoration (GM): its stale entry and its rubble go at once, so a whole stalagmite never
 // stands on difficult rubble. Other stale breaks stay until the next break write or Repair (undoing the edit brings them
@@ -8685,7 +8732,7 @@ Hooks.on("updateRegion", (doc, changes, options) => {
   if (decorOnlySave(changes, options) || !(decorFlagsChanged(changes) || "shapes" in (changes ?? {}))) return;
   void pruneToppledDecor(doc).catch((e) => runtime?.trace("props", `decor prune: ${e?.message ?? e}`));
 });
-Hooks.on("deleteRegion", (doc) => { propSafe("decor region gone", () => decorRegionGone(doc)); });
+Hooks.on("deleteRegion", (doc) => { decorIndex.forget(doc.id); propSafe("decor region gone", () => decorRegionGone(doc)); });
 // A decoration region brought back (an undone delete) with its breaks: their wrecks too.
 Hooks.on("createRegion", (doc) => { if (doc.parent === canvas?.scene && doc.flags?.[ID]?.decorBroken) propSafe("decor wrecks", () => syncDecorWrecks(false)); });
 Hooks.on("canvasReady", () => { propSafe("decor wrecks", () => syncDecorWrecks(false)); });
@@ -8695,7 +8742,7 @@ Hooks.on("clientSettingChanged", (key) => { if (/\.regionSteps(Local)?$/.test(St
 Hooks.on("canvasTearDown", () => {
   for (const t of [...decorPendingTimers.values(), ...decorLateTimers.values()]) clearTimeout(t);
   decorPendingTimers.clear(); decorLateTimers.clear();
-  decorWrecksShown.clear(); decorPending.clear(); decorLate.clear(); decorWreckage.clear();
+  decorWrecksShown.clear(); decorPending.clear(); decorLate.clear(); decorWreckage.clear(); decorIndex.clear();
 });
 // A broken door: the GM's break write is drawn on every screen (once: not again where it was asked). The GM's own edit
 // of its door type or restrictions forgets its note, so its wreck goes and Repair never undoes that edit.
@@ -11917,18 +11964,24 @@ Hooks.once("ready", () => {
         return requestWallBreak(doc, { kind: "area", damageType: "bludgeoning", at: side, ...cause }, { from: cause.at ?? side });
       },
       repairProps: () => repairAllProps(canvas?.scene),
-      // GM: break a region's decoration (a key from decorKeys) as a bludgeoning area at its centre would (both switches still
-      // apply); and the region's breakable decorations, with their keys.
+      // Break a region's decoration (a key from decorKeys) as a bludgeoning area at its centre would (both switches still
+      // apply; a player's is asked of the GM, who checks it as any other); the region's breakable decorations, with their
+      // keys; and the keys this screen lets break now (drawn, not broken: decorBreakable).
       breakDecor: (regionId, key, cause = {}) => {
         const doc = canvas?.scene?.regions?.get(regionId), region = doc ? decorRegionOf(doc) : null;
         const view = region ? decorIndex(region, propGrid(canvas.scene)).views.find((v) => v.decor.key === key) : null;
-        if (!game.user?.isGM || !view) return false;
+        if (!view) return false;
         return requestDecorBreak(doc, key, { kind: "area", damageType: "bludgeoning", at: { x: view.decor.d.x, y: view.decor.d.y }, ...cause });
       },
       decorKeys: (regionId) => {
         const doc = canvas?.scene?.regions?.get(regionId), region = doc ? decorRegionOf(doc) : null;
-        if (!game.user?.isGM || !region) return [];
+        if (!region) return [];
         return decorIndex(region, propGrid(canvas.scene)).views.map((v) => ({ key: v.decor.key, kind: v.decor.kind, x: Math.round(v.decor.d.x), y: Math.round(v.decor.d.y) }));
+      },
+      decorBreakable: (regionId) => {
+        const doc = canvas?.scene?.regions?.get(regionId), region = doc ? decorRegionOf(doc) : null, scene = canvas?.scene;
+        if (!region || !scene) return [];
+        return decorTargets([region], propGrid(scene), decorIndex, decorDrawnOn(scene)).map((v) => v.decor.key).sort();
       },
       // The Tokenshade looks on a token, by their key (region:, nature:, lit:, weather:, a lasting state's...).
       tokenLooks: (token) => {

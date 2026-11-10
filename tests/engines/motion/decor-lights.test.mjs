@@ -54,16 +54,19 @@ test('a broken brazier or street lamp has no light while broken; repaired, it is
   const ctx = () => { const p = new Proxy(function () {}, { get: (t, k) => (k === 'data' ? new Uint8ClampedArray(64) : p), set: () => true, apply: () => p }); return p; };
   const make = (w, h) => ({ width: w, height: h, getContext: () => ctx() });
   const layer = () => new Container(), deco = createDecorations({ PIXI, shadows: layer, ground: layer, above: layer, make });
-  const brushed = [{ kind: 'brazier', x: 200, y: 200, size: 0.8, turn: 0, seed: 1 }, { kind: 'brazier', x: 600, y: 600, size: 0.8, turn: 0, seed: 2 }];
+  const brushed = [{ kind: 'brazier', x: 200, y: 200, size: 0.8, turn: 0, seed: 1 }, { kind: 'brazier', x: 600, y: 600, size: 0.8, turn: 0, seed: 2 }, { kind: 'lampPost', x: 800, y: 300, size: 1, turn: 0, seed: 4 }];
   const region = { id: 'R1', settings: decorSettings({ on: true, where: 'town', seed: 3, density: 0, kinds: {}, brushed }), areas: [[0, 0, 1000, 0, 1000, 1000, 0, 1000]], look: {} };
   const keys = decorKeyed(region, 100).map((k) => k.key);
   deco.sync([region]);
   const lit = () => deco.lights().map((l) => [Math.round(l.x), Math.round(l.y)]);
-  assert.deepEqual(lit(), [[200, 200], [600, 600]]);
+  assert.deepEqual(lit(), [[200, 200], [600, 600], [800, 300]]);
   const ids = deco.lights().map((l) => l.id);
   deco.sync([{ ...region, broken: [keys[0]] }]);
-  assert.deepEqual(lit(), [[600, 600]]);
-  assert.deepEqual(deco.lights().map((l) => l.id), [ids[1]], 'the others keep their ids');
-  deco.sync([region]);
+  assert.deepEqual(lit(), [[600, 600], [800, 300]]);
+  assert.deepEqual(deco.lights().map((l) => l.id), [ids[1], ids[2]], 'the others keep their ids');
+  // A broken street lamp's light goes out the same way (Roi, 2026-11-10).
+  deco.sync([{ ...region, broken: [keys[2]] }]);
   assert.deepEqual(lit(), [[200, 200], [600, 600]]);
+  deco.sync([region]);
+  assert.deepEqual(lit(), [[200, 200], [600, 600], [800, 300]]);
 });

@@ -4,6 +4,7 @@
 
 import { CAVERN_KINDS, decorPlacements, DECOR_MOST } from "../motion/decor-regions.mjs";
 import { DECOR_KINDS, hashText } from "../motion/decor-paint.mjs";
+import { webCorners } from "../motion/webs.mjs";
 import { readNote } from "./prop-break.mjs";
 import { validBreakRequest } from "./prop-requests.mjs";
 
@@ -26,9 +27,13 @@ export const DECOR_BREAKS = Object.freeze({
   brazier: ENTRY("metal", "shatter", { tips: true }), cage: ENTRY("wood", "shatter", { boxy: true }),
   haystack: ENTRY("plant", "burn"), tent: ENTRY("plant", "burn"), bedroll: ENTRY("plant", "burn"), beehive: ENTRY("plant", "burn"), nest: ENTRY("plant", "burn"),
   sacks: ENTRY("plant", "burn", { contents: "grain", rule: "torn" }), candles: ENTRY("wood", "shatter", { rule: "any" }),
+  // Roi's extra kinds (2026-11-10). A street lamp's light goes out while it lies broken (decorations.lights() leaves it out);
+  // its name would read as a lantern's oil to spill, and it spills none.
+  lampPost: ENTRY("metal", "topple", { rule: "heavy", contents: "none" }), tableStools: ENTRY("wood", "collapse"), marketStall: ENTRY("wood", "collapse", { boxy: true }),
+  stakeFence: ENTRY("wood", "collapse"), strawBed: ENTRY("plant", "burn"),
 });
 /** What the topple whisper calls a toppled decoration. */
-export const DECOR_NAMES = Object.freeze({ stalagmite: "A stalagmite", column: "A rock column", signpost: "A signpost", tombstone: "A gravestone" });
+export const DECOR_NAMES = Object.freeze({ stalagmite: "A stalagmite", column: "A rock column", signpost: "A signpost", tombstone: "A gravestone", lampPost: "A street lamp" });
 
 const px = (n) => Math.round(n);
 // An area's holes are an array property, which JSON.stringify of the areas array drops: write them out.
@@ -85,6 +90,53 @@ export function decorDrawn(view, { crystals, webs, grid = 100 } = {}) {
   return webs.some((c) => insideRing({ x: c.x + (c.u[0] + c.v[0]) * grid * 0.25, y: c.y + (c.u[1] + c.v[1]) * grid * 0.25 }, ring));
 }
 
+// A flat polygon [x0, y0, x1, y1, ...] holds a point (ray cast).
+const insideFlat = ({ x, y }, p) => { let on = false; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > y) !== (p[j + 1] > y) && x < ((p[j] - p[i]) * (y - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) on = !on; return on; };
+/**
+ * Underground floor, not the rock between the rooms: inside some light's shape (flat polygons, one per light; null for a
+ * light with none). No lights at all: floor everywhere. Built from the scene's own lights, so it is the same on every screen.
+ */
+export const lightFloor = (shapes = []) => (pt) => !shapes.length || shapes.some((s) => Array.isArray(s) && s.length >= 6 && insideFlat(pt, s));
+// A cobweb's area as the cavern feed hands it to the webs (decorations.mjs cavern(): a 12-point ring, flat).
+const webRing = (d, grid) => { const r = d.size * grid * 1.2; return Array.from({ length: 12 }, (_, i) => [d.x + Math.cos((i / 12) * 6.283) * r, d.y + Math.sin((i / 12) * 6.283) * r]).flat(); };
+/**
+ * What of the decorations underground can break (pure), for decorDrawn: { crystals, webs }. Worked out from what every
+ * screen shares, as if drawn at full quality with every underground feature on: the world's Cave crystals and Cave webs
+ * switches (`setting(key)` reads only those two), the webs regions' areas (`webAreas`), every cobweb of the cave decoration
+ * regions (`decorRegions`, broken or not, so a break never moves another web), the walls, and the floor the scene's
+ * lights reach (`lights`, lightFloor). Never a screen's Quality, its own switches or its sparks and dust: a screen that
+ * draws less only has nothing to hide where it draws nothing.
+ */
+export function decorCaveBreakable({ setting = () => undefined, webAreas = [], decorRegions = [], walls = [], lights = [], grid = 100, seed = "cave", index = decorIndex } = {}) {
+  const world = (key) => { try { return setting(key) !== false; } catch { return true; } };
+  const crystals = world("caveCrystals");
+  if (!world("caveWebs")) return { crystals, webs: [] };
+  const areas = [...webAreas];
+  for (const r of decorRegions) {
+    if ((r?.settings?.where ?? "surface") !== "cave") continue;
+    for (const { d } of index(r, grid).keyed) if (CAVERN_KINDS[d.kind] === "webs") areas.push(webRing(d, grid));
+  }
+  return { crystals, webs: areas.length ? webCorners({ walls, areas, grid, seed, floor: lightFloor(lights) }) : [] };
+}
+
+/**
+ * Many decoration breaks at once repaint once (pure; the frame is handed in). soon(regionId, { cave }) asks for the painter
+ * (and, for a region underground, the cavern) to be rebuilt; on the next frame one redraw({ regions, cave }) rebuilds
+ * every region asked for, the cavern once if any was underground. A redraw that throws never stops the next one.
+ */
+export function createDecorRedraw({ redraw, later = (fn) => setTimeout(fn, 16) } = {}) {
+  let regions = new Set(), cave = false, timed = false;
+  return {
+    soon(id, { cave: under = false } = {}) {
+      regions.add(id); if (under) cave = true;
+      if (timed) return;
+      timed = true;
+      later(() => { const what = { regions, cave }; regions = new Set(); cave = false; timed = false; redraw(what); });
+    },
+    get waiting() { return timed; },
+  };
+}
+
 /** The stored breaks that are well formed (pure): a key, a breakable kind, a place and a note the rules accept. */
 export function readDecorBroken(raw) {
   if (!Array.isArray(raw)) return [];
@@ -104,7 +156,7 @@ export const liveBroken = (entries, keys) => entries.filter((e) => keys.has(e.ke
 /** A memo of each region's keyed placements and views, rebuilt only when what moves them changes (canBreak never does). */
 export function createDecorIndex() {
   const memo = new Map();
-  return (region, grid) => {
+  const index = (region, grid) => {
     const { canBreak: _off, ...moves } = region.settings ?? {};
     const sig = JSON.stringify([moves, areasOf(region.areas), grid, region.levels]);
     const hit = memo.get(region.id); if (hit?.sig === sig) return hit.value;
@@ -113,6 +165,10 @@ export function createDecorIndex() {
     memo.set(region.id, { sig, value });
     return value;
   };
+  // A region deleted, or the canvas torn down: what it remembered goes.
+  index.forget = (id) => memo.delete(id);
+  index.clear = () => memo.clear();
+  return index;
 }
 
 /**
@@ -198,10 +254,14 @@ export function decorWreckChanges({ shown, wanted, pending, late, animate } = {}
  * add(id, entry, target) queues an entry; on the next tick one write(target, entries) carries every entry queued for
  * that region, to the target last handed in. A region's next write waits for the one in flight, so each reads the
  * stored breaks the last one left. keys(id) are the queued and in-flight keys, kept until their write resolves.
- * add resolves true once its write landed, false when the write threw (traced) or returned false.
+ * add resolves true once its write landed, false when the write threw (traced) or returned false. idle(id) resolves once
+ * that region (no id: every region) has nothing queued or in flight, so Repair reads what the writes left.
  */
 export function createDecorQueue({ write, later = (fn) => setTimeout(fn, 0), trace = () => {} } = {}) {
   const regions = new Map(); // id -> { target, queued: [{ entry, done }], flying: [...], busy, timed }
+  let waiters = []; // [{ id, done }]: idle() calls waiting
+  const busy = (id) => (id == null ? regions.size > 0 : regions.has(id));
+  const wake = () => { const still = []; for (const w of waiters) if (busy(w.id)) still.push(w); else w.done(); waiters = still; };
   const of = (id) => { let r = regions.get(id); if (!r) { r = { target: null, queued: [], flying: [], busy: false, timed: false }; regions.set(id, r); } return r; };
   const plan = (id, r) => { if (r.timed || r.busy || !r.queued.length) return; r.timed = true; later(() => { r.timed = false; void flush(id, r); }); };
   async function flush(id, r) {
@@ -214,10 +274,12 @@ export function createDecorQueue({ write, later = (fn) => setTimeout(fn, 0), tra
     r.flying = []; r.busy = false;
     if (r.queued.length) plan(id, r); else if (regions.get(id) === r) regions.delete(id);
     for (const q of done) q.done(ok);
+    wake();
   }
   return {
     add(id, entry, target) { const r = of(id); r.target = target; return new Promise((done) => { r.queued.push({ entry, done }); plan(id, r); }); },
     keys(id) { const r = regions.get(id); return r ? [...r.flying, ...r.queued].map((q) => q.entry.key) : []; },
+    idle(id) { return busy(id) ? new Promise((done) => waiters.push({ id, done })) : Promise.resolve(); },
   };
 }
 

@@ -36,10 +36,39 @@ test("the approved map: material, style, shape and contents of each new kind", (
   assert.equal(traits(view("brazier")).tips, true); assert.equal(traits(view("cage")).tips, false);
   // Never break: the ground, the already broken, the too big or too heavy, and kinds the map left out.
   for (const k of ["well", "cobbles", "burrow", "anthill", "carcass", "feathers", "tracks", "rails", "pickaxe", "chains", "treasure", "papers", "bloodstain", "anvil", "timbers", "pump", "rubbish",
-    "brokenPillar", "boneRubble", "strawBed", "stakeFence", "tableStools", "marketStall", "lampPost"]) assert.equal(view(k), null, k);
+    "brokenPillar", "boneRubble"]) assert.equal(view(k), null, k);
   // Every kind that is offered and listed breaks as a real decoration kind.
   for (const k of ["fence", "sacks", "tombstone", "sarcophagus", "coffin", "cage", "urns", "produce", "tent", "washtub", "trough", "planter", "bench", "bedroll", "brazier", "haystack"]) assert.ok(DECOR_KINDS[k], k);
   assert.equal(DECOR_NAMES.signpost, "A signpost"); assert.equal(DECOR_NAMES.tombstone, "A gravestone");
+});
+
+test("Roi's extra kinds (2026-11-10): street lamps, tables, market stalls, stake fences and straw beds", () => {
+  const want = {
+    lampPost: ["metal", "topple", "round", "none"], tableStools: ["wood", "collapse", "boxy", "none"], marketStall: ["wood", "collapse", "boxy", "none"],
+    stakeFence: ["wood", "collapse", "round", "none"], strawBed: ["plant", "burn", "round", "none"],
+  };
+  for (const [kind, [material, style, shape, contents]] of Object.entries(want)) {
+    const v = view(kind), t = traits(v);
+    assert.ok(DECOR_KINDS[kind], kind + " is a placeable kind");
+    assert.deepEqual([propMaterial(v, grid), t.style, propShape(v.texture.src), t.contents], [material, style, shape, contents], kind);
+  }
+  // A table collapses with its legs left standing; a stall and a stake fence fall flat.
+  assert.equal(traits(view("tableStools")).legs, true); assert.equal(traits(view("marketStall")).legs, false); assert.equal(traits(view("stakeFence")).legs, false);
+  for (const k of ["tableStools", "marketStall", "stakeFence"]) assert.deepEqual([breaks(view(k), hit("bludgeoning")), breaks(view(k), hit("fire")), breaks(view(k), { slam: { size: 1 } })], [true, true, true], k);
+  assert.equal(breakStyle(traits(view("tableStools")), hit("bludgeoning")), "collapse");
+  // A straw bed burns away; nothing else takes it.
+  const bed = view("strawBed");
+  assert.deepEqual([breaks(bed, hit("fire")), breaks(bed, hit("slashing")), breaks(bed, { slam: { size: 3 } })], [true, false, false]);
+  assert.equal(breakStyle(traits(bed), hit("fire")), "burn");
+  // A street lamp: iron on a post. Only force or a Large+ slam topples it; a club, acid or a small shove does not.
+  const lamp = view("lampPost");
+  assert.equal(traits(lamp).rule, "heavy"); assert.equal(traits(lamp).tips, false);
+  assert.deepEqual([breaks(lamp, hit("force")), breaks(lamp, hit("bludgeoning")), breaks(lamp, hit("acid")), breaks(lamp, { slam: { size: 1 } }), breaks(lamp, { slam: { size: 2 } }), breaks(lamp, { blast: true })], [true, false, false, false, true, true]);
+  assert.equal(breakStyle(traits(lamp), hit("force")), "topple"); assert.equal(breakStyle(traits(lamp), { slam: { size: 2 } }), "topple");
+  assert.equal(DECOR_NAMES.lampPost, "A street lamp");
+  assert.deepEqual(propsOnPath([{ x: 200, y: 500 }, { x: 800, y: 500 }], 1, [lamp], grid), [], "a Medium shove passes it by");
+  // Broken pillars and bones in rubble never break.
+  assert.equal(view("brokenPillar"), null); assert.equal(view("boneRubble"), null);
 });
 
 test("the rules the props lacked: sacks tear, candles fall to anything, a sarcophagus only to force", () => {
@@ -54,6 +83,7 @@ test("the rules the props lacked: sacks tear, candles fall to anything, a sarcop
   assert.equal(decorRuleBreaks("noSlam", hit("force")), true);
   assert.equal(decorRuleBreaks("noSlam", hit("bludgeoning")), false);
   assert.equal(decorRuleBreaks("noSlam", { slam: { size: 4 } }), false);
+  assert.deepEqual([decorRuleBreaks("heavy", hit("force")), decorRuleBreaks("heavy", hit("bludgeoning")), decorRuleBreaks("heavy", { slam: { size: 1 } }), decorRuleBreaks("heavy", { slam: { size: 2 } }), decorRuleBreaks("heavy", { blast: true })], [true, false, false, true, true]);
   assert.equal(decorRuleStyle("torn", hit("piercing")), "split"); assert.equal(decorRuleStyle("torn", hit("fire")), "burn"); assert.equal(decorRuleStyle("any", hit("fire")), null);
   // A tile never carries a rule: plant and stone keep their own.
   const tile = { x: 0, y: 0, width: 100, height: 100, texture: { src: "Sack.webp" }, flags: { animater: { prop: { material: "plant" } } } };
