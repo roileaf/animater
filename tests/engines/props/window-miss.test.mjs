@@ -164,3 +164,26 @@ test("a missed strike reaches windows by its weapon mode, thrown included", () =
   assert.match(body, /ranged === null\) return/);
   assert.doesNotMatch(body, /weaponMode !== "melee"/);
 });
+
+test("melee: a window the swing goes through, between the attacker and the target, breaks first", () => {
+  const between = win("between", [180, 200, 180, 300]); // across the line from the attacker (150, 250) to the target's middle
+  const behind = win("behind", [320, 220, 320, 280]);
+  assert.equal(windowNextToMiss(swing, [behind, between], scene(), 100, "bludgeoning", []).wall.id, "between");
+  assert.equal(windowNextToMiss(swing, [between], scene(), 100, "piercing", []).wall.id, "between");
+  assert.equal(windowBesideMiss(between, swing.attacker, swing.target, 100), true);
+  // off the swing's line and on the attacker's side: still never
+  const aside = win("aside", [100, 100, 140, 100]);
+  assert.equal(windowNextToMiss(swing, [aside], scene(), 100, "bludgeoning", []), null);
+  assert.equal(windowBesideMiss(aside, swing.attacker, swing.target, 100), false);
+  // not breakable by this damage, broken already, or another level: not picked
+  assert.equal(windowNextToMiss(swing, [win("gone", between.c, { flags: { animater: { breakWall: { window: true, broken: { seed: 1 } } } } })], scene(), 100, "bludgeoning", []), null);
+  assert.equal(windowNextToMiss(swing, [win("up", between.c, { levels: ["up"] })], scene(), 100, "bludgeoning", ["ground"]), null);
+});
+
+test("melee: a window the swing goes through beats a prop beside the target", () => {
+  const between = win("between", [180, 200, 180, 300]);
+  const barrel = { id: "barrel", x: 300, y: 200, width: 100, height: 100, levels: [], flags: {}, texture: { src: "barrel.webp" } };
+  const pick = nextToMiss(swing, { tiles: [barrel], walls: [between], scene: scene() }, 100, "bludgeoning");
+  assert.equal(pick?.type, "wall");
+  assert.equal(pick.wall.id, "between");
+});

@@ -438,10 +438,12 @@ test("6a: a ranged miss line must fit the shot: from the attacker, near the targ
 
 test("6b: a melee miss breaks a window beside its target, never on the attacker's side, by the same miss rules", () => {
   // the attacker at (350, 100) swings south at the target (325..375, 300..350); a window just past it at y = 380
-  const past = win({ id: "past", c: [300, 380, 400, 380] }), mine = win({ id: "mine", c: [300, 250, 400, 250] });
+  const past = win({ id: "past", c: [300, 380, 400, 380] }), mine = win({ id: "mine", c: [420, 230, 470, 230] }); // within a square of the target, but on the attacker's side and off the line
+  const through = win({ id: "through", c: [300, 250, 400, 250] });
   const swing = (outcome = "criticalFailure") => miss(outcome, "bludgeoning", null);
   assert.equal(validWallBreakRequest(missReq(past, swing()), missCtx(past)).ok, true);
-  assert.equal(validWallBreakRequest(missReq(mine, swing()), missCtx(mine)).why, "far"); // the attacker's side of the target
+  assert.equal(validWallBreakRequest(missReq(through, swing()), missCtx(through)).ok, true); // the swing goes through it
+  assert.equal(validWallBreakRequest(missReq(mine, swing()), missCtx(mine)).why, "far"); // the attacker's side, off the swing's line
   const away = win({ id: "away", c: [700, 380, 800, 380] });
   assert.equal(validWallBreakRequest(missReq(away, swing()), missCtx(away)).why, "far"); // more than a square from it
   // a plain miss by the scene's chance, rolled by the GM; glass rules

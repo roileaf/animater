@@ -70,8 +70,13 @@ export function windowOnLine(a, b, walls, scene, levels) {
 // A missed swing (melee) and the windows beside its target: attacker {x, y} centre, target {x, y, w, h} footprint.
 // A window counts by its middle: inside the target's footprint grown by a square, not on the target, and past the
 // target's near side (prop-pick missFrame: never on the attacker's side). The GM checks the same (windowBesideMiss).
+// A window the swing goes through also counts: one the line from the attacker to the target's middle crosses, between
+// them (a sword swung through the glass at a creature behind it).
+const targetMid = (t) => ({ x: t.x + t.w / 2, y: t.y + t.h / 2 });
+const inSwing = (wall, attacker, target) => crossesWall(attacker, targetMid(target), wall);
 export function windowBesideMiss(wall, attacker, target, grid = 100) {
   if (!finite(attacker) || ![target?.x, target?.y, target?.w, target?.h].every(Number.isFinite) || !Array.isArray(wall?.c)) return false;
+  if (inSwing(wall, attacker, target)) return true;
   const frame = missFrame(attacker, target, grid), mid = wallMid(wall);
   return frame.inRing(mid) && !frame.onTarget(mid) && !!frame.score(mid);
 }
@@ -80,17 +85,24 @@ export function windowBesideMiss(wall, attacker, target, grid = 100) {
 export function windowNextToMiss({ attacker, target }, walls, scene, grid, damageType, levels) {
   if (!finite(attacker) || ![target?.x, target?.y, target?.w, target?.h].every(Number.isFinite)) return null;
   const frame = missFrame(attacker, target, grid);
-  let best = null;
+  let best = null, through = null;
   for (const w of walls ?? []) {
     if (!reachable(w, scene, levels)) continue;
     const traits = wallTraits(w, scene);
     if (traits.kind !== "window" || !canBreakWall(traits, { damageType })) continue;
     const mid = wallMid(w);
+    // A window the swing goes through is hit before anything beside the target: the nearest to the attacker.
+    if (inSwing(w, attacker, target)) {
+      const d = Math.hypot(mid.x - attacker.x, mid.y - attacker.y);
+      if (!through || d < through.d) through = { wall: w, d };
+      continue;
+    }
     if (!frame.inRing(mid) || frame.onTarget(mid)) continue;
     const score = frame.score(mid);
     if (score && missBetter(score, best?.score)) best = { wall: w, score };
   }
-  return best;
+  // Scored as on the line at the target, so it also beats any prop beside the target (nextToMiss).
+  return through ? { wall: through.wall, score: { across: 0, toTarget: 0 } } : best;
 }
 // What a missed swing hits: the prop (propNextToMiss) or window (windowNextToMiss) beside the target nearest its line, a
 // prop on a tie. tiles and walls on the target's level already, or levels to pick them by. {type: "tile", tile},
