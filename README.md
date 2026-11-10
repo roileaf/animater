@@ -308,11 +308,21 @@ What happens to each kind of prop:
 - **Bushes**, **Ferns**, **Spiky plants** and **Reeds** are plants: only fire burns them away. A creature shoved through a bush leaves it standing.
 - **Cobwebs** burn from fire, and a slashing hit cuts them apart.
 - **Stalagmites** and **Rock columns** are stone: force, or a Large or bigger creature slammed into one, topples it along the hit. With **Rubble is difficult terrain** on, the fallen strip is difficult terrain, and the GM gets a whisper naming any tokens under it.
-- Every other kind (rocks, boulders, trees, stumps, logs, mushrooms, bones, mine timbers and the rest) never breaks.
+- **Coffins**, **Produce crates** and **Water troughs** are wood and break like boxes; **Washtubs** break round. Produce spills its goods, troughs and washtubs their water.
+- **Fences** and **Benches** are wood and collapse into their boards.
+- **Gravestones** are stone and topple like a stalagmite (force, or a Large or bigger creature).
+- **Urns** and **Planters** break like clay, from almost any damage; urns spill their grain.
+- **Sarcophagi** are stone too heavy to shove over: only force breaks one.
+- **Cages** are metal: bludgeoning, force or acid, or a Large or bigger creature shoved into one.
+- **Braziers** tip over from any shove, spilling their coals, and break like metal from damage. A broken or tipped brazier's light goes out until it is repaired.
+- **Hay bales**, **Tents** and **Bedrolls** burn away, from fire only.
+- **Sacks** tear open from a slashing or piercing hit and spill their grain; fire burns them. A club or a shove only thumps them.
+- Underground, cobwebs and crystals are drawn by the cave's webs and crystals: a cobweb breaks only where a web is drawn (in a corner against walls), and crystals only while the scene draws cave crystals.
+- Every other kind (rocks, boulders, trees, stumps, logs, mushrooms, bones, mine timbers, wells, paving, anvils, treasure, street lamps, tables, market stalls and the rest) never breaks.
 
 The wreck is cut from the decoration's own painting, and every screen sees the same one; after a reload it lies there settled and silent. Breaks are stored on the region. Turning the switch off stops new breaks, but the ones already made stay. The region panel's **Repair decorations** button (GM) puts back every broken decoration in that region and removes their rubble. **Repair broken props** puts back every region's decorations too.
 
-A scattered decoration is known by where it stands. Editing the region so its decorations move (its shape, **How dense**, **Size**, a kind's size or how many, ticking kinds, **Reshuffle**, or rubbing out with the brush) brings its decorations back whole. Undoing that edit brings the breaks back. Decorations you painted by hand keep their breaks for as long as they stay.
+A scattered decoration is known by where it stands. Editing the region so its decorations move (its shape, **How dense**, **Size**, a kind's size or how many, ticking kinds, **Reshuffle**, or rubbing out with the brush) brings its decorations back whole, and a toppled one's rubble goes with it. Undoing that edit brings the other breaks back. Decorations you painted by hand keep their breaks for as long as they stay.
 
 **Repair broken props** puts back everything: props, their walls, doors (locked ones locked again), windows, the lights that went out, broken decorations, and rubble regions; burning oil's lights go too.
 
