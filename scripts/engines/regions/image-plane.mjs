@@ -1,9 +1,3 @@
-// A region belongs to one picture, the map or a tile. The binding stores the outline
-// and which picture it came from. Elevation and the light and weather restrictions
-// stay on that picture and are read again on each query.
-
-// Alpha below this is a painted shadow or a clear pixel. RawImage.rgb() drops alpha,
-// so those pixels are also repainted before a model sees them.
 const SOLID_ALPHA = 200;
 const MATTE = 210;
 
@@ -59,7 +53,6 @@ function mapFor(planes, region) {
   return maps[0] ?? null;
 }
 
-// Null elevation is unbounded. A set bottom and top match only that span, inclusive.
 function legacyCovers(region, height) {
   const span = region?.elevation;
   if (span == null || (span.bottom == null && span.top == null)) return true;
@@ -153,7 +146,6 @@ function sourceId(id) {
   return { kind: "tile", tileId: id.tileId };
 }
 
-// Loops are stored against the picture, not the scene frame, so they still project after the tile moves.
 export function bindingFromProposal(plane, proposal, image) {
   const width = finite(image?.width);
   const height = finite(image?.height);
@@ -211,7 +203,6 @@ export function surfaceAt(point, { elevation = 0, regions = [], planes = [], con
     mapFloor = { floor: name, source: mapFor(planes, region) };
   }
 
-  // The deck is wood while the water region under the same point still exists.
   const chosen = tileFloor ?? mapFloor;
   return {
     floor: chosen?.floor ?? null,
@@ -228,8 +219,6 @@ function weatherSuppressed(region) {
   return false;
 }
 
-// A non-swimmer below a legacy dock is on that dock (the same test as onWhatStandsOver). The polygon test stays
-// flat, so the dock's bottom opens. An image-bound region keeps its plane, so this does not lift anyone onto the hull.
 export function regionsForSurface(regions, { elevation = 0, action = "", present = false } = {}) {
   const height = Number(elevation);
   const at = Number.isFinite(height) ? height : 0;
@@ -248,7 +237,6 @@ export function regionsForSurface(regions, { elevation = 0, action = "", present
   return list;
 }
 
-// An opening to the sky wins. A closed room keeps weather out, and so does an awning whose plane is above the query.
 export function weatherSheltered(point, { elevation = 0, regions = [], planes = [], contains, openToSky = false } = {}) {
   if (openToSky) return false;
   const height = elevation == null ? 0 : Number(elevation);
@@ -256,19 +244,18 @@ export function weatherSheltered(point, { elevation = 0, regions = [], planes = 
     try {
       if (!weatherSuppressed(region) || !hit(contains, region, point) || !legacyCovers(region, height)) continue;
       return true;
-    } catch { /* a broken region never breaks the weather */ }
+    } catch { }
   }
   return surfaceAt(point, { elevation, regions, planes, contains }).blocksWeather === true;
 }
 
-// Closed rooms only. An overhead plane is not a room, so it never erases the sun from the ground.
 export function indoorPolygonsOf(regions, polygonsOf) {
   const out = [];
   for (const region of regions ?? []) {
     try {
       if (!weatherSuppressed(region)) continue;
       for (const area of polygonsOf(region) ?? []) out.push(area);
-    } catch { /* a broken region never breaks the shadows */ }
+    } catch { }
   }
   return out;
 }

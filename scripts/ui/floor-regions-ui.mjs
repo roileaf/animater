@@ -430,7 +430,7 @@ export function choicesFromElement(root) {
     rows.push({
       id: row.dataset.id,
       checked: row.querySelector("[data-pick]")?.checked === true,
-      floor: row.hasAttribute?.("data-overhead") === true ? NO_FLOOR : floor === NO_FLOOR && row.hasAttribute?.("data-needs-floor") !== true ? "water" : floor, // no floor only on a cover, or a row asking for one
+      floor: row.hasAttribute?.("data-overhead") === true ? NO_FLOOR : floor === NO_FLOOR && row.hasAttribute?.("data-needs-floor") !== true ? "water" : floor,
       waterKind: row.querySelector("[data-kind]")?.value ?? row.dataset.kind ?? "still",
       flowTo: row.querySelector("[data-flow]")?.value ?? "",
       current: row.querySelector("[data-current]")?.value ?? "",
@@ -488,7 +488,6 @@ export function floorPictures({ levelId, sceneRect, backgroundSrc, tiles = [] } 
   });
 }
 
-// An island's share is its part of the cloth, not of the tile's rectangle.
 export function traceSolid(rgba, width, height) {
   const mask = solidMask(rgba, width, height);
   const proposals = traceProposals(mask, width, height);

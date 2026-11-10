@@ -1,9 +1,3 @@
-// Foundry draws canvas.primary by elevation, then sortLayer, then sort.
-// Tiles use sortLayer 500 and the tile document's sort. Map drawings stay under that,
-// so a bush still stands over blood on the ground. A floor tile's drawings use the
-// tile's elevation and sortLayer, and the document sort plus one, so they sit on that
-// tile and under an awning at a higher elevation. An overhead plane is not a floor.
-
 export const TILE_SORT_LAYER = 500;
 
 export const MAP_SORT = Object.freeze({
@@ -30,8 +24,6 @@ export function floorSlot(plane, kind) {
   return { elevation: null, sortLayer, sort: 0 };
 }
 
-// The floor tile a shadow is seen on. The caster's own tile is not one of those:
-// its shadow falls on what is below it. Nothing below it stays on the map.
 export function shadowFloor(casterElevation, casterTileId, floors) {
   const above = Number(casterElevation);
   if (!Number.isFinite(above)) return null;

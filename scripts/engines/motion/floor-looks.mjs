@@ -1087,7 +1087,6 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
         let mesh = null;
         try { mesh = paint(spec.areas, spec.floor, edge, style, useBlades, shineOn, null, spec); } catch (error) { console.warn('Animater | floor texture', error); }
         if (!mesh) continue;
-        // A new shape, edge, or parent shows at once; only a new floor fades in.
         const moved = held.some((mesh) => mesh.parent !== parent);
         if (!entry || moved || entry.shape !== shape || entry.edge !== edge || !(spec.seconds > 0)) { drop(entry?.old); drop(entry?.mesh); known.set(spec.id, { mesh, old: null, floor: spec.floor, style, shape, edge, useBlades, shineOn, seconds: 0 }); continue; }
         drop(entry.old);

@@ -1157,8 +1157,7 @@ const sceneFloorNow = () => {
     background: canvas.level?.background?.src ?? "",
   });
 };
-// Foundry's testPoint rejects a missing elevation, and a token elevation would apply the height twice.
-// The polygon tree is the flat test. surfaceAt applies the height, from the plane or the legacy span.
+// Foundry's testPoint returns false when the point has no elevation.
 const containsPlane = (region, point) => {
   const doc = region?.doc ?? region;
   try {
@@ -1213,7 +1212,7 @@ const movementFeelFloor = (point, token) => {
   try {
     regions = regionsForSurface(floorViews(), { elevation, action: token?.movementAction ?? "", present: !!token });
     ground = surfaceAt(point, { elevation, regions, planes: planesHere(), contains: containsPlane }).floor ?? base;
-  } catch { /* a broken region never breaks the floor */ }
+  } catch { }
   // "Spells change the floor": frost, acid, fire and blasts left on the ground change what the creature walks on.
   let floor = ground;
   if (movementFeelSettingOn("marksChangeFloor")) {
@@ -1340,7 +1339,6 @@ const flierLight = (t) => {
     const reaching = lightsReaching(t, { own: true });
     const lights = reaching.map((l) => { const one = lightAround(t.center, [l], 1); return one && { ...one, key: l.key, flicker: l.flicker }; })
       .filter(Boolean).sort((a, b) => b.shine - a.shine).slice(0, LIGHT_SHADOWS);
-    // Out of the sun under a closed room or an overhead plane that blocks light. Else in a wall's shade, no higher than the wall.
     const up = ((Number(t.document?.elevation) || 0) - (Number(canvas.level?.elevation?.bottom) || 0)) / (Number(canvas.grid?.distance) || 1);
     const elev = t.document?.elevation ?? 0;
     let blocked = false;
@@ -2302,7 +2300,6 @@ const floorLayer = (key, sortLayer) => {
 const ratRootOf = floorLayer("rats", 660), dripRootOf = floorLayer("drips", 646), smokeRootOf = floorLayer("roomSmoke", 760);
 // A region's steps (engines/motion/region-steps.mjs): the look on its floor, and the GM's menu on a right-click on the map.
 // The floor layers lie on the map under its tiles (tiles sort at 500), so a bush or a tree stands over blood on the ground.
-// A region traced on a floor tile asks root(spec) for a container on that tile. Callers that ignore the spec keep the map layer.
 const floorTileBoxes = new Map();
 const floorDrawRoot = (kind) => {
   const map = floorLayer(kind, MAP_SORT[kind]);
@@ -2314,7 +2311,6 @@ const floorDrawRoot = (kind) => {
     if (!box || box.destroyed) {
       box = new PIXI.Container();
       box.eventMode = "none";
-      // Child zIndex keeps textures under shadows under looks. It is not a Foundry key, so it does not climb over the next tile.
       box.sortableChildren = true;
       canvas.primary.addChild(box);
       floorTileBoxes.set(id, box);
@@ -2413,7 +2409,6 @@ const waterEngine = createWaterEngine({ PIXI: globalThis.PIXI, root: floorLayer(
 const floorShadows = createFloorShadows({ PIXI: globalThis.PIXI, root: floorDrawRoot("floorShadows"), edges: floorLayer("floorEdges", 406), grid: () => canvas.grid?.size ?? 100 });
 // Whether two sets of areas have boxes that overlap at all.
 const boxesMeet = (a, b) => { const box = (areas) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const area of areas) for (let i = 0; i + 1 < area.length; i += 2) { x0 = Math.min(x0, area[i]); x1 = Math.max(x1, area[i]); y0 = Math.min(y0, area[i + 1]); y1 = Math.max(y1, area[i + 1]); } return { x0, y0, x1, y1 }; }, p = box(a), q = box(b); return p.x0 < q.x1 && q.x0 < p.x1 && p.y0 < q.y1 && q.y0 < p.y1; };
-// The floor tile a shadow is seen on, or null when it stays on the map. A tile is not a surface for its own shadow.
 const shadowOn = (region, caster) => {
   const fromTile = caster?.id?.kind === "tile" ? Number(caster.elevation) : NaN;
   const fromRegion = Number(region?.elevation?.bottom);
@@ -2469,7 +2464,6 @@ const syncFloorShadows = (moving) => {
     try {
       const own = region.flags?.[ID], floor = plainFloorOf(region), caster = planeOfRegion(region);
       if (caster?.role === "overhead") {
-        // The cloth is not the floor, so the shade is not blocked out of the deck beneath it.
         if (own?.castShadow === false || (own?.castShadow !== true && caster.blocksLight !== true)) continue;
         const areas = regionAreas(region);
         if (roofedRegion(areas)) continue;
