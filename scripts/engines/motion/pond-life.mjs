@@ -99,6 +99,9 @@ export function duckStep(duck, { dt = 1 / 60, grid = 100, near = [], ok = () => 
   return q;
 }
 
+// Whether there is fresh water for a kind (pure): a spot of water that is not the sea and not kept from it. While there is,
+// the sea is not its water (ducks and frogs); with none, ducks wait on the sea for some.
+export const freshWaterFor = (waters = [], { sea = () => false, kept = () => false } = {}) => waters.some((p) => !sea(p) && !kept(p));
 // How many gulls (pure): only the sea has them, however wide a river or pond is.
 export const gullsOver = (seaSpots = [], many = 1) => (many > 0 && seaSpots.length ? 3 : 0);
 // One step of a gull (pure): glides about over the water in long loose lines and wide uneven turns, now and then hangs on the wind facing into it, and stays over its own stretch of water
@@ -248,14 +251,45 @@ function flying(span, c) {
     x.fillStyle = c.beak; x.beginPath(); x.moveTo(-1.6, -20); x.lineTo(0, -20 - c.bill); x.lineTo(1.6, -20); x.closePath(); x.fill();
   });
 }
-// A duck on the water, facing up: a drake or a mottled hen. feeding: tail up, head under, only the back above the water.
+// A duck tipped up to feed, from above, facing up: head and breast under the water ahead of it (dim through the surface,
+// a bright lip where it went in), the rump round and up toward us under the folded wings, the tail straight up (the
+// drake's white under-tail round its black curl, the hen's short brown fan), orange feet sculling behind. kick 0–1: the
+// feet's stroke (two frames alternate).
+function duckTipped(hen, kick) {
+  return picture(72, 72, (x) => {
+    const ink = 'rgba(25,22,18,0.5)';
+    x.save(); x.filter = 'blur(1.2px)'; x.globalAlpha = 0.5; x.fillStyle = hen ? '#4d4a3a' : '#24433c';
+    x.beginPath(); x.ellipse(0, -7, 6, 7.5, 0, 0, TAU); x.fill(); x.beginPath(); x.ellipse(0, -15, 3.4, 4, 0, 0, TAU); x.fill(); x.restore();
+    for (const s of [-1, 1]) {
+      const k = s > 0 ? kick : 1 - kick;
+      x.save(); x.translate(s * 4.6, 10.5); x.rotate(s * (0.35 + 0.55 * k)); x.fillStyle = '#e07a2a'; x.strokeStyle = ink; x.lineWidth = 0.6;
+      x.beginPath(); x.moveTo(0, 0); x.lineTo(s * 2.4, 6.5); x.quadraticCurveTo(0, 8.4, -s * 1.2, 6.8); x.closePath(); x.fill(); x.stroke(); x.restore();
+    }
+    x.fillStyle = 'rgba(200,225,228,0.28)'; x.beginPath(); x.ellipse(0, -1.5, 8.6, 3.6, 0, 0, TAU); x.fill();
+    x.strokeStyle = 'rgba(235,248,248,0.7)'; x.lineWidth = 1.1; x.beginPath(); x.ellipse(0, -1.5, 8.6, 3.6, 0, Math.PI, TAU); x.stroke();
+    const bg = x.createRadialGradient(-1.5, 3.5, 1, 0, 5, 10); bg.addColorStop(0, hen ? '#c0a27a' : '#d3cdc0'); bg.addColorStop(1, hen ? '#6e5639' : '#7f7a6e');
+    x.fillStyle = bg; x.strokeStyle = ink; x.lineWidth = 0.8; x.beginPath(); x.ellipse(0, 4.5, 8, 8.4, 0, 0, TAU); x.fill(); x.stroke();
+    for (const s of [-1, 1]) {
+      x.fillStyle = hen ? '#5f4a31' : '#6a6559'; x.beginPath(); x.moveTo(s * 2, -2.5); x.quadraticCurveTo(s * 8.4, 3.5, s * 1.6, 11.5); x.quadraticCurveTo(s * 1.2, 4, s * 2, -2.5); x.fill();
+      x.fillStyle = '#2f55a3'; x.beginPath(); x.ellipse(s * 5.6, 3, 1.1, 2.4, s * 0.3, 0, TAU); x.fill();
+    }
+    if (!hen) {
+      x.fillStyle = '#f1eee6'; x.strokeStyle = ink; x.beginPath(); x.ellipse(0, 10.5, 3.9, 3.4, 0, 0, TAU); x.fill(); x.stroke();
+      x.fillStyle = '#141311'; x.beginPath(); x.ellipse(0, 10.8, 2, 1.8, 0, 0, TAU); x.fill();
+      x.strokeStyle = '#141311'; x.lineWidth = 1.1; x.beginPath(); x.arc(0.4, 8.6, 1.4, Math.PI * 0.9, Math.PI * 2.1); x.stroke();
+    } else {
+      x.fillStyle = '#4e3d29'; x.strokeStyle = ink; x.beginPath(); x.moveTo(-3.6, 8.5); x.quadraticCurveTo(0, 15.5, 3.6, 8.5); x.quadraticCurveTo(0, 10.6, -3.6, 8.5); x.fill(); x.stroke();
+    }
+  });
+}
+// A duck on the water, facing up: a drake or a mottled hen (feeding: duckTipped).
 function duckOn(hen, feeding) {
+  if (feeding) return duckTipped(hen, 0.25);
   return picture(72, 72, (x) => {
     x.fillStyle = hen ? '#5a4731' : '#26241f'; x.beginPath(); x.moveTo(-5, 11); x.quadraticCurveTo(0, 22, 5, 11); x.closePath(); x.fill();
     if (!hen) { x.fillStyle = '#e8e6df'; x.beginPath(); x.ellipse(0, 12, 3.4, 3, 0, 0, TAU); x.fill(); }
     const bg = x.createRadialGradient(-2, 0, 1, 0, 2, 14); bg.addColorStop(0, hen ? '#a58a65' : '#b8b2a5'); bg.addColorStop(1, hen ? '#6e5639' : '#7f7a6e'); x.fillStyle = bg; x.beginPath(); x.ellipse(0, 2, 8.6, 13, 0, 0, TAU); x.fill();
     for (const s of [-1, 1]) { x.fillStyle = hen ? '#5f4a31' : '#6a6559'; x.beginPath(); x.moveTo(s * 3, -5); x.quadraticCurveTo(s * 9.5, 3, s * 3.4, 14); x.quadraticCurveTo(s * 1.8, 5, s * 3, -5); x.fill(); x.fillStyle = '#2f55a3'; x.beginPath(); x.ellipse(s * 6.2, 5, 1.1, 2.6, s * 0.3, 0, TAU); x.fill(); }
-    if (feeding) return;
     if (!hen) { x.fillStyle = '#6b3d24'; x.beginPath(); x.ellipse(0, -8, 6.6, 4.8, 0, 0, TAU); x.fill(); x.fillStyle = '#efece4'; x.beginPath(); x.ellipse(0, -12, 3.9, 1.1, 0, 0, TAU); x.fill(); }
     x.fillStyle = hen ? '#7b6243' : '#1f5a3c'; x.beginPath(); x.ellipse(0, -15.5, 4.3, 5, 0, 0, TAU); x.fill();
     x.fillStyle = hen ? '#a07b3a' : '#d0ac39'; x.beginPath(); x.moveTo(-2.1, -19.5); x.quadraticCurveTo(-2.3, -24, 0, -24.6); x.quadraticCurveTo(2.3, -24, 2.1, -19.5); x.closePath(); x.fill();
@@ -336,7 +370,9 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
     const painted = (set) => (restyle ? restyle('pond', set, '') : set);
     return (textures = painted({
       gull: SPANS.map((s) => tex(flying(s, GULL))), heronFly: SPANS.map((s) => tex(flying(s, HERON))), duckFly: SPANS.map((s) => tex(flying(s, DUCK))),
-      duck: [[false, false], [false, true], [true, false], [true, true]].map(([h, u]) => tex(duckOn(h, u))), heron: [false, true].map((s) => tex(heronStanding(s))),
+      duck: [[false, false], [false, true], [true, false], [true, true]].map(([h, u]) => tex(duckOn(h, u))),
+      // Tipped up, the feet's two strokes: drake, then hen.
+      duckUp: [false, true].map((h) => [0.25, 0.8].map((kick) => tex(duckTipped(h, kick)))), heron: [false, true].map((s) => tex(heronStanding(s))),
       frog: FROGS.map((c) => [0, 1, 2, 3].map((p) => tex(frogPicture(p, ...c)))), pad: [0, 2.1, 4.4].map((n) => tex(lilyPad(n))),
       wake: [0, 0.25, 0.5, 0.75].map((u) => tex(wakeFrame(u))), ring: [0.1, 0.25, 0.4, 0.55, 0.7, 0.85].map((u) => tex(ringFrame(u))),
     }));
@@ -405,7 +441,8 @@ export function createPondLife({ PIXI, floor, sky, high = sky, highShadow = floo
         else if (q.mode === 'swim' && Math.random() < dt * 0.03) sound('duckQuack', q, false);
         if (q.gone || !can(q, q.x, q.y)) { q.body.visible = q.shadow.visible = q.ripple.visible = false; return q; }
         if (q.mode === 'swim') {
-          const feeding = q.up > 0, tex = t.duck[(q.hen ? 2 : 0) + (feeding ? 1 : 0)], size = 0.85 * k * birdSize;
+          const feeding = q.up > 0, size = 0.85 * k * birdSize;
+          const tex = feeding ? t.duckUp[q.hen ? 1 : 0][Math.floor(time * 5 + q.phase) % 2] : t.duck[q.hen ? 2 : 0];
           if (ripple) {
             q.ripple.visible = false;
             // Paddling, its wake as it goes; tipped up to feed, a ring where it is now and then.

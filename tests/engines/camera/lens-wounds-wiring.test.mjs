@@ -20,7 +20,7 @@ test('the wounded view has its own client switch, on by default, right after the
 test('the settings window shows it with the damage lens rows, under the Damage lens world switch', () => {
   const drama = SETTINGS_TABS.find((t) => t.id === 'drama');
   const row = drama.rows.find((r) => r.world === 'lensBlood');
-  assert.deepEqual(row.extras, ['lensBloodAmount', 'lensTunnel', 'lensHeartbeat', 'lensWounded']);
+  assert.deepEqual(row.extras, ['lensBloodAmount', 'lensTunnel', 'lensHeartbeat', 'lensWounded', 'lensFriendHit']);
   const reg = (key, scope) => [`animater.${key}`, { key, namespace: 'animater', scope, type: Boolean, name: key, hint: `${key} hint` }];
   const registry = new Map([reg('quality', 'client'), reg('lensBlood', 'world'), reg('lensBloodLocal', 'client'), reg('lensWounded', 'client')]);
   const rows = (isGM) => Object.fromEntries(settingsModel({ registry, get: () => true, menus: new Map(), systemId: 'pf2e', modules: [], isGM }).tabs.flatMap((t) => t.rows.map((r) => [r.id, r])));
@@ -36,7 +36,8 @@ test('the board and the world\'s audio are always put back: with the lens, on ca
   // Only music and ambience are muffled (the heartbeat plays on the interface context).
   assert.match(main, /createWorldMuffle\(\{ contexts: \(\) => \[game\.audio\?\.music, game\.audio\?\.environment\] \}\)/);
   // The showcase's Stop ends the wound preview with the rest.
-  assert.match(main, /stop: \(\) => \{\s*if \(!lingerPreview && !woundPreview && !lensBlood\.alive && !worldMuffle\.wired\) return;\s*lingerPreview = null;\s*woundPreview = null;\s*stopLensBlood\(\);/);
+  // (A friend's blow still crossing the lens stops first.)
+  assert.match(main, /stop: \(\) => \{\s*friendHit\.stop\(\);\s*if \(!lingerPreview && !woundPreview && !lensBlood\.alive && !worldMuffle\.wired\) return;\s*lingerPreview = null;\s*woundPreview = null;\s*stopLensBlood\(\);/);
 });
 
 test('the player\'s own creature drives it: HP and conditions refresh it, a hit leaves stains, down states beat on the lingering loop', () => {

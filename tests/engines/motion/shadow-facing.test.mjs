@@ -27,6 +27,27 @@ test('a standing creature\'s shadow lies as its reflection does: head away from 
   near(shadowOf(0, laidArt({ along: 0, laid: true }), [0, -1]), [1, 0], 'head east');
 });
 
+// Sherp: two tokens side by side under the sun, their shadows thrown up the map leaning opposite ways, one token
+// flipped. Thrown up the map (away from the viewer), a shadow shows the creature as its token does, not mirrored: its
+// right side stays on the right, flipped token or not, turned with the token too.
+test('a shadow thrown up the map keeps the token\'s sides, flipped or not', () => {
+  const drawn = (rotation, flip, v) => turn(rotation, [v[0] * flip, v[1]]);
+  for (const along of [-Math.PI / 2, -Math.PI / 2 + 0.7, -Math.PI / 2 - 0.7]) {
+    for (const rotation of [0, 0.4]) {
+      for (const flip of [1, -1]) {
+        const pose = laidArt({ along, laid: true, rotation });
+        const laid = (v) => turn(along, turn(pose.rotation, [v[0] * flip * pose.mirror, v[1]]));
+        // The token's picture turned so its head points along the light: no mirror between them.
+        const lay = (v) => turn(along + Math.PI / 2, drawn(rotation, flip, v));
+        near(laid([0, -1]), lay([0, -1]), `head (along ${along}, turn ${rotation}, flip ${flip})`);
+        near(laid([1, 0]), lay([1, 0]), `right side (along ${along}, turn ${rotation}, flip ${flip})`);
+      }
+    }
+  }
+  // Straight up the map, unturned: the shadow is the token's picture moved up, its right side east.
+  near(shadowOf(-Math.PI / 2, laidArt({ along: -Math.PI / 2, laid: true }), [1, 0]), [1, 0], 'right side east');
+});
+
 test('a flier\'s, or one under a light straight above, keeps the art as drawn from above', () => {
   const pose = laidArt({ along: 1.1, laid: false, rotation: 0.3 });
   near(shadowOf(1.1, pose, [0, -1]), turn(0.3, [0, -1]), 'its own turn');

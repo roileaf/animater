@@ -46,8 +46,15 @@ export const silhouetteScale = ({ artWidth, artHeight, width }) => {
 // How the art turns inside a shadow laid along a light (pure; the shadow's container already turned to `along`):
 // { rotation, mirror } (mirror -1: flipped side to side). `laid`: a creature standing on the ground with the light off
 // to one side, its shadow lying as its reflection in water does: its head away from the light, its sides kept where they
-// are on the map (water-mirror.mjs mirrorOf). Otherwise (a flier, a light straight above) the art as drawn from above.
-export const laidArt = ({ along = 0, laid = false, rotation = 0 } = {}) => (laid ? { rotation: Math.PI / 2 - (Number(rotation) || 0), mirror: -1 } : { rotation: (Number(rotation) || 0) - (Number(along) || 0), mirror: 1 });
+// are on the map (water-mirror.mjs mirrorOf). Thrown up the map (away from the viewer) that same rule turns the art
+// rather than mirroring it: the shadow shows the creature as its token does, its right side still on the right, so a
+// flipped token's shadow is that token's picture, not a mirror of it. Otherwise (a flier, a light straight above) the
+// art as drawn from above.
+export const laidArt = ({ along = 0, laid = false, rotation = 0 } = {}) => {
+  const turn = Number(rotation) || 0;
+  if (!laid) return { rotation: turn - (Number(along) || 0), mirror: 1 };
+  return Math.sin(Number(along) || 0) < 0 ? { rotation: Math.PI / 2 + turn, mirror: 1 } : { rotation: Math.PI / 2 - turn, mirror: -1 };
+};
 
 // How the silhouette sits for a shadow geometry (movement-feel.mjs shadowGeometry or castShadowGeometry, with its
 // `width` and `lift` in squares, and optionally `flat`): `flat` its height kept (laid on the floor, or nearly whole when cast from above),

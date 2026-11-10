@@ -17,7 +17,10 @@ export const DAMAGE_TYPES = Object.freeze([['', 'Any (mixed)'], ['slashing', 'Sl
   ['force', 'Force'], ['sonic', 'Sonic / thunder'], ['electricity', 'Electricity / lightning'], ['fire', 'Fire'], ['cold', 'Cold'], ['acid', 'Acid'],
   ['poison', 'Poison'], ['void', 'Void / necrotic'], ['vitality', 'Vitality / radiant'], ['mental', 'Mental / psychic'], ['spirit', 'Spirit'],
   ['arcane', 'Arcane (Daggerheart magical)']]);
-const ACTIONS = ['damage-pick', 'damage-swap', 'damage-from-canvas', 'damage-duel', 'damage-hit', 'damage-deal', 'damage-linger-start', 'damage-linger-stop', 'damage-amount', 'damage-gore', 'damage-refresh',
+// What a friend's blow strikes with (engines/camera/lens-friend-hit.mjs FRIEND_HIT_CLIPS); '' follows the damage type.
+export const FRIEND_WEAPONS = Object.freeze([['', 'By damage type'], ['sword', 'Sword'], ['axe', 'Axe'], ['spear', 'Spear'], ['mace', 'Mace'], ['arrow', 'Bow (arrow)'],
+  ['fire', 'Fire spell'], ['cold', 'Cold spell'], ['lightning', 'Lightning spell'], ['arcane', 'Force / arcane spell']]);
+const ACTIONS = ['damage-pick', 'damage-swap', 'damage-from-canvas', 'damage-duel', 'damage-friend', 'damage-hit', 'damage-deal', 'damage-linger-start', 'damage-linger-stop', 'damage-amount', 'damage-gore', 'damage-refresh',
   'damage-wound-show', 'damage-down', 'damage-wake', 'damage-wound-stop'];
 // The down states when the host sends none (engines/camera/lens-wounds.mjs downPreviews names them by system).
 export const DOWN_STATES = Object.freeze([{ id: 'dying1', label: 'Dying 1' }, { id: 'dying2', label: 'Dying 2' }, { id: 'dying3', label: 'Dying 3' },
@@ -28,7 +31,7 @@ const TUCK_LIMIT_MS = 20000, LINGER_TUCK_MS = 7000, TUCK_POLL_MS = 250;
 export class DamageShowcaseUI {
   constructor(workspace) {
     this.w = workspace;
-    this.options = { share: 0.15, crit: false, victimColor: 'humanoid', enemy: 'humanoid', damage: 8, enemyMax: 40, dealCrit: false, side: 'left', lowHp: 0.15, amount: null, gore: null, damageType: 'slashing', woundHp: 0.3, woundCombat: true };
+    this.options = { share: 0.15, crit: false, victimColor: 'humanoid', enemy: 'humanoid', damage: 8, enemyMax: 40, dealCrit: false, side: 'left', lowHp: 0.15, amount: null, gore: null, damageType: 'slashing', woundHp: 0.3, woundCombat: true, friendWeapon: '' };
     // Which wounded-view preview plays now ('hp' follows the slider), so a change of HP or combat shows at once.
     this.woundLive = null;
     this.mine = null; this.other = null;
@@ -119,6 +122,10 @@ export class DamageShowcaseUI {
        <button type="button" class="an-dmg-go is-hurt" data-action="damage-duel" data-role="victim" ${ready ? '' : 'disabled'}><b>${name(other, 'Other')} hits ${name(mine, 'mine')}</b><small>Tunnel vision, heartbeat, ${name(mine, 'their')}'s blood</small></button>
        <button type="button" class="an-dmg-go is-deal" data-action="damage-duel" data-role="attacker" ${ready ? '' : 'disabled'}><b>${name(mine, 'Mine')} hits ${name(other, 'other')}</b><small>${name(other, 'The enemy')}'s blood on the lens</small></button>
       </div>
+      <div class="an-dmg-friend"><span>A friend's blow</span>
+       <p class="an-hint">Another player's creature (the nearest to ${name(other, 'the enemy')}) strikes ${name(other, 'the enemy')} next to ${name(mine, 'yours')}: the blow crosses the lens, then the blood lands. Your screen: ${saved.friendHit === false ? 'off' : 'on'}${saved.jb2a === false ? ' · needs JB2A (not active: only the blood plays)' : ''}</p>
+       <label>Strikes with<select data-damage="friendWeapon">${FRIEND_WEAPONS.map(([v, l]) => `<option value="${v}" ${v === o.friendWeapon ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+       <button type="button" data-action="damage-friend" ${ready ? '' : 'disabled'}>▶ A friend hits ${name(other, 'the enemy')}</button></div>
       <div class="an-dmg-linger"><span>Badly hurt, in combat</span><select class="an-dmg-linger-hp" data-damage="lowHp" aria-label="HP left">${[0.25, 0.15, 0.05].map((v) => `<option value="${v}" ${v === o.lowHp ? 'selected' : ''}>${Math.round(v * 100)}% HP left</option>`).join('')}</select>
        <div class="an-dmg-linger-buttons"><button type="button" data-action="damage-linger-start">▶ Start loop</button><button type="button" data-action="damage-linger-stop">■ Stop</button></div></div>
       ${this.woundHtml(mine, saved)}
@@ -198,6 +205,11 @@ export class DamageShowcaseUI {
       const role = b?.dataset?.role === 'attacker' ? 'attacker' : 'victim';
       await this.tuck();
       const played = await this.w.host.previewLensDuel?.({ mineId: this.mine, otherId: this.other, role, share: o.share, crit: o.crit, ...variant });
+      if (!played) this.untuck();
+    } else if (action === 'damage-friend') {
+      if (!this.mine || !this.other || this.mine === this.other) return true;
+      await this.tuck();
+      const played = await this.w.host.previewLensFriend?.({ mineId: this.mine, otherId: this.other, weapon: o.friendWeapon, share: o.share, crit: o.crit, ...variant });
       if (!played) this.untuck();
     } else if (action === 'damage-hit') {
       const blood = this.blood(o.victimColor);

@@ -168,7 +168,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "inspirationGlow", local: "heroPointGlowLocal", when: (env) => env.systemId === "dnd5e" },
     { world: "hopeGlow", local: "heroPointGlowLocal", when: (env) => env.systemId === "daggerheart" },
     { world: "victoryGlow", local: "heroPointGlowLocal", when: (env) => env.systemId === "draw-steel" },
-    { world: "lensBlood", local: "lensBloodLocal", extras: ["lensBloodAmount", "lensTunnel", "lensHeartbeat", "lensWounded"] },
+    { world: "lensBlood", local: "lensBloodLocal", extras: ["lensBloodAmount", "lensTunnel", "lensHeartbeat", "lensWounded", "lensFriendHit"] },
     { world: "lensEffects", local: "lensEffectsLocal" },
     { world: "lensReach" },
     { world: "lensWho", local: "lensWhoLocal" },
