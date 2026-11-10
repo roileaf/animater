@@ -74,7 +74,7 @@ const recorder = () => {
 
 test("a throne or a bathtub breaks as what its picture is painted of, the same on every screen", () => {
   const seen = { throne: new Set(), bathtub: new Set() };
-  const colour = { throne: { stone: "#7a766e", wood: "#4a3020" }, bathtub: { stone: "#8a867e", metal: "#a8643a", wood: "#6a5032" } };
+  const colour = { throne: { stone: "#7e7a72", wood: "#4a2e1a" }, bathtub: { stone: "#8a867e", metal: "#a8643a", wood: "#6a5032" } };
   for (const kind of ["throne", "bathtub"]) for (let seed = 0; seed < VARIANTS * 3; seed++) {
     const d = { kind, x: 500, y: 500, size: DECOR_KINDS[kind].size, seed, turn: 0, flip: false };
     // The picture the painter uses for it (decorations.mjs) is painted from this seed.
