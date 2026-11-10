@@ -29,7 +29,10 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {} } = {}) {
       // The wheel over a slider moves it a step.
       s.addEventListener('wheel', (e) => { e.preventDefault(); const v = Math.min(bounds.max, Math.max(bounds.min, Number(s.value) + (e.deltaY < 0 ? step : -step))); s.value = String(Math.round(v * 100) / 100); s.dispatchEvent(new Event('input')); }, { passive: false });
       box.append(el('span', '', label), s, shown); return box; };
-    const row = el('div', 'an-db-row'); row.append(where, slider('Brush', BRUSH_SIZE, 'size', 0.5), slider('Thickness', BRUSH_THICK, 'thick', 0.1));
+    // All of this place's kinds at once, or none (then tick the few wanted).
+    const all = el('div', 'an-db-seg');
+    for (const [label, pick] of [['Select all', () => brushKindsFor(remembered.where)], ['Deselect all', () => []]]) { const b = el('button', '', label); b.type = 'button'; b.addEventListener('click', () => { remembered.kinds[remembered.where] = pick(); draw(); onChange(); }); all.append(b); }
+    const row = el('div', 'an-db-row'); row.append(where, slider('Brush', BRUSH_SIZE, 'size', 0.5), slider('Thickness', BRUSH_THICK, 'thick', 0.1), all);
     const chips = el('div', 'an-db-chips'), ticked = remembered.kinds[remembered.where];
     for (const id of brushKindsFor(remembered.where)) {
       const on = ticked.includes(id), c = el('button', on ? 'an-db-chip an-db-on' : 'an-db-chip', DECOR_KINDS[id].label); c.type = 'button'; c.setAttribute('aria-pressed', String(on));

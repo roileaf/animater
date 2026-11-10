@@ -46,6 +46,9 @@ test('the brush bar offers each place its own kinds and remembers what is ticked
   assert.ok(brushKindsFor('surface').includes('oak') && !brushKindsFor('surface').includes('stalagmite'));
   assert.ok(brushKindsFor('cave').includes('stalagmite') && brushKindsFor('cave').includes('rock'));
   const c = brushChoices(); assert.equal(c.where, 'surface'); assert.ok(c.kinds.length > 0 && c.size > 0 && c.thick > 0);
+  // Select all ticks every kind the place offers; Deselect all none.
+  const bar = read('scripts/ui/decor-brush-bar.mjs');
+  assert.match(bar, /\['Select all', \(\) => brushKindsFor\(remembered\.where\)\], \['Deselect all', \(\) => \[\]\]/);
 });
 
 test('the Decorations tool sits in Animater\'s controls and can be hidden', () => {
