@@ -1,8 +1,14 @@
 import {dndEntries,dndRecipe,dndEntryEnabled,normalizeDndCatalogState} from './dnd5e-catalog.mjs';
 import {matchRecipe,effectSources,originalName} from '../../core/model.mjs';
-const byCondition=new Map(dndEntries('condition').map(e=>[e.statusId,e]));
-const effects=dndEntries('effect');
+// The catalog's conditions by status and its effects, made again whenever the catalog grows: it loads a moment after the
+// scene draws, after this module, so a lookup made once here would stay empty (conditions never found).
+let indexedAt=-1,byCondition=new Map(),effects=[];
+function index(){
+ const all=dndEntries();if(all.length===indexedAt)return;
+ indexedAt=all.length;byCondition=new Map(all.filter(e=>e.kind==='condition').map(e=>[e.statusId,e]));effects=all.filter(e=>e.kind==='effect');
+}
 export function findDndState(state){
+ index();
  if(state.type==='condition')return byCondition.get(state.statusId)??null;
  const effect=state.document??state,ids=[effect.uuid,effect._stats?.compendiumSource,effect.flags?.core?.sourceId];
  let found=effects.find(e=>ids.includes(e.uuid));if(found)return found;
@@ -17,6 +23,7 @@ export function findDndState(state){
  const named=effects.filter(e=>e.name===name);return named.length===1?named[0]:null;
 }
 export function dndActorStates(actor){
+ index();
  const applicable=actor?.appliedEffects??(actor?.allApplicableEffects?Array.from(actor.allApplicableEffects()).filter(e=>e.active):[]);
  const states=[],seen=new Set();
  for(const effect of applicable){

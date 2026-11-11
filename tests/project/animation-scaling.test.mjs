@@ -133,8 +133,9 @@ test("local artwork preserves native aspect on large rectangular and mirrored to
       { source: { w, h, document: { texture: { scaleX: -2, scaleY: 0.5 } } } },
       { preview: true },
     );
+    // (The art drawn at 2× on its larger axis, mirrored: the effect follows its size, not its mirroring.)
     assert.deepEqual(calls.find((c) => c[0] === "size")?.[1], {
-      width: Math.max(w, h) * 1.4,
+      width: Math.max(w, h) * 1.4 * 2,
       height: "auto",
     });
     assert.ok(!calls.some((c) => c[0] === "scaleToObject"));
@@ -332,13 +333,17 @@ test("portrait art and footprint fallbacks remain uniform and finite", () => {
   assert.equal(tokenFootprint(ringed(100, 1.6), 100), 80, "Small is drawn at 0.8");
   assert.equal(tokenFootprint(ringed(50, 1.6), 100), 40, "Tiny half square at 0.8");
   assert.equal(tokenFootprint(ringed(100, -1.6), 100), 80, "mirrored");
-  // Without a ring, texture oversizing does not grow effects.
-  assert.equal(tokenFootprint({ w: 100, h: 100, document: { texture: { scaleX: 1.6 }, ring: { enabled: false, subject: { scale: 2 } } } }, 100), 100);
-  assert.equal(tokenFootprint({ w: 100, h: 100, document: { width: 1, texture: { scaleX: 2, scaleY: 2 } } }, 100), 100, "pop-out art at texture scale 2");
-  // Pop-out art spilling past a ring (Tokenizer's oversized tokens) never grows effects past the square.
-  assert.equal(tokenFootprint(ringed(100, 2, 1), 100), 100, "texture 2 over subject 1");
-  assert.equal(tokenFootprint(ringed(100, 2, 0.75), 100), 100, "texture 2 over subject 0.75");
-  assert.equal(tokenFootprint(ringed(100, 1.3, 1), 100), 100, "ring fill 1.3");
+  // Roi: "the animation doesnt scale with the token", then "Follow it fully": effects follow the art's scale, up or down.
+  // Without a ring, the texture scale itself.
+  assert.equal(tokenFootprint({ w: 100, h: 100, document: { texture: { scaleX: 1.6 }, ring: { enabled: false, subject: { scale: 2 } } } }, 100), 160);
+  assert.equal(tokenFootprint({ w: 100, h: 100, document: { width: 1, texture: { scaleX: 2, scaleY: 2 } } }, 100), 200, "art at texture scale 2");
+  assert.equal(tokenFootprint({ w: 100, h: 100, document: { width: 1, texture: { scaleX: 3, scaleY: 3 } } }, 100), 300, "art at texture scale 3");
+  assert.equal(tokenFootprint({ w: 100, h: 100, document: { width: 1, texture: { scaleX: 0.5, scaleY: 0.5 } } }, 100), 50, "art scaled down");
+  // With a ring, the creature as drawn: texture scale over subject scale, past the square too.
+  assert.equal(tokenFootprint(ringed(100, 2, 1), 100), 200, "texture 2 over subject 1");
+  assert.ok(Math.abs(tokenFootprint(ringed(100, 2, 0.75), 100) - 266.67) < 0.01, "texture 2 over subject 0.75");
+  assert.equal(tokenFootprint(ringed(100, 1.3, 1), 100), 130, "ring fill 1.3");
+  assert.equal(tokenFootprint({ w: 100, h: 100, document: { width: 1, texture: { scaleX: 0.01, scaleY: 0.01 } } }, 100), 25, "never under a quarter");
   assert.deepEqual(artworkGeometry(55, undefined, undefined), {
     width: 55,
     height: 55,

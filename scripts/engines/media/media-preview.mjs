@@ -17,19 +17,25 @@ export function beamGeometry(distance, width = 1000, height = 400, template) {
   };
 }
 
-// Art follows the token's occupied footprint. Texture mirroring/oversizing
-// belongs to copied token sprites, not rings or impacts placed around them.
-// A dynamic-ring token draws its creature at texture scale ÷ subject scale of the footprint: Medium 2 ÷ 2 fills
-// its square, Small 1.6 ÷ 2 is 0.8 of it, and a ring sized to the bare square stands off the creature with a gap.
-// Art drawn past the square (pop-out tokens, Tokenizer's oversized ones) never grows effects beyond it.
+// How big a token's creature is drawn against its square (pure): the art's own scale, so effects on it grow and shrink
+// with the token as the GM scaled it. A dynamic-ring token draws its creature at texture scale ÷ subject scale: Medium
+// 2 ÷ 2 fills its square, Small 1.6 ÷ 2 is 0.8 of it. Never under a quarter.
+export function tokenArtScale(token) {
+  const doc = token?.document ?? token;
+  // (Its larger axis: art stretched one way is drawn that big.)
+  const sx = Math.abs(Number(doc?.texture?.scaleX)), sy = Math.abs(Number(doc?.texture?.scaleY));
+  const texture = Math.max(sx > 0 ? sx : 0, sy > 0 ? sy : 0), subject = Number(doc?.ring?.subject?.scale);
+  const scale = !(texture > 0) ? 1 : doc?.ring?.enabled && subject > 0 ? texture / subject : texture;
+  return Math.max(0.25, scale);
+}
+// Art follows the token's occupied footprint, at its art's scale (tokenArtScale). Texture mirroring belongs to copied
+// token sprites, not rings or impacts placed around them.
 export function tokenFootprint(token, grid = 100) {
   const pixel = (value, squares) =>
     Number(value) > 0
       ? Number(value)
       : (Number(squares) > 0 ? Number(squares) : 1) * grid;
-  const doc = token?.document ?? token;
-  const texture = Math.abs(Number(doc?.texture?.scaleX)), subject = Number(doc?.ring?.subject?.scale);
-  const drawn = doc?.ring?.enabled && texture > 0 && subject > 0 ? Math.min(1, Math.max(0.25, texture / subject)) : 1;
+  const drawn = tokenArtScale(token);
   return Math.max(
     pixel(token?.w, token?.document?.width ?? token?.width),
     pixel(token?.h, token?.document?.height ?? token?.height),

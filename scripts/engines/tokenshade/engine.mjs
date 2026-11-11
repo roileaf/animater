@@ -3,6 +3,7 @@
 import { fxFilterClass } from './filter-factory.mjs';
 import { specFor } from './filters/index.mjs';
 import { forArt, artPace } from './top-down.mjs';
+import { tokenArtScale } from '../media/media-preview.mjs';
 
 // Build the filters for a preset (sorted by stacking order). Unknown filter types are
 // skipped so a user's preset with an exotic filter still shows the rest.
@@ -17,9 +18,13 @@ export function presetFilters(PIXI, preset, { tokenSize = null, key = '', textur
   return filters.sort((a, b) => a.zOrder - b.zOrder);
 }
 
-const tokenSize = token => {
+// The size a look's rings and halos are drawn for: the token's square at its art's scale (media-preview tokenArtScale), so
+// a token the GM scaled up gets a bigger look, one scaled down a smaller one.
+export const tokenFxSize = token => {
   const w = Number(token?.w ?? token?.width), h = Number(token?.h ?? token?.height);
-  return w > 0 && h > 0 ? { width: w, height: h } : null;
+  if (!(w > 0 && h > 0)) return null;
+  const k = tokenArtScale(token);
+  return { width: w * k, height: h * k };
 };
 
 // Live values eased toward their target over about this long, so a hit or a take-off shades in, never snaps.
@@ -51,7 +56,7 @@ export class TokenFxEngine {
     if (!token || token.destroyed) return () => {};
     let cutOut = false;
     try { cutOut = this.cutOut(token) === true; } catch { /* drawn as for any token */ }
-    const filters = presetFilters(this.PIXI ?? globalThis.PIXI, forArt(preset, cutOut), { tokenSize: tokenSize(token), key });
+    const filters = presetFilters(this.PIXI ?? globalThis.PIXI, forArt(preset, cutOut), { tokenSize: tokenFxSize(token), key });
     if (!filters.length) return () => {};
     const sources = [...new Set(filters.flatMap(f => f.animations?.sources ?? []))];
     let fadeMs = 0;

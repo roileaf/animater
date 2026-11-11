@@ -7,7 +7,11 @@ const auraLookup=uuid=>{
  const entries=sfEntries('effect').filter(e=>e.uuid===uuid||uuid===`Compendium.sf2e.${e.pack}.Item.${e.name}`);
  return entries.length===1?stateView(entries[0]):null;
 };
-const profile={findStateEntry:item=>stateView(findSfState(item)),auraStateEntry:auraLookup,effects:sfEntries('effect').map(stateView)};
+// The catalog's effects as states, made again whenever the catalog grows: it loads a moment after the scene draws, after this
+// module, so a list made once here would stay empty (no effect aura ever recognised).
+let effectsAt=-1,effectViews=[];
+export const sfProfileEffects=()=>{const all=sfEntries('effect');if(all.length!==effectsAt){effectsAt=all.length;effectViews=all.map(stateView);}return effectViews;};
+const profile={findStateEntry:item=>stateView(findSfState(item)),auraStateEntry:auraLookup,get effects(){return sfProfileEffects();}};
 export const sfActorStates=actor=>actorStates(actor,profile);
 export const sfStateVisible=(item,token,visibility)=>stateVisible(item,token,visibility,findSfState);
 export function resolveSfStateRecipe(item,options,saved=[],catalog,{customEnabled=true}={}){

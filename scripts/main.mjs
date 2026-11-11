@@ -10703,7 +10703,7 @@ Hooks.once("init", () => {
   registerSetting("groundShadows", {
     name: "Shadows under every token",
     hint: "Every creature standing on the ground casts its shadows too, not only fliers, so tokens sit on the map instead of floating over it, and taking off reads at a glance. Needs Movement feel on.",
-    scope: "world", config: true, type: Boolean, default: false,
+    scope: "world", config: true, type: Boolean, default: true,
   });
   registerSetting("groundShadowsLocal", { name: "Shadows under every token on my screen",
     hint: "Turn off to never draw this on this screen (the world setting decides for everyone).",
@@ -10725,7 +10725,7 @@ Hooks.once("init", () => {
     scope: "client", config: true, type: Boolean, default: true });
   registerSetting("wallShadows", { name: "Walls cast shadows in sunlight",
     hint: "Each wall that stops light throws its shadow on the floor away from the sun, longer as the sun sinks, and a creature standing in one casts no sun shadow of its own. Windows and foliage cast half, open doors none. None at night, in a scene with no sun, or inside a region that suppresses weather (a roof). Lights already stop at walls. Drawn at Balanced quality or better.",
-    scope: "world", config: true, type: Boolean, default: false });
+    scope: "world", config: true, type: Boolean, default: true });
   registerSetting("wallShadowsLocal", { name: "Walls cast shadows in sunlight on my screen",
     hint: "Turn off to never draw wall shadows on this screen (the world setting decides for everyone).",
     scope: "client", config: true, type: Boolean, default: true });
