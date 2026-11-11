@@ -39,8 +39,13 @@ test('Floors: a swatch per floor, the brush and Smart edges; How alike, Texture 
   assert.deepEqual(edges.map((b) => b.dataset.edges), ['off', 'colour', 'model']);
   assert.equal(edges.find((b) => b.attrs['aria-pressed'] === 'true').dataset.edges, 'colour');
   assert.equal(brushChoices().edges, 'colour'); assert.equal(brushChoices().smart, true);
+  // Roi: "lets start the floor brush with model if it was downloaded already". Picking Edges by hand is remembered as the
+  // GM's own choice, which the automatic Model never overrides; setEdges (the automatic one) leaves it unchosen.
+  assert.equal(brushChoices().edgesChosen, false);
+  bar.setEdges('model'); assert.equal(brushChoices().edges, 'model'); assert.equal(brushChoices().edgesChosen, false);
+  bar.setEdges('colour');
   edges.find((b) => b.dataset.edges === 'model').listeners.click[0]();
-  assert.equal(brushChoices().edges, 'model');
+  assert.equal(brushChoices().edges, 'model'); assert.equal(brushChoices().edgesChosen, true);
   find(bar.element, (n) => n.dataset?.edges === 'colour').listeners.click[0]();
   const extra = find(root, (n) => n.className?.includes('an-mp-extra'));
   assert.equal(extra.hidden, true, 'More starts folded');
@@ -84,13 +89,21 @@ test('main: one Map painting button paints floors and decorations, saving each s
   assert.match(main, /if \(!state\.down\) \{ if \(floorsOn\(\) && fl\.map && !e\.shiftKey\) hoverFloor\(p\); else hideHover\(\); return; \}/);
   assert.match(main, /const cells = floorDabCells\(\{[^\n]*seed: floorColourAt\(m\.rgba, m\.width, m\.height, q\.x, q\.y\), tolerance: c\.tol, smart: c\.smart, allowed: \(i\) => !claimed\[i\], within \}\);/);
   // Roi: "can we use the SAM model for drawing smarterly?" Edges: Model asks SAM once agreed, as Floor regions does.
-  assert.match(main, /if \(samPrefs\(\)\.smartAgreed !== SMART_MODEL\.repo && !\(await isSmartModelCached\(\)\)\)/);
+  assert.match(main, /const cached = await isSmartModelCached\(\);\s+if \(samPrefs\(\)\.smartAgreed !== SMART_MODEL\.repo && !cached\)/);
   assert.match(main, /const view = await seg\.read\(fl\.map\.rgba, fl\.map\.width, fl\.map\.height\);/);
   assert.match(main, /for \(const spot of smartNearbyClicks\(at, m\.width, m\.height\)\) \{ sets\.push\(\(await sam\.ready\.seg\.masks\(sam\.ready\.view, \[spot\]\)\)\.masks\);/);
   assert.match(main, /return modelMaskFor\(\{ sets, rgba: m\.rgba, width: m\.width, height: m\.height, at: q \}\);/, 'consensus and the clicked colours, as Floor regions');
   assert.match(main, /within: fl\.model \? fl\.within : null/);
   assert.match(main, /while \(fl\.asking\) await fl\.asking;/, 'a stroke waiting on the model is saved once it answers');
   assert.match(main, /state\.bar\?\.setEdges\("colour"\)/, 'back to Colour when the model cannot load or the download is declined');
+  // Already downloaded: the brush starts on Model (never asking to download), unless the GM picked Edges themselves.
+  assert.match(main, /if \(!brushChoices\(\)\.edgesChosen && await isSmartModelCached\(\) && decorBrushing === state\) \{ state\.bar\?\.setEdges\("model"\); if \(floorsOn\(\)\) void loadSam\(\); \}/);
+  // Roi: "it keeps trying to download SAM model even though i already downloaded it". transformers.js reports progress while it
+  // reads a cached model back too, so a cached model says Loading, in the brush and in Floor regions alike.
+  assert.match(main, /samStatus\(`\$\{cached \? "Loading" : "Downloading"\} the smart model… /);
+  const floorUi = read('scripts/ui/floor-regions-ui.mjs');
+  assert.match(floorUi, /const cached = !!\(await hooks\.smartCached\?\.\(\)\);/);
+  assert.match(floorUi, /smartStatus\(cached\s+\? `Loading \$\{SMART_MODEL\.name\} from this browser/);
   assert.match(main, /pg\.putImageData\(fl\.pixels, 0, 0, x0, y0, w, h\);/, 'Roi: it lagged: a dab copies only the box it touched');
   assert.match(main, /requestAnimationFrame\(\(\) => \{ fl\.uploading = false;/, 'and the stroke goes to the screen once a frame');
   assert.match(main, /fl\.hoverWithin = await askModel\(toImage\(at\), \{ quick: true \}\)/, 'hovering asks the model one quick question');

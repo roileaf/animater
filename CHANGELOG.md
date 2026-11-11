@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 4.1.1
+
+Delete a region from its panel, and the floor brush starts on Model when the smart model is already here.
+
+- **Delete a region from its panel.** The region panel (right-click a region) has a trash can beside its cog: it closes the panel and asks Foundry's own "Delete Region?" before the region goes.
+- **The floor brush starts on Model when the smart model is already downloaded.** Map painting's Floors tab opens with **Edges: Model** once this browser holds the smart model (from Floor regions' Smart selection or an earlier brush), and never asks for a download just by opening. Pick Edges yourself and that choice stays for the session.
+- **A downloaded smart model says Loading, not Downloading.** Reading the smart model back from the browser's cache showed "Downloading the smart model… N%", as if it were fetched again. It now says it is loading from this browser, in Map painting and Floor regions alike; only a real first download says Downloading.
+
 ## 4.1.0
 
 Map painting puts floors and decorations under one brush, the sun follows the real sky through the day and the seasons, and D&D 5e conditions show again.

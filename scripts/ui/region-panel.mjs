@@ -14,11 +14,12 @@ const FLOOR_ICONS = Object.freeze({ cavern: 'fa-gem', lava: 'fa-fire', water: 'f
  * there); close(). `flagsOf(doc)` the region's Animater flags, `save(doc, flags)` saves some (a promise), `edit(doc)` opens
  * its steps list, `texture(flags)` whether its floor is painted now, `season(flags)` whether the season colours it,
  * `presets()` the Tokenshade look names, `weathers()` [[id, label]], `confirm(text)` a yes or no (a promise) before None
- * takes a region's settings away, `configure(doc)` Foundry's own configuration of the region (a cog by the close button).
+ * takes a region's settings away, `configure(doc)` Foundry's own configuration of the region (a cog by the close button),
+ * `remove(doc)` deletes it (a trash can by the cog; Foundry's own question first).
  * `shows(doc | null)` hears which region it shows now (null once closed), to outline it on the map.
  * Its heading drags it about the screen; it stays where it is put until it closes.
  */
-export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, set: setRoof }, texture = () => false, season = () => false, presets = () => [], weathers = () => [], confirm = async () => true, configure = null, shows = () => {}, brush = null, repairDecor = null }) {
+export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, set: setRoof }, texture = () => false, season = () => false, presets = () => [], weathers = () => [], confirm = async () => true, configure = null, remove = null, shows = () => {}, brush = null, repairDecor = null }) {
   let shown = null;
   const tell = (doc) => { if (doc === shown) return; shown = doc; try { shows(doc); } catch { /* an outline never breaks the panel */ } };
   let box = null, open_ = null, saving = 0, drag = null;
@@ -85,6 +86,8 @@ export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, 
     shut.setAttribute('aria-label', 'Close'); shut.append(icon('fa-xmark'));
     head.setAttribute('data-tooltip', 'Drag to move'); head.addEventListener('pointerdown', startDrag);
     head.append(icon('fa-draw-polygon', 'an-rp-gold'), element('b', '', doc.name || `${titled(floor)} region`));
+    // Roi: deleting the region, a click away too (`remove(doc)`, Foundry's own Delete Region? question).
+    if (remove) { const bin = button('', 'an-rp-close an-rp-delete', () => { close(); remove(doc); }); bin.setAttribute('aria-label', 'Delete region'); bin.setAttribute('data-tooltip', 'Delete this region'); bin.append(icon('fa-trash')); head.append(bin); }
     // Roi: Foundry's own region configuration, a click away.
     if (configure) { const cog = button('', 'an-rp-close an-rp-config', () => { close(); configure(doc); }); cog.setAttribute('aria-label', 'Region configuration'); cog.setAttribute('data-tooltip', 'Foundry\'s region configuration'); cog.append(icon('fa-gear')); head.append(cog); }
     head.append(shut);

@@ -1872,14 +1872,18 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       if (this.smart?.detect === detect) return this.smart;
       if (!hooks.smart) { hooks.warn?.("Experimental. Smart selection is not available here."); return null; }
       // Asked once per browser: an earlier yes is remembered, and a model already in the cache needs no download.
-      if (!smartAgreed && readPrefs().smartAgreed !== SMART_MODEL.repo && !(await hooks.smartCached?.())) {
+      // (A cached model still reports progress while it is read back from the cache: that is loading, not downloading.)
+      const cached = !!(await hooks.smartCached?.());
+      if (!smartAgreed && readPrefs().smartAgreed !== SMART_MODEL.repo && !cached) {
         if (!(await hooks.confirm?.(SMART_CONSENT))) return null;
       }
       smartAgreed = true;
       writePrefs({ smartAgreed: SMART_MODEL.repo });
       try {
         this.smartStatus(`Loading ${SMART_MODEL.name}…`);
-        const model = await hooks.smart({ onProgress: (loaded, total) => this.smartStatus(`Downloading ${SMART_MODEL.name}: ${(loaded / 1e6).toFixed(0)} of ${(total / 1e6).toFixed(0)} MB. It stays in this browser afterwards.`) });
+        const model = await hooks.smart({ onProgress: (loaded, total) => this.smartStatus(cached
+          ? `Loading ${SMART_MODEL.name} from this browser: ${Math.round((loaded / Math.max(1, total)) * 100)}%`
+          : `Downloading ${SMART_MODEL.name}: ${(loaded / 1e6).toFixed(0)} of ${(total / 1e6).toFixed(0)} MB. It stays in this browser afterwards.`) });
         this.smartStatus("Reading the map with the model…");
         const view = await model.read(detect.rgba, detect.width, detect.height);
         if (this.detect !== detect) return null;

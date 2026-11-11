@@ -2593,14 +2593,16 @@ const startDecorBrush = (doc = null) => {
   const loadSam = () => sam.loading ??= (async () => {
     await readMap(); if (!fl.map) throw new Error(fl.why || "no map");
     const { smartModelShared, isSmartModelCached, SMART_MODEL } = await import("./ui/smart-model.mjs");
-    if (samPrefs().smartAgreed !== SMART_MODEL.repo && !(await isSmartModelCached())) {
+    // (transformers.js reports progress while it reads a cached model back too: that is loading, not downloading.)
+    const cached = await isSmartModelCached();
+    if (samPrefs().smartAgreed !== SMART_MODEL.repo && !cached) {
       const { SMART_CONSENT } = await import("./ui/floor-regions-ui.mjs");
       const ok = await foundry.applications.api.DialogV2.confirm({ window: { title: "Map painting: smart model" }, content: `<p>${SMART_CONSENT}</p>` });
       if (!ok) throw new Error("declined");
       try { globalThis.localStorage?.setItem(SAM_PREFS, JSON.stringify({ ...samPrefs(), smartAgreed: SMART_MODEL.repo })); } catch { /* storage unavailable */ }
     }
     samStatus("Loading the smart model…");
-    const seg = await smartModelShared({ onProgress: (loaded, total) => samStatus(`Downloading the smart model… ${Math.round((loaded / Math.max(1, total)) * 100)}%`) });
+    const seg = await smartModelShared({ onProgress: (loaded, total) => samStatus(`${cached ? "Loading" : "Downloading"} the smart model… ${Math.round((loaded / Math.max(1, total)) * 100)}%`) });
     samStatus(seg.device === "webgpu" ? "The smart model is reading the map…" : "The smart model is reading the map (no WebGPU here, so this takes a while)…");
     const view = await seg.read(fl.map.rgba, fl.map.width, fl.map.height);
     if (decorBrushing !== state) { void seg.drop(view); return; }
@@ -2797,6 +2799,14 @@ const startDecorBrush = (doc = null) => {
   state.stop = () => { window.removeEventListener("pointerdown", down, true); window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", key, true); view.removeEventListener("contextmenu", menu, true); window.removeEventListener("wheel", wheel, { capture: true }); for (const [hook, id] of regionHooks) Hooks.off(hook, id); try { ring.destroy(); ghost.destroy({ children: true }); fl.overlay.destroy(); fl.preview?.destroy({ texture: true, baseTexture: true }); clearTimeout(hoverTimer); clearTimeout(fl.hoverAsk); fl.hover?.destroy({ texture: true, baseTexture: true }); top.parent?.removeChild(top); top.destroy(); if (sam.ready) void sam.ready.seg.drop(sam.ready.view); } catch { /* gone */ } state.bar?.close(); };
   if (floorsOn()) void readMap().then(refreshStatus);
   refreshStatus();
+  // The smart model already downloaded (this browser keeps it): the brush starts on Model, never asking for a download,
+  // unless the GM picked Edges themselves this session.
+  void (async () => {
+    try {
+      const { isSmartModelCached } = await import("./ui/smart-model.mjs");
+      if (!brushChoices().edgesChosen && await isSmartModelCached() && decorBrushing === state) { state.bar?.setEdges("model"); if (floorsOn()) void loadSam(); }
+    } catch { /* the cache unreadable: stays as it is */ }
+  })();
 };
 // Trunks that block (a region's "Trunks block movement, sight and light"): a small ring of real walls round each tree's trunk and
 // each stump, made by the lead GM and kept in step with the trees as they are reshuffled, brushed, rubbed out or turned off, and
@@ -3085,7 +3095,7 @@ const outlinePanelRegion = (doc) => {
   g.eventMode = "none"; canvas.interface.addChild(g); panelOutline = g;
 };
 Hooks.on("canvasTearDown", () => { panelOutline = null; });
-const regionPanel = createRegionPanel({ brush: (doc) => startDecorBrush(doc), repairDecor: (doc) => repairDecorRegionAsk(doc), shows: outlinePanelRegion, flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]), configure: (doc) => doc.sheet?.render({ force: true }), confirm: (text) => foundry.applications.api.DialogV2.confirm({ window: { title: "Animater: None" }, content: `<p>${foundry.utils.escapeHTML?.(text) ?? text}</p>`, rejectClose: false }).then((yes) => yes === true) });
+const regionPanel = createRegionPanel({ brush: (doc) => startDecorBrush(doc), repairDecor: (doc) => repairDecorRegionAsk(doc), shows: outlinePanelRegion, flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]), configure: (doc) => doc.sheet?.render({ force: true }), remove: (doc) => doc.deleteDialog?.(), confirm: (text) => foundry.applications.api.DialogV2.confirm({ window: { title: "Animater: None" }, content: `<p>${foundry.utils.escapeHTML?.(text) ?? text}</p>`, rejectClose: false }).then((yes) => yes === true) });
 Hooks.on("updateRegion", (doc, change) => { const flags = change?.flags?.[ID]; if (flags && "step" in flags) refreshStepsWindow(doc.id); });
 // The menu stands by the spot it was opened for: when the map moves under it, it goes.
 Hooks.on("canvasPan", () => { regionPanel.close(); });

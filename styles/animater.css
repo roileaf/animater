@@ -3898,6 +3898,7 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .an-region-panel .an-rp-head b { flex: 1; font-size: 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .an-region-panel .an-rp-close { color: var(--rp-dim); padding: 0 2px; }
 .an-region-panel .an-rp-close:hover { color: var(--rp-gold); }
+.an-region-panel .an-rp-delete:hover { color: #e0705f; }
 .an-region-panel .an-rp-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--rp-line); }
 .an-region-panel .an-rp-tab { display: flex; align-items: center; gap: 5px; padding: 3px 8px; font-size: 11px; color: var(--rp-dim); background: var(--rp-soft); border: 1px solid var(--rp-line); border-radius: 12px; }
 .an-region-panel .an-rp-tab.an-rp-on { color: var(--rp-gold); border-color: var(--rp-gold); background: var(--rp-gold-bg); }

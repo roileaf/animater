@@ -33,7 +33,7 @@ const fire = (n, type, extra = {}) => { const e = { target: n, defaultPrevented:
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 // Opens the panel on one region; `saves` records every save, and flagsOf follows them unless `stick` keeps the region as it was.
-async function setup(start = {}, floor = 'grass', { reject = false, stick = false, texture = () => false, season = () => false, hold = false, what = null, flagsOf = null, confirm = null, configure = null, shows = null, roof = null } = {}) {
+async function setup(start = {}, floor = 'grass', { reject = false, stick = false, texture = () => false, season = () => false, hold = false, what = null, flagsOf = null, confirm = null, configure = null, remove = null, shows = null, roof = null } = {}) {
   const dom = installDom();
   const { createRegionPanel } = await import('../../scripts/ui/region-panel.mjs');
   const doc = { name: 'Mill pond' };
@@ -52,6 +52,7 @@ async function setup(start = {}, floor = 'grass', { reject = false, stick = fals
     presets: () => ['Haunted', 'Forge'], weathers: () => [['fog', 'Fog'], ['rain', 'Rain']],
     ...(confirm ? { confirm } : {}),
     ...(configure ? { configure } : {}),
+    ...(remove ? { remove } : {}),
     ...(shows ? { shows } : {}),
     ...(roof ? { roof } : {}),
   });
@@ -152,6 +153,20 @@ test('the cog by the close button opens Foundry\'s region configuration and clos
   const plain = await setup({ floor: 'grass' }, 'grass');
   assert.equal(plain.byLabel('Region configuration'), null, 'none without a way to open it');
   plain.done();
+});
+
+// Roi: "lets add a trash can next to the cogwheel to delete the region too".
+test('the trash can by the cog deletes the region (Foundry asks first) and closes the panel', async () => {
+  const removed = [];
+  const t = await setup({ floor: 'grass' }, 'grass', { configure: () => {}, remove: (d) => removed.push(d) });
+  await t.click(t.byLabel('Delete region'));
+  assert.deepEqual(removed, [t.doc]); assert.equal(t.panel.isOpen, false);
+  t.done();
+  const plain = await setup({ floor: 'grass' }, 'grass');
+  assert.equal(plain.byLabel('Delete region'), null, 'none without a way to delete it');
+  plain.done();
+  const main = (await import('node:fs')).readFileSync(new URL('../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /remove: \(doc\) => doc\.deleteDialog\?\.\(\)/, "Foundry's own Delete Region? question");
 });
 
 // Roi: outline the region right-clicked.
