@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 4.1.3
+
+Shift-drag in Map painting rubs out only the floor you picked.
+
 - **Shift-drag rubs out only the picked floor.** On Map painting's Floors tab, Shift-drag now takes away only the floor picked on the bar: rubbing out grass across a riverbank leaves the water's region whole. The stroke shows only where it will rub out. To rub out another floor, pick it first.
 
 ## 4.1.2
