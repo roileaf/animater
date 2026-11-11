@@ -36,7 +36,7 @@ Turn it on per scene: Scene configuration → Animater → **This place** → **
 
 ### Decorations for regions
 
-- **Scatter them.** Right-click a region → **Decorations** to scatter painted decorations over it in the map's own hand-inked look. Choose which kinds, how dense, each kind's size and how many, and **Reshuffle** for another layout; every screen shows the same one.
+- **Scatter them.** Right-click a region → **Decorations** to scatter painted decorations over it in the map's own hand-inked look. Every one is drawn by Animater's own code, leaf by leaf and stone by stone from a seed, as the scene loads: no image files and no AI art. Choose which kinds, how dense, each kind's size and how many, and **Reshuffle** for another layout; every screen shows the same one.
   - **Outdoors:** rocks, boulders, trees, bushes, ferns, puddles, mushrooms, logs, stumps, flowers, bones, crates and more. The canopy gets two new tree kinds, **Spruce, fir or cypress** and **Blossom or fruit tree** (which drops petals).
   - **Town:** street lamps, braziers, wells, hay bales, fences, sacks, paving, gravestones, sarcophagi, coffins, mine rails, tools, treasure, scattered papers, cages, broken pillars, market stalls, tables, benches, troughs, planters, washtubs, produce crates, anvils, urns, collapsed timbers, stake fences, straw beds, tents and bedrolls.
   - **Indoors:** beds, rugs, bookshelves, chests, hearths, desks, thrones, altars, statues, potted plants, bathtubs, kitchen counters and broken furniture.
