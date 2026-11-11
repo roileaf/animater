@@ -65,11 +65,13 @@ test('dawn and dusk colour: golden as the sun sinks, deep orange at the horizon,
   assert.equal(at(0.5), null, 'noon');
   assert.equal(at(0), null, 'midnight');
   assert.equal(sunGlow(null), null, 'no clock');
-  const golden = at(0.72), horizon = at(0.749), after = at(0.76), late = at(0.79);
-  assert.ok(golden && horizon && after);
+  const golden = at(0.72), horizon = at(0.749), just = at(0.751), after = at(0.766), late = at(0.79);
+  assert.ok(golden && horizon && just && after);
   assert.ok(horizon.amount > golden.amount, 'stronger as it sinks');
   assert.ok(horizon.color[2] < golden.color[2], 'redder at the horizon');
-  assert.ok(after.color[2] > after.color[1], 'rose after sunset');
+  // (The afterglow starts at the setting sun's red and cools to rose: dusk-glow.test.mjs.)
+  assert.ok(just.color[0] > 0.9 && just.color[2] < 0.2, 'still the sunset red just after it sets');
+  assert.ok(after.color[2] > after.color[1], 'rose later in the afterglow');
   assert.equal(late, null, 'gone once twilight ends');
   assert.ok(at(0.245) && at(0.255), 'dawn too');
 });

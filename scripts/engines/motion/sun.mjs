@@ -9,49 +9,83 @@ export const COMPASS = Object.freeze({ n: -90, ne: -45, e: 0, se: 45, s: 90, sw:
 export const SUN_HEIGHTS = Object.freeze({ low: 15, mid: 40, high: 65 });
 // The fixed sun when a scene sets nothing: the top left, fairly high (the light Animater's shadows always had).
 export const DEFAULT_SUN = Object.freeze({ angle: COMPASS.nw, height: 55, strength: 1 });
-// How high the sun climbs at noon on the clock.
-const NOON = 60;
 
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 
-// The sun at `day` (0–1 through the day, midnight to midnight) between `sunrise` and `sunset` (the same fractions),
-// rising from `east` (screen degrees toward the map's east): it crosses the south at noon (north up) and sets in the
-// west, climbing to its noon height and back; it fades in and out over its first and last few degrees. null at night.
+// The sun at `day` (0–1 through the day, midnight to midnight) between `sunrise` and `sunset` (the same fractions), where it
+// is in the sky (solarGeometry): as high as it stands for the season (a summer noon high, a winter one low), rising north
+// of east in summer and south of it in winter, due south at noon (north up), `east` the screen degrees toward the map's
+// east. It fades in and out over its first and last few degrees. null at night.
 export function sunFromClock({ day, sunrise = 0.25, sunset = 0.75, east = COMPASS.e } = {}) {
   const f = ((Number(day) % 1) + 1) % 1;
   if (!(sunset > sunrise) || f <= sunrise || f >= sunset) return null;
-  const t = (f - sunrise) / (sunset - sunrise), height = NOON * Math.sin(Math.PI * t);
-  return { angle: east + 180 * t, height, strength: clamp01(height / 8) };
+  const { latitude, declination, noon } = solarGeometry({ sunrise, sunset }), hour = 2 * Math.PI * (f - noon), lat = latitude * RAD, dec = declination * RAD;
+  const height = Math.max(0, sunElevation({ day: f, sunrise, sunset }));
+  // Its bearing (degrees clockwise from north), from its hour angle: 180 at noon, east of south before, west after.
+  const bearing = Math.atan2(Math.sin(hour), Math.cos(hour) * Math.sin(lat) - Math.tan(dec) * Math.cos(lat)) / RAD + 180;
+  return { angle: east + bearing - 90, height, strength: clamp01(height / 8) };
 }
 
-// How far the sun stands above (+) or below (−) the horizon, in degrees (pure; `clock` as for sunFromClock, `hours` in a
-// day): by day as it climbs to its noon height; by night sinking at twilight's own pace, about TWILIGHT_PACE degrees an
-// hour after sunset, and rising at it again before sunrise, never deeper than NIGHT_DEPTH. So dusk takes as long on a
-// short summer night as on a long winter one, and a long night stays dark through its middle.
-export const TWILIGHT_PACE = 12, NIGHT_DEPTH = 40;
-export function sunElevation({ day, sunrise = 0.25, sunset = 0.75, hours = 24 } = {}) {
-  const f = ((Number(day) % 1) + 1) % 1;
-  if (!(sunset > sunrise)) return -NIGHT_DEPTH;
-  if (f > sunrise && f < sunset) return NOON * Math.sin(Math.PI * (f - sunrise) / (sunset - sunrise));
-  const since = (f >= sunset ? f - sunset : f + 1 - sunset) * hours, until = (f <= sunrise ? sunrise - f : sunrise + 1 - f) * hours;
-  return -Math.min(NIGHT_DEPTH, TWILIGHT_PACE * Math.min(since, until));
+// Where the sun is in the sky, as spherical astronomy has it (pure). A calendar gives only the day's length (its sunrise
+// and sunset), which is set by latitude and season together: the world is taken as mid-latitude (LATITUDE, 45°) and the
+// season (the sun's declination) read from the day's length; a day longer than that latitude ever gets (past midsummer's
+// 23.44°) is read as a higher latitude at midsummer instead (white nights), and a shorter one as a lower at midwinter.
+// { latitude, declination } in degrees, and `noon`, the middle of the day (0–1).
+// Sunrise and sunset as calendars give them: the sun's top edge on the horizon, lifted by refraction, its centre this far under.
+export const LATITUDE = 45, TILT = 23.44, SUNSET_DEPTH = 0.833;
+const RAD = Math.PI / 180;
+// The angle x for which a·sin x + b·cos x = c (degrees): of its two roots, the one within ±90° nearest `near`.
+const wrap = (deg) => ((((deg + 180) % 360) + 360) % 360) - 180;
+const solveFor = (a, b, c, near = 0) => {
+  const r = Math.hypot(a, b), s = Math.asin(Math.max(-1, Math.min(1, c / r))), alpha = Math.atan2(b, a);
+  const roots = [s - alpha, Math.PI - s - alpha].map((x) => wrap(x / RAD)).filter((x) => Math.abs(x) <= 90);
+  return roots.length ? roots.reduce((best, x) => (Math.abs(x - near) < Math.abs(best - near) ? x : best)) : NaN;
+};
+export function solarGeometry({ sunrise = 0.25, sunset = 0.75 } = {}) {
+  const half = Math.PI * Math.min(0.999, Math.max(0.001, sunset - sunrise)), cosH0 = Math.cos(half), rim = Math.sin(-SUNSET_DEPTH * RAD);
+  // sin(rim) = sin φ sin δ + cos φ cos δ cos H0, at sunset's hour angle H0.
+  let latitude = LATITUDE, declination = solveFor(Math.sin(LATITUDE * RAD), Math.cos(LATITUDE * RAD) * cosH0, rim);
+  if (!Number.isFinite(declination) || Math.abs(declination) > TILT) {
+    declination = Math.sign(declination || -cosH0) * TILT;
+    latitude = Math.min(89, Math.max(0, solveFor(Math.sin(declination * RAD), Math.cos(declination * RAD) * cosH0, rim, LATITUDE) || 89));
+  }
+  return { latitude, declination, noon: (sunrise + sunset) / 2 };
 }
-// The scene's darkness by the sun's height (pure, 0 day – 1 night): full day until it is a few degrees up, about a tenth
-// dark as it sets, half dark at the end of civil dusk (6° under), nearly dark at the end of nautical dusk (12° under) and
-// fully dark once the sky has lost the last of its glow, DARK_UNDER degrees down. The same at dawn the other way.
-export const LIGHT_ABOVE = 4, DARK_UNDER = 16;
+// How far the sun stands above (+) or below (−) the horizon, in degrees (pure; `clock` as for sunFromClock): its altitude
+// from its hour angle, latitude and declination (solarGeometry), so it is on the horizon at sunrise and sunset, highest at
+// noon and lowest at midnight; a long summer dusk lingers and a long summer night barely gets dark, as they really do.
+export function sunElevation({ day, sunrise = 0.25, sunset = 0.75 } = {}) {
+  const f = ((Number(day) % 1) + 1) % 1;
+  if (!(sunset > sunrise) || !Number.isFinite(f)) return -90;
+  const { latitude, declination, noon } = solarGeometry({ sunrise, sunset }), hour = 2 * Math.PI * (f - noon);
+  const s = Math.sin(latitude * RAD) * Math.sin(declination * RAD) + Math.cos(latitude * RAD) * Math.cos(declination * RAD) * Math.cos(hour);
+  return Math.asin(Math.max(-1, Math.min(1, s))) / RAD;
+}
+// The scene's darkness by the sun's height (pure, 0 day – 1 night), as the light outdoors falls under a clear sky and the eye
+// sees it (by its logarithm): full day a few degrees up (about 2000 lux), a tenth dark as it sets (about 400), nearly half
+// at the end of civil twilight (6° under, about 3 lux), three quarters at the end of nautical (12° under, about 0.03) and
+// fully dark at the end of astronomical twilight (18° under, starlight). The same at dawn the other way. (Measured values:
+// the AMS Glossary of Meteorology, "Civil twilight"; the National Academies, "Illumination for outdoor activities".)
+const SKY_LUX = [[4, 2000], [0, 400], [-6, 3], [-12, 0.03], [-18, 0.001]].map(([e, lux]) => [e, Math.log10(lux)]);
+export const LIGHT_ABOVE = 4, DARK_UNDER = 18;
 // `lift`: moonLift's, how much a bright moon keeps the night from full dark.
 export function darknessBySun(elevation, lift = 0) {
   const e = Number(elevation);
   if (!Number.isFinite(e)) return 1;
-  const t = clamp01((LIGHT_ABOVE - e) / (LIGHT_ABOVE + DARK_UNDER));
-  return Math.min(t * t * (3 - 2 * t), 1 - clamp01(Number(lift) || 0));
+  const top = SKY_LUX[0][1], bottom = SKY_LUX[SKY_LUX.length - 1][1];
+  let light = e >= SKY_LUX[0][0] ? top : bottom;
+  for (let i = 1; i < SKY_LUX.length; i++) {
+    const [e1, l1] = SKY_LUX[i], [e0, l0] = SKY_LUX[i - 1];
+    if (e <= e0 && e >= e1) { light = l0 + (l1 - l0) * (e0 - e) / (e0 - e1); break; }
+  }
+  return Math.min(clamp01((top - light) / (top - bottom)), 1 - clamp01(Number(lift) || 0));
 }
 
 // The colour of dawn and dusk over the whole map: golden as the sun sinks under GOLDEN degrees, deep orange at the
-// horizon, then a rose afterglow fading over TWILIGHT of the day after sunset (and before sunrise). `clock` as for
+// horizon, then the afterglow cooling through rose to the blue hour as the sun sinks to BLUE_HOUR degrees under (and the
+// other way before sunrise). `clock` as for
 // sunFromClock. { color: [r, g, b] 0–1, amount 0–1 }, or null in full day and at night.
-const GOLDEN = 18, TWILIGHT = 0.03;
+const GOLDEN = 18, BLUE_HOUR = 8;
 const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
 // Sunlight's colour by how high the sun stands (pure, degrees; [r, g, b] 0–1), as its colour temperature runs through the
 // day: near white high up (about 5500 K), soft yellow in the afternoon (4000–4500 K), golden lower (3000–3500 K), deep
@@ -87,14 +121,29 @@ function clearGlow(clock) {
     const low = clamp01(1 - sun.height / GOLDEN);
     return low > 0 ? { color: mix([1, 0.82, 0.56], [1, 0.58, 0.36], low * low), amount: low } : null;
   }
-  const since = (((f - sunset) % 1) + 1) % 1, until = (((sunrise - f) % 1) + 1) % 1;
-  const dim = clamp01(1 - Math.min(since, until) / TWILIGHT);
+  // How far through dusk (or dawn) the sun is by how deep it has sunk: red as it sets, the pink afterglow, then the blue
+  // hour, over by BLUE_HOUR degrees under. A long summer dusk lingers in its colours, as it does in the sky.
+  const depth = -sunElevation({ day: f, sunrise, sunset });
+  const dim = clamp01(1 - (depth - SUNSET_DEPTH) / (BLUE_HOUR - SUNSET_DEPTH));
   // Night: silver-blue by how much of the moon is lit (`clock.moon` 0–1), the afterglow giving way to it.
   const moon = clamp01(Number(clock.moon) || 0) * MOON_TINT;
   if (!(dim > 0) && !(moon > 0.02)) return null;
-  return { color: mix([0.72, 0.8, 1], [0.86, 0.62, 0.78], dim), amount: Math.max(0.7 * dim, moon * (1 - dim)) };
+  // The afterglow begins where the sun's own colour ended, at its strength (the setting sun's red, full), and cools as
+  // it fades: crimson, rose, then the night's blue (and the other way before sunrise). It began pale lilac at 0.7, so
+  // the scene jumped from red to near white the moment the sun set.
+  return { color: afterglowColour(1 - dim), amount: Math.max(dim, moon * (1 - dim)) };
 }
 const MOON_TINT = 0.6;
+// Through the afterglow (0 the sun just under, 1 its last), in even steps between these.
+const AFTERGLOW = [[0, sunColorByHeight(0)], [0.35, [0.86, 0.42, 0.42]], [0.65, [0.84, 0.6, 0.78]], [1, [0.72, 0.8, 1]]];
+function afterglowColour(p) {
+  const t = clamp01(p);
+  for (let i = 1; i < AFTERGLOW.length; i++) {
+    const [p1, c1] = AFTERGLOW[i], [p0, c0] = AFTERGLOW[i - 1];
+    if (t <= p1) return mix(c0, c1, (t - p0) / (p1 - p0));
+  }
+  return [...AFTERGLOW[AFTERGLOW.length - 1][1]];
+}
 
 // How much of the moon is lit at `position` through its cycle (0 new, 0.5 full, 1 new again).
 export const moonLit = (position) => (Number.isFinite(Number(position)) ? (1 - Math.cos(2 * Math.PI * Number(position))) / 2 : 0);
