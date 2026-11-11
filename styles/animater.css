@@ -4147,6 +4147,36 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .an-decor-brush .an-db-prop span { opacity: 0.8; white-space: nowrap; }
 .an-decor-brush .an-db-prop select, .an-decor-brush .an-db-prop input { height: 22px; padding: 0 4px; background: #2a241d; color: #e8dfcc; border: 1px solid #5a4b3a; border-radius: 4px; font-size: 12px; }
 .an-decor-brush .an-db-prop input { width: 44px; }
+/* Map painting: the brush bar with its Floors and Decorations tabs, one picker of tiles, one row of sliders, the rest under More. */
+.an-decor-brush.an-map-paint { padding: 0; border-radius: 10px; overflow: hidden auto; }
+/* (Foundry gives every button a fixed height; the bar's tabs and tiles size to what they hold.) */
+.an-map-paint .an-mp-tab, .an-map-paint .an-mp-tile { height: auto; min-height: 0; line-height: 1.25; }
+.an-map-paint .an-mp-head { gap: 6px; margin: 0; padding: 6px 8px; border-bottom: 1px solid #5a4b3a; }
+.an-map-paint .an-mp-tab { display: inline-flex; align-items: center; gap: 7px; padding: 5px 13px; border-radius: 7px; border: 1px solid transparent; background: none; color: #a89a82; font-size: 13px; font-weight: 600; }
+.an-map-paint .an-mp-tab.is-on { background: #3a3024; border-color: #c8a24a; color: #fff6e0; }
+.an-map-paint .an-mp-status { flex: 1; min-width: 0; text-align: center; color: #a89a82; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.an-map-paint .an-mp-icon { width: 28px; height: 26px; padding: 0; flex: 0 0 auto; }
+.an-map-paint .an-mp-icon:disabled { opacity: 0.35; cursor: default; }
+.an-map-paint .an-mp-body { padding: 8px 10px 4px; }
+.an-map-paint .an-mp-pickhead { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.an-map-paint .an-mp-pickhead .an-db-search { margin: 0; flex: 1 1 auto; width: auto; min-width: 0; }
+.an-map-paint .an-mp-place { flex: 0 0 auto; width: auto; min-width: 120px; height: 24px; background: #2a241d; color: #e8dfcc; border: 1px solid #5a4b3a; border-radius: 4px; font-size: 12px; }
+.an-map-paint .an-mp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 5px; max-height: 124px; overflow-y: auto; padding: 1px; }
+.an-map-paint .an-mp-tile { display: grid; justify-items: center; gap: 2px; padding: 4px 2px 3px; border-radius: 7px; border-color: #3d342a; background: #1c1814; font-size: 11px; }
+.an-map-paint .an-mp-tile[hidden] { display: none; }
+.an-map-paint .an-mp-tile.an-db-on { border-color: #c8a24a; background: #3a3024; box-shadow: inset 0 0 0 1px #c8a24a; }
+.an-map-paint .an-mp-tile span:last-child { max-width: 66px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.an-map-paint .an-mp-pic { width: 44px; height: 36px; border-radius: 5px; background: #4d5a24; }
+.an-map-paint .an-mp-swatch { width: 44px; height: 30px; border-radius: 5px; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45); }
+.an-map-paint .an-mp-row { margin: 8px 0 0; gap: 16px; }
+.an-map-paint .an-db-range b { min-width: 28px; font-weight: 400; color: #a89a82; }
+.an-map-paint .an-mp-tick { display: inline-flex; align-items: center; gap: 5px; }
+.an-map-paint .an-mp-tick input { accent-color: #c8a24a; margin: 0; }
+.an-map-paint .an-mp-more { margin-left: auto; background: none; border: 0; color: #c8a24a; }
+.an-map-paint .an-mp-extra { margin: 8px 0 0; padding-top: 8px; border-top: 1px dashed #3d342a; }
+.an-map-paint .an-mp-extra[hidden] { display: none; }
+.an-map-paint .an-mp-link { background: none; border: 0; padding: 0; color: #c8a24a; text-decoration: underline; }
+.an-map-paint .an-mp-keys { padding: 4px 10px 8px; opacity: 0.55; font-size: 11px; }
 .an-region-panel .an-rp-num { width: 56px; }
 
 /* Animater's own A, as in the window's header, for its buttons: FXMaster uses the wand too. In the icon's own colour, like the others. */

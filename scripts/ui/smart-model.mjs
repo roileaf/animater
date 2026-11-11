@@ -48,6 +48,43 @@ export function loadSmartModel({ onProgress, importer = (url) => import(url), gp
   return loading;
 }
 
+// The same model in a background worker (workers/smart-model-worker.mjs), so it never holds up Foundry's page: `.ready` gives
+// { device, read(rgba, width, height) → view, masks(view, points) → { masks, scores }, drop(view), close() }, as loadSmartModel's
+// does. The map is sent as a copy (transferred); the masks come back transferred.
+export function smartModelWorker({ onProgress, Worker = globalThis.Worker, url = new URL('../workers/smart-model-worker.mjs', import.meta.url) } = {}) {
+  const worker = new Worker(url, { type: 'module' }), waiting = new Map();
+  let next = 1;
+  worker.onmessage = ({ data }) => {
+    if (data?.type === 'progress') { onProgress?.(data.loaded, data.total); return; }
+    const w = waiting.get(data?.id); if (!w) return;
+    waiting.delete(data.id);
+    if (data.ok) w.resolve(data); else w.reject(new Error(data.error || 'The smart model failed.'));
+  };
+  worker.onerror = (event) => { const error = new Error(event?.message || 'The smart model worker failed.'); for (const w of waiting.values()) w.reject(error); waiting.clear(); };
+  const ask = (message, transfer = []) => new Promise((resolve, reject) => { const id = next++; waiting.set(id, { resolve, reject }); worker.postMessage({ ...message, id }, transfer); });
+  const ready = ask({ type: 'load' }).then((loaded) => ({
+    device: loaded.device,
+    async read(rgba, width, height) { const copy = new Uint8ClampedArray(rgba); return (await ask({ type: 'read', rgba: copy.buffer, width, height }, [copy.buffer])).view; },
+    async masks(view, points) { const answer = await ask({ type: 'masks', view, points }); return { masks: answer.masks, scores: answer.scores }; },
+    drop: (view) => ask({ type: 'drop', view }).catch(() => {}),
+    close: () => worker.terminate(),
+  }));
+  ready.catch(() => worker.terminate());
+  return { ready };
+}
+
+// One worker for the page, shared by Floor regions' Smart selection and Map painting's Edges: Model (one download, one model in
+// memory). A promise of the worker's model, as loadSmartModel's; download progress goes to whoever asked last. A failed load is
+// tried afresh next time. (Where there are no workers, it loads on the page as before.) `reset` forgets it (tests).
+let sharedModel = null, sharedProgress = null;
+export function smartModelShared({ onProgress, Worker = globalThis.Worker, url, reset = false } = {}) {
+  if (reset) { sharedModel = null; sharedProgress = null; return null; }
+  if (onProgress) sharedProgress = onProgress;
+  if (!Worker) return loadSmartModel({ onProgress });
+  sharedModel ??= smartModelWorker({ Worker, url, onProgress: (loaded, total) => sharedProgress?.(loaded, total) }).ready.catch((error) => { sharedModel = null; throw error; });
+  return sharedModel;
+}
+
 function segmenter(t, model, processor, device) {
   const ip = processor.image_processor ?? processor;
   return {

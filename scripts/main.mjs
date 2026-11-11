@@ -279,9 +279,12 @@ import { createCavern, fungusTouches, skylightShare } from "./engines/motion/cav
 import { createWebs, webCorners } from "./engines/motion/webs.mjs";
 import { createDecorations, decorWreckTile } from "./engines/motion/decorations.mjs";
 import { createDecorLights } from "./engines/motion/decor-lights.mjs";
+import { colourAt as floorColourAt, dabCells as floorDabCells, planFloorStroke, floorRegionName, modelMaskFor } from "./engines/regions/floor-brush.mjs";
+import { toRegionData as floorRegionData, floorColour as floorTint, fitSize as floorFitSize } from "./engines/regions/floor-detect.mjs";
+import { nearbyClicks as smartNearbyClicks } from "./engines/regions/smart-select.mjs";
 import { decorSettings, strokeShapes, circleArea as decorCircle, decorPlacements, trunkWalls, carryDecor } from "./engines/motion/decor-regions.mjs";
-import { openBrushBar, brushChoices } from "./ui/decor-brush-bar.mjs";
-import { DECOR_KINDS, stampDecor } from "./engines/motion/decor-paint.mjs";
+import { openBrushBar, brushChoices, BRUSH_EDGE } from "./ui/decor-brush-bar.mjs";
+import { DECOR_KINDS, stampDecor, paintDecor } from "./engines/motion/decor-paint.mjs";
 import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, seasonGround, groundInputs, groundStep, groundMoved, iceHours } from "./engines/motion/ambient-life.mjs";
 import { isFireLight, hazesLight, sparksLight, smokesLight, fireHazeTag, hazeAbove } from "./engines/distortion/fire-haze.mjs";
 import { createFireSmoke, fireSize, SMOKE_FIRES, chimneyOf, chimneyPlume } from "./engines/motion/fire-smoke.mjs";
@@ -2447,14 +2450,241 @@ const startDecorBrush = (doc = null) => {
   const view = canvas.app.view, ring = new PIXI.Graphics(), grid = () => canvas.grid.size;
   // A ghost of what the next click lays, under the ring, following the pointer and changing as the bar's choices change.
   const ghost = new PIXI.Container(); ghost.eventMode = "none"; ghost.alpha = 0.55;
-  ring.eventMode = "none"; floorLayer("decorBrush", 1102)().addChild(ghost, ring);
+  // (The ghost lies lit on the floor like the decorations it shows; the ring and the Floors tab's previews sit above the
+  // scene's lighting, in canvas.interface, so they show in their own colours at night too.)
+  const top = new PIXI.Container(); top.eventMode = "none"; canvas.interface.addChild(top);
+  ring.eventMode = "none"; floorLayer("decorBrush", 1102)().addChild(ghost); top.addChild(ring);
   const state = decorBrushing = { id: null, doc: null, brushed: [], erased: [], circles: [], fresh: null, size: DECOR_BRUSH.usual, down: false, last: null, at: null, seed: Date.now() % 1e6, ring, ghost, ghostKey: null, ghostItems: [], ghostSeed: Date.now() % 1e5, bar: null };
   // A region's own brush shows the bar too, with only its place and its ticked kinds; either way it paints one kind at a time.
   const own = doc ? decorSettings(doc.flags?.[ID]?.decor) : null;
   const region = own ? { name: doc.name, where: own.where, kinds: Object.keys(own.kinds).filter((id) => DECOR_KINDS[id] && (DECOR_KINDS[id].set === "both" || DECOR_KINDS[id].set === own.where)) } : null;
-  state.bar = openBrushBar({ onClose: () => stopDecorBrush(), onChange: () => draw(), region });
+  // Map painting: the bar's Floors tab paints floor regions, its Decorations tab decorations (each kind with its own picture).
+  const thumbs = new Map(), thumb = (kind) => { if (!thumbs.has(kind)) { let pic = null; try { pic = paintDecor(kind, 7, 48, decorLook({ where: brushChoices().where }))?.canvas ?? null; } catch { /* no picture */ } thumbs.set(kind, pic); } return thumbs.get(kind); };
+  state.bar = openBrushBar({ onClose: () => stopDecorBrush(), onChange: () => { draw(); if (floorsOn() && modelOn()) void loadSam(); refreshStatus(); }, region, thumb,
+    onTab: () => { if (floorsOn()) void readMap(); else hideHover(); draw(); refreshStatus(); },
+    onUndo: () => { if (!state.down) void undoDecorStep().then(refreshStatus); }, onRedo: () => { if (!state.down) void redoDecorStep().then(refreshStatus); },
+    onReadMap: game.settings.get(ID, "experimentalWaterRegions") === true ? () => { stopDecorBrush(); void openFloorRegionsTool(); } : null });
   const sizeNow = () => brushChoices().size;
   const at = (e) => { const p = canvas.canvasCoordinatesFromClient?.({ x: e.clientX, y: e.clientY }) ?? canvas.stage.toLocal({ x: e.clientX, y: e.clientY }); return { x: p.x, y: p.y }; };
+  // Floors (engines/regions/floor-brush.mjs): the level's map read once; a stroke painted as a mask over it and shown as it goes;
+  // the level's floor regions tinted while the brush is out; each stroke saved as it ends (growing the region of its floor it
+  // touches, or a new one), Shift rubbing out any floor.
+  const fl = state.floors = { map: null, reading: null, why: "", stroke: null, erasing: false, seed: null, claimed: null, saved: [], preview: null, pixels: null, overlay: new PIXI.Graphics() };
+  fl.overlay.eventMode = "none"; top.addChildAt(fl.overlay, 0);
+  const floorsOn = () => brushChoices().tab === "floors";
+  const readMap = () => fl.reading ??= (async () => {
+    const level = canvas.level, src = level?.background?.src, rect = canvas.dimensions?.sceneRect;
+    if (!src || !(rect?.width > 0) || !(rect?.height > 0)) { fl.why = "This level has no map image to paint floors on."; return; }
+    const ui = await import("./ui/floor-regions-ui.mjs");
+    if (!ui.levelMapIsPlain(level?.textures)) { fl.why = "This level's map is moved, scaled or rotated in its configuration, so floors painted on it would land in the wrong place."; return; }
+    const loaded = await ui.loadMapRgba(src, floorFitSize(rect.width, rect.height));
+    if (!loaded?.ok) { fl.why = "The map image could not be read."; return; }
+    if (decorBrushing !== state) return;
+    fl.map = { rgba: loaded.rgba, width: loaded.width, height: loaded.height, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, levelId: level?.id, ui };
+    refreshFloors();
+  })().catch((err) => { console.warn("Animater | map painting floors", err); fl.why = "The map image could not be read."; });
+  // The level's floor regions as the brush sees them, and tinted on the map in their floor's colour.
+  const refreshFloors = () => {
+    const m = fl.map; fl.overlay.clear(); if (!m) return;
+    try { fl.saved = m.ui.savedAreaProposals(canvas.scene?.regions, { levelId: m.levelId, sceneRect: m.rect, width: m.width, height: m.height }).filter((s) => s.floor && !s.overhead); }
+    catch (err) { console.warn("Animater | map painting floors", err); fl.saved = []; }
+    const sx = m.rect.width / m.width, sy = m.rect.height / m.height, toScene = (pts) => Array.from(pts, (v, i) => (i % 2 ? m.rect.y + v * sy : m.rect.x + v * sx));
+    for (const s of fl.saved) {
+      const tint = Number.parseInt(String(floorTint(s.floor)).slice(1), 16) || 0x2c7da0;
+      fl.overlay.lineStyle(2, tint, 0.9); fl.overlay.beginFill(tint, 0.22);
+      for (const loop of s.loops ?? []) { if (loop.hole) { fl.overlay.beginHole(); fl.overlay.drawPolygon(toScene(loop.points)); fl.overlay.endHole(); } else fl.overlay.drawPolygon(toScene(loop.points)); }
+      fl.overlay.endFill();
+    }
+    fl.overlay.visible = floorsOn();
+  };
+  // The header's line: what floors this level has, and how many decorations are painted here.
+  const refreshStatus = () => {
+    if (decorBrushing !== state) return;
+    const counts = new Map(); for (const s of fl.saved) counts.set(s.floor, (counts.get(s.floor) ?? 0) + 1);
+    const floorsText = [...counts].map(([f, n]) => `${floorRegionName(f, []).replace(/ 1$/, "")}${n > 1 ? ` ×${n}` : ""}`);
+    let painted = 0; for (const r of regionsHere()) painted += decorSettings(r.flags?.[ID]?.decor)?.brushed?.length ?? 0;
+    const parts = [...floorsText, ...(painted ? [`${painted} decorations`] : [])];
+    const text = floorsOn() && !fl.map ? (fl.why || "Reading the map…") : floorsOn() && modelOn() && sam.status ? sam.status : parts.length ? `On this level: ${parts.join(" · ")}` : "Nothing painted yet";
+    state.bar?.setStatus(text, { undo: decorSteps.undo.length > 0, redo: decorSteps.redo.length > 0 });
+  };
+  const toImage = (p) => ({ x: ((p.x - fl.map.rect.x) * fl.map.width) / fl.map.rect.width, y: ((p.y - fl.map.rect.y) * fl.map.height) / fl.map.rect.height });
+  // The stroke as it goes: a picture the size of the map image, over the map, each dab's pixels coloured in.
+  const showStroke = (cells) => {
+    const m = fl.map;
+    if (!fl.preview) { const c = document.createElement("canvas"); c.width = m.width; c.height = m.height; fl.pixels = c.getContext("2d").createImageData(m.width, m.height); fl.preview = new PIXI.Sprite(PIXI.Texture.from(c)); fl.preview.canvas = c; fl.preview.eventMode = "none"; fl.preview.position.set(m.rect.x, m.rect.y); fl.preview.scale.set(m.rect.width / m.width, m.rect.height / m.height); top.addChildAt(fl.preview, 1); }
+    const d = fl.pixels.data, hex = fl.erasing ? "#ff6a5a" : floorTint(brushChoices().floor), r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    const look = fl.erasing ? null : textureLook();
+    if (!cells.length) return;
+    // Only the box the dab touched is copied in (the picture is the whole map: copying all of it every dab made the brush lag),
+    // and the picture goes to the screen at most once a frame.
+    let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
+    for (const i of cells) { d[i * 4] = r; d[i * 4 + 1] = g; d[i * 4 + 2] = b; d[i * 4 + 3] = look ? 225 : 130; const x = i % m.width, y = (i / m.width) | 0; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    const pg = fl.preview.canvas.getContext("2d"), w = x1 - x0 + 1, h = y1 - y0 + 1;
+    pg.putImageData(fl.pixels, 0, 0, x0, y0, w, h);
+    if (look) { pg.save(); pg.beginPath(); pg.rect(x0, y0, w, h); pg.clip(); texturise(pg, m.width, m.height, 0, 0, look); pg.restore(); }
+    fl.preview.visible = true;
+    if (!fl.uploading) { fl.uploading = true; requestAnimationFrame(() => { fl.uploading = false; if (!fl.preview || fl.preview.destroyed) return; fl.preview.texture.update?.(); fl.preview.texture.baseTexture?.update?.(); }); }
+  };
+  // Hovering: what the next dab would take there, in the floor's colour (Smart edges shows it stopping at the bank), drawn
+  // into a small picture the size of the ring, at most every few frames.
+  let hoverAt = null, hoverTimer = null, claimedKey = null, claimedMask = null;
+  // What the floor will look like when it is painted (Texture: Paint it, or As the scene says on a scene that paints floors):
+  // the scene's own tile of it, at its size on the map (four squares a tile), for the previews; null to show the floor's tint.
+  const textureLook = () => {
+    const c = brushChoices(), m = fl.map; if (!m) return null;
+    if (!m.ui.paintsTexture(c.floor, c.texture, canvas.scene?.flags?.[ID]?.floorTextures ?? "")) return null;
+    const style = m.ui.patternOptions(c.floor)[0]?.[0] ?? "", key = `${c.floor}/${style}`;
+    fl.tiles ??= new Map();
+    if (!fl.tiles.get(key)) { let tile = null; try { tile = floorTextures.tileImage(c.floor, style) ?? null; } catch { /* not drawn yet */ } if (tile) fl.tiles.set(key, tile); else return null; }
+    return { tile: fl.tiles.get(key), size: grid() * 4 * (m.width / m.rect.width) };
+  };
+  // Lays the texture over what a preview picture shows, aligned to the map (the picture's corner at x0, y0 of the map image).
+  const texturise = (g, w, h, x0, y0, look) => {
+    const pattern = g.createPattern(look.tile, "repeat"); if (!pattern) return;
+    const k = look.size / (look.tile.width || 1); pattern.setTransform?.(new DOMMatrix([k, 0, 0, k, -x0, -y0]));
+    g.save(); g.globalCompositeOperation = "source-in"; g.fillStyle = pattern; g.fillRect(0, 0, w, h); g.restore();
+  };
+  // The pixels other floors' regions hold, which painting `floor` keeps off (made again when the regions or the floor change).
+  // (Decorations stand on the floor: the brush paints under them, and they show above it.)
+  const claimedBy = (floor) => {
+    if (claimedKey?.saved === fl.saved && claimedKey.floor === floor) return claimedMask;
+    claimedMask = new Uint8Array(fl.map.width * fl.map.height); for (const s of fl.saved) if (s.floor !== floor) for (const px of s.pixels) claimedMask[px] = 1;
+    claimedKey = { saved: fl.saved, floor }; return claimedMask;
+  };
+  const hideHover = () => { hoverAt = null; if (fl.hover) fl.hover.visible = false; };
+  const drawHover = () => {
+    hoverTimer = null; const p = hoverAt, m = fl.map; if (!p || !m || state.down || !floorsOn() || decorBrushing !== state) return hideHover();
+    const c = brushChoices(), q = toImage(p), radius = ((sizeNow() * grid()) / 2) * (m.width / m.rect.width), R = Math.ceil(radius) + 1;
+    const x0 = Math.max(0, Math.floor(q.x) - R), y0 = Math.max(0, Math.floor(q.y) - R), w = Math.max(1, Math.min(m.width, Math.floor(q.x) + R + 1) - x0), h = Math.max(1, Math.min(m.height, Math.floor(q.y) + R + 1) - y0);
+    const claimed = claimedBy(c.floor);
+    // With the model: the outline under the pointer, asked once the pointer rests a moment (and kept while it stays inside).
+    let within = null;
+    if (modelOn()) {
+      if (!sam.ready) { void loadSam(); return hideHover(); }
+      if (!fl.hoverWithin?.[Math.round(q.y) * m.width + Math.round(q.x)]) {
+        clearTimeout(fl.hoverAsk); if (fl.hover) fl.hover.visible = false;
+        // (One quick question, once the pointer has rested a little: the model runs on this page, so the five-point read a
+        // stroke makes would hold the brush up while it moves.)
+        fl.hoverAsk = setTimeout(async () => { const at = hoverAt; if (!at || state.down || decorBrushing !== state) return; try { fl.hoverWithin = await askModel(toImage(at), { quick: true }); } catch (err) { console.warn("Animater | map painting smart model", err); return; } if (hoverAt) hoverFloor(hoverAt); }, 450);
+        return;
+      }
+      within = fl.hoverWithin;
+    }
+    const cells = floorDabCells({ rgba: m.rgba, width: m.width, height: m.height, x: q.x, y: q.y, radius, seed: floorColourAt(m.rgba, m.width, m.height, q.x, q.y), tolerance: c.tol, smart: c.smart, allowed: (i) => !claimed[i], within });
+    if (!fl.hover) { const cv = document.createElement("canvas"); fl.hover = new PIXI.Sprite(PIXI.Texture.from(cv)); fl.hover.canvas = cv; fl.hover.eventMode = "none"; top.addChildAt(fl.hover, 1); }
+    const cv = fl.hover.canvas; if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    const g = cv.getContext("2d"), img = g.createImageData(w, h), d = img.data, hex = floorTint(c.floor), r = parseInt(hex.slice(1, 3), 16), gr = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    const look = textureLook(), alpha = look ? 225 : 105;
+    for (const i of cells) { const x = (i % m.width) - x0, y = ((i / m.width) | 0) - y0; if (x < 0 || y < 0 || x >= w || y >= h) continue; const k = (y * w + x) * 4; d[k] = r; d[k + 1] = gr; d[k + 2] = b; d[k + 3] = alpha; }
+    g.putImageData(img, 0, 0); if (look) texturise(g, w, h, x0, y0, look); fl.hover.texture.baseTexture?.setSize?.(w, h); fl.hover.texture.update?.(); fl.hover.texture.baseTexture?.update?.();
+    const sx = m.rect.width / m.width, sy = m.rect.height / m.height; fl.hover.position.set(m.rect.x + x0 * sx, m.rect.y + y0 * sy); fl.hover.scale.set(sx, sy); fl.hover.visible = true;
+  };
+  const hoverFloor = (p) => { hoverAt = p; if (!hoverTimer) hoverTimer = setTimeout(drawHover, 40); };
+  const clearStroke = () => { fl.stroke = null; if (fl.pixels) fl.pixels.data.fill(0); if (fl.preview) { fl.preview.canvas.getContext("2d").clearRect(0, 0, fl.map.width, fl.map.height); fl.preview.texture.update?.(); fl.preview.texture.baseTexture?.update?.(); fl.preview.visible = false; } };
+  // Edges: Model (ui/smart-model.mjs): SAM 2.1, after the GM agrees once to its download (as Floor regions asks, and remembered
+  // with it), reads the map once (about 2 s on WebGPU) and then says in about 0.2 s what outline lies under a point.
+  const sam = fl.sam = { ready: null, loading: null, status: "" };
+  const modelOn = () => brushChoices().edges === "model";
+  const SAM_PREFS = "animater.floorRegions";
+  const samPrefs = () => { try { return JSON.parse(globalThis.localStorage?.getItem(SAM_PREFS) ?? "{}") ?? {}; } catch { return {}; } };
+  const samStatus = (text) => { sam.status = text ?? ""; refreshStatus(); };
+  // (The model runs in a background worker (ui/smart-model.mjs smartModelWorker), one for the page, kept between uses of the
+  // brush: Foundry keeps drawing while it loads, reads and answers. Without WebGPU it is slow, never frozen.)
+  const loadSam = () => sam.loading ??= (async () => {
+    await readMap(); if (!fl.map) throw new Error(fl.why || "no map");
+    const { smartModelShared, isSmartModelCached, SMART_MODEL } = await import("./ui/smart-model.mjs");
+    if (samPrefs().smartAgreed !== SMART_MODEL.repo && !(await isSmartModelCached())) {
+      const { SMART_CONSENT } = await import("./ui/floor-regions-ui.mjs");
+      const ok = await foundry.applications.api.DialogV2.confirm({ window: { title: "Map painting: smart model" }, content: `<p>${SMART_CONSENT}</p>` });
+      if (!ok) throw new Error("declined");
+      try { globalThis.localStorage?.setItem(SAM_PREFS, JSON.stringify({ ...samPrefs(), smartAgreed: SMART_MODEL.repo })); } catch { /* storage unavailable */ }
+    }
+    samStatus("Loading the smart model…");
+    const seg = await smartModelShared({ onProgress: (loaded, total) => samStatus(`Downloading the smart model… ${Math.round((loaded / Math.max(1, total)) * 100)}%`) });
+    samStatus(seg.device === "webgpu" ? "The smart model is reading the map…" : "The smart model is reading the map (no WebGPU here, so this takes a while)…");
+    const view = await seg.read(fl.map.rgba, fl.map.width, fl.map.height);
+    if (decorBrushing !== state) { void seg.drop(view); return; }
+    sam.ready = { seg, view }; samStatus("");
+  })().catch((err) => {
+    sam.loading = null; samStatus("");
+    if (err?.message !== "declined") { console.warn("Animater | map painting smart model", err); ui.notifications?.warn?.("The smart model could not load, so Edges is back on Colour."); }
+    if (decorBrushing === state) state.bar?.setEdges("colour");
+  });
+  // The model's outline under a point of the map image (pure: floor-brush modelMaskFor).
+  // (Asked as Floor regions' Smart selection asks about a click: the point and four round it, the outline they most agree
+  // on, kept to the clicked floor's colours, so a bush or a rock inside the outline is not painted.)
+  // `quick` (the hover): the point alone, one call.
+  const askModel = async (q, { quick = false } = {}) => {
+    const m = fl.map, at = { x: Math.round(q.x), y: Math.round(q.y) };
+    if (quick) { const r = await sam.ready.seg.masks(sam.ready.view, [{ ...at, label: 1 }]); return modelMaskFor({ masks: r.masks, scores: r.scores, rgba: m.rgba, width: m.width, height: m.height, at: q }); }
+    const sets = [];
+    // (A breath between the model's calls, so the screen keeps drawing while it answers.)
+    for (const spot of smartNearbyClicks(at, m.width, m.height)) { sets.push((await sam.ready.seg.masks(sam.ready.view, [spot])).masks); await new Promise((r) => setTimeout(r, 0)); }
+    return modelMaskFor({ sets, rgba: m.rgba, width: m.width, height: m.height, at: q });
+  };
+  const floorBegin = (p, erase) => {
+    if (!fl.map) { void readMap().then(() => { if (fl.why) ui.notifications?.warn?.(fl.why); refreshStatus(); }); refreshStatus(); return false; }
+    if (fl.finishing) return false;
+    const model = modelOn() && !erase;
+    if (model && !sam.ready) { void loadSam(); ui.notifications?.info?.("The smart model is getting ready; paint again in a moment (or set Edges to Colour)."); return false; }
+    const m = fl.map, c = brushChoices(), q = toImage(p);
+    fl.stroke = new Uint8Array(m.width * m.height); fl.erasing = erase; fl.seed = floorColourAt(m.rgba, m.width, m.height, q.x, q.y);
+    // Painting keeps off the other floors' regions (rubbing out takes from any).
+    fl.claimed = erase ? new Uint8Array(m.width * m.height) : claimedBy(c.floor);
+    // With the model, the stroke paints inside the outlines it has asked for, starting from the one hovering already found.
+    fl.model = model; fl.dabs = []; fl.asking = null; fl.within = model ? new Uint8Array(m.width * m.height) : null;
+    if (model && fl.hoverWithin?.[Math.round(q.y) * m.width + Math.round(q.x)]) fl.within.set(fl.hoverWithin);
+    hideHover(); return true;
+  };
+  const radiusNow = () => ((sizeNow() * grid()) / 2) * (fl.map.width / fl.map.rect.width);
+  const paintDab = (q) => {
+    const m = fl.map, c = brushChoices();
+    const cells = floorDabCells({ rgba: m.rgba, width: m.width, height: m.height, x: q.x, y: q.y, radius: radiusNow(), seed: fl.seed, tolerance: c.tol, smart: c.smart && !fl.erasing, allowed: (i) => !fl.claimed[i], within: fl.model ? fl.within : null });
+    for (const i of cells) fl.stroke[i] = 1;
+    showStroke(cells);
+  };
+  // A dab whose middle lies outside the outlines so far asks the model about it (one question at a time); when the answer
+  // comes, every dab of the stroke paints again inside the outlines.
+  const askAt = (q) => {
+    if (fl.asking) return;
+    const stroke = fl.stroke;
+    fl.asking = askModel(q).then((mask) => {
+      if (fl.stroke !== stroke) return;
+      if (mask) for (let i = 0; i < mask.length; i++) if (mask[i]) fl.within[i] = 1;
+      for (const d of fl.dabs) paintDab(d);
+    }).catch((err) => console.warn("Animater | map painting smart model", err)).finally(() => {
+      if (fl.stroke !== stroke) return; fl.asking = null;
+      const last = fl.dabs.at(-1); if (last && !fl.within[Math.round(last.y) * fl.map.width + Math.round(last.x)]) askAt(last);
+    });
+  };
+  const floorDab = (p) => {
+    const q = toImage(p);
+    if (!fl.model) return paintDab(q);
+    fl.dabs.push(q);
+    if (fl.within[Math.round(q.y) * fl.map.width + Math.round(q.x)]) paintDab(q); else askAt(q);
+  };
+  const floorFinish = async () => {
+    // (A stroke still waiting on the model's answer is saved once it comes.)
+    fl.finishing = true;
+    while (fl.asking) await fl.asking;
+    const c = brushChoices(), saved = fl.saved, m = fl.map;
+    try {
+      const plan = planFloorStroke({ saved, floor: c.floor, stroke: fl.stroke, erase: fl.erasing, width: fl.map.width, height: fl.map.height });
+      const scene = canvas.scene, opts = { sceneRect: m.rect, imageWidth: m.width, imageHeight: m.height, levelId: m.levelId }, shapesOf = (loops) => floorRegionData({ loops }, opts).shapes;
+      const updates = [], creates = [], removes = [];
+      for (const u of plan.updates) { const doc = scene.regions.get(u.regionId); if (!doc) continue; const before = doc.toObject().shapes, after = shapesOf(u.loops); await doc.update({ shapes: after }); updates.push({ id: doc.id, before, after }); }
+      for (const id of plan.removes) { const doc = scene.regions.get(id); if (!doc) continue; const data = doc.toObject(); delete data._id; await doc.delete(); removes.push({ id, data }); }
+      const names = scene.regions.map((r) => r.name);
+      for (const made of plan.creates) {
+        const data = floorRegionData({ loops: made.loops }, { ...opts, name: floorRegionName(c.floor, names), floor: c.floor, texture: c.texture, overWater: c.overWater, edge: c.edge === BRUSH_EDGE.usual ? "" : c.edge });
+        const [doc] = await scene.createEmbeddedDocuments("Region", [data]); if (doc) { creates.push({ id: doc.id, data }); names.push(data.name); }
+      }
+      if (updates.length || creates.length || removes.length) rememberDecorStep({ kind: "floor", updates, creates, removes });
+    } catch (err) { console.warn("Animater | map painting floors", err); ui.notifications?.warn?.("The floor could not be saved."); }
+    fl.finishing = false;
+    if (decorBrushing === state) { clearStroke(); refreshFloors(); refreshStatus(); }
+  };
+  const regionHooks = ["createRegion", "updateRegion", "deleteRegion"].map((hook) => [hook, Hooks.on(hook, () => { if (decorBrushing === state && !state.down) { refreshFloors(); refreshStatus(); } })]);
   // The ghost: one dab's worth laid out round the pointer (the very ones a click puts down), drawn again only when the choices change.
   const refreshGhost = () => {
     const radius = (sizeNow() * grid()) / 2, using = paintWith(), key = JSON.stringify([using, radius, state.ghostSeed]);
@@ -2469,10 +2699,13 @@ const startDecorBrush = (doc = null) => {
   };
   const draw = () => {
     ring.clear();
-    const showGhost = !!state.at && !state.down && !state.erasing; ghost.visible = showGhost;
+    const floors = floorsOn(); fl.overlay.visible = floors;
+    const showGhost = !!state.at && !state.down && !state.erasing && !floors; ghost.visible = showGhost;
     if (!state.at) return;
     if (showGhost) { refreshGhost(); ghost.position.set(state.at.x, state.at.y); }
-    ring.lineStyle(2, state.erasing ? 0xff7a64 : 0xffffff, 0.9); ring.drawCircle(state.at.x, state.at.y, (sizeNow() * grid()) / 2);
+    // On Floors the ring is in the floor's colour.
+    const ringTint = state.erasing ? 0xff7a64 : floors ? (Number.parseInt(String(floorTint(brushChoices().floor)).slice(1), 16) || 0xffffff) : 0xffffff;
+    ring.lineStyle(2, ringTint, 0.95); ring.drawCircle(state.at.x, state.at.y, (sizeNow() * grid()) / 2);
   };
   // Where a stroke goes: the region the brush was opened on; else the region it starts in; else a new one round it.
   const begin = (p) => {
@@ -2521,14 +2754,26 @@ const startDecorBrush = (doc = null) => {
   // (A right-drag pans the map as ever; only a right-click that stays put stops the brush.)
   // (Heard on the window before Foundry's canvas hears them, and kept from it while painting, so a stroke never draws
   // Foundry's drag-select box or selects what it passes over.)
-  const down = (e) => { if (e.target !== view) return; if (e.button === 2) { state.rightAt = { x: e.clientX, y: e.clientY }; return; } if (e.button !== 0) return; e.stopImmediatePropagation(); e.preventDefault(); const p = at(e); begin(p); state.down = true; state.erasing = e.shiftKey; state.last = p; draw(); dab(p, e.shiftKey, true); };
-  const move = (e) => { if (!state.down && e.target !== view) return; const p = at(e); state.at = p; state.erasing = e.shiftKey; draw(); if (!state.down) return; e.stopImmediatePropagation(); if (Math.hypot(p.x - state.last.x, p.y - state.last.y) > sizeNow() * grid() * 0.35) { state.last = p; dab(p, e.shiftKey); } };
-  const up = (e) => { if (!state.down) return; e.stopImmediatePropagation(); state.down = false; draw(); void finish(); };
+  const down = (e) => {
+    if (e.target !== view) return; if (e.button === 2) { state.rightAt = { x: e.clientX, y: e.clientY }; return; } if (e.button !== 0) return; e.stopImmediatePropagation(); e.preventDefault(); const p = at(e);
+    if (floorsOn()) { if (!floorBegin(p, e.shiftKey)) return; state.down = true; state.erasing = e.shiftKey; state.last = p; draw(); floorDab(p); return; }
+    begin(p); state.down = true; state.erasing = e.shiftKey; state.last = p; draw(); dab(p, e.shiftKey, true);
+  };
+  const move = (e) => {
+    if (!state.down && e.target !== view) { hideHover(); return; } const p = at(e); state.at = p; if (!state.down) state.erasing = e.shiftKey; draw();
+    if (!state.down) { if (floorsOn() && fl.map && !e.shiftKey) hoverFloor(p); else hideHover(); return; } e.stopImmediatePropagation();
+    // A floor stroke dabs every third of the ring, filling the gaps between, so a quick drag paints a band, not beads.
+    if (fl.stroke) { const step = sizeNow() * grid() / 6, dist = Math.hypot(p.x - state.last.x, p.y - state.last.y); if (dist < step) return; for (let s = step; s <= dist; s += step) floorDab({ x: state.last.x + ((p.x - state.last.x) * s) / dist, y: state.last.y + ((p.y - state.last.y) * s) / dist }); state.last = p; return; }
+    if (Math.hypot(p.x - state.last.x, p.y - state.last.y) > sizeNow() * grid() * 0.35) { state.last = p; dab(p, e.shiftKey); }
+  };
+  const up = (e) => { if (!state.down) return; e.stopImmediatePropagation(); state.down = false; draw(); if (fl.stroke) void floorFinish(); else void finish().then(refreshStatus); };
   const key = (e) => {
     if (e.target?.closest?.("input, textarea")) return;
     // Ctrl+Z takes back the last stroke, Ctrl+Shift+Z or Ctrl+Y puts it back (Foundry's own undo waits while the brush is out).
     const z = e.key === "z" || e.key === "Z", undo = (e.ctrlKey || e.metaKey) && z && !e.shiftKey, redo = (e.ctrlKey || e.metaKey) && ((z && e.shiftKey) || e.key === "y" || e.key === "Y");
-    if (undo || redo) { e.preventDefault(); e.stopImmediatePropagation(); if (!state.down) void (undo ? undoDecorStep() : redoDecorStep()); return; }
+    if (undo || redo) { e.preventDefault(); e.stopImmediatePropagation(); if (!state.down) void (undo ? undoDecorStep() : redoDecorStep()).then(refreshStatus); return; }
+    // 1 and 2 switch the tabs (kept from Foundry's macro bar while the brush is out).
+    if ((e.key === "1" || e.key === "2") && !(e.ctrlKey || e.metaKey || e.altKey)) { e.preventDefault(); e.stopImmediatePropagation(); if (e.key === "1") state.bar?.setTab("floors"); else if (e.key === "2") state.bar?.setTab("decor"); return; }
     if (e.key === "Escape") stopDecorBrush();
     else if (e.key === "[" || e.key === "]") { const next = Math.min(DECOR_BRUSH.max, Math.max(DECOR_BRUSH.min, sizeNow() + (e.key === "]" ? 0.5 : -0.5))); state.bar?.setSize(next); draw(); }
   };
@@ -2538,7 +2783,10 @@ const startDecorBrush = (doc = null) => {
     if (e.target !== view || !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey)) return;
     e.preventDefault(); e.stopImmediatePropagation();
     const up = (e.deltaY || e.deltaX) < 0;
-    if (e.altKey && !(e.ctrlKey || e.metaKey || e.shiftKey)) state.bar?.setScale(brushChoices().scale + (up ? 0.1 : -0.1));
+    // On Floors, Alt+wheel is How alike; Shift+wheel turns nothing.
+    if (floorsOn() && e.altKey && !(e.ctrlKey || e.metaKey || e.shiftKey)) state.bar?.setTol(brushChoices().tol + (up ? 2 : -2));
+    else if (floorsOn() && e.shiftKey) return;
+    else if (e.altKey && !(e.ctrlKey || e.metaKey || e.shiftKey)) state.bar?.setScale(brushChoices().scale + (up ? 0.1 : -0.1));
     else if (e.shiftKey && !(e.ctrlKey || e.metaKey)) state.bar?.turnBy(up ? -1 : 1);
     else if (e.shiftKey) state.bar?.setThick(brushChoices().thick + (up ? 0.1 : -0.1));
     else { const next = Math.min(DECOR_BRUSH.max, Math.max(DECOR_BRUSH.min, sizeNow() + (up ? 0.5 : -0.5))); state.bar?.setSize(next); }
@@ -2546,7 +2794,9 @@ const startDecorBrush = (doc = null) => {
   };
   const menu = (e) => { const from = state.rightAt; state.rightAt = null; if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > 6) return; e.preventDefault(); stopDecorBrush(); };
   window.addEventListener("pointerdown", down, true); window.addEventListener("pointermove", move, true); window.addEventListener("pointerup", up, true); window.addEventListener("keydown", key, true); view.addEventListener("contextmenu", menu, true); window.addEventListener("wheel", wheel, { capture: true, passive: false });
-  state.stop = () => { window.removeEventListener("pointerdown", down, true); window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", key, true); view.removeEventListener("contextmenu", menu, true); window.removeEventListener("wheel", wheel, { capture: true }); try { ring.destroy(); ghost.destroy({ children: true }); } catch { /* gone */ } state.bar?.close(); };
+  state.stop = () => { window.removeEventListener("pointerdown", down, true); window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", key, true); view.removeEventListener("contextmenu", menu, true); window.removeEventListener("wheel", wheel, { capture: true }); for (const [hook, id] of regionHooks) Hooks.off(hook, id); try { ring.destroy(); ghost.destroy({ children: true }); fl.overlay.destroy(); fl.preview?.destroy({ texture: true, baseTexture: true }); clearTimeout(hoverTimer); clearTimeout(fl.hoverAsk); fl.hover?.destroy({ texture: true, baseTexture: true }); top.parent?.removeChild(top); top.destroy(); if (sam.ready) void sam.ready.seg.drop(sam.ready.view); } catch { /* gone */ } state.bar?.close(); };
+  if (floorsOn()) void readMap().then(refreshStatus);
+  refreshStatus();
 };
 // Trunks that block (a region's "Trunks block movement, sight and light"): a small ring of real walls round each tree's trunk and
 // each stump, made by the lead GM and kept in step with the trees as they are reshuffled, brushed, rubbed out or turned off, and
@@ -2583,7 +2833,8 @@ const decorRegion = (id) => canvas.scene?.regions?.get(id) ?? null;
 const undoDecorStep = async () => {
   const step = decorSteps.undo.pop(); if (!step) { ui.notifications?.info?.("No brush stroke to take back."); return; }
   try {
-    if (step.kind === "edit") await decorRegion(step.id)?.update({ flags: { [ID]: { decor: step.before } } }, { render: false });
+    if (step.kind === "floor") await undoFloorStep(step);
+    else if (step.kind === "edit") await decorRegion(step.id)?.update({ flags: { [ID]: { decor: step.before } } }, { render: false });
     else await decorRegion(step.id)?.delete();
     decorSteps.redo.push(step);
   } catch (err) { console.warn("Animater | decorations undo", err); }
@@ -2591,10 +2842,23 @@ const undoDecorStep = async () => {
 const redoDecorStep = async () => {
   const step = decorSteps.redo.pop(); if (!step) return;
   try {
-    if (step.kind === "edit") await decorRegion(step.id)?.update({ flags: { [ID]: { decor: step.after } } }, { render: false });
+    if (step.kind === "floor") await redoFloorStep(step);
+    else if (step.kind === "edit") await decorRegion(step.id)?.update({ flags: { [ID]: { decor: step.after } } }, { render: false });
     else { const [made] = await canvas.scene.createEmbeddedDocuments("Region", [step.data]); if (made) step.id = made.id; }
     decorSteps.undo.push(step);
   } catch (err) { console.warn("Animater | decorations redo", err); }
+};
+// A floor stroke (Map painting's Floors tab): the regions it reshaped (their shapes before and after), made and removed.
+// Taken back, reshaped ones get their old shapes, made ones go and removed ones come back; put back, the other way.
+const undoFloorStep = async (step) => {
+  for (const u of step.updates) await decorRegion(u.id)?.update({ shapes: u.before });
+  for (const c of step.creates) await decorRegion(c.id)?.delete();
+  for (const r of step.removes) { const [made] = await canvas.scene.createEmbeddedDocuments("Region", [r.data]); if (made) r.id = made.id; }
+};
+const redoFloorStep = async (step) => {
+  for (const u of step.updates) await decorRegion(u.id)?.update({ shapes: u.after });
+  for (const c of step.creates) { const [made] = await canvas.scene.createEmbeddedDocuments("Region", [c.data]); if (made) c.id = made.id; }
+  for (const r of step.removes) await decorRegion(r.id)?.delete();
 };
 Hooks.on("canvasTearDown", () => { stopDecorBrush(); decorSteps.undo = []; decorSteps.redo = []; });
 const regionPointIn = (p, areas) => areas.some((a) => pointInPolygon(p, a) && !(a.holes ?? []).some((h) => pointInPolygon(p, h)));
@@ -3811,7 +4075,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
     const add = (tool) => { tools[tool.name] = tool; };
     controls.animater = { name: "animater", title: "Animater", icon: "animater-a-icon", layer: "tokens", order: 50, activeTool: "select", tools,
       onChange: (event, active) => { if (!active || canvas.tokens?.active) return; canvas.tokens?.activate(); void ui.controls?.activate({ control: "animater", tool: "select" }); } };
-    add({ name: "animaterDecorate", title: "Decorations: paint rocks, trees, bushes and more onto the map (into the region you start in, or a new one)", icon: "fa-solid fa-tree", order: order - 1, button: true, visible: toolShown("toolDecorate"),
+    add({ name: "animaterDecorate", title: "Map painting: paint floors and decorations onto the map", icon: "fa-solid fa-paintbrush", order: order - 1, button: true, visible: toolShown("toolDecorate"),
       onChange: () => (decorBrushing ? stopDecorBrush() : startDecorBrush()) });
     add({ name: "animaterCaveIn", title: "Cave-in: click where the ceiling comes down", icon: "fa-solid fa-person-falling-burst", order, button: true, visible: toolShown("toolCaveIn"),
       onChange: () => aimCaveIn() });
@@ -10066,7 +10330,7 @@ Hooks.once("init", () => {
   for (const [key,name,hint] of [
     ['toolCaveIn','Show the Cave-in button','In the Animater controls. Hidden, a Region can still bring a ceiling down.'],
     ['toolEnergyBlast','Show the Energy Blast button','In the Animater controls.'],
-    ['toolDecorate','Show the Decorations button','In the Animater controls: a brush for painting rocks, trees, bushes and more onto the map. A region\'s Decorations section can still scatter them.'],
+    ['toolDecorate','Show the Map painting button','In the Animater controls: a brush for painting floors (water, grass, stone…) and decorations (rocks, trees, crates…) onto the map. A region\'s Decorations section can still scatter decorations.'],
     ['toolClearRubble','Show the Clear rubble button','In the Animater controls.'],
     ['toolRepairProps','Show the Repair broken props button','In the Animater controls, for the GM: unhides every broken prop in the scene and puts its walls, doors, windows and decorations back, as the scene configuration\'s Repair button does.'],
     ['toolBreachWall','Show the Breach wall button','In the Animater controls, for the GM: click on a wall marked Breakable wall: Yes to breach it there at once.'],

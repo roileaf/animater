@@ -7,20 +7,15 @@ import { decorSettings } from '../../scripts/engines/motion/decor-regions.mjs';
 
 const read = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
 
-// Roi: "Brush only, remove it": decorations are laid with the brush; the panel keeps their breaking and Repair.
-test('the Decorations section: its summary says how many were painted', () => {
+test('the Decorations section: its summary says where, how many kinds and what was painted by hand', () => {
   assert.equal(summaryOf('decor', {}), 'None');
-  assert.equal(summaryOf('decor', { decor: { on: true, where: 'cave', kinds: { rock: {} }, brushed: [{}, {}] } }), '2 painted');
-  assert.equal(summaryOf('decor', { decor: { on: true, brushed: [{}] } }), '1 painted');
-  assert.equal(summaryOf('decor', { decor: { on: true, kinds: { rock: {} } } }), 'On');
+  assert.equal(summaryOf('decor', { decor: { on: true, where: 'cave', kinds: { rock: {}, bones: { off: true } }, brushed: [{}, {}] } }), 'Underground, 1 kind, 2 by hand');
+  assert.equal(summaryOf('decor', { decor: { on: true, kinds: { rock: {}, oak: {} } } }), 'Outdoors, 2 kinds');
 });
 
-test('only a region holding decorations shows the section, and it is never added by hand', () => {
+test('any region whose decorations are on shows the section; others can add it', () => {
   assert.ok(panelSections('water', { decor: { on: true } }).some((s) => s.id === 'decor'));
-  for (const kind of ['ground', 'cave', 'water']) {
-    assert.ok(!panelSections(kind, {}).some((s) => s.id === 'decor'), kind);
-    assert.ok(!moreSections(kind, {}).some((s) => s.id === 'decor'), kind);
-  }
+  assert.ok(moreSections('water', {}).some((s) => s.id === 'decor'));
 });
 
 test('an unticked kind keeps its size and amount but scatters nothing', () => {
@@ -28,11 +23,11 @@ test('an unticked kind keeps its size and amount but scatters nothing', () => {
   assert.deepEqual(Object.keys(s.kinds), ['oak']);
 });
 
-test('the panel scatters nothing: no switch, Where, How dense or Size; breaking, its options and Repair stay', () => {
+test('the panel saves where, how dense and how big, and leaves the kinds to the brush (no list, Reshuffle, Brush, Clear by hand or Trunks)', () => {
   const sections = read('scripts/ui/region-panel-sections.mjs');
   assert.match(sections, /decor: decorSection/);
-  for (const gone of ["toggle\\('Decorations',", "row\\('Where'", "'How dense'", 'decor: \\{ density', 'decor: \\{ scale', 'decor: \\{ where', 'freshDecor', "'Reshuffle'", "'Clear by hand'", "button\\('Brush'", "'Trunks block movement", 'an-rp-decor-kinds', 'decorKindRow']) assert.doesNotMatch(sections, new RegExp(gone));
-  for (const kept of ["toggle\\('Decorations can break'", 'decorPropRows\\(', "'Repair decorations'"]) assert.match(sections, new RegExp(kept));
+  for (const saved of ['decor: { where', 'decor: { density', 'decor: { scale']) assert.match(sections, new RegExp(saved));
+  for (const gone of ["'Reshuffle'", "'Clear by hand'", "button\\('Brush'", "'Trunks block movement", 'an-rp-decor-kinds', 'decorKindRow']) assert.doesNotMatch(sections, new RegExp(gone));
   const main = read('scripts/main.mjs');
   assert.match(main, /createRegionPanel\(\{ brush: \(doc\) => startDecorBrush\(doc\)/);
   assert.match(main, /decorSettings\(region\.flags\?\.\[ID\]\?\.decor\)/);
@@ -66,9 +61,9 @@ test('the brush bar offers each place its own kinds and remembers what is ticked
 
 test('the Decorations tool sits in Animater\'s controls and can be hidden', () => {
   const main = read('scripts/main.mjs');
-  assert.match(main, /name: "animaterDecorate"[^\n]*icon: "fa-solid fa-tree"[^\n]*visible: toolShown\("toolDecorate"\)/);
+  assert.match(main, /name: "animaterDecorate"[^\n]*icon: "fa-solid fa-paintbrush"[^\n]*visible: toolShown\("toolDecorate"\)/);
   assert.match(main, /onChange: \(\) => \(decorBrushing \? stopDecorBrush\(\) : startDecorBrush\(\)\)/);
-  assert.match(main, /\['toolDecorate','Show the Decorations button'/);
+  assert.match(main, /\['toolDecorate','Show the Map painting button'/);
   assert.match(main, /const data = \{ name: "Decorations", color: "#7a9a4a", shapes: strokeShapes\(circles\)/);
   assert.match(main, /await canvas\.scene\.createEmbeddedDocuments\("Region", \[data\]\)/);
   assert.match(read('scripts/ui/settings-window.mjs'), /\{ local: "toolDecorate" \}/);
@@ -117,9 +112,13 @@ test('decorations feed the other engines: canopy trees, moving water, the cavern
 
 test('a ghost of the next dab follows the brush, changes with the bar, and a click lays exactly it', () => {
   const main = read('scripts/main.mjs');
-  assert.match(main, /floorLayer\("decorBrush", 1102\)\(\)\.addChild\(ghost, ring\)/);
-  assert.match(main, /openBrushBar\(\{ onClose: \(\) => stopDecorBrush\(\), onChange: \(\) => draw\(\), region \}\)/);
-  assert.match(main, /const showGhost = !!state\.at && !state\.down && !state\.erasing; ghost\.visible = showGhost;/);
+  // The ghost lies lit on the floor; the ring sits above the lighting (Roi: the Floors preview was lost in a night scene).
+  assert.match(main, /floorLayer\("decorBrush", 1102\)\(\)\.addChild\(ghost\); top\.addChild\(ring\);/);
+  assert.match(main, /const top = new PIXI\.Container\(\); top\.eventMode = "none"; canvas\.interface\.addChild\(top\);/);
+  assert.match(main, /top\.addChildAt\(fl\.preview, 1\)/); assert.match(main, /top\.addChildAt\(fl\.hover, 1\)/); assert.match(main, /top\.addChildAt\(fl\.overlay, 0\)/);
+  assert.match(main, /openBrushBar\(\{ onClose: \(\) => stopDecorBrush\(\), onChange: \(\) => \{ draw\(\);[^\n]*region, thumb,/);
+  // (Not on the Floors tab, which paints no decorations.)
+  assert.match(main, /const showGhost = !!state\.at && !state\.down && !state\.erasing && !floors; ghost\.visible = showGhost;/);
   assert.match(main, /if \(first && state\.ghostItems\.length\) \{ for \(const g of state\.ghostItems\)/);
   assert.match(main, /dab\(p, e\.shiftKey, true\)/);
   assert.match(read('scripts/engines/motion/decorations.mjs'), /sprite\(d, look = \{\}\) \{ const \{ pic, scale \} = picture\(d, look\);/);
@@ -127,11 +126,11 @@ test('a ghost of the next dab follows the brush, changes with the bar, and a cli
 
 test('a region\'s own brush shows the bar with only its place and its ticked kinds, one at a time', async () => {
   const main = read('scripts/main.mjs');
-  assert.match(main, /state\.bar = openBrushBar\(\{ onClose: \(\) => stopDecorBrush\(\), onChange: \(\) => draw\(\), region \}\)/);
+  assert.match(main, /state\.bar = openBrushBar\(\{ onClose: \(\) => stopDecorBrush\(\), onChange: \(\) => \{ draw\(\);[^\n]*region, thumb,/);
   const { brushChoices } = await import('../../scripts/ui/decor-brush-bar.mjs');
   const bar = read('scripts/ui/decor-brush-bar.mjs');
   assert.match(bar, /if \(lock\) lock\.pick = id; else remembered\.kinds\[remembered\.where\] = \[id\];/);
-  assert.match(bar, /if \(!lock\) row\.append\(where\);/);
+  assert.match(bar, /if \(!lock\) pickRow\.append\(where\);/);
   assert.equal(brushChoices().kinds.length, 1);
 });
 

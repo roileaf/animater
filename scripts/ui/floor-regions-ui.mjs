@@ -6,7 +6,7 @@ import { planesFrom, solidMask, project, bindingFromProposal, levelList, tileFra
 import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindOf, caveKindFlags, TEXTURE_STYLES, STEP_EDGE, stepEdge, stepListOf, stepIndexOf, changeStep } from "../engines/motion/region-steps.mjs";
 import { outlinePoint, hitOutline, changeVertex, validateOutline, smoothOutline, unionOutlines, subtractOutlines } from "../engines/regions/area-outline.mjs";
 import { sizeOrder, startSize, boxPoints, nearbyClicks, consensus, cutStart, cutFrom, solidCut, spotAt, sliverAt, smallSpots, maskPieces, cleanSelection, nextAreaId, smartProposal, keepToColours, colourCut } from "../engines/regions/smart-select.mjs";
-import { SMART_MODEL, loadSmartModel, isSmartModelCached } from "./smart-model.mjs";
+import { SMART_MODEL, smartModelShared, isSmartModelCached } from "./smart-model.mjs";
 import { areaSignature, rememberAreas, recallFloor, memoryOf, markAreas, knowsFloors, NONE_FLOOR } from "../engines/regions/floor-memory.mjs";
 
 // Asked once per page, before the first smart mark downloads anything.
@@ -2338,7 +2338,7 @@ async function openOnce({
   load = loadMapRgba,
   detect = detectWater,
   select = selectColourAt,
-  smart = loadSmartModel,
+  smart = smartModelShared, // the model in a background worker (shared with Map painting), so it never holds up Foundry
   smartCached = globalThis.caches ? isSmartModelCached : null,
   view = globalThis.createImageBitmap ? loadMapView : null,
   grid = 100,
