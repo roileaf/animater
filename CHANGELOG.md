@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 4.1.4
+
+The smart model loads on graphics cards where it failed before.
+
+- **Smart model works without fp16 WebGPU.** On some graphics cards and browsers (seen on an RX 9070 XT in Chrome), Map painting's Edges: Model and Floor regions' Smart selection failed with "The device (webgpu) does not support fp16" and fell back to Colour. The model now uses the graphics card only when it can run it, and otherwise loads on the CPU from the same download: slower to read a map, but it works.
+
 ## 4.1.3
 
 Shift-drag in Map painting rubs out only the floor you picked.
