@@ -1,6 +1,49 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mirrorOf, mirrorsOf, tileMirrors, mirrorWobble, nearestFirst, lampColumn, moonPath, colorOf, MAX_MIRRORS, MAX_COLUMNS, createWaterMirror, WATER_MIRROR_SHADER } from '../../scripts/engines/motion/water-mirror.mjs';
+import { mirrorOf, mirrorsOf, tileMirrors, mirrorWobble, nearestFirst, lampColumn, moonPath, colorOf, MAX_MIRRORS, MAX_COLUMNS, createWaterMirror, WATER_MIRROR_SHADER, tokenTurn, createRingPictures } from '../../scripts/engines/motion/water-mirror.mjs';
+import { readFileSync } from 'node:fs';
+
+// The same player: "Can you add a dynamic ring reflection feature?" Roi: "whole token but as a setting defaulted to off".
+test('a ringed token reflects from one picture of it as drawn, made again only when its ring or art changes', () => {
+  class Matrix {
+    constructor(a = 1, b = 0, c = 0, d = 1, tx = 0, ty = 0) { Object.assign(this, { a, b, c, d, tx, ty }); }
+    clone() { return new Matrix(this.a, this.b, this.c, this.d, this.tx, this.ty); }
+    invert() { const { a, b, c, d, tx, ty } = this, n = a * d - b * c; Object.assign(this, { a: d / n, b: -b / n, c: -c / n, d: a / n, tx: (c * ty - d * tx) / n, ty: -(a * ty - b * tx) / n }); return this; }
+    translate(x, y) { this.tx += x; this.ty += y; return this; }
+    scale(x, y) { this.a *= x; this.d *= y; this.c *= x; this.b *= y; this.tx *= x; this.ty *= y; return this; }
+    apply(p) { return { x: this.a * p.x + this.c * p.y + this.tx, y: this.b * p.x + this.d * p.y + this.ty }; }
+  }
+  const made = [], renders = [];
+  const PIXI = { Point: class { constructor(x, y) { this.x = x; this.y = y; } }, RenderTexture: { create: (o) => { const t = { ...o, destroyed: false, destroy() { this.destroyed = true; } }; made.push(t); return t; } } };
+  const renderer = { render: (mesh, o) => renders.push(o) };
+  const pics = createRingPictures({ PIXI, renderer: () => renderer });
+  // A 100 px token drawn at 300, 400 (the mesh's middle), its local box -50..50.
+  const at = new Matrix(1, 0, 0, 1, 300, 400);
+  const token = (ring = { enabled: true, colors: {} }) => ({ id: 't', document: { ring }, mesh: { texture: { valid: true, baseTexture: { uid: 7 } }, tint: 0xffffff, getLocalBounds: () => ({ x: -50, y: -50, width: 100, height: 100 }), localTransform: at, worldTransform: at.clone() } });
+  const pic = pics.of(token());
+  assert.deepEqual([pic.x, pic.y, pic.w, pic.h], [300, 400, 100, 100]);
+  assert.equal(renders.length, 1);
+  // Drawn into the picture from its own corner: the mesh's middle lands in the picture's middle.
+  assert.deepEqual(renders[0].transform.apply({ x: 300, y: 400 }), { x: 50, y: 50 });
+  pics.of(token()); assert.equal(renders.length, 1, 'the same ring and art: the picture is kept');
+  pics.of(token({ enabled: true, colors: { ring: '#ff0000' } })); assert.equal(renders.length, 2, 'a new ring colour: drawn again');
+  assert.equal(made[0].destroyed, true, 'and the old picture let go');
+  assert.equal(pics.of(token({ enabled: false })), null, 'no ring: the creature reflects as before');
+  pics.keep(new Set()); assert.equal(made[1].destroyed, true, 'a token gone: its picture let go');
+  const main = readFileSync(new URL('../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /registerSetting\("waterMirrorRings", \{ name: "Reflect token rings",[^\n]*default: false \}\);/, 'off unless the GM turns it on');
+  assert.match(main, /rings = hotSetting\("waterMirrorRings"\) === true;/);
+  assert.match(main, /texture: pic\?\.texture \?\? t\.mesh\.texture/);
+});
+
+// A player: "If I rotate the token via Shift/Ctrl + Scroll, the reflection spins. A real token is static, because it is a fixed position."
+test('a token with Lock Rotation reflects unturned, as Foundry draws it', () => {
+  assert.equal(tokenTurn({ rotation: 90, lockRotation: true }), 0);
+  assert.equal(tokenTurn({ rotation: 90, lockRotation: false }), Math.PI / 2);
+  assert.equal(tokenTurn({}), 0);
+  const main = readFileSync(new URL('../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /h: pic\?\.h \?\? t\.h, rotation: mirrorTokenTurn\(t\.document\), alpha: t\.mesh\.alpha/);
+});
 
 const square = (x, y, s) => [x, y, x + s, y, x + s, y + s, x, y + s];
 const pond = square(1000, 1000, 600);

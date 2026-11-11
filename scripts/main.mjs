@@ -128,7 +128,7 @@ import { weaponCategories } from "./systems/weapon-categories.mjs";
 import { beachKeepOff, createCoast, shoreAt, shoreField, tideLevel } from "./engines/motion/coast.mjs";
 import { PLACE_VOLUME, THROUGH_WALL, calmSeaShare, placeHeard, placeHeardLouds, fallLoudness, spotsHeard, placeFile } from "./engines/motion/place-sounds.mjs";
 import { createWaterfalls } from "./engines/motion/waterfall.mjs";
-import { createWaterMirror, waterStillness } from "./engines/motion/water-mirror.mjs";
+import { createWaterMirror, waterStillness, tokenTurn as mirrorTokenTurn, createRingPictures } from "./engines/motion/water-mirror.mjs";
 import { createAftermath, bodyStage } from "./engines/motion/aftermath.mjs";
 import { createTownLife, lightsOutAt } from "./engines/motion/town-life.mjs";
 import { dayShift, chorusGap, chorusSpot } from "./engines/motion/day-shift.mjs";
@@ -4963,6 +4963,8 @@ const waterfalls = createWaterfalls({ PIXI: globalThis.PIXI, floor: floorLayer("
 // Reflections stop at what stops sight: a window shows through, a shut door does not, an open one does.
 const sightBlocks = (a, b) => { try { const level = canvas.level; return CONFIG.Canvas.polygonBackends.sight.testCollision(a, b, { type: "sight", mode: "any", ...(level ? { level } : {}) }) === true; } catch { return false; } };
 const waterMirror = createWaterMirror({ PIXI: globalThis.PIXI, root: floorLayer("waterMirror", 647), grid: () => canvas.grid.size, blocked: sightBlocks });
+const mirrorRings = createRingPictures({ PIXI: globalThis.PIXI, renderer: () => canvas?.app?.renderer ?? null });
+Hooks.on("canvasTearDown", () => mirrorRings.clear());
 for (const hook of ["createWall", "updateWall", "deleteWall"]) Hooks.on(hook, (wall) => { if (wall?.parent?.id === canvas?.scene?.id) { try { waterMirror.walls(); } catch { /* the canvas mid-change */ } } });
 const beachLife = createCoast({ PIXI: globalThis.PIXI, floor: floorLayer("beachLife", 649) });
 let waterKey = null, calmWater = [], waterLookAt = 0, mirrorLookAt = 0, mirrorTilesAt = 0, mirrorTilesKey = "";
@@ -5060,7 +5062,14 @@ const tickWater = (seconds) => {
   }
   if (calmWater.length && now - mirrorLookAt > 50) {
     mirrorLookAt = now;
-    const tokens = (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.mesh && !t.mesh.destroyed && t.mesh.texture?.valid).map((t) => ({ id: t.id, texture: t.mesh.texture, x: t.mesh.position.x, y: t.mesh.position.y, live: t.mesh.position, dry: (() => { try { return movementFeelFloor(t.center, t.document) !== "water"; } catch { return false; } })(), w: t.w, h: t.h, rotation: (Number(t.document.rotation) || 0) * Math.PI / 180, alpha: t.mesh.alpha }));
+    // (Reflect token rings on: a ringed token mirrors whole, from its picture as drawn (water-mirror.mjs createRingPictures).)
+    let rings = false; try { rings = hotSetting("waterMirrorRings") === true; } catch { /* not registered yet */ }
+    const ringed = new Set();
+    const tokens = (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.mesh && !t.mesh.destroyed && t.mesh.texture?.valid).map((t) => {
+      let pic = null; if (rings) { try { pic = mirrorRings.of(t); } catch { pic = null; } if (pic) ringed.add(t.id); }
+      return { id: t.id, texture: pic?.texture ?? t.mesh.texture, x: pic?.x ?? t.mesh.position.x, y: pic?.y ?? t.mesh.position.y, liveX: t.mesh.position.x, liveY: t.mesh.position.y, live: t.mesh.position, dry: (() => { try { return movementFeelFloor(t.center, t.document) !== "water"; } catch { return false; } })(), w: pic?.w ?? t.w, h: pic?.h ?? t.h, rotation: mirrorTokenTurn(t.document), alpha: t.mesh.alpha };
+    });
+    mirrorRings.keep(ringed);
     const moonOut = sunNow?.moon && Number(sunNow.strength) > 0.05, middle = { x: view.x + view.w / 2, y: view.y + view.h / 2 };
     const near = moonOut ? calmWater.map((area) => nearestOfArea(middle, area)).sort((a, b) => a.d - b.d)[0] : null;
     waterMirror.look({ tokens, lamps: lampLights.map((l) => ({ x: l.x, y: l.y, color: l.color, radius: l.radius })), moon: near ? { x: near.x, y: near.y, strength: Number(sunNow.strength) } : null, sunny: !!sunNow && !sunNow.moon && Number(sunNow.strength) > 0.3 });
@@ -10842,6 +10851,7 @@ Hooks.once("init", () => {
   skyPair("movingWater", "movingWaterLocal", "Moving water", "Water that moves: waves run along a river's current and before the wind, the map seen through them bends, and the sun, the moon and flames glint on them. Every water region on every scene. Each screen's Animation quality sets how much is drawn: Full and Light in full, Balanced simpler, Low not at all.", "");
   skyPair("regionSteps", "regionStepsLocal", "Region steps", "The GM right-clicks a region on the map and moves it through its steps in its panel's Steps: grass goes from fresh to bloodied to burnt, a cave from dry to steam to lava. A region can also paint its floor for a bare map (Scene configuration, or its menu). A step can draw blood, wet or burnt on the floor, change what the floor walks as (its footsteps, sounds and prints), switch on a region effect such as mist or steam, and set a river's speed. The steps are set with Edit steps in the panel's Steps. Off stops the looks (the panel still opens); steps already chosen keep their floor and effects. Each screen's Animation quality sets how much it draws: Full and Light keep grass blades, moving flames and bubbles and shine on every look, Light with fewer torches; Balanced keeps floors catching the sun, moon and two lights; Low draws them still.");
   skyPair("waterMirror", "waterMirrorLocal", "Reflections on still water", "Creatures and tiles (trees, statues, walls of a ruin) on the bank mirror in still water and dripping pools, falling out across it from the nearest bank; nearby fires throw long lights across it, and the moon lays a broken path on it. Swift water shows none.");
+  registerSetting("waterMirrorRings", { name: "Reflect token rings", hint: "A token with Foundry's dynamic ring mirrors whole in still water: its ring and background with the creature, as it is drawn on the map. Off: only the creature reflects.", scope: "world", config: true, type: Boolean, default: false });
   skyPair("lightningFlashes", "lightningFlashesLocal", "Lightning flashes", "In a thunderstorm (Calendaria's weather, the scene's storm, or FXMaster's lightning), lightning flashes over the map now and then, throwing the creatures' shadows hard for a moment.");
   registerSetting("wallShadowHeight", { name: "Wall height (squares)",
     hint: "How tall walls stand for their shadows, when neither the Wall Height module nor the scene's level gives a height.",

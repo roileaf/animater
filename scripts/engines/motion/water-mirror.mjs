@@ -46,6 +46,44 @@ const copyOnWater = (foot, way, width, tall, areas, rough) => {
 // The ways a copy can fall: down the map, up it, and to either side. Each water it reaches shows its own copy.
 export const MIRROR_WAYS = Object.freeze([{ x: 0, y: 1 }, { x: 0, y: -1 }, { x: 1, y: 0 }, { x: -1, y: 0 }].map((w) => Object.freeze(w)));
 
+// How a token is turned as Foundry draws it (pure, radians): its rotation, or none when Lock Rotation is on.
+export const tokenTurn = (doc) => (doc?.lockRotation ? 0 : (Number(doc?.rotation) || 0) * Math.PI / 180);
+
+// Ringed tokens as Foundry draws them (its dynamic ring, background and creature), each rendered once into its own picture and
+// drawn again only when its art, ring or size changes. `renderer` the canvas's (or a function giving it). `of(token)`: { texture, x, y (its middle, canvas px), w, h } for a token
+// whose ring is on, else null. `keep(ids)` lets go of the rest; `clear()` all. Pictures are at most `most` px a side.
+export function createRingPictures({ PIXI, renderer, most = 512 }) {
+  const held = new Map();
+  const drop = (id) => { try { held.get(id)?.texture?.destroy(true); } catch { /* gone */ } held.delete(id); };
+  return {
+    of(token) {
+      const mesh = token?.mesh, doc = token?.document, draw = typeof renderer === 'function' ? renderer() : renderer;
+      if (!doc?.ring?.enabled || !mesh || mesh.destroyed || !mesh.texture?.valid || !draw) return null;
+      // (Its place worked out afresh first: one moved or resized since the last frame drawn would land off its picture.)
+      if (mesh.parent) mesh.updateTransform?.();
+      const b = mesh.getLocalBounds(), lt = mesh.localTransform;
+      if (!(b.width > 0 && b.height > 0) || !lt) return null;
+      const sx = Math.hypot(lt.a, lt.b), sy = Math.hypot(lt.c, lt.d), w = b.width * sx, h = b.height * sy;
+      const mid = lt.apply(new PIXI.Point(b.x + b.width / 2, b.y + b.height / 2));
+      const key = `${mesh.texture.baseTexture?.uid}|${JSON.stringify(doc.ring)}|${Math.round(w)}|${Math.round(h)}|${mesh.tint}`;
+      let got = held.get(token.id);
+      if (!got || got.key !== key) {
+        drop(token.id);
+        const k = Math.min(1, most / Math.max(w, h)), pw = Math.max(1, Math.ceil(w * k)), ph = Math.max(1, Math.ceil(h * k));
+        const texture = PIXI.RenderTexture.create({ width: pw, height: ph });
+        // The token unturned and in its own place: from where it is drawn now back to its own corner, at the picture's size.
+        const m =mesh.worldTransform.clone().invert(); m.translate(-b.x, -b.y); m.scale(pw / b.width, ph / b.height);
+        try { draw.render(mesh, { renderTexture: texture, transform: m, clear: true, skipUpdateTransform: true }); }
+        catch { texture.destroy(true); return null; }
+        got = { key, texture }; held.set(token.id, got);
+      }
+      return { texture: got.texture, x: mid.x, y: mid.y, w, h };
+    },
+    keep(ids) { for (const id of [...held.keys()]) if (!ids.has(id)) drop(id); },
+    clear() { for (const id of [...held.keys()]) drop(id); },
+  };
+}
+
 // Where a token's mirrored copy goes one way (pure; `way` down the map unless given). `x`, `y` its middle and `w`, `h` its size in px, `rotation` radians. null: it stands in rough water, or no water lies within its own length of it, so a big creature reflects from further off than a small one.
 // Else { id, x, y (the copy's middle), footX, foot (where the copy starts, on the token's side facing the water), way { x, y } the way it falls, w, h (stretched), rotation, alpha, distance (px, its edge to the nearest water), down (px, its edge to the water along that way), wet (0-1 how much of the copy lands on the water; none: nothing shows) }.
 // The copy runs from that edge and the water cuts it, so the further from the shore, the less of it shows: the head alone, then nothing; and it fades to nothing as it goes.
@@ -217,7 +255,7 @@ export function createWaterMirror({ PIXI, root, grid: gridOf = () => globalThis.
       let was = cache.get(t.id);
       if (!was || was.key !== key) { was = { key, spots: mirrorsOf(t, areas, { grid: g, rough, decks, blocked }) }; cache.set(t.id, was); }
       // (`live`: where the token is drawn this very frame, its position object, so the copy keeps up as it glides between these looks.)
-      for (const spot of was.spots) copies.push({ ...spot, key: `${t.id}:${spot.dir}`, texture: t.texture, phase: hashPhase(t.id) + spot.dir, live: t.live ?? null, fromX: t.x, fromY: t.y });
+      for (const spot of was.spots) copies.push({ ...spot, key: `${t.id}:${spot.dir}`, texture: t.texture, phase: hashPhase(t.id) + spot.dir, live: t.live ?? null, fromX: t.liveX ?? t.x, fromY: t.liveY ?? t.y });
     }
     for (const id of cache.keys()) if (!seen.has(id)) cache.delete(id);
     refresh = 0;

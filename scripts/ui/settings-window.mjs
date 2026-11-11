@@ -138,7 +138,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "tavernMurmur", local: "tavernMurmurLocal" },
     { world: "coast", local: "coastLocal" },
     { world: "waterfalls", local: "waterfallsLocal", extras: ["waterfallVolume"] },
-    { world: "waterMirror", local: "waterMirrorLocal" },
+    { world: "waterMirror", local: "waterMirrorLocal", extras: ["waterMirrorRings"] },
     { world: "movingWater", local: "movingWaterLocal" },
     { world: "regionSteps", local: "regionStepsLocal" },
     { menu: "sunMenu" },

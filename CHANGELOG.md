@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 4.1.2
+
+Ringed tokens can reflect whole in still water, a locked token's reflection keeps still, and Map painting says what is under the pointer.
+
+- **Reflect token rings.** A new setting under **Reflections on still water** (off by default): a token with Foundry's dynamic ring mirrors whole in still water, its ring and background with the creature, as it is drawn on the map. Each ringed token is drawn into its picture once and again only when its art, ring or size changes. Off, only the creature reflects, as before.
+
+- **Reflections keep still when a token's rotation is locked.** A token with **Lock Rotation** on stays upright on the map when it is turned (Shift or Ctrl + scroll), but its reflection in still water spun with it. The reflection now turns only when the token does.
+
 - **Map painting says what is under the pointer.** Hovering the map on the Floors tab, the header line names the floor region under the pointer and what a dab there would do: "Over: Wood · a dab grows it", "Over: no floor yet · a dab adds Grass", or another floor that the brush keeps off. Off the map it shows the level's floors and decorations again.
 
 ## 4.1.1
