@@ -79,9 +79,9 @@ const TITLES = {
 const ORDER = {
   none: [],
   water: ['water', 'steps', 'animals', 'air', 'look'],
-  ground: ['ground', 'decor', 'animals', 'steps', 'air', 'look'],
+  ground: ['ground', 'animals', 'steps', 'air', 'look'],
   indoors: ['ground', 'animals', 'air', 'look'],
-  cave: ['cavern', 'decor', 'drips', 'air', 'animals'],
+  cave: ['cavern', 'drips', 'air', 'animals'],
   deck: ['deck', 'steps', 'look'],
   lava: ['steps', 'air', 'look'],
 };
@@ -98,6 +98,8 @@ const IN_USE = {
 };
 // Sections a kind holds inside another of its own (water's drips sit in its water section).
 const HELD = { water: ['drips'] };
+// Sections More sections never offers: decorations are laid with the Decorations brush, which makes the section.
+const NOT_ADDED = new Set(['decor']);
 const sectionOf = (id, own, floor, open) => ({ id, icon: TITLES[id][0], title: TITLES[id][1], summary: summaryOf(id, own, floor), open });
 
 // The sections of the panel for a kind, in order, each { id, icon, title, summary, open }; one is open to begin with.
@@ -113,7 +115,7 @@ export function panelSections(kind, own = {}, floor, added = []) {
 export function moreSections(kind, own = {}, added = []) {
   if (kind === 'none') return [];
   const shown = panelSections(kind, own, undefined, added).map((s) => s.id);
-  return Object.keys(IN_USE).filter((id) => !shown.includes(id) && !HELD[kind]?.includes(id)).map((id) => ({ id, icon: TITLES[id][0], title: TITLES[id][1] }));
+  return Object.keys(IN_USE).filter((id) => !shown.includes(id) && !HELD[kind]?.includes(id) && !NOT_ADDED.has(id)).map((id) => ({ id, icon: TITLES[id][0], title: TITLES[id][1] }));
 }
 
 // A roof: Foundry's Suppress Weather behavior on the region, which is what keeps the weather, the sun and the sky's light
@@ -162,8 +164,8 @@ export function summaryOf(id, own = {}, floor) {
     case 'air': return own?.regionWeather ? weatherLabel(own.regionWeather) : 'As the scene';
     case 'decor': {
       if (own?.decor?.on !== true) return 'None';
-      const kinds = Object.values(own.decor.kinds ?? {}).filter((k) => k && k.off !== true).length, byHand = (own.decor.brushed ?? []).length;
-      return `${own.decor.where === 'cave' ? 'Underground' : 'Outdoors'}, ${kinds} ${kinds === 1 ? 'kind' : 'kinds'}${byHand ? `, ${byHand} by hand` : ''}`;
+      const byHand = (own.decor.brushed ?? []).length;
+      return byHand ? `${byHand} painted` : 'On';
     }
     case 'cavern': {
       const m = caveMenu(own, floor);

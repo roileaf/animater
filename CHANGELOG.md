@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Decorations are painted with the brush only.** The region panel's **Decorations** switch, which scattered a set of decorations over a region with **Where**, **How dense** and **Size**, is gone: the Decorations brush lays them all. The panel's **Decorations** section now shows only on a region that holds decorations, with **Decorations can break**, its options (Material, Breaks as, Contents and the rest) and **Repair decorations**. A region already scattered keeps its decorations.
+- **Bigger decorations throw bigger shadows.** A decoration painted larger now stands taller too, so its shadow from the sun, the moon and nearby lights grows with it, and a big tree's canopy shade reaches as far as it should. Before, a crate painted three times its size threw a normal crate's shadow.
+- **Decoration height.** The Decorations brush bar has a **Decoration height** slider (0.3 to 3): what you paint stands taller or shorter than its size alone, and its shadows reach as far. A region's **Decorations** section has a **Height** slider for every decoration in it, times each one's own. Height never moves a decoration or changes its breaks.
+
 ## 4.0.0
 
 The battlefield breaks, regions get painted decorations, and the water generator becomes Floor regions for every floor.
@@ -36,14 +40,13 @@ Turn it on per scene: Scene configuration → Animater → **This place** → **
 
 ### Decorations for regions
 
-- **Scatter them.** Right-click a region → **Decorations** to scatter painted decorations over it in the map's own hand-inked look. Every one is drawn by Animater's own code, leaf by leaf and stone by stone from a seed, as the scene loads: no image files and no AI art. Choose which kinds, how dense, each kind's size and how many, and **Reshuffle** for another layout; every screen shows the same one.
+- **Paint them.** The new **Decorations** button in Animater's controls opens a brush that paints decorations onto the map in its own hand-inked look, the same on every screen. Every one is drawn by Animater's own code, leaf by leaf and stone by stone from a seed, as the scene loads: no image files and no AI art. The brush bar has a tab for each place:
   - **Outdoors:** rocks, boulders, trees, bushes, ferns, puddles, mushrooms, logs, stumps, flowers, bones, crates and more. The canopy gets two new tree kinds, **Spruce, fir or cypress** and **Blossom or fruit tree** (which drops petals).
   - **Town:** street lamps, braziers, wells, hay bales, fences, sacks, paving, gravestones, sarcophagi, coffins, mine rails, tools, treasure, scattered papers, cages, broken pillars, market stalls, tables, benches, troughs, planters, washtubs, produce crates, anvils, urns, collapsed timbers, stake fences, straw beds, tents and bedrolls.
   - **Indoors:** beds, rugs, bookshelves, chests, hearths, desks, thrones, altars, statues, potted plants, bathtubs, kitchen counters and broken furniture.
   - **Water:** lily pads, cattails, stream rocks, stepping stones, rowboats, dock sections, mooring posts and floating debris.
   - **Underground:** stalagmites, rock columns, rubble, cave pools, lichen, fissures, mine timbers, and glowing mushrooms, crystals and cracks.
-- **Paint them by hand.** The new **Decorations** button in Animater's controls (or a region's own **Brush**) opens a brush with a bar: the kind it paints (with a search: "tree" finds every tree), brush size, **Density** and **Decoration size**. A stroke that starts in a region with decorations paints into it; one on open ground makes a new region round the stroke. A faint ghost of the next dab follows the brush, and a click lays exactly what it shows. Shift-drag rubs out, Ctrl+Z / Ctrl+Shift+Z undo and redo, Ctrl+wheel sets the brush size, Shift+wheel turns what it lays (15° a step), Ctrl+Shift+wheel the density and Alt+wheel the size; right-click or Esc stops. Dragging a region carries what was painted into it.
-- **Trunks block movement, sight and light:** a region switch that rings each tree trunk and stump with walls (never the crown).
+- **The brush.** Pick the kind it paints (with a search: "tree" finds every tree), brush size, **Density** and **Decoration size**. A stroke that starts in a region with decorations paints into it; one on open ground makes a new region round the stroke. A faint ghost of the next dab follows the brush, and a click lays exactly what it shows. Shift-drag rubs out, Ctrl+Z / Ctrl+Shift+Z undo and redo, Ctrl+wheel sets the brush size, Shift+wheel turns what it lays (15° a step), Ctrl+Shift+wheel the density and Alt+wheel the size; right-click or Esc stops. Dragging a region carries what was painted into it.
 - **They live in the world.** Decorations follow Animater's other engines:
   - **Sun and moon:** they throw shadows, as do nearby torches, lanterns and Light spells (by day a light is too weak beside the sun to throw one).
   - **Lights:** street lamps, braziers and hearths are real lights that light the area, throw shadows and flicker like a flame.

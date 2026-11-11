@@ -103,6 +103,13 @@ export const CLOTH_SHADER_SOURCES = Object.freeze([[CLOTH_VERT, CLOTH_FRAG]]);
 export const turnOf = (d) => (d.fixed || DECOR_KINDS[d.kind]?.flat || DECOR_KINDS[d.kind]?.tree || FREE_TURN.has(d.kind) ? d.turn : d.turn * 0.4);
 /** How far a decoration's shadow reaches from it (pure): `height` in squares, `length` the sun's shadow length per unit of height. */
 export const shadowReach = (height, length, grid) => Math.max(0, height * length * grid * 0.5);
+/** How tall a decoration stands, in squares (pure): its kind's height, scaled by how big it was painted against the kind's own size,
+ *  and by its Height (`tall`, 0.3 to 3: the brush's and its region's together). */
+export const decorHeight = (d) => {
+  const k = DECOR_KINDS[d?.kind]; if (!k || !(k.size > 0) || !(d.size > 0)) return 0;
+  const tall = Number.isFinite(Number(d.tall)) && d.tall !== null && d.tall !== undefined ? Math.min(3, Math.max(0.3, Number(d.tall))) : 1;
+  return k.height * (d.size / k.size) * tall;
+};
 // How high a light stands, in squares (a torch in a hand, a lantern on a post), for how long the shadows it throws are.
 export const LAMP_HEIGHT = 1.6;
 /**
@@ -224,7 +231,7 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
     for (const s of r.shadowSprites) {
       const d = s.decor, k = DECOR_KINDS[d.kind], cast = sun && sun.strength > 0 && !(k.tree && canopyTrees);
       s.visible = !!cast; if (!cast) continue;
-      const reach = shadowReach(k.height, sun.length, grid()), w = s.texture.width * Math.abs(s.baseScale);
+      const reach = shadowReach(decorHeight(d), sun.length, grid()), w = s.texture.width * Math.abs(s.baseScale);
       s.position.set(d.x + Math.cos(sun.angle) * reach * 0.5, d.y + Math.sin(sun.angle) * reach * 0.5);
       // Stretched along the way it falls: a child rotated to the sun inside, the silhouette turned back to the decoration's own way.
       s.rotation = sun.angle; s.scale.set((1 + reach / Math.max(w, 1) * 0.9), 1); s.inner.rotation = turnOf(d) - sun.angle;
@@ -266,7 +273,7 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
             // The cast one: an outer holder turned to the sun (to stretch), the silhouette inside turned to the decoration's own way.
             const holder = new PIXI.Container(), inner = new PIXI.Container(), sil = place(new PIXI.Sprite(pic.shadow), d, pic, scale); sil.position.set(0, 0); sil.rotation = 0; sil.tint = 0x06070c;
             inner.addChild(sil); holder.addChild(inner); holder.decor = d; holder.inner = inner; holder.baseScale = sil.scale.x; holder.texture = pic.shadow; cast.addChild(holder); r.shadowSprites.push(holder);
-            r.casters.push({ d, pic, scale, height: DECOR_KINDS[d.kind].height, shadows: [] });
+            r.casters.push({ d, pic, scale, height: decorHeight(d), shadows: [] });
           }
           if (role === 'tree') {
             if (pic.trunk) r.sprites.push(ground().addChild(place(new PIXI.Sprite(pic.trunk), d, pic, scale)));
@@ -324,7 +331,7 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
       const out = [];
       for (const [id, r] of regions) for (const c of r.crowns) {
         const d = c.decor, k = canopyKindOf(d.kind, r.look?.season); if (!k) continue;
-        out.push({ texture: c.texture, x: d.x, y: d.y, width: c.texture.width * Math.abs(c.scale.x), height: c.texture.height * Math.abs(c.scale.y), rotation: c.rotation, anchorX: 0.5, anchorY: 0.5, alpha: 1, up: DECOR_KINDS[d.kind].height, leaves: k.leaves, kind: k.kind, seed: (d.seed >>> 0) % 997, id: `${id}:${d.seed}` });
+        out.push({ texture: c.texture, x: d.x, y: d.y, width: c.texture.width * Math.abs(c.scale.x), height: c.texture.height * Math.abs(c.scale.y), rotation: c.rotation, anchorX: 0.5, anchorY: 0.5, alpha: 1, up: decorHeight(d), leaves: k.leaves, kind: k.kind, seed: (d.seed >>> 0) % 997, id: `${id}:${d.seed}` });
       }
       return out;
     },

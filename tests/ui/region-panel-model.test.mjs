@@ -92,9 +92,10 @@ test('panelSections: the sections each kind has, the first open', () => {
   assert.equal(first.id, 'water'); assert.equal(first.open, true);
   assert.ok(!ids('water').includes('cavern'));
   assert.deepEqual(ids('water'), ['water', 'steps', 'animals', 'air', 'look']);
-  assert.deepEqual(ids('ground'), ['ground', 'decor', 'animals', 'steps', 'air', 'look']);
+  // Decorations show only on a region the brush has painted into (region-panel-decor.test.mjs).
+  assert.deepEqual(ids('ground'), ['ground', 'animals', 'steps', 'air', 'look']);
   assert.deepEqual(ids('indoors'), ['ground', 'animals', 'air', 'look']);
-  assert.deepEqual(ids('cave'), ['cavern', 'decor', 'drips', 'air', 'animals']);
+  assert.deepEqual(ids('cave'), ['cavern', 'drips', 'air', 'animals']);
   assert.deepEqual(ids('deck'), ['deck', 'steps', 'look']);
   assert.deepEqual(ids('lava'), ['steps', 'air', 'look']);
   for (const [kind] of REGION_KINDS.filter(([id]) => id !== 'none')) {

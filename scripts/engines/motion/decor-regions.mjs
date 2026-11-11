@@ -30,7 +30,7 @@ export function decorSettings(raw) {
     where, kinds, off, blocks: raw.blocks === true, canBreak: raw.canBreak === true,
     // How its decorations break where their own choice is Automatic (decor-options.mjs): never where they stand.
     prop: cleanDecorProp(raw.prop),
-    density: clamp(raw.density, 0, 2, 0.6), scale: clamp(raw.scale, 0.3, 3, 1), seed: Math.floor(clamp(raw.seed, 0, 2 ** 31, 1)),
+    density: clamp(raw.density, 0, 2, 0.6), scale: clamp(raw.scale, 0.3, 3, 1), height: clamp(raw.height, 0.3, 3, 1), seed: Math.floor(clamp(raw.seed, 0, 2 ** 31, 1)),
     brushed: (Array.isArray(raw.brushed) ? raw.brushed : []).filter(placed).slice(0, DECOR_MOST),
     erased: (Array.isArray(raw.erased) ? raw.erased : []).filter((e) => Array.isArray(e) && e.length === 3 && e.every(Number.isFinite)).slice(0, 400),
   };
@@ -100,7 +100,9 @@ export function decorPlacements({ settings, areas = [], grid = 100, id = '' } = 
   const hidden = new Set(settings.off ?? []), grow = (d) => (settings.scale ?? 1) * (settings.kinds[d.kind]?.size ?? 1);
   const byHand = settings.brushed.filter((d) => !hidden.has(d.kind)).map((d) => (grow(d) === 1 ? d : { ...d, size: +(d.size * grow(d)).toFixed(3) }));
   const clear = (d) => DECOR_KINDS[d.kind].flat || byHand.every((b) => DECOR_KINDS[b.kind].flat || (b.x - d.x) ** 2 + (b.y - d.y) ** 2 > ((b.size + d.size) * grid * 0.42) ** 2);
-  return [...scattered.filter(clear), ...byHand].sort((a, b) => (DECOR_KINDS[b.kind].flat - DECOR_KINDS[a.kind].flat) || (DECOR_KINDS[a.kind].height - DECOR_KINDS[b.kind].height));
+  // The region's Height makes every one taller or shorter (times its own), for its shadow; where it stands never changes.
+  const tallen = (d) => (settings.height ?? 1) === 1 ? d : { ...d, tall: +((d.tall ?? 1) * settings.height).toFixed(3) };
+  return [...scattered.filter(clear), ...byHand].map(tallen).sort((a, b) => (DECOR_KINDS[b.kind].flat - DECOR_KINDS[a.kind].flat) || (DECOR_KINDS[a.kind].height - DECOR_KINDS[b.kind].height));
 }
 
 /**

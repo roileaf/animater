@@ -12,7 +12,6 @@ import { keepsOut } from '../engines/motion/wildlife.mjs';
 import { REGION_LOOK_FLAG } from '../engines/playback/region-looks.mjs';
 import { choice } from './region-steps-ui.mjs';
 import { ROOM_DRESSING, kindFlags } from './region-panel-model.mjs';
-import { DECOR_DEFAULT_KINDS, freshDecor } from '../engines/motion/decor-regions.mjs';
 import { decorPropRows, DECOR_PROP_SHORT } from './decor-prop-options.mjs';
 // Whether the ground here is built out over water (a dock): on, it shows how it is built, its posts and its shadow.
 const OVER_WATER_TIP = 'Built out over water: a deck, a jetty, a bridge. The water goes on under it; what walks here walks on its boards, and it shows how it is built, its posts and its shadow.';
@@ -102,10 +101,9 @@ const shadowParts = (c, fine) => {
   return [...parts, ...(fine ? more() : c.more('deck', 'More: shadow softness, darkness…', more))];
 };
 
-// Decorations (engines/motion/decorations.mjs): painted rocks, trees, puddles and the rest scattered over the region, all saved in
-// its `decor` flag: on or off, where, how dense and how big; the kinds themselves are laid with the Decorations brush.
-const DECOR_RANGE = { density: { min: 0, max: 2 }, scale: { min: 0.3, max: 3 } };
-const times = (v) => `${Math.round(v * 100) / 100}x`;
+// Decorations (engines/motion/decorations.mjs): painted rocks, trees, puddles and the rest, laid with the Decorations brush and
+// saved in the region's `decor` flag. The panel sets how tall they all stand, says how they break, and repairs them.
+const DECOR_TALL = { min: 0.3, max: 3 };
 // One breaking option's control (decor-prop-options decorPropRows): a drop-down, or Burst's number (saved when changed).
 const propControl = (r, save) => {
   if (r.type === 'select') return choice(r.options, r.value, r.label, save);
@@ -114,13 +112,10 @@ const propControl = (r, save) => {
   return input;
 };
 const decorSection = (c) => {
-  const { own, act, doc } = c, decor = own.decor, on = decor?.on === true, parts = [];
-  parts.push(toggle('Decorations', on, (now) => act({ decor: now ? (decor?.kinds ? { on: true } : freshDecor(c.kind === 'cave' ? 'cave' : 'surface', Math.floor(Math.random() * 1e6))) : { on: false } }), 'Scatters painted rocks, trees, bushes, puddles and more over this region, the same on every screen. They cast shadows from the sun, moon and lights, change with the seasons and the weather, and trees open as a creature walks under them.'));
-  if (!on) return parts;
-  const where = decor.where === 'cave' ? 'cave' : 'surface';
-  parts.push(row('Where', seg([['surface', 'Outdoors'], ['cave', 'Underground']], where, (w) => act({ decor: { where: w, kinds: Object.fromEntries(DECOR_DEFAULT_KINDS[w].filter((id) => !decor.kinds?.[id]).map((id) => [id, { size: 1, amount: 1 }])) } }), 'Where'), 'Which kinds fit: trees and flowers outdoors; stalagmites, glowing mushrooms and cave pools underground.'));
-  parts.push(range('How dense', DECOR_RANGE.density, Number(decor.density ?? 0.6), times, (v) => act({ decor: { density: v } }), 0.05, 'How many decorations the region holds, all kinds together.'));
-  parts.push(range('Size', DECOR_RANGE.scale, Number(decor.scale ?? 1), times, (v) => act({ decor: { scale: v } }), 0.05, 'Every decoration bigger or smaller.'));
+  const { own, act, doc } = c, decor = own.decor, parts = [];
+  parts.push(element('div', 'an-rp-note', 'Paint and rub out decorations with the Decorations brush in Animater\'s controls.'));
+  if (decor?.on !== true) return parts;
+  parts.push(range('Height', DECOR_TALL, Number(decor.height ?? 1), percent, (v) => act({ decor: { height: v } }), 0.05, 'How tall every decoration here stands against its size, times its own Decoration height from the brush: taller ones throw longer shadows from the sun, the moon and nearby lights.'));
   parts.push(toggle('Decorations can break', decor.canBreak === true, (now) => act({ decor: { canBreak: now } }), 'Crates, barrels, crystals, bushes, ferns, spiky plants, reeds, cobwebs, stalagmites and rock columns here break like breakable props, and so do town and dungeon things: sacks, urns, carts, fences, benches, tables, market stalls, braziers, candles, street lamps, gravestones, coffins and more, and indoor and water things: bookshelves, beds, desks, chests, thrones, statues, altars, potted plants, rugs, bathtubs, rowboats, mooring posts and cattails. They break from area damage, missed swings beside the target, shoves and blasts. Needs the scene\'s Breakable props on.'));
   if (decor.canBreak === true && doc?.parent?.flags?.animater?.breakableProps !== true) parts.push(element('div', 'an-rp-note', 'Breakable props is off for this scene: nothing breaks until it is on.'));
   // How they break: the tile's Breakable prop options, one of each for the region, for every decoration whose own is Automatic.

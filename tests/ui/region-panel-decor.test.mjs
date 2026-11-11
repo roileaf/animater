@@ -7,15 +7,20 @@ import { decorSettings } from '../../scripts/engines/motion/decor-regions.mjs';
 
 const read = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
 
-test('the Decorations section: its summary says where, how many kinds and what was painted by hand', () => {
+// Roi: "Brush only, remove it": decorations are laid with the brush; the panel keeps their breaking and Repair.
+test('the Decorations section: its summary says how many were painted', () => {
   assert.equal(summaryOf('decor', {}), 'None');
-  assert.equal(summaryOf('decor', { decor: { on: true, where: 'cave', kinds: { rock: {}, bones: { off: true } }, brushed: [{}, {}] } }), 'Underground, 1 kind, 2 by hand');
-  assert.equal(summaryOf('decor', { decor: { on: true, kinds: { rock: {}, oak: {} } } }), 'Outdoors, 2 kinds');
+  assert.equal(summaryOf('decor', { decor: { on: true, where: 'cave', kinds: { rock: {} }, brushed: [{}, {}] } }), '2 painted');
+  assert.equal(summaryOf('decor', { decor: { on: true, brushed: [{}] } }), '1 painted');
+  assert.equal(summaryOf('decor', { decor: { on: true, kinds: { rock: {} } } }), 'On');
 });
 
-test('any region whose decorations are on shows the section; others can add it', () => {
+test('only a region holding decorations shows the section, and it is never added by hand', () => {
   assert.ok(panelSections('water', { decor: { on: true } }).some((s) => s.id === 'decor'));
-  assert.ok(moreSections('water', {}).some((s) => s.id === 'decor'));
+  for (const kind of ['ground', 'cave', 'water']) {
+    assert.ok(!panelSections(kind, {}).some((s) => s.id === 'decor'), kind);
+    assert.ok(!moreSections(kind, {}).some((s) => s.id === 'decor'), kind);
+  }
 });
 
 test('an unticked kind keeps its size and amount but scatters nothing', () => {
@@ -23,11 +28,11 @@ test('an unticked kind keeps its size and amount but scatters nothing', () => {
   assert.deepEqual(Object.keys(s.kinds), ['oak']);
 });
 
-test('the panel saves where, how dense and how big, and leaves the kinds to the brush (no list, Reshuffle, Brush, Clear by hand or Trunks)', () => {
+test('the panel scatters nothing: no switch, Where, How dense or Size; breaking, its options and Repair stay', () => {
   const sections = read('scripts/ui/region-panel-sections.mjs');
   assert.match(sections, /decor: decorSection/);
-  for (const saved of ['decor: { where', 'decor: { density', 'decor: { scale']) assert.match(sections, new RegExp(saved));
-  for (const gone of ["'Reshuffle'", "'Clear by hand'", "button\\('Brush'", "'Trunks block movement", 'an-rp-decor-kinds', 'decorKindRow']) assert.doesNotMatch(sections, new RegExp(gone));
+  for (const gone of ["toggle\\('Decorations',", "row\\('Where'", "'How dense'", 'decor: \\{ density', 'decor: \\{ scale', 'decor: \\{ where', 'freshDecor', "'Reshuffle'", "'Clear by hand'", "button\\('Brush'", "'Trunks block movement", 'an-rp-decor-kinds', 'decorKindRow']) assert.doesNotMatch(sections, new RegExp(gone));
+  for (const kept of ["toggle\\('Decorations can break'", 'decorPropRows\\(', "'Repair decorations'"]) assert.match(sections, new RegExp(kept));
   const main = read('scripts/main.mjs');
   assert.match(main, /createRegionPanel\(\{ brush: \(doc\) => startDecorBrush\(doc\)/);
   assert.match(main, /decorSettings\(region\.flags\?\.\[ID\]\?\.decor\)/);

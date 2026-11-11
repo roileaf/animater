@@ -10,6 +10,8 @@ export const BRUSH_SIZE = Object.freeze({ min: 0.5, max: 6, usual: 1.5 });
 export const BRUSH_THICK = Object.freeze({ min: 0.2, max: 2, usual: 0.8 });
 // How big the decorations it lays are, against each kind's usual size.
 export const BRUSH_SCALE = Object.freeze({ min: 0.3, max: 3, usual: 1 });
+// How tall they stand against their size (their shadows' length), saved on each one laid.
+export const BRUSH_TALL = Object.freeze({ min: 0.3, max: 3, usual: 1 });
 // The bar's three places. Town is above ground (it paints and looks as outdoors does) with the built things a town has, and the
 // little that grows or lies about in its streets; outdoors keeps to the wild, underground to caves and dungeons.
 const TOWN = ['lampPost', 'well', 'haystack', 'fence', 'sacks', 'cobbles', 'tombstone', 'coffin', 'brazier', 'marketStall', 'tableStools', 'bench', 'trough', 'planter', 'washtub', 'produce', 'anvil', 'crate', 'barrel', 'campfire', 'pickaxe', 'papers', 'puddle', 'pebbles', 'rubble', 'grass', 'flowers', 'leaves', 'moss'];
@@ -20,7 +22,7 @@ const INDOOR = ["bed","rug","bookshelf","strongbox","hearth","desk","throne","al
 const WATER = ["lilyPads","cattails","streamRock","steppingStones","rowboat","dock","mooringPost","waterDebris","reeds","puddle","log","rock","boulder","pebbles","moss"];
 export const BRUSH_PLACES = Object.freeze([['surface', 'Outdoors'], ['town', 'Town'], ['indoor', 'Indoors'], ['water', 'Water'], ['cave', 'Underground']]);
 const placeWhere = (place) => (place === 'cave' ? 'cave' : 'surface');
-const remembered = { where: 'surface', kinds: { surface: [DECOR_DEFAULT_KINDS.surface[0]], town: ['well'], indoor: ['bed'], water: ['lilyPads'], cave: [DECOR_DEFAULT_KINDS.cave[0]] }, size: BRUSH_SIZE.usual, thick: BRUSH_THICK.usual, scale: BRUSH_SCALE.usual, turn: null, lock: null, props: {} };
+const remembered = { where: 'surface', kinds: { surface: [DECOR_DEFAULT_KINDS.surface[0]], town: ['well'], indoor: ['bed'], water: ['lilyPads'], cave: [DECOR_DEFAULT_KINDS.cave[0]] }, size: BRUSH_SIZE.usual, thick: BRUSH_THICK.usual, scale: BRUSH_SCALE.usual, tall: BRUSH_TALL.usual, turn: null, lock: null, props: {} };
 /** How what the brush lays of a kind breaks (pure): the choices picked for that kind, only those offered for it and not Automatic,
  *  as saved on each brushed entry (`prop`); Burst only with Black powder. Remembered per kind. */
 export const brushPropFor = (kind) => Object.fromEntries(decorPropRows(kind, remembered.props[kind] ?? {}).filter((r) => r.value !== '' && (r.key !== 'burst' || remembered.props[kind]?.burst !== undefined)).map((r) => [r.key, r.value]));
@@ -31,7 +33,7 @@ export const BRUSH_TURN_STEP = Math.PI / 12;
 
 /** The brush's choices now (pure copy): where, the one kind picked there (as a list of one), size in squares, thickness, decoration scale.
  *  While a region's own brush is out, where is the region's and the kind one of its own. */
-export const brushChoices = () => { const kinds = remembered.lock ? [remembered.lock.pick] : [...remembered.kinds[remembered.where]]; return { where: remembered.lock?.where ?? placeWhere(remembered.where), place: remembered.lock ? null : remembered.where, kinds, size: remembered.size, thick: remembered.thick, scale: remembered.scale, turn: remembered.turn, prop: brushPropFor(kinds[0]) }; };
+export const brushChoices = () => { const kinds = remembered.lock ? [remembered.lock.pick] : [...remembered.kinds[remembered.where]]; return { where: remembered.lock?.where ?? placeWhere(remembered.where), place: remembered.lock ? null : remembered.where, kinds, size: remembered.size, thick: remembered.thick, scale: remembered.scale, tall: remembered.tall, turn: remembered.turn, prop: brushPropFor(kinds[0]) }; };
 /** The kinds a place offers in the bar (pure): 'town' its built things and street litter; 'surface' (outdoors) and 'cave' their
  *  own and those found in both, outdoors leaving built things to the town and the dungeon. */
 export const brushKindsFor = (where) => (where === 'town' ? TOWN.filter((id) => DECOR_KINDS[id]) : where === 'indoor' ? INDOOR.filter((id) => DECOR_KINDS[id]) : where === 'water' ? WATER.filter((id) => DECOR_KINDS[id]) : DECOR_IDS.filter((id) => (DECOR_KINDS[id].set === 'both' || DECOR_KINDS[id].set === where) && !(where === 'surface' && BUILT.has(id))));
@@ -65,7 +67,7 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, region =
       // The wheel over a slider moves it a step.
       s.addEventListener('wheel', (e) => { e.preventDefault(); const v = Math.min(bounds.max, Math.max(bounds.min, Number(s.value) + (e.deltaY < 0 ? step : -step))); s.value = String(Math.round(v * 100) / 100); s.dispatchEvent(new Event('input')); }, { passive: false });
       box.append(el('span', '', label), s, shown); return box; };
-    const row = el('div', 'an-db-row'); if (!lock) row.append(where); row.append(slider('Brush', BRUSH_SIZE, 'size', 0.5), slider('Density', BRUSH_THICK, 'thick', 0.1), slider('Decoration size', BRUSH_SCALE, 'scale', 0.1));
+    const row = el('div', 'an-db-row'); if (!lock) row.append(where); row.append(slider('Brush', BRUSH_SIZE, 'size', 0.5), slider('Density', BRUSH_THICK, 'thick', 0.1), slider('Decoration size', BRUSH_SCALE, 'scale', 0.1), slider('Decoration height', BRUSH_TALL, 'tall', 0.1));
     // Rotation: shown in degrees once turned; Random sets every decoration its own way again.
     const turnBox = el('div', 'an-db-range an-db-turn'), deg = remembered.turn === null ? null : Math.round(((remembered.turn * 180) / Math.PI % 360 + 360) % 360);
     const rot = el('button', remembered.turn === null ? 'an-db-on' : '', 'Random'); rot.type = 'button'; rot.addEventListener('click', () => { remembered.turn = null; draw(); onChange(); });

@@ -2488,7 +2488,8 @@ const startDecorBrush = (doc = null) => {
   };
   const dabCount = (density) => Math.max(1, Math.round(sizeNow() * Math.max(0.2, density) * 1.5));
   // How it breaks, as picked on the bar for the kind (decor-options.mjs): saved on each one laid, never moving where it stands.
-  const withProp = (d) => { const prop = brushChoices().prop; return d && Object.keys(prop ?? {}).length ? { ...d, prop } : d; };
+  // And the bar's Decoration height (how long its shadows reach), when it isn't the usual.
+  const withProp = (d) => { const c = brushChoices(), look = d && c.tall !== 1 ? { ...d, tall: c.tall } : d; return look && Object.keys(c.prop ?? {}).length ? { ...look, prop: c.prop } : look; };
   const dab = (p, erase, first = false) => {
     const radius = (sizeNow() * grid()) / 2;
     if (erase) { state.brushed = state.brushed.filter((b) => (b.x - p.x) ** 2 + (b.y - p.y) ** 2 > radius * radius); if (state.doc) state.erased.push([Math.round(p.x), Math.round(p.y), Math.round(radius)]); }
@@ -10061,7 +10062,7 @@ Hooks.once("init", () => {
   for (const [key,name,hint] of [
     ['toolCaveIn','Show the Cave-in button','In the Animater controls. Hidden, a Region can still bring a ceiling down.'],
     ['toolEnergyBlast','Show the Energy Blast button','In the Animater controls.'],
-    ['toolDecorate','Show the Decorations button','In the Animater controls: a brush for painting rocks, trees, bushes and more onto the map. Hidden, a region\'s Decorations section still has its own Brush.'],
+    ['toolDecorate','Show the Decorations button','In the Animater controls: a brush for painting rocks, trees, bushes and more onto the map. It is the only way to lay decorations.'],
     ['toolClearRubble','Show the Clear rubble button','In the Animater controls.'],
     ['toolRepairProps','Show the Repair broken props button','In the Animater controls, for the GM: unhides every broken prop in the scene and puts its walls, doors, windows and decorations back, as the scene configuration\'s Repair button does.'],
     ['toolBreachWall','Show the Breach wall button','In the Animater controls, for the GM: click on a wall marked Breakable wall: Yes to breach it there at once.'],
