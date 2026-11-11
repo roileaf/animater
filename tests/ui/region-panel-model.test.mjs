@@ -233,3 +233,15 @@ test('a roof is a Suppress Weather behavior: added when there is none, switched 
   assert.deepEqual(changed, [['RegionBehavior', [{ _id: 'b', disabled: false }]], ['RegionBehavior', [{ _id: 'b', disabled: true }]]], 'one set up by hand is only switched, never deleted');
   assert.equal(await setRoof(doc([]), false), null, 'no roof to take off: nothing done');
 });
+
+// Roi: "we should add height in the popup as well". A raised part's or a crossing's Height section comes first, open.
+test('a raised part or a crossing opens on its Height section; it is never offered under More sections', async () => {
+  const { panelSections, moreSections, summaryOf } = await import('../../scripts/ui/region-panel-model.mjs');
+  const raised = panelSections('ground', { height: 15 });
+  assert.equal(raised[0].id, 'height'); assert.equal(raised[0].open, true);
+  assert.equal(summaryOf('height', { height: 15 }), '15 over the floor');
+  assert.equal(summaryOf('height', { height: 15, cliffLook: 'earth' }), '15 over the floor · earth bank');
+  assert.equal(summaryOf('height', { ramp: { ax: 0, ay: 0, bx: 10, by: 0, w: 4, kind: 'ladder' } }), 'Ladder');
+  assert.equal(summaryOf('height', { ramp: { ax: 0, ay: 0, bx: 10, by: 0, w: 4, kind: 'bridge', lo: 15 } }), 'Bridge · 15 → ground');
+  assert.ok(!moreSections('ground', {}).some((s) => s.id === 'height'));
+});

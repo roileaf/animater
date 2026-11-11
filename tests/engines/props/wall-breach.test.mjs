@@ -131,7 +131,9 @@ test("a breach with one part left needs no part B; a whole segment opens its pas
   const whole = breachSplit([0, 200, 100, 200], { x: 50, y: 200 }, { grid: 100, squares: 1 });
   const up2 = wallBreachUpdate({ ...w, c: [0, 200, 100, 200] }, { ...note, gap: whole.gap }, whole, null);
   assert.equal(up2.c, undefined);
-  assert.equal(up2.move, 0); assert.equal(up2.sight, 0); assert.equal(up2.light, 0); assert.equal(up2.sound, 0);
+  // (Roi: smashed windows and walls should spill Animater's fading lamplight, not Foundry's flat light: the hole keeps
+  // stopping Foundry's light, HOLE_LIGHT, and wall-shadows windowOpening reads it as an open hole.)
+  assert.equal(up2.move, 0); assert.equal(up2.sight, 0); assert.equal(up2.light, 20); assert.equal(up2.sound, 0);
 });
 
 test("Repair restores the original exactly (c and fields) and deletes part B", () => {

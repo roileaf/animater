@@ -45,7 +45,9 @@ test("breaking opens the passage and stores the originals; restore puts them bac
   assert.equal(note.mark, "scorch");
   assert.equal(wallNote({ seed: 5, cutAngle: 1.2, from: { x: 1, y: 2 }, kind: "door", material: "wood", damageType: "bludgeoning" }).mark, "dust");
   const u = wallBreakUpdate(wall({ ds: 2 }), note);
-  assert.deepEqual(u, { _id: "d1", door: 0, ds: 0, move: 0, sight: 0, light: 0, sound: 0, "flags.animater.breakWall.broken": { ...note, restore: { door: 1, ds: 2, move: 20, sight: 20, light: 20, sound: 20 } } });
+  // (Roi: smashed windows and walls should spill Animater's fading lamplight, not Foundry's flat light: the hole keeps
+  // stopping Foundry's light, HOLE_LIGHT, and wall-shadows windowOpening reads it as an open hole.)
+  assert.deepEqual(u, { _id: "d1", door: 0, ds: 0, move: 0, sight: 0, light: 20, sound: 0, "flags.animater.breakWall.broken": { ...note, restore: { door: 1, ds: 2, move: 20, sight: 20, light: 20, sound: 20 } } });
   const broken = wall({ door: 0, ds: 0, move: 0, sight: 0, light: 0, sound: 0, ...own({ broken: u["flags.animater.breakWall.broken"] }) });
   assert.deepEqual(wallRestoreUpdate(broken), { _id: "d1", door: 1, ds: 2, move: 20, sight: 20, light: 20, sound: 20, "flags.animater.breakWall.-=broken": null });
   assert.equal(wallRestoreUpdate(wall()), null);
@@ -98,10 +100,10 @@ test("glass rules plus any slam", () => {
   assert.equal(canBreakWall(t, { damageType: "poison" }), false);
   assert.equal(canBreakWall(t, { slam: { size: 1 } }), true);
 });
-test("a broken window lets sight, light and sound through but still blocks movement", () => {
+test("a broken window lets sight and sound through (and Animater's light, not Foundry's) but still blocks movement", () => {
   const n = wallNote({ seed: 1, cutAngle: 0, from: { x: 350, y: 100 }, kind: "window", material: "glass" });
   const u = wallBreakUpdate(win(), n);
-  assert.deepEqual([u.sight, u.light, u.sound, "move" in u, "door" in u], [0, 0, 0, false, false]);
+  assert.deepEqual([u.sight, u.light, u.sound, "move" in u, "door" in u], [0, 20, 0, false, false]);
   // it also opens (an open window), remembering it had no Animater window of its own
   assert.deepEqual(u["flags.animater.breakWall.broken"].restore, { sight: 20, light: 20, sound: 20, windowKind: null });
   assert.equal(u["flags.animater.window"], "open");

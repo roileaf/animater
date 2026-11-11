@@ -122,6 +122,8 @@ export function windowOpening(wall = {}, height = 2, foot = 0.2) {
   // A window: Foundry's Window (light proximity or distance), or glass drawn as a wall that lets the light through
   // freely (none) but stops movement; or any wall given a kind.
   const light = Number(wall.light) || 0, glass = light === 0 && Number(wall.move) > 0, kind = WINDOW_KINDS[wall.kind] ? wall.kind : null;
+  // A wall smashed open (wall-break.mjs): a hole its whole height, the light going through it whole.
+  if (!kind && wall.broken === true) return { bottom, top, alpha: 1, kind: 'open' };
   return (kind || light >= 30 || glass) && upTo(7) > upTo(3) ? { bottom: upTo(3), top: upTo(7), alpha: WINDOW_KINDS[kind ?? 'glass'], kind: kind ?? 'glass' } : null;
 }
 // Each opening's patch of light: { points (a quadrilateral, flat x, y pairs; its first two points along the near
@@ -201,7 +203,24 @@ export function windowShafts({ walls = [], sun = null, grid = 100, height = 2, i
 // opening, lights it, the nearer the brighter. A door between two rooms, or a window with the open air on both sides,
 // spills nothing.
 // `blocked(from, to)`: whether walls stop light between two points. A window only shows a light that gets to it.
-export function windowGlows({ walls = [], indoors = [], lights = [], grid = 100, height = 2, foot = 0.2, blocked = () => false } = {}) {
+// How bright a lamp's light lies on the ground at `r` (px, across the ground) from a lamp held `up` (px) over it (pure,
+// relative): the inverse square of the distance, times the slant it lands at, so it fades about as the cube of the distance
+// once past the lamp's height (a candle's 1 lux at a metre is 0.04 at five; ground six metres off a lamp held at one and a
+// half gets a fortieth of the ground at one).
+export const groundLight = (r, up) => up / Math.pow(up * up + r * r, 1.5);
+// Where a lamp's light out of an opening fades into the night (pure, 0–1 of its brightness at the opening): sooner under a
+// bright moon (`ambient` 0 a dark night – 1 moonlit or dusk), the ground round it no longer dark enough to show it.
+export const glowCutoff = (ambient = 0) => 0.12 + 0.25 * Math.min(1, Math.max(0, Number(ambient) || 0));
+// How bright a glow is at `t` along it (0 the opening – 1 its far end; pure, 0–1): its lamp's light on the ground there
+// against at the opening, down to nothing where it fades into the night (glowCutoff). A glow with no lamp fades evenly.
+export function glowFade(glow, t) {
+  const f = glow?.fall, v = Math.min(1, Math.max(0, Number(t) || 0));
+  if (!f) return 1 - 0.8 * v;
+  const at = Math.hypot(f.ahead + v * f.reach, f.side), ratio = groundLight(at, f.up) / groundLight(Math.hypot(f.ahead, f.side), f.up);
+  return Math.max(0, Math.min(1, (ratio - f.cutoff) / (1 - f.cutoff)));
+}
+// `ambient`: how light the night is round the house (glowCutoff).
+export function windowGlows({ walls = [], indoors = [], lights = [], grid = 100, height = 2, foot = 0.2, blocked = () => false, ambient = 0 } = {}) {
   const out = [];
   for (const wall of walls) {
     const open = windowOpening(wall, height, foot), c = wall?.c;
@@ -224,17 +243,24 @@ export function windowGlows({ walls = [], indoors = [], lights = [], grid = 100,
     }
     if (!(best > 0.05)) continue;
     const strength = Math.min(1, best * 1.6), curtained = open.kind === 'curtained';
-    const reach = grid * (1 + 2 * strength) * (curtained ? 0.6 : 1), spread = reach * (curtained ? 0.7 : 0.35);
+    // How far it shows: out from the opening until the lamp's light on the ground (held at about five feet) fades into the
+    // night, never past four squares. Cloth spreads it shorter. A lamp right by the window lights the ground just outside
+    // brightly and little beyond; one across the room, less brightly but further.
+    const up = 5 * foot * grid, cutoff = glowCutoff(ambient), ahead = lamp ? Math.max(grid * 0.15, (mid.x - lamp.x) * nx * away + (mid.y - lamp.y) * ny * away) : grid, side = lamp ? Math.abs((mid.x - lamp.x) * ux + (mid.y - lamp.y) * uy) : 0;
+    const at0 = groundLight(Math.hypot(ahead, side), up);
+    let out0 = grid * 0.4; while (out0 < grid * 4 && groundLight(Math.hypot(ahead + out0, side), up) / at0 > cutoff) out0 += grid * 0.1;
+    const reach = out0 * (curtained ? 0.6 : 1), spread = reach * (curtained ? 0.7 : 0.35);
     const ox = nx * away * reach, oy = ny * away * reach;
     // Through clear openings the lamp's light goes on in straight lines: the patch fans from the lamp through the opening's
     // two ends (off to one side when the lamp is, wider the nearer the lamp stands to it), so whoever stands in it sees the
     // lamp through the window. Cloth and frosted glass spread it evenly instead.
     let far = [bx + ox + ux * spread, by + oy + uy * spread, ax + ox - ux * spread, ay + oy - uy * spread];
     if (lamp && !curtained && open.kind !== 'frosted') {
-      const end = (px, py) => { const dx = px - lamp.x, dy = py - lamp.y, ahead = Math.max(grid * 0.25, dx * nx * away + dy * ny * away), k = reach / ahead; return [px + dx * k, py + dy * k]; };
+      // (Its wide far end, with a lamp close by, is past where the light still shows: it fades out before it, glowFade.)
+      const end = (px, py) => { const dx = px - lamp.x, dy = py - lamp.y, along = Math.max(grid * 0.15, dx * nx * away + dy * ny * away), k = reach / along; return [px + dx * k, py + dy * k]; };
       far = [...end(bx, by), ...end(ax, ay)];
     }
-    out.push({ points: [ax, ay, bx, by, ...far], alpha: open.alpha * strength, color,
+    out.push({ points: [ax, ay, bx, by, ...far], alpha: open.alpha * strength, color, fall: { ahead, side, up, reach, cutoff },
       from: mid, past: { x: mid.x + nx * away * 2, y: mid.y + ny * away * 2 }, up: (open.bottom + open.top) / 2, reach, kind: open.kind, lamp, room,
       slats: open.kind === 'shuttered' ? Math.max(3, Math.round(reach / (grid * 0.3))) : 0, shadow: curtained ? 0.3 : open.kind === 'shuttered' ? 0.8 : 1,
       // The lamp's light leaves through the window as the sun's comes in: carrying its panes out onto the ground (frosted
@@ -418,7 +444,7 @@ export function createWindowGlow({ PIXI, root, render }) {
     try { shade?.destroy(true); } catch { /* gone */ }
     sprite = null; texture = null; shade = null; built = []; frame = null; shadowKey = '';
   };
-  const SLICES = 6, WARM = 0xffc27a;
+  const SLICES = 6, WARM = 0xffc27a, GLOW_SLICES = 12;
   return {
     build({ glows = [], bounds, alpha = 1, covers = [], grid = 100 } = {}) {
       drop();
@@ -444,8 +470,11 @@ export function createWindowGlow({ PIXI, root, render }) {
           if (Alpha) holder.filters = [new Alpha(1)];
           lit.filters = [new PIXI.BlurFilter(SOFTNESS * 0.6 * soften)];
           const P = (u, v) => [lerp(lerp(ax, bx, u), lerp(ex, cx, u), v), lerp(lerp(ay, by, u), lerp(ey, cy, u), v)];
-          if (glow.panes === 'mosaic' || glow.panes === 'rose') colouredPanes(lit, { ...glow, panes: glow.panes }, P, at, { tint });
-          else for (let i = 0; i < SLICES; i++) { const t0 = i / SLICES, t1 = (i + 1) / SLICES; lit.beginFill(tint, glow.alpha * (1 - 0.8 * (i + 0.5) / SLICES)); lit.drawPolygon(at([...P(0, t0), ...P(1, t0), ...P(1, t1), ...P(0, t1)])); lit.endFill(); }
+          // (Lamplight through coloured glass: dim and warm, a blue pane nearly dark; bright jewel colours want the sun.)
+          if (glow.panes === 'mosaic' || glow.panes === 'rose') colouredPanes(lit, { ...glow, panes: glow.panes, alpha: glow.alpha * 0.7 }, P, at, { tint: tinted(tint, LAMP_GLASS), fadeAt: (v) => glowFade(glow, v) });
+          // (Through shutters, a band from each gap between the slats with dark between, as the sun's patch has; the leaves'
+          // meeting is cut down the middle, wide, so it reads as a pair of shutters.)
+          else { const n = glow.slats > 0 ? glow.slats : GLOW_SLICES, on = glow.slats > 0 ? 0.5 : 1; for (let i = 0; i < n; i++) { const t0 = i / n, t1 = (i + on) / n; lit.beginFill(tint, glow.alpha * glowFade(glow, (t0 + t1) / 2)); lit.drawPolygon(at([...P(0, t0), ...P(1, t0), ...P(1, t1), ...P(0, t1)])); lit.endFill(); } }
           frames.blendMode = PIXI.BLEND_MODES.ERASE;
           const long = Math.hypot(ex - ax, ey - ay), fine = glow.panes !== 'cross' && glow.panes !== 'bar', width = Math.max(1.5, grid * k * (0.025 + 0.02 * Math.min(1, long / (grid * 4))) * (fine ? 0.9 : 1)), fades = fine ? 0.45 : 0.7;
           const cut = (u0, v0, u1, v1, wt = 1) => { for (let i = 0; i < 6; i++) { const t0 = i / 6, t1 = (i + 1) / 6, v = lerp(v0, v1, (t0 + t1) / 2); frames.lineStyle(Math.max(1, width * wt * (1 + 0.6 * v)), 0xffffff, 0.95 * (1 - fades * v)); frames.moveTo(...at(P(lerp(u0, u1, t0), lerp(v0, v1, t0)))); frames.lineTo(...at(P(lerp(u0, u1, t1), lerp(v0, v1, t1)))); } };
@@ -466,10 +495,10 @@ export function createWindowGlow({ PIXI, root, render }) {
           stage.addChild(kept);
         }
         // Through shutters: a band of light from each gap between the slats, with dark between.
-        const n = glow.slats > 0 ? glow.slats : SLICES, lit = glow.slats > 0 ? 0.5 : 1;
+        const n = glow.slats > 0 ? glow.slats : GLOW_SLICES, lit = glow.slats > 0 ? 0.5 : 1;
         for (let i = 0; i < n; i++) {
           const t0 = i / n, t1 = (i + lit) / n;
-          g.beginFill(tint, glow.alpha * (1 - 0.8 * (i + 0.5) / n));
+          g.beginFill(tint, glow.alpha * glowFade(glow, (t0 + t1) / 2));
           g.drawPolygon(at([lerp(ax, ex, t0), lerp(ay, ey, t0), lerp(bx, cx, t0), lerp(by, cy, t0), lerp(bx, cx, t1), lerp(by, cy, t1), lerp(ax, ex, t1), lerp(ay, ey, t1)]));
           g.endFill();
         }
@@ -650,7 +679,8 @@ export function windowPrint(kind, scale = 1, { leaves = false } = {}) {
     return out;
   }
   if (kind === 'cross') out.push([0.5, 0, 0.5, 1], [0, 0.45, 1, 0.45]);
-  else if (kind === 'bar') out.push([0.5, 0, 0.5, 1]);
+  // (Shutters: where the two leaves meet, a wide dark gap down the light.)
+  else if (kind === 'bar') out.push([0.5, 0, 0.5, 1, leaves ? 3 : 1]);
   else if (kind === 'bars') { const n = panesAcross(6, scale); for (let i = 1; i < n; i++) out.push([i / n, 0, i / n, 1]); out.push([0, 0.5, 1, 0.5]); }
   else if (kind === 'lattice') { const n = panesAcross(8, scale); for (let i = 1; i < n; i++) out.push([i / n, 0, i / n, 1], [0, i / n, 1, i / n]); }
   else if (kind === 'leaded') { const n = panesAcross(6, scale); for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) out.push([i / n, j / n, (i + 1) / n, (j + 1) / n], [(i + 1) / n, j / n, i / n, (j + 1) / n]); }
@@ -664,14 +694,17 @@ export function windowPrint(kind, scale = 1, { leaves = false } = {}) {
 }
 // The coloured panes' colours, lightened as the sun comes through them.
 const JEWELS = [0xe0443a, 0x3f68e8, 0xf6c43a, 0x46b04f, 0xa64ad8, 0xf2843a];
+// A flame's light has little blue in it: what a coloured pane passes of it (on top of the light's own colour).
+const LAMP_GLASS = 0xffb860;
 // A coloured window's panes laid along its light (`P(u, v)` a point of it, `at` into the picture), fading as the light spreads.
 // `tint` (0xrrggbb): the light coming through them, each pane's colour taken by it (a warm lamp dulls a blue pane).
 const tinted = (c, tint) => (tint === null || tint === undefined ? c : (Math.round(((c >> 16) & 255) * ((tint >> 16) & 255) / 255) << 16) | (Math.round(((c >> 8) & 255) * ((tint >> 8) & 255) / 255) << 8) | Math.round((c & 255) * (tint & 255) / 255));
-export function colouredPanes(g, s, P, at, { fades = true, tint = null } = {}) {
-  const fade = (v) => s.alpha * (fades ? windowFade(v) : 1);
+// `fadeAt(v)`: how bright it is along the light, in place of the sun's patch's windowFade.
+export function colouredPanes(g, s, P, at, { fades = true, tint = null, fadeAt = null } = {}) {
+  const fade = (v) => s.alpha * (fadeAt ? fadeAt(v) : fades ? windowFade(v) : 1);
   if (s.panes === 'mosaic' && s.leaves) {
     // Two leaves, each its own panes.
-    for (const side of [0, 1]) colouredPanes(g, { ...s, leaves: false, scale: (s.scale ?? 1) * 2 }, (u, v) => P(side * 0.5 + u * 0.5, v), at, { fades, tint });
+    for (const side of [0, 1]) colouredPanes(g, { ...s, leaves: false, scale: (s.scale ?? 1) * 2 }, (u, v) => P(side * 0.5 + u * 0.5, v), at, { fades, tint, fadeAt });
     return;
   }
   if (s.panes === 'mosaic') {

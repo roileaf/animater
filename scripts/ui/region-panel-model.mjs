@@ -3,6 +3,7 @@
 import { waterKindOf, stepMenu, caveMenu, caveKindFlags, caveHasMenu, stepFlags, WATER_KINDS, WATER_TOWARD, WATER_DEPTHS, DOCK_STYLES, dockStyleOf, castsShadow } from '../engines/motion/region-steps.mjs';
 import { REGION_ANIMAL_GROUPS, regionAnimalCounts, regionHasAnimals, animalSizeOf } from '../engines/motion/region-animals.mjs';
 import { weatherLabel } from '../engines/motion/sky-weather.mjs';
+import { readHeight, readRamp, CROSSING_KINDS } from '../engines/regions/heights.mjs';
 
 // The animals' size lives with the animals (it is read as they are placed); the panel's slider reads it from here.
 export { animalSizeOf, ANIMAL_SIZE } from '../engines/motion/region-animals.mjs';
@@ -74,7 +75,7 @@ export function kindFlags(kind, own = {}) {
 const TITLES = {
   water: ['fa-water', 'Water'], ground: ['fa-seedling', 'Ground'], cavern: ['fa-gem', 'Cavern'], drips: ['fa-droplet', 'Drips'],
   deck: ['fa-seedling', 'Ground'], steps: ['fa-shoe-prints', 'Steps'], animals: ['fa-paw', 'Animals'], air: ['fa-cloud-sun', 'Air'], look: ['fa-palette', 'Look'],
-  decor: ['fa-tree', 'Decorations'],
+  decor: ['fa-tree', 'Decorations'], height: ['fa-mountain', 'Height'],
 };
 const ORDER = {
   none: [],
@@ -95,6 +96,8 @@ const IN_USE = {
   drips: (own) => ['drips', 'dripPace', 'dripDepth'].some((k) => set(own[k])),
   steps: (own) => !!own.stepsEdited || Number(own.step) > 0 || own.stepHidden === true,
   decor: (own) => own.decor?.on === true,
+  // (Map painting's Heights: a raised part, or a crossing between heights.)
+  height: (own) => readHeight(own) !== null || readRamp(own) !== null,
 };
 // Sections a kind holds inside another of its own (water's drips sit in its water section).
 const HELD = { water: ['drips'] };
@@ -106,14 +109,16 @@ const sectionOf = (id, own, floor, open) => ({ id, icon: TITLES[id][0], title: T
 export function panelSections(kind, own = {}, floor, added = []) {
   if (kind === 'none') return [];
   const base = ORDER[kind] ?? ORDER.ground, extra = Object.keys(IN_USE).filter((id) => !base.includes(id) && !HELD[kind]?.includes(id) && (IN_USE[id](own ?? {}) || added.includes(id)));
-  const ids = [...base, ...extra], first = kind === 'ground' && regionHasAnimals(own) ? 'animals' : ids[0], shown = floor || floorOfKind(kind);
+  // (A raised part's or a crossing's Height section comes first, open: it is what the region is for.)
+  const ids = [...base, ...extra].sort((a, b) => (b === 'height') - (a === 'height')), first = ids[0] === 'height' ? 'height' : kind === 'ground' && regionHasAnimals(own) ? 'animals' : ids[0], shown = floor || floorOfKind(kind);
   return ids.map((id) => sectionOf(id, own, shown, id === first));
 }
 // The sections a kind can still add (the "More sections" line): each { id, icon, title }.
 export function moreSections(kind, own = {}, added = []) {
   if (kind === 'none') return [];
   const shown = panelSections(kind, own, undefined, added).map((s) => s.id);
-  return Object.keys(IN_USE).filter((id) => !shown.includes(id) && !HELD[kind]?.includes(id)).map((id) => ({ id, icon: TITLES[id][0], title: TITLES[id][1] }));
+  // (Height is never offered: a region is raised or made a crossing on Map painting's Heights tab.)
+  return Object.keys(IN_USE).filter((id) => id !== 'height' && !shown.includes(id) && !HELD[kind]?.includes(id)).map((id) => ({ id, icon: TITLES[id][0], title: TITLES[id][1] }));
 }
 
 // A roof: Foundry's Suppress Weather behavior on the region, which is what keeps the weather, the sun and the sky's light
@@ -143,6 +148,12 @@ const POND = { still: 'Pond', river: 'River', rapids: 'Rapids', falls: 'Waterfal
 // The one line shown on a section's heading (pure), in plain words.
 export function summaryOf(id, own = {}, floor) {
   switch (id) {
+    case 'height': {
+      const h = readHeight(own), r = readRamp(own);
+      if (h !== null) return `${h} over the floor${own?.cliffLook === 'none' ? ' · no cliff drawn' : own?.cliffLook === 'earth' ? ' · earth bank' : ''}`;
+      if (r) { const name = labelIn(CROSSING_KINDS, r.kind, 'Ramp'), ends = r.lo !== null || r.hi !== null ? ` · ${r.lo ?? 'ground'} → ${r.hi ?? 'ground'}` : ''; return `${name}${ends}`; }
+      return 'None';
+    }
     case 'water': {
       const kind = waterKindOf(own), flows = ['river', 'rapids', 'falls'].includes(kind) || !!own?.flowTo;
       const toward = labelIn(WATER_TOWARD, own?.flowTo), way = flows ? (toward ? `flowing ${lower(toward)}` : 'flowing with the wind') : 'still';

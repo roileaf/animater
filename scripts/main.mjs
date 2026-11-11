@@ -26,7 +26,7 @@ import { propMaterial } from "./engines/props/prop-material.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls, blockingWalls, wallStop } from "./engines/props/prop-walls.mjs";
-import { wallMid, readWallNote, wallTraits, wallBreakFormMerge, wallFormDoor, canBreakWall } from "./engines/props/wall-break.mjs";
+import { wallMid, readWallNote, wallTraits, wallBreakFormMerge, wallFormDoor, canBreakWall, HOLE_LIGHT } from "./engines/props/wall-break.mjs";
 import { wallBreachUpdate, breachPartData, wallRepairPlan, breachWallAt, breachableWalls, breachPartOf, crossingPoint, areaShapeCentre, templateShape } from "./engines/props/wall-breach.mjs";
 import { firePatchAt } from "./engines/props/prop-wreck-layout.mjs";
 import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest, handEdited, handEditUpdate, slamSenderOk, breaksSure } from "./engines/props/wall-break-requests.mjs";
@@ -280,10 +280,13 @@ import { createWebs, webCorners } from "./engines/motion/webs.mjs";
 import { createDecorations, decorWreckTile } from "./engines/motion/decorations.mjs";
 import { createDecorLights } from "./engines/motion/decor-lights.mjs";
 import { colourAt as floorColourAt, dabCells as floorDabCells, planFloorStroke, floorRegionName, modelMaskFor, hoverLine as floorHoverLine } from "./engines/regions/floor-brush.mjs";
-import { toRegionData as floorRegionData, floorColour as floorTint, fitSize as floorFitSize } from "./engines/regions/floor-detect.mjs";
-import { nearbyClicks as smartNearbyClicks } from "./engines/regions/smart-select.mjs";
-import { decorSettings, strokeShapes, circleArea as decorCircle, decorPlacements, trunkWalls, carryDecor } from "./engines/motion/decor-regions.mjs";
+import { toRegionData as floorRegionData, floorColour as floorTint, fitSize as floorFitSize, areaPixels as floorAreaPixels } from "./engines/regions/floor-detect.mjs";
+import { nearbyClicks as smartNearbyClicks, cleanSelection } from "./engines/regions/smart-select.mjs";
+import { decorSettings, strokeShapes, circleArea as decorCircle, decorPlacements, trunkWalls, carryDecor, shapesBox } from "./engines/motion/decor-regions.mjs";
 import { openBrushBar, brushChoices, BRUSH_EDGE } from "./ui/decor-brush-bar.mjs";
+import { readHeight, readRamp, readOpenEdges, edgeTouches, openAt as heightOpenAt, OPEN_EDGES_MOST, heightField, walkerPath, nextHeight, rampFromDrag, rampOutline, heightRegionData, rampRegionData, cliffEdges, cliffRuns, heightsHoverLine, heightName, HEIGHT_STEP, refitHeights } from "./engines/regions/heights.mjs";
+import { drawCliffRun, drawSlope, footShade, topGlow, castOffset, depthHaze as heightDepthHaze, cliffColours, layOut as cliffLayOut } from "./engines/regions/height-look.mjs";
+import { drawLadder, drawRope, drawBridge } from "./engines/regions/height-crossings.mjs";
 import { DECOR_KINDS, stampDecor, paintDecor } from "./engines/motion/decor-paint.mjs";
 import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, seasonGround, groundInputs, groundStep, groundMoved, iceHours } from "./engines/motion/ambient-life.mjs";
 import { isFireLight, hazesLight, sparksLight, smokesLight, fireHazeTag, hazeAbove } from "./engines/distortion/fire-haze.mjs";
@@ -1693,7 +1696,7 @@ const wallSpanOf = (doc) => wallSpan(doc.flags, { floor: Number(canvas.level?.el
 const wallsHere = () => {
   const level = canvas.level?.id;
   return (canvas.walls?.placeables ?? []).map((w) => w.document).filter((d) => !d.levels?.size || !level || d.levels.has(level))
-    .map((d) => ({ c: d.c, light: d.light, move: d.move, door: d.door, ds: d.ds, kind: d.flags?.[ID]?.window || null, open: d.flags?.[ID]?.windowOpen === true, slats: d.flags?.[ID]?.windowSlats === true, pattern: d.flags?.[ID]?.windowPattern, noShadow: d.flags?.[ID]?.noShadow === true, ...wallSpanOf(d) }));
+    .map((d) => ({ c: d.c, light: d.light, move: d.move, door: d.door, ds: d.ds, kind: d.flags?.[ID]?.window || null, open: d.flags?.[ID]?.windowOpen === true, slats: d.flags?.[ID]?.windowSlats === true, pattern: d.flags?.[ID]?.windowPattern, noShadow: d.flags?.[ID]?.noShadow === true, broken: !!d.flags?.[ID]?.breakWall?.broken, ...wallSpanOf(d) }));
 };
 // A region's areas as flat x, y pairs, each with its `holes` (the hole shapes drawn in it, cut out of it), from Foundry's
 // polygon tree; an island drawn inside a hole is an area of its own.
@@ -1876,12 +1879,14 @@ const rebuildGlows = () => {
     }
     // In a scene with town animals asked for, the town goes to bed: its windows go dark one by one through the night.
     const town = bothSettingsOn("townLife") && townLevel(), hourNow = town ? (clockNow()?.day ?? 0.75) * 24 : 0;
-    const glows = windowGlows({ blocked: lightBlocked, walls: wallsHere(), indoors, lights, grid: canvas.grid.size, height: Number(hotSetting("wallShadowHeight")) || 2, foot: footInSquares() }).filter((g) => !town || !lightsOutAt(g.points.slice(0, 2).map(Math.round).join(), hourNow)).map((g) => ({ ...g, clip: lightFrom(g.past, g.reach * 1.5) }));
+    // (How light the night is round the house: under a bright moon, or in a dusk, a lamp's spill fades into it sooner.)
+    const ambient = Math.max(sunNow?.moon ? Math.min(1, Number(sunNow.strength) || 0) : 0, 1 - night);
+    const glows = windowGlows({ blocked: lightBlocked, walls: wallsHere(), indoors, lights, grid: canvas.grid.size, height: Number(hotSetting("wallShadowHeight")) || 2, foot: footInSquares(), ambient }).filter((g) => !town || !lightsOutAt(g.points.slice(0, 2).map(Math.round).join(), hourNow)).map((g) => ({ ...g, clip: lightFrom(g.past, g.reach * 1.5) }));
     // Hidden under the trees' leaves (whether or not they cast their own shade) and the roofs' eaves: the light comes
     // out from under them.
     const { tree, roof } = sunlitTiles(), covers = [...tree, ...roof];
     // Baked again only when something in it changed: a creature walking about refreshes the lighting many times over.
-    const key = JSON.stringify([Math.round(glowAlpha * 100), Math.round(layerAlpha * 100), glows.map((g) => [g.points.map(Math.round), g.clip?.map(Math.round), Math.round(g.alpha * 100), g.color, g.kind, g.panes, g.leaves, g.scale, g.lamp && Math.round(g.lamp.x), g.lamp && Math.round(g.lamp.y)]),
+    const key = JSON.stringify([Math.round(glowAlpha * 100), Math.round(layerAlpha * 100), Math.round(ambient * 20), glows.map((g) => [g.points.map(Math.round), g.clip?.map(Math.round), Math.round(g.alpha * 100), g.color, g.kind, g.panes, g.leaves, g.scale, g.lamp && Math.round(g.lamp.x), g.lamp && Math.round(g.lamp.y)]),
       covers.map((t) => [t.x, t.y, t.width, t.height, t.rotation, Math.round((t.alpha ?? 1) * 100)])]);
     if (key === glowKey && windowGlowLayer.built) return;
     glowKey = key;
@@ -2460,8 +2465,9 @@ const startDecorBrush = (doc = null) => {
   const region = own ? { name: doc.name, where: own.where, kinds: Object.keys(own.kinds).filter((id) => DECOR_KINDS[id] && (DECOR_KINDS[id].set === "both" || DECOR_KINDS[id].set === own.where)) } : null;
   // Map painting: the bar's Floors tab paints floor regions, its Decorations tab decorations (each kind with its own picture).
   const thumbs = new Map(), thumb = (kind) => { if (!thumbs.has(kind)) { let pic = null; try { pic = paintDecor(kind, 7, 48, decorLook({ where: brushChoices().where }))?.canvas ?? null; } catch { /* no picture */ } thumbs.set(kind, pic); } return thumbs.get(kind); };
-  state.bar = openBrushBar({ onClose: () => stopDecorBrush(), onChange: () => { draw(); if (floorsOn() && modelOn()) void loadSam(); refreshStatus(); }, region, thumb,
-    onTab: () => { if (floorsOn()) void readMap(); else hideHover(); draw(); refreshStatus(); },
+  state.bar = openBrushBar({ onClose: () => stopDecorBrush(), onChange: () => { draw(); if ((floorsOn() || (heightsOn() && brushChoices().heightMode === "raise")) && modelOn()) void loadSam(); refreshHeights(); refreshStatus(); }, region, thumb,
+    onTab: () => { if (floorsOn() || heightsOn()) void readMap(); if (!floorsOn()) hideHover(); refreshHeights(); draw(); refreshStatus(); },
+    sceneTicks: { get: () => ({ walls: heightsSceneOn("walls"), shadows: heightsSceneOn("shadows") }), set: (key, on) => void canvas.scene?.update({ [`flags.${ID}.${key === "walls" ? "cliffWalls" : "heightShadows"}`]: on }) },
     onUndo: () => { if (!state.down) void undoDecorStep().then(refreshStatus); }, onRedo: () => { if (!state.down) void redoDecorStep().then(refreshStatus); },
     onReadMap: game.settings.get(ID, "experimentalWaterRegions") === true ? () => { stopDecorBrush(); void openFloorRegionsTool(); } : null });
   const sizeNow = () => brushChoices().size;
@@ -2472,6 +2478,57 @@ const startDecorBrush = (doc = null) => {
   const fl = state.floors = { map: null, reading: null, why: "", stroke: null, erasing: false, seed: null, claimed: null, saved: [], preview: null, pixels: null, overlay: new PIXI.Graphics() };
   fl.overlay.eventMode = "none"; top.addChildAt(fl.overlay, 0);
   const floorsOn = () => brushChoices().tab === "floors";
+  // Heights (engines/regions/heights.mjs): the level's raised parts and ramps outlined with their heights while the tab is open.
+  // Raise: a click raises the outline under it (Edges finds it), or picks a raised part for the wheel; Ramp: a drag up across a
+  // raised edge lays a ramp; Shift-click takes either away. Each is a region of its own, saved at once.
+  const heightsOn = () => brushChoices().tab === "heights";
+  const hz = state.heights = { overlay: new PIXI.Graphics(), labels: new PIXI.Container(), sel: null, drag: null, busy: "", hoverText: "", wheel: null, wheelTimer: null };
+  hz.overlay.eventMode = "none"; hz.labels.eventMode = "none"; top.addChild(hz.overlay, hz.labels);
+  const heightsHere = () => heightsOf(canvas.scene, canvas.level?.id ?? null);
+  const heightLabel = (text, x, y) => { const t = new PIXI.Text(text, { fontFamily: "Signika, sans-serif", fontSize: Math.max(14, Math.round(grid() * 0.28)), fill: 0xf3e4c4, stroke: 0x1e160e, strokeThickness: 4, fontWeight: "bold" }); t.anchor.set(0.5); t.position.set(x, y); hz.labels.addChild(t); };
+  // (A label in the middle of the biggest outline's box.)
+  const labelSpot = (areas) => { let best = null; for (const a of areas) { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (let i = 0; i < a.length; i += 2) { x0 = Math.min(x0, a[i]); x1 = Math.max(x1, a[i]); y0 = Math.min(y0, a[i + 1]); y1 = Math.max(y1, a[i + 1]); } const size = (x1 - x0) * (y1 - y0); if (!best || size > best.size) best = { size, x: (x0 + x1) / 2, y: (y0 + y1) / 2 }; } return best ?? { x: 0, y: 0 }; };
+  const shownHeight = (part) => (hz.wheel?.id === part.id ? hz.wheel.height : part.height);
+  const drawRamp = (ramp, field, units, ghost) => {
+    const o = hz.overlay, [lo, hi] = field.rampEnds(ramp), vx = ramp.b.x - ramp.a.x, vy = ramp.b.y - ramp.a.y, len = Math.hypot(vx, vy) || 1, ux = vx / len, uy = vy / len, nx = (-uy * ramp.w) / 2, ny = (ux * ramp.w) / 2;
+    o.lineStyle(3, 0x22180e, ghost ? 0.6 : 0.95); o.beginFill(0xb08c5a, ghost ? 0.35 : 0.6); o.drawPolygon(rampOutline(ramp)); o.endFill();
+    o.lineStyle(2, 0x5a4126, 0.9); const n = Math.max(3, Math.round(len / (grid() / 5))); for (let i = 1; i < n; i++) { const cx = ramp.a.x + (vx * i) / n, cy = ramp.a.y + (vy * i) / n; o.moveTo(cx + nx, cy + ny); o.lineTo(cx - nx, cy - ny); }
+    // (An arrow at the end it climbs to.)
+    const up = hi >= lo ? 1 : -1, end = up > 0 ? ramp.b : ramp.a, tip = grid() * 0.12, back = grid() * 0.25, tx = end.x - up * ux * back, ty = end.y - up * uy * back;
+    o.lineStyle(0); o.beginFill(0xf3d27a, 0.95); o.drawPolygon([end.x + up * ux * tip, end.y + up * uy * tip, tx + nx * 0.6, ty + ny * 0.6, tx - nx * 0.6, ty - ny * 0.6]); o.endFill();
+    if (lo !== hi) heightLabel(`${ramp.kind ?? "ramp"} ${Math.min(lo, hi)} → ${Math.max(lo, hi)} ${units}`, (ramp.a.x + ramp.b.x) / 2, Math.max(ramp.a.y, ramp.b.y) + ramp.w);
+  };
+  const refreshHeights = () => {
+    if (decorBrushing !== state) return;
+    hz.overlay.clear(); for (const c of hz.labels.removeChildren()) { try { c.destroy(); } catch { /* gone */ } }
+    const on = heightsOn(); hz.overlay.visible = hz.labels.visible = on; if (!on) return;
+    const { parts, ramps, field } = heightsHere(), units = heightUnits();
+    for (const part of [...parts].sort((a, b) => a.height - b.height)) {
+      const picked = part.id === hz.sel;
+      hz.overlay.lineStyle(0); hz.overlay.beginFill(0x8a7a5c, 0.18);
+      for (const a of part.areas) { hz.overlay.drawPolygon(a); for (const h of a.holes ?? []) { hz.overlay.beginHole(); hz.overlay.drawPolygon(h); hz.overlay.endHole(); } }
+      hz.overlay.endFill();
+      // Its outline, left out where an edge is open (Roi: "it doesnt actually remove the yellow line?").
+      hz.overlay.lineStyle(picked ? 4 : 2, picked ? 0xffe9a8 : 0xd9b46a, 0.95);
+      for (const a of part.areas) for (const loop of [a, ...(a.holes ?? [])]) {
+        const n = loop.length / 2; let down = false;
+        for (let i = 0; i <= n; i++) {
+          const x1 = loop[(i % n) * 2], y1 = loop[(i % n) * 2 + 1], x2 = loop[((i + 1) % n) * 2], y2 = loop[((i + 1) % n) * 2 + 1], steps = i === n ? 0 : Math.max(1, Math.ceil(Math.hypot(x2 - x1, y2 - y1) / 6));
+          for (let k = 0; k <= steps; k++) { const x = x1 + ((x2 - x1) * k) / Math.max(1, steps), y = y1 + ((y2 - y1) * k) / Math.max(1, steps); if (heightOpenAt(part, { x, y })) { down = false; continue; } if (down) hz.overlay.lineTo(x, y); else { hz.overlay.moveTo(x, y); down = true; } }
+          if (i === n) break;
+        }
+      }
+      const c = labelSpot(part.areas); heightLabel(`${shownHeight(part)} ${units}`, c.x, c.y);
+    }
+    for (const ramp of ramps) drawRamp(ramp, field, units, false);
+    if (hz.drag) drawRamp(hz.drag.ramp, field, units, true);
+    // Open edges, faint green; an open-edge stroke as it goes (red when closing).
+    hz.overlay.lineStyle(0);
+    for (const part of parts) { hz.overlay.beginFill(0x7fd17a, 0.16); for (const c of part.open ?? []) hz.overlay.drawCircle(c.x, c.y, c.r); hz.overlay.endFill(); }
+    if (hz.open) { hz.overlay.beginFill(hz.open.erase ? 0xff6a5a : 0x7fd17a, 0.3); for (const c of hz.open.circles) hz.overlay.drawCircle(c.x, c.y, c.r); hz.overlay.endFill(); }
+  };
+  const heightsSummary = () => { const { parts, ramps } = heightsHere(), units = heightUnits(); if (!parts.length && !ramps.length) return "Nothing raised yet"; return `Heights here: ${[...parts.map((p) => `${p.height} ${units}`), ...(ramps.length ? [`${ramps.length} ramp${ramps.length > 1 ? "s" : ""}`] : [])].join(" · ")}`; };
+  const heightsHover = (p) => { const text = heightsHoverLine({ field: heightsHere().field, at: p, mode: brushChoices().heightMode, units: heightUnits() }); if (hz.hoverText !== text) { hz.hoverText = text; refreshStatus(); } };
   const readMap = () => fl.reading ??= (async () => {
     const level = canvas.level, src = level?.background?.src, rect = canvas.dimensions?.sceneRect;
     if (!src || !(rect?.width > 0) || !(rect?.height > 0)) { fl.why = "This level has no map image to paint floors on."; return; }
@@ -2505,7 +2562,7 @@ const startDecorBrush = (doc = null) => {
     let painted = 0; for (const r of regionsHere()) painted += decorSettings(r.flags?.[ID]?.decor)?.brushed?.length ?? 0;
     const parts = [...floorsText, ...(painted ? [`${painted} decorations`] : [])];
     // (Hovering the map on Floors: what is under the pointer, and what a dab there would do.)
-    const text = floorsOn() && !fl.map ? (fl.why || "Reading the map…") : floorsOn() && modelOn() && sam.status ? sam.status : floorsOn() && fl.hoverText ? fl.hoverText : parts.length ? `On this level: ${parts.join(" · ")}` : "Nothing painted yet";
+    const text = heightsOn() ? (hz.busy || (modelOn() && brushChoices().heightMode === "raise" && sam.status) || hz.hoverText || heightsSummary()) : floorsOn() && !fl.map ? (fl.why || "Reading the map…") : floorsOn() && modelOn() && sam.status ? sam.status : floorsOn() && fl.hoverText ? fl.hoverText : parts.length ? `On this level: ${parts.join(" · ")}` : "Nothing painted yet";
     state.bar?.setStatus(text, { undo: decorSteps.undo.length > 0, redo: decorSteps.redo.length > 0 });
   };
   const toImage = (p) => ({ x: ((p.x - fl.map.rect.x) * fl.map.width) / fl.map.rect.width, y: ((p.y - fl.map.rect.y) * fl.map.height) / fl.map.rect.height });
@@ -2513,8 +2570,8 @@ const startDecorBrush = (doc = null) => {
   const showStroke = (cells) => {
     const m = fl.map;
     if (!fl.preview) { const c = document.createElement("canvas"); c.width = m.width; c.height = m.height; fl.pixels = c.getContext("2d").createImageData(m.width, m.height); fl.preview = new PIXI.Sprite(PIXI.Texture.from(c)); fl.preview.canvas = c; fl.preview.eventMode = "none"; fl.preview.position.set(m.rect.x, m.rect.y); fl.preview.scale.set(m.rect.width / m.width, m.rect.height / m.height); top.addChildAt(fl.preview, 1); }
-    const d = fl.pixels.data, hex = fl.erasing ? "#ff6a5a" : floorTint(brushChoices().floor), r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
-    const look = fl.erasing ? null : textureLook();
+    const d = fl.pixels.data, hex = fl.erasing ? "#ff6a5a" : fl.heights ? "#d9b46a" : floorTint(brushChoices().floor), r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    const look = fl.erasing || fl.heights ? null : textureLook();
     if (!cells.length) return;
     // Only the box the dab touched is copied in (the picture is the whole map: copying all of it every dab made the brush lag),
     // and the picture goes to the screen at most once a frame.
@@ -2637,13 +2694,109 @@ const startDecorBrush = (doc = null) => {
     for (const spot of smartNearbyClicks(at, m.width, m.height)) { sets.push((await sam.ready.seg.masks(sam.ready.view, [spot])).masks); await new Promise((r) => setTimeout(r, 0)); }
     return modelMaskFor({ sets, rgba: m.rgba, width: m.width, height: m.height, at: q });
   };
+  // Heights: Raise is a brush, as Floors is (Edges and How alike, the brush's size): a stroke grows the raised part it starts on,
+  // or, on lower ground, raises a new one a step over it, joining any of that height it touches; Shift-drag rubs out of the
+  // raised part it starts on. Each saved as the stroke ends. Ramps are dragged, and the wheel over a raised part sets its height.
+  const heightBegin = (p, erase) => {
+    if (!fl.map) { void readMap().then(() => { if (fl.why) ui.notifications?.warn?.(fl.why); refreshStatus(); }); refreshStatus(); return false; }
+    if (fl.finishing) return false;
+    const model = modelOn() && !erase;
+    if (model && !sam.ready) { void loadSam(); ui.notifications?.info?.("The smart model is getting ready; paint again in a moment (or set Edges to Colour)."); return false; }
+    const m = fl.map, q = toImage(p), { field } = heightsHere(), part = field.partAt(p);
+    if (erase && !part) return false;
+    fl.stroke = new Uint8Array(m.width * m.height); fl.erasing = erase; fl.seed = floorColourAt(m.rgba, m.width, m.height, q.x, q.y);
+    // (Started on a raised part: that height. On lower ground: a step over it.)
+    fl.heights = { height: part ? part.height : nextHeight(field.groundAt(p), true, heightStep()) };
+    // Raising keeps off nothing (raised ground lies over any floor); rubbing out takes only from the parts of that height.
+    fl.claimed = erase ? notHeight(fl.heights.height) : new Uint8Array(m.width * m.height);
+    fl.model = model; fl.dabs = []; fl.asking = null; fl.within = model ? new Uint8Array(m.width * m.height) : null;
+    if (model && fl.hoverWithin?.[Math.round(q.y) * m.width + Math.round(q.x)]) fl.within.set(fl.hoverWithin);
+    hideHover(); return true;
+  };
+  // A raised part's outline in the map image's pixels, as the floor brush keeps its floors' (areaPixels).
+  const heightPixels = (part) => { const m = fl.map, sx = m.width / m.rect.width, sy = m.height / m.rect.height, img = (pts) => Array.from(pts, (v, i) => (i % 2 ? (v - m.rect.y) * sy : (v - m.rect.x) * sx)); const loops = []; for (const a of part.areas) { loops.push({ points: img(a), hole: false }); for (const h of a.holes ?? []) loops.push({ points: img(h), hole: true }); } return floorAreaPixels(loops, m.width, m.height); };
+  const heightSaved = () => heightsHere().parts.map((part) => ({ regionId: part.id, floor: `h${part.height}`, pixels: heightPixels(part) }));
+  const notHeight = (height) => { const out = new Uint8Array(fl.map.width * fl.map.height).fill(1); for (const s of heightSaved()) if (s.floor === `h${height}`) for (const px of s.pixels) out[px] = 0; return out; };
+  const heightFinish = async () => {
+    const m = fl.map, height = fl.heights.height;
+    try {
+      // (Raised ground is solid: the holes Colour edges leave in a stroke over textured ground are filled; each would be a cliff.)
+      const stroke = fl.erasing ? fl.stroke : cleanSelection(fl.stroke, m.width, m.height, []);
+      const plan = planFloorStroke({ saved: heightSaved(), floor: `h${height}`, stroke, erase: fl.erasing, width: m.width, height: m.height });
+      const scene = canvas.scene, shapesOf = (loops) => floorRegionData({ loops }, { sceneRect: m.rect, imageWidth: m.width, imageHeight: m.height }).shapes;
+      const updates = [], creates = [], removes = [];
+      for (const u of plan.updates) { const doc = scene.regions.get(u.regionId); if (!doc) continue; const before = doc.toObject().shapes, after = shapesOf(u.loops); await doc.update({ shapes: after }); updates.push({ id: doc.id, before, after }); }
+      for (const id of plan.removes) { const doc = scene.regions.get(id); if (!doc) continue; const data = doc.toObject(); delete data._id; await doc.delete(); removes.push({ id, data }); }
+      for (const made of plan.creates) { const data = heightRegionData({ shapes: shapesOf(made.loops), height, levelId: m.levelId ?? null, units: heightUnits() }); const [doc] = await scene.createEmbeddedDocuments("Region", [data]); if (doc) creates.push({ id: doc.id, data }); }
+      if (updates.length || creates.length || removes.length) rememberDecorStep({ kind: "floor", updates, creates, removes });
+    } catch (err) { console.warn("Animater | heights", err); ui.notifications?.warn?.("The raised ground could not be saved."); }
+  };
+  const layRamp = async (drag) => {
+    const kind = drag.ramp.kind ?? "ramp", ramp = rampFromDrag({ a: drag.ramp.a, b: drag.ramp.b, w: drag.ramp.w, field: heightsHere().field, min: grid() * 0.5, kind });
+    if (!ramp) { refreshHeights(); ui.notifications?.info?.(kind === "bridge" ? "A bridge spans from raised ground: drag from one raised part to another." : `A ${kind} climbs a raised edge: drag from lower ground up onto a raised part.`); return; }
+    try { const data = rampRegionData({ ...ramp, levelId: canvas.level?.id ?? null }); const [doc] = await canvas.scene.createEmbeddedDocuments("Region", [data]); if (doc) rememberDecorStep({ kind: "floor", updates: [], creates: [{ id: doc.id, data }], removes: [] }); }
+    catch (err) { console.warn("Animater | heights", err); ui.notifications?.warn?.("The ramp could not be saved."); }
+    if (decorBrushing === state) { refreshHeights(); refreshStatus(); }
+  };
+  // An open-edge stroke saved onto each raised part whose rim it crossed (or, closing, taken off them), one step to take back.
+  const saveOpenEdges = async (open) => {
+    const changed = [];
+    try {
+      for (const part of heightsHere().parts) {
+        const touched = open.circles.filter((c) => edgeTouches(part, c)); if (!touched.length) continue;
+        const doc = canvas.scene.regions.get(part.id); if (!doc) continue;
+        const before = Array.isArray(doc.flags?.[ID]?.openEdges) ? doc.flags[ID].openEdges : [];
+        const after = open.erase ? before.filter(([x, y, r]) => !open.circles.some((c) => Math.hypot(x - c.x, y - c.y) < r + c.r)) : [...before, ...touched.map((c) => [c.x, c.y, c.r])].slice(-OPEN_EDGES_MOST);
+        if (after.length === before.length && open.erase) continue;
+        await doc.update({ [`flags.${ID}.openEdges`]: after }); changed.push({ id: doc.id, before, after });
+      }
+      if (changed.length) rememberDecorStep({ kind: "open", changed });
+      else if (!open.erase) ui.notifications?.info?.("Alt-drag along a raised part's edge to open it.");
+    } catch (err) { console.warn("Animater | heights", err); }
+    if (decorBrushing === state) { refreshHeights(); refreshStatus(); }
+  };
+  const removeHeight = async (id) => {
+    const doc = canvas.scene?.regions?.get(id); if (!doc) return;
+    try { const data = doc.toObject(); delete data._id; await doc.delete(); rememberDecorStep({ kind: "floor", updates: [], creates: [], removes: [{ id, data }] }); }
+    catch (err) { console.warn("Animater | heights", err); }
+    if (hz.sel === id) hz.sel = null;
+    if (decorBrushing === state) { refreshHeights(); refreshStatus(); }
+  };
+  // True when a stroke began (the pointer then paints it as a floor stroke is painted).
+  const heightsDown = (p, shift, alt = false) => {
+    const { field } = heightsHere(), ramp = field.rampAt(p)?.ramp;
+    // Alt-drag along a raised part's rim opens that stretch of its edge (no cliff, no walls); with Shift, closes it again.
+    if (alt && brushChoices().heightMode === "raise") { const r = Math.max(grid() * 0.25, (sizeNow() * grid()) / 2); hz.open = { erase: shift, r, circles: [{ x: Math.round(p.x), y: Math.round(p.y), r: Math.round(r) }] }; state.down = true; refreshHeights(); return false; }
+    if (brushChoices().heightMode === "ramp") {
+      if (shift) { const hit = ramp ?? field.partAt(p); if (hit) void removeHeight(hit.id); return false; }
+      // (A ramp or a bridge as wide as the brush: a whole side of a raised part can be a slope. A ladder or a rope its own width.)
+      const kind = brushChoices().crossKind, w = kind === "ladder" ? grid() * 0.45 : kind === "rope" ? grid() * 0.3 : Math.max(grid() * 0.5, sizeNow() * grid());
+      hz.drag = { ramp: { a: p, b: p, w, kind } }; state.down = true; return false;
+    }
+    if (shift && ramp) { void removeHeight(ramp.id); return false; }
+    return heightBegin(p, shift);
+  };
+  // The wheel over a raised part: a step higher or lower, shown at once and saved once the wheel rests.
+  const flushWheel = () => {
+    clearTimeout(hz.wheelTimer); const w = hz.wheel; hz.wheel = null; if (!w || w.height === w.from) return;
+    const doc = canvas.scene?.regions?.get(w.id); if (!doc) return;
+    void doc.update({ ...(/^Raised\b/.test(doc.name ?? "") ? { name: heightName(w.height, heightUnits()) } : {}), [`flags.${ID}.height`]: w.height }).then(() => rememberDecorStep({ kind: "height", id: w.id, before: w.from, after: w.height })).catch((err) => console.warn("Animater | heights", err));
+  };
+  const wheelHeight = (part, up) => {
+    if (hz.wheel && hz.wheel.id !== part.id) flushWheel();
+    hz.sel = part.id; const next = nextHeight(shownHeight(part), up, heightStep());
+    if (hz.wheel) hz.wheel.height = next; else hz.wheel = { id: part.id, from: part.height, height: next };
+    hz.hoverText = `Over: raised ${next} ${heightUnits()} · a stroke grows it, the wheel raises or lowers it, Shift-drag rubs it out`;
+    refreshHeights(); refreshStatus();
+    clearTimeout(hz.wheelTimer); hz.wheelTimer = setTimeout(flushWheel, 350);
+  };
   const floorBegin = (p, erase) => {
     if (!fl.map) { void readMap().then(() => { if (fl.why) ui.notifications?.warn?.(fl.why); refreshStatus(); }); refreshStatus(); return false; }
     if (fl.finishing) return false;
     const model = modelOn() && !erase;
     if (model && !sam.ready) { void loadSam(); ui.notifications?.info?.("The smart model is getting ready; paint again in a moment (or set Edges to Colour)."); return false; }
     const m = fl.map, c = brushChoices(), q = toImage(p);
-    fl.stroke = new Uint8Array(m.width * m.height); fl.erasing = erase; fl.seed = floorColourAt(m.rgba, m.width, m.height, q.x, q.y);
+    fl.stroke = new Uint8Array(m.width * m.height); fl.erasing = erase; fl.seed = floorColourAt(m.rgba, m.width, m.height, q.x, q.y); fl.heights = null;
     // Painting keeps off the other floors' regions; rubbing out takes only from the picked floor's.
     fl.claimed = erase ? notFloor(c.floor) : claimedBy(c.floor);
     // With the model, the stroke paints inside the outlines it has asked for, starting from the one hovering already found.
@@ -2682,6 +2835,7 @@ const startDecorBrush = (doc = null) => {
     // (A stroke still waiting on the model's answer is saved once it comes.)
     fl.finishing = true;
     while (fl.asking) await fl.asking;
+    if (fl.heights) { await heightFinish(); fl.heights = null; fl.finishing = false; if (decorBrushing === state) { clearStroke(); refreshHeights(); refreshStatus(); } return; }
     const c = brushChoices(), saved = fl.saved, m = fl.map;
     try {
       const plan = planFloorStroke({ saved, floor: c.floor, stroke: fl.stroke, erase: fl.erasing, width: fl.map.width, height: fl.map.height });
@@ -2699,7 +2853,7 @@ const startDecorBrush = (doc = null) => {
     fl.finishing = false;
     if (decorBrushing === state) { clearStroke(); refreshFloors(); refreshStatus(); }
   };
-  const regionHooks = ["createRegion", "updateRegion", "deleteRegion"].map((hook) => [hook, Hooks.on(hook, () => { if (decorBrushing === state && !state.down) { refreshFloors(); refreshStatus(); } })]);
+  const regionHooks = ["createRegion", "updateRegion", "deleteRegion"].map((hook) => [hook, Hooks.on(hook, () => { if (decorBrushing === state && !state.down) { refreshFloors(); refreshHeights(); refreshStatus(); } })]);
   // The ghost: one dab's worth laid out round the pointer (the very ones a click puts down), drawn again only when the choices change.
   const refreshGhost = () => {
     const radius = (sizeNow() * grid()) / 2, using = paintWith(), key = JSON.stringify([using, radius, state.ghostSeed]);
@@ -2715,6 +2869,12 @@ const startDecorBrush = (doc = null) => {
   const draw = () => {
     ring.clear();
     const floors = floorsOn(); fl.overlay.visible = floors;
+    if (heightsOn()) {
+      ghost.visible = false;
+      // (Raise is a brush: its ring, in the raised ground's colour.)
+      if (brushChoices().heightMode === "raise" && state.at) { ring.lineStyle(2, state.erasing ? 0xff7a64 : 0xd9b46a, 0.95); ring.drawCircle(state.at.x, state.at.y, (sizeNow() * grid()) / 2); }
+      return;
+    }
     const showGhost = !!state.at && !state.down && !state.erasing && !floors; ghost.visible = showGhost;
     if (!state.at) return;
     if (showGhost) { refreshGhost(); ghost.position.set(state.at.x, state.at.y); }
@@ -2771,36 +2931,42 @@ const startDecorBrush = (doc = null) => {
   // Foundry's drag-select box or selects what it passes over.)
   const down = (e) => {
     if (e.target !== view) return; if (e.button === 2) { state.rightAt = { x: e.clientX, y: e.clientY }; return; } if (e.button !== 0) return; e.stopImmediatePropagation(); e.preventDefault(); const p = at(e);
+    if (heightsOn()) { if (!heightsDown(p, e.shiftKey, e.altKey)) return; state.down = true; state.erasing = e.shiftKey; state.last = p; draw(); floorDab(p); return; }
     if (floorsOn()) { if (!floorBegin(p, e.shiftKey)) return; state.down = true; state.erasing = e.shiftKey; state.last = p; draw(); floorDab(p); return; }
     begin(p); state.down = true; state.erasing = e.shiftKey; state.last = p; draw(); dab(p, e.shiftKey, true);
   };
   const move = (e) => {
     if (!state.down && e.target !== view) { hideHover(); return; } const p = at(e); state.at = p; if (!state.down) state.erasing = e.shiftKey; draw();
+    if (hz.drag) { e.stopImmediatePropagation(); hz.drag.ramp.b = p; refreshHeights(); return; }
+    if (hz.open) { e.stopImmediatePropagation(); const last = hz.open.circles.at(-1); if (Math.hypot(p.x - last.x, p.y - last.y) >= hz.open.r * 0.5) { hz.open.circles.push({ x: Math.round(p.x), y: Math.round(p.y), r: Math.round(hz.open.r) }); refreshHeights(); } return; }
+    if (!state.down && heightsOn()) { hideHover(); heightsHover(p); return; }
     if (!state.down) { if (floorsOn() && fl.map && !e.shiftKey) hoverFloor(p); else hideHover(); return; } e.stopImmediatePropagation();
     // A floor stroke dabs every third of the ring, filling the gaps between, so a quick drag paints a band, not beads.
     if (fl.stroke) { const step = sizeNow() * grid() / 6, dist = Math.hypot(p.x - state.last.x, p.y - state.last.y); if (dist < step) return; for (let s = step; s <= dist; s += step) floorDab({ x: state.last.x + ((p.x - state.last.x) * s) / dist, y: state.last.y + ((p.y - state.last.y) * s) / dist }); state.last = p; return; }
     if (Math.hypot(p.x - state.last.x, p.y - state.last.y) > sizeNow() * grid() * 0.35) { state.last = p; dab(p, e.shiftKey); }
   };
-  const up = (e) => { if (!state.down) return; e.stopImmediatePropagation(); state.down = false; draw(); if (fl.stroke) void floorFinish(); else void finish().then(refreshStatus); };
+  const up = (e) => { if (hz.open) { e.stopImmediatePropagation(); state.down = false; const open = hz.open; hz.open = null; void saveOpenEdges(open); return; } if (hz.drag) { e.stopImmediatePropagation(); state.down = false; const drag = hz.drag; hz.drag = null; void layRamp(drag); return; } if (!state.down) return; e.stopImmediatePropagation(); state.down = false; draw(); if (fl.stroke) void floorFinish(); else void finish().then(refreshStatus); };
   const key = (e) => {
     if (e.target?.closest?.("input, textarea")) return;
     // Ctrl+Z takes back the last stroke, Ctrl+Shift+Z or Ctrl+Y puts it back (Foundry's own undo waits while the brush is out).
     const z = e.key === "z" || e.key === "Z", undo = (e.ctrlKey || e.metaKey) && z && !e.shiftKey, redo = (e.ctrlKey || e.metaKey) && ((z && e.shiftKey) || e.key === "y" || e.key === "Y");
     if (undo || redo) { e.preventDefault(); e.stopImmediatePropagation(); if (!state.down) void (undo ? undoDecorStep() : redoDecorStep()).then(refreshStatus); return; }
-    // 1 and 2 switch the tabs (kept from Foundry's macro bar while the brush is out).
-    if ((e.key === "1" || e.key === "2") && !(e.ctrlKey || e.metaKey || e.altKey)) { e.preventDefault(); e.stopImmediatePropagation(); if (e.key === "1") state.bar?.setTab("floors"); else if (e.key === "2") state.bar?.setTab("decor"); return; }
+    // 1, 2 and 3 switch the tabs (kept from Foundry's macro bar while the brush is out).
+    if ((e.key === "1" || e.key === "2" || e.key === "3") && !(e.ctrlKey || e.metaKey || e.altKey)) { e.preventDefault(); e.stopImmediatePropagation(); state.bar?.setTab(e.key === "1" ? "floors" : e.key === "2" ? "decor" : "heights"); return; }
     if (e.key === "Escape") stopDecorBrush();
     else if (e.key === "[" || e.key === "]") { const next = Math.min(DECOR_BRUSH.max, Math.max(DECOR_BRUSH.min, sizeNow() + (e.key === "]" ? 0.5 : -0.5))); state.bar?.setSize(next); draw(); }
   };
   // The wheel still zooms the map; Ctrl+wheel sets the brush's size and Shift+wheel how thick it lays them (both kept from
   // Foundry, whose Ctrl or Shift+wheel would turn the selected tokens).
   const wheel = (e) => {
+    // On Heights (Raise), the plain wheel over a raised part raises or lowers it; elsewhere it zooms as ever.
+    if (e.target === view && heightsOn() && brushChoices().heightMode === "raise" && !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey)) { const part = heightsHere().field.partAt(at(e)); if (part) { e.preventDefault(); e.stopImmediatePropagation(); wheelHeight(part, (e.deltaY || e.deltaX) < 0); return; } }
     if (e.target !== view || !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey)) return;
     e.preventDefault(); e.stopImmediatePropagation();
     const up = (e.deltaY || e.deltaX) < 0;
     // On Floors, Alt+wheel is How alike; Shift+wheel turns nothing.
-    if (floorsOn() && e.altKey && !(e.ctrlKey || e.metaKey || e.shiftKey)) state.bar?.setTol(brushChoices().tol + (up ? 2 : -2));
-    else if (floorsOn() && e.shiftKey) return;
+    if ((floorsOn() || heightsOn()) && e.altKey && !(e.ctrlKey || e.metaKey || e.shiftKey)) state.bar?.setTol(brushChoices().tol + (up ? 2 : -2));
+    else if ((floorsOn() || heightsOn()) && e.shiftKey) return;
     else if (e.altKey && !(e.ctrlKey || e.metaKey || e.shiftKey)) state.bar?.setScale(brushChoices().scale + (up ? 0.1 : -0.1));
     else if (e.shiftKey && !(e.ctrlKey || e.metaKey)) state.bar?.turnBy(up ? -1 : 1);
     else if (e.shiftKey) state.bar?.setThick(brushChoices().thick + (up ? 0.1 : -0.1));
@@ -2809,15 +2975,16 @@ const startDecorBrush = (doc = null) => {
   };
   const menu = (e) => { const from = state.rightAt; state.rightAt = null; if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > 6) return; e.preventDefault(); stopDecorBrush(); };
   window.addEventListener("pointerdown", down, true); window.addEventListener("pointermove", move, true); window.addEventListener("pointerup", up, true); window.addEventListener("keydown", key, true); view.addEventListener("contextmenu", menu, true); window.addEventListener("wheel", wheel, { capture: true, passive: false });
-  state.stop = () => { window.removeEventListener("pointerdown", down, true); window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", key, true); view.removeEventListener("contextmenu", menu, true); window.removeEventListener("wheel", wheel, { capture: true }); for (const [hook, id] of regionHooks) Hooks.off(hook, id); try { ring.destroy(); ghost.destroy({ children: true }); fl.overlay.destroy(); fl.preview?.destroy({ texture: true, baseTexture: true }); clearTimeout(hoverTimer); clearTimeout(fl.hoverAsk); fl.hover?.destroy({ texture: true, baseTexture: true }); top.parent?.removeChild(top); top.destroy(); if (sam.ready) void sam.ready.seg.drop(sam.ready.view); } catch { /* gone */ } state.bar?.close(); };
+  state.stop = () => { flushWheel(); window.removeEventListener("pointerdown", down, true); window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", key, true); view.removeEventListener("contextmenu", menu, true); window.removeEventListener("wheel", wheel, { capture: true }); for (const [hook, id] of regionHooks) Hooks.off(hook, id); try { ring.destroy(); ghost.destroy({ children: true }); fl.overlay.destroy(); hz.overlay.destroy(); hz.labels.destroy({ children: true }); fl.preview?.destroy({ texture: true, baseTexture: true }); clearTimeout(hoverTimer); clearTimeout(fl.hoverAsk); fl.hover?.destroy({ texture: true, baseTexture: true }); top.parent?.removeChild(top); top.destroy(); if (sam.ready) void sam.ready.seg.drop(sam.ready.view); } catch { /* gone */ } state.bar?.close(); };
   if (floorsOn()) void readMap().then(refreshStatus);
+  if (heightsOn()) { void readMap(); refreshHeights(); }
   refreshStatus();
   // The smart model already downloaded (this browser keeps it): the brush starts on Model, never asking for a download,
   // unless the GM picked Edges themselves this session.
   void (async () => {
     try {
       const { isSmartModelCached } = await import("./ui/smart-model.mjs");
-      if (!brushChoices().edgesChosen && await isSmartModelCached() && decorBrushing === state) { state.bar?.setEdges("model"); if (floorsOn()) void loadSam(); }
+      if (!brushChoices().edgesChosen && await isSmartModelCached() && decorBrushing === state) { state.bar?.setEdges("model"); if (floorsOn() || heightsOn()) void loadSam(); }
     } catch { /* the cache unreadable: stays as it is */ }
   })();
 };
@@ -2844,6 +3011,9 @@ const syncTrunkWalls = async (mine = false) => {
 // Dragging a region carries what was painted into it by hand (and the spots rubbed out) along with it, in the same update, and
 // the breaks of those hand decorations too (decor-break carryDecorBroken).
 Hooks.on("preUpdateRegion", (doc, change) => { if (!change?.shapes) return; try { const moved = carryDecor(doc.flags?.[ID]?.decor, doc.toObject().shapes, change.shapes); if (moved) { foundry.utils.setProperty(change, `flags.${ID}.decor.brushed`, moved.brushed); foundry.utils.setProperty(change, `flags.${ID}.decor.erased`, moved.erased); const broken = readDecorBroken(doc.flags?.[ID]?.decorBroken); if (broken.length) foundry.utils.setProperty(change, `flags.${ID}.decorBroken`, carryDecorBroken(broken, moved.dx, moved.dy)); } } catch (err) { console.warn("Animater | moving a region's decorations", err); } });
+// Dragging a crossing's region carries its ends (the ladder, rope or bridge with them), a raised part's its open edges;
+// stretching it stretches them, so a bridge grows to fill its bigger region.
+Hooks.on("preUpdateRegion", (doc, change) => { if (!change?.shapes) return; try { const own = doc.flags?.[ID]; if (!own?.ramp && !own?.openEdges?.length) return; for (const [k, v] of Object.entries(refitHeights(own, shapesBox(doc.toObject().shapes), shapesBox(change.shapes)))) foundry.utils.setProperty(change, `flags.${ID}.${k}`, v); } catch (err) { console.warn("Animater | moving a region's crossing", err); } });
 // (A decoration break or repair write moves no trunk: trees never break.)
 for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options, ...more) => { if (quietSave(first, changes, options)) return; const userId = [changes, options, ...more].at(-1); if (first?.parent === canvas?.scene) trunkWallsSoon(userId === game.user?.id); });
 Hooks.on("canvasReady", () => { trunkWallsSoon(); });
@@ -2857,6 +3027,8 @@ const undoDecorStep = async () => {
   const step = decorSteps.undo.pop(); if (!step) { ui.notifications?.info?.("No brush stroke to take back."); return; }
   try {
     if (step.kind === "floor") await undoFloorStep(step);
+    else if (step.kind === "open") { for (const c of step.changed) await decorRegion(c.id)?.update({ [`flags.${ID}.openEdges`]: c.before }); }
+    else if (step.kind === "height") await decorRegion(step.id)?.update({ [`flags.${ID}.height`]: step.before, ...(/^Raised\b/.test(decorRegion(step.id)?.name ?? "") ? { name: heightName(step.before, heightUnits()) } : {}) });
     else if (step.kind === "edit") await decorRegion(step.id)?.update({ flags: { [ID]: { decor: step.before } } }, { render: false });
     else await decorRegion(step.id)?.delete();
     decorSteps.redo.push(step);
@@ -2866,6 +3038,8 @@ const redoDecorStep = async () => {
   const step = decorSteps.redo.pop(); if (!step) return;
   try {
     if (step.kind === "floor") await redoFloorStep(step);
+    else if (step.kind === "open") { for (const c of step.changed) await decorRegion(c.id)?.update({ [`flags.${ID}.openEdges`]: c.after }); }
+    else if (step.kind === "height") await decorRegion(step.id)?.update({ [`flags.${ID}.height`]: step.after, ...(/^Raised\b/.test(decorRegion(step.id)?.name ?? "") ? { name: heightName(step.after, heightUnits()) } : {}) });
     else if (step.kind === "edit") await decorRegion(step.id)?.update({ flags: { [ID]: { decor: step.after } } }, { render: false });
     else { const [made] = await canvas.scene.createEmbeddedDocuments("Region", [step.data]); if (made) step.id = made.id; }
     decorSteps.undo.push(step);
@@ -2885,6 +3059,193 @@ const redoFloorStep = async (step) => {
 };
 Hooks.on("canvasTearDown", () => { stopDecorBrush(); decorSteps.undo = []; decorSteps.redo = []; });
 const regionPointIn = (p, areas) => areas.some((a) => pointInPolygon(p, a) && !(a.holes ?? []).some((h) => pointInPolygon(p, h)));
+// Heights (engines/regions/heights.mjs, painted on Map painting's Heights tab): raised parts and ramps, regions of their own.
+// A token walking on the ground takes the ground's height as it moves (one above it, flying, keeps its own); each raised part
+// throws a painted shadow away from the sun; cliff edges no ramp meets get walls that stop movement (not sight). The last two
+// can be turned off per scene on the tab (flags cliffWalls, heightShadows).
+let heightsCache = new Map();
+const heightsOf = (scene, levelId = null) => {
+  const key = `${scene?.id}|${levelId ?? ""}`; if (heightsCache.has(key)) return heightsCache.get(key);
+  const parts = [], ramps = [];
+  for (const region of scene?.regions ?? []) {
+    try {
+      const levels = [...(region.levels ?? [])]; if (levelId && levels.length && !levels.includes(levelId)) continue;
+      const own = region.flags?.[ID], height = readHeight(own), ramp = height ? null : readRamp(own);
+      if (height) parts.push({ id: region.id, height, areas: regionAreas(region), levels, look: ["earth", "none"].includes(own?.cliffLook) ? own.cliffLook : "", open: readOpenEdges(own) });
+      else if (ramp) ramps.push({ id: region.id, ...ramp, levels });
+    } catch { /* a broken region never breaks the rest */ }
+  }
+  const value = { parts, ramps, field: heightField({ parts, ramps }) };
+  heightsCache.set(key, value); return value;
+};
+const heightUnits = (scene = canvas?.scene) => scene?.grid?.units || "ft";
+const heightStep = (scene = canvas?.scene) => (Number(scene?.grid?.distance) > 0 ? Number(scene.grid.distance) : HEIGHT_STEP);
+const heightsSceneOn = (key, scene = canvas?.scene) => scene?.flags?.[ID]?.[key === "walls" ? "cliffWalls" : "heightShadows"] !== false;
+for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options) => { if (quietSave(first, changes, options)) return; heightsCache = new Map(); });
+Hooks.on("canvasReady", () => { heightsCache = new Map(); });
+// (Set on the screen that moves the token, before Foundry works out the move: each of its waypoints at the ground's height there,
+// so it climbs a ramp as it goes, and the elevation is saved with the move. preUpdateToken comes too late: by then the move is
+// fixed and an elevation changed there is dropped. An elevation set by hand in the same move wins.)
+const groundTheMove = (doc, changed, options) => {
+  if (options?.animaterHeights === false) return;
+  const scene = doc.parent; if (!scene) return;
+  const own = options?.movement?.[doc.id], waypoints = own?.waypoints?.length ? own.waypoints : null;
+  if (!waypoints && !("x" in changed || "y" in changed)) return;
+  const { parts, ramps, field } = heightsOf(scene, changed.level ?? doc.level ?? null); if (!parts.length && !ramps.length) return;
+  const was = Number(doc.elevation) || 0, byHand = (v) => v !== undefined && v !== null && Number(v) !== was;
+  if (byHand(changed.elevation) || waypoints?.some((w) => byHand(w.elevation))) return;
+  const size = Number(scene.grid?.size) || 100, centre = (x, y, w, h) => ({ x: x + ((Number(w ?? doc.width) || 1) * size) / 2, y: y + ((Number(h ?? doc.height) || 1) * size) / 2 });
+  const base = Number(scene.levels?.get?.(changed.level ?? doc.level)?.elevation?.base ?? 0) || 0;
+  const path = waypoints ? waypoints.map((w) => centre(w.x ?? doc.x, w.y ?? doc.y, w.width, w.height)) : [centre(changed.x ?? doc.x, changed.y ?? doc.y)];
+  const heights = walkerPath({ elevation: was, from: centre(doc.x, doc.y), path, field, base }); if (!heights) return;
+  if (waypoints) waypoints.forEach((w, i) => { w.elevation = heights[i]; });
+  if ("x" in changed || "y" in changed || "elevation" in changed) changed.elevation = heights.at(-1);
+};
+Hooks.once("setup", () => {
+  try {
+    const target = "CONFIG.Token.documentClass.prototype._preUpdate";
+    const wrap = function (wrapped, changed, options, user) { try { groundTheMove(this, changed, options); } catch (err) { console.warn("Animater | heights", err); } return wrapped(changed, options, user); };
+    if (globalThis.libWrapper) libWrapper.register(ID, target, wrap, "WRAPPER");
+    else { const proto = CONFIG.Token.documentClass.prototype, original = proto._preUpdate; proto._preUpdate = function (changed, options, user) { return wrap.call(this, (c, o, u) => original.call(this, c, o, u), changed, options, user); }; }
+  } catch (err) { console.warn("Animater | heights: walking tokens keep their own elevation", err); }
+});
+// Cliff walls: made by the GM who changed the heights (or, on a scene shown afresh, the lead GM), each marked as its raised
+// part's (flags.animater.cliffOf), so no other wall is ever touched; kept in step as parts and ramps change, gone with them.
+let cliffWallsTimer = null;
+const cliffWallsSoon = (mine = false) => { clearTimeout(cliffWallsTimer); cliffWallsTimer = setTimeout(() => { cliffWallsTimer = null; void syncCliffWalls(mine); }, 700); };
+const syncCliffWalls = async (mine = false) => {
+  if (!canvas?.ready || !game.user?.isGM || !(mine || leadGM())) return;
+  const scene = canvas.scene, want = new Map(), have = new Map();
+  if (heightsSceneOn("walls", scene)) {
+    const all = heightsOf(scene, null), levelIds = [...new Set([...all.parts, ...all.ramps].flatMap((p) => p.levels))];
+    for (const levelId of levelIds.length ? levelIds : [null]) {
+      for (const e of cliffEdges({ field: heightsOf(scene, levelId).field, piece: (canvas.grid?.size ?? 100) / 4, smooth: (canvas.grid?.size ?? 100) / 12, bounds: canvas.dimensions?.sceneRect ?? null })) { if (!want.has(e.of)) want.set(e.of, []); want.get(e.of).push({ c: e.c, levels: levelId ? [levelId] : [] }); }
+    }
+  }
+  for (const wall of scene.walls ?? []) { const of = wall.flags?.[ID]?.cliffOf; if (!of) continue; if (!have.has(of)) have.set(of, []); have.get(of).push(wall); }
+  const key = (list) => list.map((w) => `${Array.from(w.c).join(",")}@${[...(w.levels ?? [])].join(",")}`).sort().join("|");
+  const gone = [], made = [], none = CONST.WALL_SENSE_TYPES?.NONE ?? 0;
+  for (const [id, walls] of have) { const w = want.get(id); if (!w || key(walls) !== key(w)) gone.push(...walls.map((x) => x.id)); }
+  for (const [id, w] of want) { const had = have.get(id); if (had && key(had) === key(w)) continue; for (const { c, levels } of w) made.push({ c, move: CONST.WALL_MOVEMENT_TYPES.NORMAL, sight: none, light: none, sound: none, levels, flags: { [ID]: { cliffOf: id } } }); }
+  try { if (gone.length) await scene.deleteEmbeddedDocuments("Wall", gone); if (made.length) await scene.createEmbeddedDocuments("Wall", made); }
+  catch (err) { console.warn("Animater | cliff walls", err); }
+};
+for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options, ...more) => { if (quietSave(first, changes, options) || first?.parent !== canvas?.scene) return; const own = first.flags?.[ID], changed = hook === "updateRegion" ? changes : null; if (!(readHeight(own) || readRamp(own) || changed?.flags?.[ID]?.height !== undefined || changed?.flags?.[ID]?.ramp !== undefined || changed?.flags?.[ID]?.openEdges !== undefined || changed?.flags?.[ID]?.cliffLook !== undefined || (hook === "updateRegion" && changed?.shapes))) return; const userId = [changes, options, ...more].at(-1); cliffWallsSoon(userId === game.user?.id); heightShadowsSoon(); });
+// How raised ground shows on the map (engines/regions/height-look.mjs), in the painted style of a battlemap's cliffs (Roi's
+// references): only where the ground drops (heights.mjs cliffRuns: not where it meets ground as high, a ramp or the map's
+// edge), a ragged inked rim with a face of rock slabs and boulders below it, thin where the sun strikes and deep on the
+// shadow side, stones at its foot, grass over its lip, and a soft contact shadow; a ramp's slope hatched faintly downhill.
+// Coloured from the map beside it. The shadow lies under the creatures' own; the face and rim over the ground and its
+// decorations, under the creatures. Nothing is drawn over a raised part higher still.
+const heightShadowRoot = floorLayer("heightShadows", 649), heightFaceRoot = floorLayer("heightFaces", 656);
+let heightShadowTimer = null;
+const heightShadowsSoon = () => { clearTimeout(heightShadowTimer); heightShadowTimer = setTimeout(() => { heightShadowTimer = null; try { drawHeightShadows(); } catch (err) { console.warn("Animater | raised ground", err); } }, 150); };
+// The level's map read once (small), for the cliffs' colours: the ground beside each and the grass on top.
+let heightMap = null;
+const heightMapFor = () => {
+  const level = canvas.level, src = level?.background?.src, rect = canvas.dimensions?.sceneRect;
+  if (!src || !rect) return null;
+  if (heightMap?.src === src) return heightMap.rgba ? heightMap : null;
+  heightMap = { src, rgba: null };
+  void (async () => {
+    try { const ui = await import("./ui/floor-regions-ui.mjs"); if (!ui.levelMapIsPlain(level?.textures)) return; const loaded = await ui.loadMapRgba(src, floorFitSize(rect.width, rect.height, 512)); if (!loaded?.ok || heightMap?.src !== src) return; Object.assign(heightMap, { rgba: loaded.rgba, width: loaded.width, height: loaded.height, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } }); heightShadowsSoon(); }
+    catch (err) { console.warn("Animater | raised ground colours", err); }
+  })();
+  return null;
+};
+const heightMapColour = (m, points) => { let r = 0, g = 0, b = 0, n = 0; for (const p of points) { const x = Math.floor(((p.x - m.rect.x) * m.width) / m.rect.width), y = Math.floor(((p.y - m.rect.y) * m.height) / m.rect.height); if (x < 0 || y < 0 || x >= m.width || y >= m.height) continue; const i = (y * m.width + x) * 4; r += m.rgba[i]; g += m.rgba[i + 1]; b += m.rgba[i + 2]; n++; } return n ? (Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n) : null; };
+const drawHeightShadows = () => {
+  if (!canvas?.ready) return;
+  const roots = [heightShadowRoot(), heightFaceRoot()];
+  for (const root of roots) for (const c of root.removeChildren()) { try { c.destroy({ children: true }); } catch { /* gone */ } }
+  const scene = canvas.scene; if (!heightsSceneOn("shadows", scene)) return;
+  const { parts, ramps, field } = heightsOf(scene, canvas.level?.id ?? null); if (!parts.length && !ramps.length) return;
+  const [shadowRoot, faceRoot] = roots, grid = canvas.grid?.size ?? 100, step = heightStep(scene), map = heightMapFor();
+  // The way the light comes from (a painted map's north-west by night or underground, so the faces keep their shading).
+  const angle = sunNow ? ((Number(sunNow.angle) || 0) * Math.PI) / 180 : (-135 * Math.PI) / 180, sun = { x: Math.cos(angle), y: Math.sin(angle) };
+  const moved = (pts) => pts;
+  const fill = (g, areas) => { for (const a of areas) { g.drawPolygon(moved(a)); for (const h of a.holes ?? []) { g.beginHole(); g.drawPolygon(moved(h)); g.endHole(); } } };
+  // (Rubbed off any raised part higher than this one.)
+  // (Erasing only within the box's own picture, a filter's: erased straight onto the map, it punched black holes through it.)
+  const cutHigher = (box, h) => { const higher = parts.filter((p) => p.height > h); if (!higher.length) return; if (!box.filters?.length) { const Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter; if (!Alpha) return; const whole = new Alpha(1); whole.padding = grid; box.filters = [whole]; } const cut = new PIXI.Graphics(); cut.blendMode = PIXI.BLEND_MODES.ERASE; cut.beginFill(0xffffff, 1); for (const p of higher) fill(cut, p.areas); cut.endFill(); box.addChild(cut); };
+  const runs = cliffRuns({ field, step: Math.max(3, grid / 25), bounds: canvas.dimensions?.sceneRect ?? null });
+  // (Its open stretches: slopes, the ground darkening as it falls away.)
+  const slopes = cliffRuns({ field, step: Math.max(3, grid / 25), bounds: canvas.dimensions?.sceneRect ?? null, want: "slope" });
+  // (Its cast shadow only by day; how strong, by the sun's strength and the sky.)
+  const sunShadow = sunNow && !sunNow.moon && !shadowsOffHere() ? (Number.isFinite(Number(sunNow.strength)) ? Math.max(0, Math.min(1, Number(sunNow.strength))) : 1) * directSun(skyCoverNow) : 0;
+  // (Each fade given room round what it holds: a blur inside reaches past its bounds, and a fade without room cut it off in a
+  // hard straight line.)
+  const Fade = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter, faded = (box, alpha) => { if (Fade) { const fade = new Fade(alpha); fade.padding = grid; box.filters = [...(box.filters ?? []), fade]; } else box.alpha = alpha; return box; };
+  const sweep = (g, areas, dx, dy, n) => { for (let i = 1; i <= n; i++) { const ox = (dx * i) / n, oy = (dy * i) / n; for (const a of areas) { g.drawPolygon(a.map((v, j) => v + (j % 2 ? oy : ox))); for (const h of a.holes ?? []) { g.beginHole(); g.drawPolygon(h.map((v, j) => v + (j % 2 ? oy : ox))); g.endHole(); } } } };
+  // (Rubbed off this part's own top and any as high or higher: a shadow falls only on lower ground.)
+  const cutTops = (box, h) => { const cut = new PIXI.Graphics(); cut.blendMode = PIXI.BLEND_MODES.ERASE; cut.beginFill(0xffffff, 1); for (const p of parts) if (p.height >= h) fill(cut, p.areas); cut.endFill(); box.addChild(cut); };
+  for (const part of [...parts].sort((x, y) => x.height - y.height)) {
+    // (Cliff look None: it stands raised, but draws no cliff. Earth: a bank of soil, not rock.)
+    const mine = part.look === "none" ? [] : runs.filter((r) => r.of === part.id);
+    // The top lit from its middle out: its shape, blurred, brightest furthest from its edges; more the higher it stands.
+    { const glow = new PIXI.Container(), light = new PIXI.Graphics(), clip = new PIXI.Graphics(); glow.eventMode = "none";
+      // (Room round it for the blur: cut at its own edge it showed as a hard box past an open side.)
+      light.beginFill(0xfff4d8, 1); fill(light, part.areas); light.endFill(); const soften = new PIXI.BlurFilter(grid * 0.35); soften.padding = grid; light.filters = [soften];
+      // (Let out past its open edges, so the light fades softly down a slope instead of stopping at a hard line.)
+      clip.beginFill(0xffffff, 1); fill(clip, part.areas); for (const c of part.open ?? []) clip.drawCircle(c.x, c.y, c.r * 0.9); clip.endFill(); glow.addChild(light, clip); glow.mask = clip;
+      faded(glow, topGlow(part.height, step)); cutHigher(glow, part.height); faceRoot.addChild(glow); }
+    // Its cast shadow over the lower ground, away from the sun: two painted steps, darker close in.
+    const off = sunShadow > 0.02 && mine.length ? castOffset({ height: part.height, grid, step, sun, sunHeight: sunNow?.height }) : null;
+    if (off) for (const [reach, alpha] of [[1, 0.34], [0.45, 0.16]]) {
+      const box = new PIXI.Container(), g = new PIXI.Graphics(); box.eventMode = "none";
+      g.beginFill(0x0e0905, 1); sweep(g, part.areas, off.x * reach, off.y * reach, 28); g.endFill(); g.filters = [new PIXI.BlurFilter(grid * (reach === 1 ? 0.07 : 0.04))];
+      box.addChild(g); cutTops(box, part.height);
+      // (No hard shadow off a slope: only a cliff throws one.)
+      if (part.open?.length) { const cut = new PIXI.Graphics(); cut.blendMode = PIXI.BLEND_MODES.ERASE; cut.beginFill(0xffffff, 1); for (const c of part.open) cut.drawCircle(c.x - off.x * reach * 0.5, c.y - off.y * reach * 0.5, c.r * 1.3 + Math.hypot(off.x, off.y) * reach * 0.5); cut.endFill(); box.addChild(cut); }
+      faded(box, alpha * sunShadow); shadowRoot.addChild(box);
+    }
+    // Its slopes, softened.
+    const down = slopes.filter((r) => r.of === part.id);
+    if (down.length) { const box = new PIXI.Container(), g = new PIXI.Graphics(); box.eventMode = "none"; for (const run of down) drawSlope(g, run, { grid, step, sun, seed: [...String(part.id)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7) }); const soften = new PIXI.BlurFilter(grid * 0.18, 6); soften.padding = grid * 0.5; g.filters = [soften]; box.addChild(g); cutHigher(box, part.height); shadowRoot.addChild(box); }
+    if (!mine.length) continue;
+    const seed = [...String(part.id)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7);
+    const shade = new PIXI.Container(), soft = new PIXI.Graphics(), box = new PIXI.Container(), g = new PIXI.Graphics();
+    // (The shadow's pieces overlap: drawn solid and faded together, then softened.)
+    shade.eventMode = box.eventMode = "none"; soft.filters = [new PIXI.BlurFilter(grid * 0.1)]; faded(shade, 0.42);
+    const hazeBox = new PIXI.Container(), haze = new PIXI.Graphics(); let hazed = 0; hazeBox.eventMode = "none";
+    { const blur = new PIXI.BlurFilter(grid * 0.45, 6); blur.padding = grid * 2; haze.filters = [blur]; }
+    mine.forEach((run, i) => {
+      const lay = cliffLayOut(run, { grid, step, sun, seed: seed + i });
+      const top = map ? heightMapColour(map, lay.map((p) => ({ x: p.x - p.nx * grid * 0.1, y: p.y - p.ny * grid * 0.1 }))) : null;
+      const colours = cliffColours(part.look === "earth" ? 0x7a5a3a : map ? heightMapColour(map, lay.map((p) => ({ x: p.fx + p.nx * grid * 0.08, y: p.fy + p.ny * grid * 0.08 }))) : null, top);
+      // (The ground just below the wall, darker for a way out.)
+      soft.beginFill(0x140e08, 1); for (const piece of footShade(run, { grid, step, sun, seed: seed + i })) soft.drawPolygon(piece); soft.endFill();
+      // (Below a tall cliff the ground far down reads darker and hazier, the further down the more. Roi chose B of the scale mock.)
+      const deepest = run.points?.reduce?.((m, p) => Math.max(m, Number(p.drop) || 0), 0) ?? 0, k = heightDepthHaze(deepest);
+      if (k > 0) { hazed = Math.max(hazed, k); haze.beginFill(0x0a0d12, 1); for (const piece of footShade(run, { grid, step, sun, seed: seed + i, far: 1.6 + 2.4 * k })) haze.drawPolygon(piece); haze.endFill(); }
+      drawCliffRun(g, run, { grid, step, sun, seed: seed + i, colours });
+    });
+    if (hazed > 0) { hazeBox.addChild(haze); faded(hazeBox, 0.42 * hazed); cutHigher(hazeBox, part.height); shadowRoot.addChild(hazeBox); } else haze.destroy();
+    shade.addChild(soft); cutHigher(shade, part.height); shadowRoot.addChild(shade);
+    box.addChild(g); cutHigher(box, part.height); faceRoot.addChild(box);
+  }
+  // The crossings: a ramp's slope hatched faintly downhill (so it reads as a slope, not flat ground); a ladder, a rope or a
+  // bridge drawn in weathered wood and hemp (engines/regions/height-crossings.mjs), their shadows softened under them.
+  if (ramps.length) {
+    const g = new PIXI.Graphics(), built = new PIXI.Graphics(), shade = new PIXI.Container(), sh = new PIXI.Graphics(), k = grid / 100, Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter;
+    shade.eventMode = "none"; sh.filters = [new PIXI.BlurFilter(grid * 0.03)]; if (Alpha) shade.filters = [new Alpha(0.3)]; else shade.alpha = 0.3; shade.addChild(sh);
+    for (const ramp of ramps) {
+      const [lo, hi] = field.rampEnds(ramp), seed = [...String(ramp.id)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 3);
+      if (ramp.kind === "ladder" || ramp.kind === "rope") { const top = hi >= lo ? ramp.b : ramp.a, foot = hi >= lo ? ramp.a : ramp.b; if (ramp.kind === "ladder") drawLadder(built, sh, top.x, top.y, foot.x, foot.y, { w: Math.min(ramp.w, grid * 0.45), sun, k, seed }); else drawRope(built, sh, top.x, top.y, foot.x, foot.y, { sun, k, seed }); continue; }
+      if (ramp.kind === "bridge") { const mid = { x: (ramp.a.x + ramp.b.x) / 2, y: (ramp.a.y + ramp.b.y) / 2 }, drop = Math.max(0, (lo + hi) / 2 - field.groundAt(mid)) * (grid / step) * 0.6; drawBridge(built, sh, ramp.a.x, ramp.a.y, ramp.b.x, ramp.b.y, { w: ramp.w, drop: Math.min(drop, grid * 1.5), sun, k, seed }); continue; }
+      if (lo === hi) continue;
+      const vx = ramp.b.x - ramp.a.x, vy = ramp.b.y - ramp.a.y, len = Math.hypot(vx, vy) || 1, ux = vx / len, uy = vy / len, nx = -uy, ny = ux, lines = Math.max(2, Math.round(ramp.w / (grid * 0.16)));
+      for (let i = 0; i < lines; i++) {
+        const off = (i / (lines - 1) - 0.5) * ramp.w * 0.85, start = 0.1 + 0.15 * ((i * 0.37) % 1), end = 0.85 - 0.15 * ((i * 0.61) % 1);
+        g.lineStyle(Math.max(1, grid * 0.012), 0x1b140c, 0.22); g.moveTo(ramp.b.x - ux * len * start + nx * off, ramp.b.y - uy * len * start + ny * off); g.lineTo(ramp.b.x - ux * len * end + nx * off, ramp.b.y - uy * len * end + ny * off);
+      }
+    }
+    shadowRoot.addChild(shade); faceRoot.addChild(g, built);
+  }
+};
+for (const hook of ["canvasReady", "updateWorldTime", "calendaria.dateTimeChange", "calendaria.weatherChange", "simple-calendar-date-time-change"]) Hooks.on(hook, () => { heightShadowsSoon(); });
+Hooks.on("canvasReady", () => { cliffWallsSoon(); });
+Hooks.on("updateScene", (scene, change, options, userId) => { if (scene?.id !== canvas?.scene?.id) return; heightShadowsSoon(); const own = change?.flags?.[ID]; if (own && "cliffWalls" in own) cliffWallsSoon(userId === game.user?.id); });
 // The sun or moon aims their shadows: away from it, as long as it is low.
 const lightDecorations = () => {
   if (!decorations.busy) return;
@@ -4026,7 +4387,10 @@ globalThis.window?.addEventListener?.("pointerdown", (e) => {
   e.stopImmediatePropagation(); e.preventDefault(); swallowMenu = true;
   const from = { x: e.clientX, y: e.clientY }, pivot = { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y }, scale = canvas.stage.scale.x || 1;
   let dragging = false;
+  // (Only the real mouse: each pan makes Foundry send a made-up move from where its canvas last saw the pointer, before this
+  // drag hid the moves from it, and following that one panned the view back and forth. Roi: "it goes crazy".)
   const move = (m) => {
+    if (!m.isTrusted) return;
     const dx = m.clientX - from.x, dy = m.clientY - from.y;
     if (!dragging && Math.hypot(dx, dy) < 5) return;
     dragging = true; m.stopImmediatePropagation();
@@ -4098,7 +4462,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
     const add = (tool) => { tools[tool.name] = tool; };
     controls.animater = { name: "animater", title: "Animater", icon: "animater-a-icon", layer: "tokens", order: 50, activeTool: "select", tools,
       onChange: (event, active) => { if (!active || canvas.tokens?.active) return; canvas.tokens?.activate(); void ui.controls?.activate({ control: "animater", tool: "select" }); } };
-    add({ name: "animaterDecorate", title: "Map painting: paint floors and decorations onto the map", icon: "fa-solid fa-paintbrush", order: order - 1, button: true, visible: toolShown("toolDecorate"),
+    add({ name: "animaterDecorate", title: "Map painting: paint floors, decorations and heights onto the map", icon: "fa-solid fa-paintbrush", order: order - 1, button: true, visible: toolShown("toolDecorate"),
       onChange: () => (decorBrushing ? stopDecorBrush() : startDecorBrush()) });
     add({ name: "animaterCaveIn", title: "Cave-in: click where the ceiling comes down", icon: "fa-solid fa-person-falling-burst", order, button: true, visible: toolShown("toolCaveIn"),
       onChange: () => aimCaveIn() });
@@ -5971,12 +6335,19 @@ let airOpen = null, airKnown = new Map(), airAmounts = new Map(), airShapes = ne
 const airSoon = () => { airOpen = null; airShapes.clear(); airWanted = true; surfaceLight.lampsMoved(); };
 for (const hook of ["canvasReady", "createWall", "updateWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) airSoon(); });
 Hooks.on("canvasReady", () => { airKnown.clear(); airAmounts = new Map(); });
+// Walls smashed before broken walls kept stopping Foundry's light (wall-break.mjs HOLE_LIGHT): the lead GM sets them so once,
+// on the scene shown, so the lamplight going out of them fades as Animater's spill does.
+Hooks.on("canvasReady", () => {
+  if (!game.user?.isGM || !leadGM()) return;
+  const updates = (canvas.scene?.walls ?? []).filter((w) => w.flags?.[ID]?.breakWall?.broken && Number(w.light) === 0).map((w) => ({ _id: w.id, light: HOLE_LIGHT }));
+  if (updates.length) void canvas.scene.updateEmbeddedDocuments("Wall", updates).catch((err) => console.warn("Animater | broken walls' light", err));
+});
 const tickAir = (now) => {
   const seconds = (now - seepAt) / 1000; if (seconds < 0.25) return; seepAt = now;
   const foggy = (drawnNow?.fog?.[3] ?? 0) > 0.005 || (drawnNow?.mist ?? 0) > 0.005;
   if (!foggy && !airAmounts.size && !airWanted) return;
   if (!airOpen) {
-    const walls = (canvas.walls?.placeables ?? []).map((w) => w.document).map((d) => ({ id: d.id, c: d.c, light: d.light, door: d.door, ds: d.ds, kind: d.flags?.[ID]?.window || null, open: d.flags?.[ID]?.windowOpen === true }));
+    const walls = (canvas.walls?.placeables ?? []).map((w) => w.document).map((d) => ({ id: d.id, c: d.c, light: d.light, door: d.door, ds: d.ds, kind: d.flags?.[ID]?.window || null, open: d.flags?.[ID]?.windowOpen === true, broken: !!d.flags?.[ID]?.breakWall?.broken }));
     airOpen = airOpenings({ walls, rooms: indoorPolygons(), grid: canvas.grid.size, inside: pointInPolygon });
     for (const opening of airOpen) airKnown.set(opening.id, opening);
   }

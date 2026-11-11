@@ -32,7 +32,7 @@ test("a good area request breaks the door and the update opens it", () => {
   const r = validWallBreakRequest({ cause: { kind: "area", areaUuid: AREA, damageType: "fire", at: { x: 350, y: 100 } }, note }, { wall: wall(), scene: scene(), grid: 100, sender, ...placed });
   assert.equal(r.ok, true); assert.equal(r.update.door, 0); assert.equal(r.note.material, "wood");
   assert.equal(r.note.kind, "door"); assert.equal(r.note.mark, "scorch"); assert.equal(r.note.seed, 7);
-  assert.deepEqual(r.update, { _id: "d1", door: 0, ds: 0, move: 0, sight: 0, light: 0, sound: 0,
+  assert.deepEqual(r.update, { _id: "d1", door: 0, ds: 0, move: 0, sight: 0, light: 20, sound: 0,
     "flags.animater.breakWall.broken": { ...r.note, restore: { door: 1, ds: 0, move: 20, sight: 20, light: 20, sound: 20 } } });
 });
 
@@ -298,7 +298,7 @@ test("a ranged miss through a window: every miss breaks it, no chance roll (it f
   const crit = validWallBreakRequest(missReq(w, miss()), missCtx(w));
   assert.equal(crit.ok, true);
   assert.equal(crit.note.kind, "window"); assert.equal(crit.note.material, "glass");
-  assert.deepEqual([crit.update.sight, crit.update.light, crit.update.sound, "move" in crit.update, "door" in crit.update], [0, 0, 0, false, false]);
+  assert.deepEqual([crit.update.sight, crit.update.light, crit.update.sound, "move" in crit.update, "door" in crit.update], [0, 20, 0, false, false]);
   assert.deepEqual(crit.update["flags.animater.breakWall.broken"].restore, { sight: 20, light: 20, sound: 20, windowKind: null });
   // a plain miss through the glass breaks it whatever the GM's roll or the scene's chance
   assert.equal(validWallBreakRequest(missReq(w, miss("miss")), missCtx(w, { roll: 0.1 })).ok, true);

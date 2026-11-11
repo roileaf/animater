@@ -51,7 +51,8 @@ export function breachSplit(c, hit, { grid = 100, squares = BREACH_SQUARES } = {
 export function wallBreachUpdate(wall, note, split, partId = null) {
   const restore = { c: [...wall.c], move: wall.move, sight: wall.sight, light: wall.light, sound: wall.sound };
   const broken = { ...note, partId: split.parts.length > 1 && typeof partId === "string" ? partId : null, restore };
-  const open = split.parts.length ? { c: [...split.parts[0]] } : { move: 0, sight: 0, light: 0, sound: 0 };
+  // (Its light restriction stays Normal, as a broken wall's: wall-break.mjs HOLE_LIGHT.)
+  const open = split.parts.length ? { c: [...split.parts[0]] } : { move: 0, sight: 0, light: 20, sound: 0 };
   return { _id: wall.id, ...open, "flags.animater.breakWall.broken": broken };
 }
 

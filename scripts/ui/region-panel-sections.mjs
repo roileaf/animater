@@ -14,6 +14,7 @@ import { choice } from './region-steps-ui.mjs';
 import { ROOM_DRESSING, kindFlags } from './region-panel-model.mjs';
 import { DECOR_DEFAULT_KINDS, freshDecor } from '../engines/motion/decor-regions.mjs';
 import { decorPropRows, DECOR_PROP_SHORT } from './decor-prop-options.mjs';
+import { readHeight, readRamp, CROSSING_KINDS, HEIGHT_MAX, heightName } from '../engines/regions/heights.mjs';
 // Whether the ground here is built out over water (a dock): on, it shows how it is built, its posts and its shadow.
 const OVER_WATER_TIP = 'Built out over water: a deck, a jetty, a bridge. The water goes on under it; what walks here walks on its boards, and it shows how it is built, its posts and its shadow.';
 
@@ -140,6 +141,7 @@ const decorSection = (c) => {
 
 export const SECTIONS = {
   decor: decorSection,
+  height: heightSection,
   water(c) {
     const { own, act } = c, kind = waterKindOf(own);
     const parts = [row('Kind', seg(WATER_SHORT, kind, (v) => act(waterKindFlags(own, v)), 'Kind of water'), 'How the water engine moves it, and what it sounds like.', true)];
@@ -283,3 +285,35 @@ export const SECTIONS = {
     return parts;
   },
 };
+
+// Map painting's Heights, in the panel: a raised part's height (typed or stepped), how its cliff looks; a crossing's kind and
+// its two ends' heights (each following the ground under it until set by hand; cleared, it follows again).
+const CLIFF_LOOKS = [['', 'Rock'], ['earth', 'Earth'], ['none', 'None']];
+// A height in the scene's units: typed, or stepped a grid's distance at a time; '' for none (when `blank` is offered).
+const heightField = (value, step, units, save, blank = '') => {
+  const box = element('div', 'an-rp-num'), input = element('input'), shown = (v) => (v === null || v === undefined ? blank : `${v}`);
+  input.type = 'text'; input.inputMode = 'decimal'; input.value = shown(value); input.setAttribute('aria-label', 'Height'); input.placeholder = blank;
+  const put = (v) => { if (v === null) { save(null); return; } const n = Math.round(Math.min(HEIGHT_MAX, Math.max(0, v)) * 2) / 2; save(n); };
+  const read = () => { const raw = input.value.trim().replace(new RegExp(`\\s*${units}$`, 'i'), ''); if (!raw) return null; const n = Number(raw); return Number.isFinite(n) ? n : undefined; };
+  input.addEventListener('change', () => { const v = read(); if (v === undefined) { input.value = shown(value); return; } put(v); });
+  const less = button('−', '', () => put(Math.max(0, (Number(value) || 0) - step))), more = button('+', '', () => put((Number(value) || 0) + step));
+  less.setAttribute('aria-label', 'Lower'); more.setAttribute('aria-label', 'Higher');
+  box.append(less, input, element('span', 'an-rp-unit', units), more); return box;
+};
+function heightSection(c) {
+  const { own, act, doc } = c, grid = doc?.parent?.grid ?? globalThis.canvas?.scene?.grid, units = grid?.units || 'ft', step = Number(grid?.distance) > 0 ? Number(grid.distance) : 5;
+  const h = readHeight(own), r = readRamp(own);
+  if (h !== null) {
+    // (Renamed along with it while it keeps the name the brush gave it.)
+    const rename = (n) => { if (/^Raised\b/.test(doc?.name ?? '')) void doc?.update?.({ name: heightName(n, units) }); };
+    return [row('Height', heightField(h, step, units, (n) => { if (!(n > 0)) return; act({ height: n }); rename(n); }), 'How high its top stands over the level\'s floor. Walking tokens take this height when they step onto it.'),
+      row('Cliff look', seg(CLIFF_LOOKS, own.cliffLook ?? '', (v) => act({ cliffLook: v }), 'Cliff look'), 'Where the ground drops away from it: a rock face, a bank of earth, or nothing drawn (it stays raised).')];
+  }
+  if (r) {
+    const ramp = { ...own.ramp }, save = (change) => act({ ramp: { ...ramp, ...change } });
+    return [row('Kind', seg(CROSSING_KINDS, r.kind, (v) => { save({ kind: v === 'ramp' ? '' : v }); if (CROSSING_KINDS.some(([, name]) => name === doc?.name)) void doc?.update?.({ name: Object.fromEntries(CROSSING_KINDS)[v] }); }, 'Kind of crossing'), 'A ramp slopes along the ground; a ladder or a rope goes straight up a cliff; a bridge spans over lower ground, walked only by those at its height.', true),
+      row('From', heightField(r.lo, step, units, (n) => save({ lo: n }), 'ground'), 'Its first end\'s height. Left empty, it follows the ground there.'),
+      row('To', heightField(r.hi, step, units, (n) => save({ hi: n }), 'ground'), 'Its other end\'s height. Left empty, it follows the ground there.')];
+  }
+  return [element('div', 'an-rp-none', 'Not raised: paint it with Map painting\'s Heights tab.')];
+}

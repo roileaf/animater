@@ -116,3 +116,64 @@ test('main makes it brighter at dusk, tinted and dimming', () => {
   assert.match(main, /0\.85 \* strength, dusk: duskOf\(sunNow\)/);
 
 });
+
+// Roi, of Bokken's Hut at night: "just think of how 2 leaf shutter window look like with a separation between the leafs",
+// and "the light from the window leaks way beyond the window edge".
+test('lamplight through shutters: slat bands, a wide gap where the leaves meet, and never fanned far past the window', async () => {
+  const assert = (await import('node:assert/strict')).default;
+  const { readFileSync } = await import('node:fs');
+  const { windowPrint } = await import('../../../scripts/engines/motion/wall-shadows.mjs');
+  assert.deepEqual(windowPrint('bar', 1, { leaves: true }), [[0.5, 0, 0.5, 1, 3]], 'the gap between the leaves, wide');
+  const room = [200, 0, 1400, 0, 1400, 800, 200, 800];
+  const walls = [{ c: [400, 800, 600, 800], light: 30, move: 20, kind: 'shutterWindow', slats: true }];
+  // A torch right by the window, off to its left: the light used to fan out a whole map's width.
+  const [g] = glowsFor({ walls, indoors: [room], lights: [{ x: 300, y: 760, radius: 1000 }], grid: 200 });
+  assert.equal(g.panes, 'bar'); assert.ok(g.slats >= 3);
+  // The fan from the torch is right (a flame is small: a sharp image of the opening, widening away from it); its wide far
+  // end is where the light has faded into the night.
+  const { glowFade } = await import('../../../scripts/engines/motion/wall-shadows.mjs');
+  assert.equal(glowFade(g, 0), 1); assert.equal(glowFade(g, 1), 0, 'gone by its far end');
+  assert.ok(glowFade(g, 0.5) < 0.35, `dim half way (${glowFade(g, 0.5).toFixed(2)})`);
+  const src = readFileSync(new URL('../../../scripts/engines/motion/wall-shadows.mjs', import.meta.url), 'utf8');
+  assert.match(src, /else \{ const n = glow\.slats > 0 \? glow\.slats : GLOW_SLICES, on = glow\.slats > 0 \? 0\.5 : 1;/, 'the printed lamplight keeps the slats\' bands');
+});
+
+// Roi: "research real life and find out". Ground lit by a lamp fades about as the cube of the distance past the lamp's height;
+// light leaving a room is never brighter than inside; under a bright moon a spill shows less far; lamplight through coloured
+// glass is dim and warm.
+test('a lamp\'s spill fades by its distance from the lamp, shorter under a bright moon, and its glass colours go warm and dim', async () => {
+  const assert = (await import('node:assert/strict')).default;
+  const { readFileSync } = await import('node:fs');
+  const { groundLight, glowCutoff, glowFade } = await import('../../../scripts/engines/motion/wall-shadows.mjs');
+  assert.ok(Math.abs(groundLight(600, 150) / groundLight(100, 150) - 1 / 40) < 0.012, 'six metres off a lamp at 1.5 m: about a fortieth of the ground at one');
+  assert.ok(glowCutoff(1) > glowCutoff(0));
+  const room = [200, 0, 1400, 0, 1400, 800, 200, 800], walls = [{ c: [600, 800, 800, 800], light: 20, move: 20, door: 1, ds: 1 }];
+  const lights = [{ x: 700, y: 500, radius: 1200 }];
+  const [dark] = glowsFor({ walls, indoors: [room], lights, grid: 200 }), [moonlit] = glowsFor({ walls, indoors: [room], lights, grid: 200, ambient: 1 });
+  assert.ok(moonlit.reach < dark.reach, `a bright moon: it shows less far (${Math.round(moonlit.reach)} < ${Math.round(dark.reach)})`);
+  assert.ok(dark.reach <= 200 * 4, 'never past four squares');
+  for (let i = 1; i <= 10; i++) assert.ok(glowFade(dark, i / 10) <= glowFade(dark, (i - 1) / 10), 'never brighter further out');
+  const src = readFileSync(new URL('../../../scripts/engines/motion/wall-shadows.mjs', import.meta.url), 'utf8');
+  assert.match(src, /colouredPanes\(lit, \{ \.\.\.glow, panes: glow\.panes, alpha: glow\.alpha \* 0\.7 \}, P, at, \{ tint: tinted\(tint, LAMP_GLASS\), fadeAt: \(v\) => glowFade\(glow, v\) \}\)/, 'glass in lamplight: dim, warm, fading as the light does');
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /const ambient = Math\.max\(sunNow\?\.moon \? Math\.min\(1, Number\(sunNow\.strength\) \|\| 0\) : 0, 1 - night\);/);
+});
+
+// Roi: "Yes, do that", of smashed windows and walls getting Animater's fading spill instead of Foundry's flat light.
+test('a smashed wall is an open hole its whole height: its lamplight spills out, and the air comes in', async () => {
+  const assert = (await import('node:assert/strict')).default;
+  const { readFileSync } = await import('node:fs');
+  const { windowOpening } = await import('../../../scripts/engines/motion/wall-shadows.mjs');
+  const { airOpenings } = await import('../../../scripts/engines/motion/air-seep.mjs');
+  const hole = { c: [600, 800, 800, 800], move: 0, sight: 0, light: 20, broken: true };
+  assert.deepEqual(windowOpening(hole, 2, 0.2), { bottom: 0, top: 2, alpha: 1, kind: 'open' });
+  assert.equal(windowOpening({ ...hole, broken: false }, 2, 0.2), null, 'a whole wall is none');
+  const room = [200, 0, 1400, 0, 1400, 800, 200, 800];
+  const [g] = glowsFor({ walls: [hole], indoors: [room], lights: [{ x: 700, y: 500, radius: 1200 }], grid: 200 });
+  assert.ok(g && g.kind === 'open' && g.panes === false, 'it spills, whole');
+  const inside = (p, poly) => p.x > poly[0] && p.x < poly[2] && p.y > poly[1] && p.y < poly[5];
+  assert.equal(airOpenings({ walls: [{ id: 'h', ...hole }], rooms: [room], grid: 200, inside }).length, 1, 'fog gets in through it');
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /filter\(\(w\) => w\.flags\?\.\[ID\]\?\.breakWall\?\.broken && Number\(w\.light\) === 0\)\.map\(\(w\) => \(\{ _id: w\.id, light: HOLE_LIGHT \}\)\)/, 'walls smashed before: set once by the lead GM');
+  assert.match(main, /broken: !!d\.flags\?\.\[ID\]\?\.breakWall\?\.broken, \.\.\.wallSpanOf\(d\)/);
+});

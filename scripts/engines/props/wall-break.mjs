@@ -173,10 +173,13 @@ export function readWallNote(raw) {
   return note;
 }
 
-// Open the passage, keeping what the wall was so Repair can put it back.
+// Open the passage, keeping what the wall was so Repair can put it back. (Its light restriction stays Normal: Foundry's lights,
+// which keep their full brightness to their radius, would pour out of the hole as a flat block; Animater's lamplight spill,
+// fading as real light does, goes out of it instead, and the sun comes in through it as through any opening.)
+export const HOLE_LIGHT = 20;
 export function wallBreakUpdate(wall, note) {
   if (note?.kind === "window") {
-    const restore = {}, up = { _id: wall.id, sight: 0, light: 0, sound: 0 };
+    const restore = {}, up = { _id: wall.id, sight: 0, light: HOLE_LIGHT, sound: 0 };
     for (const k of WINDOW_RESTORE_KEYS) restore[k] = wall[k];
     // It opens: a window that opens and closes is left its kind and stood open; anything else becomes an open window
     // (the light comes through it unfiltered). Repair puts back what it was.
@@ -187,7 +190,7 @@ export function wallBreakUpdate(wall, note) {
   }
   const restore = {};
   for (const k of RESTORE_KEYS) restore[k] = wall[k];
-  return { _id: wall.id, door: 0, ds: 0, move: 0, sight: 0, light: 0, sound: 0, "flags.animater.breakWall.broken": { ...note, restore } };
+  return { _id: wall.id, door: 0, ds: 0, move: 0, sight: 0, light: HOLE_LIGHT, sound: 0, "flags.animater.breakWall.broken": { ...note, restore } };
 }
 
 // Repair: a broken wall back as it was (a breached one's whole segment too: wall-breach.mjs deletes its part B), and a hit door back to full HP (its hp flag goes; the hits it remembers stay,

@@ -3926,6 +3926,12 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .an-region-panel .an-rp-seg button:last-child { border-right: 0; }
 .an-region-panel .an-rp-seg button:hover { color: var(--rp-text); }
 .an-region-panel .an-rp-seg button.an-rp-on { color: var(--rp-gold); background: var(--rp-gold-bg); }
+/* A height, typed or stepped (the Height section: Map painting's raised ground and crossings). */
+.an-region-panel .an-rp-num { display: inline-flex; align-items: center; justify-self: end; width: max-content; min-width: max-content; border: 1px solid var(--rp-line); border-radius: 6px; overflow: hidden; }
+/* (Foundry gives buttons and inputs a full width and padding of their own: kept to their size here.) */
+.an-region-panel .an-rp-num button { flex: 0 0 24px; width: 24px; min-width: 0; height: 26px; min-height: 0; margin: 0; padding: 0; line-height: 26px; font-size: 14px; color: var(--rp-text); background: var(--rp-soft); border: 0; border-radius: 0; box-shadow: none; }
+.an-region-panel .an-rp-num input { flex: 0 0 46px; width: 46px; min-width: 0; height: 26px; min-height: 0; margin: 0; padding: 0 3px; text-align: right; color: var(--rp-text); background: #15161a; border: 0; border-radius: 0; box-shadow: none; outline: none; }
+.an-region-panel .an-rp-num .an-rp-unit { flex: none; padding: 0 6px 0 2px; color: var(--rp-dim); background: #15161a; line-height: 26px; font-size: 12px; }
 .an-region-panel .an-rp-tog { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0; }
 .an-region-panel .an-rp-sw { position: relative; flex: none; width: 30px; height: 17px; border-radius: 9px; background: #44464f; }
 .an-region-panel .an-rp-sw::after { content: ''; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #ccc; transition: left 0.15s; }

@@ -8,7 +8,8 @@ export function airOpenings({ walls = [], rooms = [], grid = 100, inside = () =>
   if (!rooms.length) return out;
   for (const w of walls) {
     // (A window that opens and closes goes by that: shut glass lets the light through, not the air.)
-    const open = Number(w.door) > 0 ? Number(w.ds) === 1 : typeof w.kind === 'string' && /Window$/.test(w.kind) ? w.open === true : Number(w.light) === 0;
+    // (A wall smashed open lets it through, though it keeps stopping Foundry's light: wall-break.mjs HOLE_LIGHT.)
+    const open = w.broken === true || (Number(w.door) > 0 ? Number(w.ds) === 1 : typeof w.kind === 'string' && /Window$/.test(w.kind) ? w.open === true : Number(w.light) === 0);
     if (!open || !Array.isArray(w.c) || w.c.length < 4) continue;
     const [ax, ay, bx, by] = w.c.map(Number), len = Math.hypot(bx - ax, by - ay);
     if (!(len > 0)) continue;

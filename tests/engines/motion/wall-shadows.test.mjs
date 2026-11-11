@@ -196,7 +196,9 @@ test('a lit room spills its light out of its windows onto the ground outside; no
   assert.ok(glow.points[4] - glow.points[6] > 100, 'fanning out from the opening');
   assert.equal(glow.color, 0xffaa55);
   const dimmer = windowGlows({ walls: [window], indoors: [room], lights: [{ ...lamp, y: 380, radius: 500 }], grid: 100 })[0];
-  assert.ok(dimmer.alpha < glow.alpha && Math.abs(dimmer.points[5]) < Math.abs(glow.points[5]), 'a lamp further in: fainter and shorter');
+  // (Roi: "research real life and find out". A lamp's light on the ground fades about as the cube of the distance: one further
+  // in lights the ground outside less brightly, but that light fades more slowly, so it shows as far or further.)
+  assert.ok(dimmer.alpha < glow.alpha && dimmer.reach >= glow.reach, 'a lamp further in: fainter, fading more slowly');
   assert.deepEqual(windowGlows({ walls: [window], indoors: [room], lights: [], grid: 100 }), [], 'a dark room');
   assert.deepEqual(windowGlows({ walls: [window], indoors: [room], lights: [{ x: 150, y: -300, radius: 600 }], grid: 100 }), [], 'a light outside the room');
   assert.deepEqual(windowGlows({ walls: [window], indoors: [room, [0, -400, 400, -400, 400, 0, 0, 0]], lights: [lamp], grid: 100 }), [], 'a window between two rooms');
@@ -219,8 +221,10 @@ test('a creature standing in a window glow blocks its light: a wedge of shadow a
     for (let i = 0, j = q.length - 2; i < q.length; j = i, i += 2) if ((q[i + 1] > pt.y) !== (q[j + 1] > pt.y) && pt.x < ((q[j] - q[i]) * (pt.y - q[i + 1])) / (q[j + 1] - q[i + 1]) + q[i]) hit = !hit;
     return hit;
   }).length;
-  assert.equal(covers({ x: 150, y: -200 }), 5, 'dark straight behind');
-  assert.ok(covers({ x: 215, y: -200 }) > 0 && covers({ x: 215, y: -200 }) < 5, 'half-shadow to the side');
+  // (Within the glow, which a lamp close by keeps short.)
+  const yy = -Math.min(200, glow.reach * 0.9);
+  assert.equal(covers({ x: 150, y: yy }), 5, 'dark straight behind');
+  assert.ok(covers({ x: 215, y: yy }) > 0 && covers({ x: 215, y: yy }) < 5, 'half-shadow to the side');
   const lampCast = casts[4];
   assert.ok(Math.abs(lampCast.depth - 0.7) < 1e-9, 'most of it the lamp\'s, hard');
   const cast = casts[1];
