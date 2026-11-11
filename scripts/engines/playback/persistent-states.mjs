@@ -11,6 +11,16 @@ import {onGroundBelow} from './ground-elevation.mjs';
 import {isAuraLook} from './outside-combat.mjs';
 import {auraLook,reachLook} from './aura-fields.mjs';
 
+// How big a lasting look is drawn against the token (pure): its stage's scale, but a JB2A token border (a ring round the
+// creature: the catalogs give them 1.3 to 1.5) never bigger than the token, and an aura granted by another no bigger than 1.
+// An aura that shows a reach keeps its own size.
+export function lastingScale(stage,granted=false){
+ const scale=Number(stage?.scale)>0?Number(stage.scale):1;
+ if(granted&&stage?.auraRadius)return Math.min(scale,1);
+ if(!stage?.auraRadius&&/token_border/.test(String(stage?.asset??'')))return Math.min(scale,1);
+ return scale;
+}
+
 export function activeState(item){
  if(item?.animaterAura){const source=item.animaterAura.source;return source?.type==='effect'?activeState(source):Boolean(source);}
  if(item?.type==='condition')return (item.active??item.system?.active)===true&&(!item.system?.value?.isValued||Number(item.value??item.system.value.value)>0);
@@ -302,7 +312,7 @@ export class PersistentStates{
    const soft=r.soft&&!authored?SUBTLE_LOOK:null,softScale=soft&&!s.auraRadius?soft.scale:1;
    const e=sequence.effect().file(s.asset).name(r.name).origin(r.item.uuid??r.recipe.itemUuid)
     .attachTo(r.token,{offset:offsetInGridSquares(s,r.token,grid),gridUnits:true,bindRotation:s.bindRotation,bindAlpha:true,bindVisibility:true,bindElevation:true})
-    .size(artworkSize(effectFootprint(granted?{...s,auraRadius:0}:s,r.token,grid,h.gridDistance?.()??5)*(granted&&s.auraRadius?Math.min(s.scale,1):s.scale)*level.scale*softScale,media)).opacity(Math.min(1,s.opacity*r.opacity*level.opacity*(granted?.8:1)*overArt*(soft?.opacity??1)))
+    .size(artworkSize(effectFootprint(granted?{...s,auraRadius:0}:s,r.token,grid,h.gridDistance?.()??5)*lastingScale(s,granted)*level.scale*softScale,media)).opacity(Math.min(1,s.opacity*r.opacity*level.opacity*(granted?.8:1)*overArt*(soft?.opacity??1)))
     .temporary().delay((s.delay??0)+offset).fadeIn(s.fadeIn);
    if(r.fade)e.duration(fadeLength(r)).fadeOut(Math.max(s.fadeOut??0,800));else e.persist().fadeOut(s.fadeOut);
    // A perceived Concealed/Hidden is a stand-in with no document of its own: tie it to the token only.

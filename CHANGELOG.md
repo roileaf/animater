@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Rings round a creature fit it.** The spinning or glowing border many lasting states draw round a creature (Hasted, Fly Speed, Climb Speed and dozens more, in D&D 5e, PF2e and SF2e) was drawn half again as big as the token. It now hugs the token, at its art's scale. Auras that show a reach keep their size.
 - **Effects on a token follow its art's scale.** A condition's look, a lasting marker or a spell landing on a creature is now sized to the token as it is drawn: art scaled to 2 in the token's settings gets effects twice as big, art scaled down smaller ones, and a dynamic-ring token's creature as the ring draws it. Before, effects stopped at the token's square, however big its art. Auras still measure their reach from the square, as the rules do.
 - **D&D 5e conditions show again.** Since the catalogs started loading a moment after the scene draws (3.8.12), D&D's conditions and catalog effects were looked up in a list made before the catalog arrived, so none was ever found and no condition showed its look on a token. SF2e's effect auras had the same fault. Both now look in the catalog as it is, and a new check loads every system's catalogs the way the browser does to keep any other lookup from doing this again.
 - **Token and wall shadows start on.** **Shadows under every token** and **Walls cast shadows in sunlight** are now on by default for everyone, as each player's own switch for them already was. A world that turned either off keeps it off.
