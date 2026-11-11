@@ -28,8 +28,21 @@ export async function isSmartModelCached({ cacheStorage = globalThis.caches } = 
   }
 }
 
-// The model, loaded once per page. `onProgress(loaded, total)` in bytes while downloading.
-export function loadSmartModel({ onProgress, importer = (url) => import(url), gpu = !!globalThis.navigator?.gpu } = {}) {
+// Whether WebGPU can run the fp16 encoder: an adapter must answer and have shader-f16. Chrome can expose navigator.gpu yet give
+// no adapter ("No available adapters", e.g. a card on its driver blocklist), and then the load fails with "does not support fp16".
+export async function webgpuFp16({ gpu = globalThis.navigator?.gpu } = {}) {
+  try {
+    const adapter = await gpu?.requestAdapter?.();
+    return !!adapter?.features?.has?.("shader-f16");
+  } catch {
+    return false;
+  }
+}
+
+// The model, loaded once per page. `onProgress(loaded, total)` in bytes while downloading. `gpu`: true/false, or a function
+// answering whether to use WebGPU (by default, webgpuFp16). A WebGPU load that fails is tried again on the CPU.
+export function loadSmartModel({ onProgress, importer = (url) => import(url), gpu = webgpuFp16, reset = false } = {}) {
+  if (reset) loading = null;
   loading ??= (async () => {
     const t = await importer(SMART_MODEL.library);
     t.env.allowLocalModels = false;
@@ -40,10 +53,19 @@ export function loadSmartModel({ onProgress, importer = (url) => import(url), gp
       let loaded = 0, total = 0; for (const [l, n] of files.values()) { loaded += l; total += n; }
       onProgress?.(loaded, total);
     };
-    const device = gpu ? { vision_encoder: "webgpu", prompt_encoder_mask_decoder: "wasm" } : "wasm";
-    const model = await t.Sam2Model.from_pretrained(SMART_MODEL.repo, { dtype: SMART_MODEL.dtype, device, progress_callback });
+    const load = (device) => t.Sam2Model.from_pretrained(SMART_MODEL.repo, { dtype: SMART_MODEL.dtype, device, progress_callback });
+    let useGpu = typeof gpu === "function" ? await gpu() : !!gpu, model;
+    if (useGpu) {
+      try {
+        model = await load({ vision_encoder: "webgpu", prompt_encoder_mask_decoder: "wasm" });
+      } catch (error) {
+        console.warn("Animater | smart model could not use WebGPU, loading on the CPU instead:", error);
+        useGpu = false;
+      }
+    }
+    model ??= await load("wasm");
     const processor = await t.AutoProcessor.from_pretrained(SMART_MODEL.repo);
-    return segmenter(t, model, processor, gpu ? "webgpu" : "wasm");
+    return segmenter(t, model, processor, useGpu ? "webgpu" : "wasm");
   })().catch((error) => { loading = null; throw error; });
   return loading;
 }
