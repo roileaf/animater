@@ -114,6 +114,15 @@ export function planFloorStroke({ saved = [], floor, stroke, erase = false, widt
 }
 
 /** A new floor region's name (pure): its floor's, numbered on from the highest of that name already there ("Grass 3"). */
+// The status line while hovering the map (pure): the floor region under the pointer (`under`, a floor key or null) and what a
+// dab of `brush` would do there. Another floor's region is kept off; Shift-drag rubs any floor out.
+export function hoverLine(under, brush) {
+  const name = (f) => floorName(f);
+  if (!under) return `Over: no floor yet · a dab adds ${name(brush)}`;
+  if (under === brush) return `Over: ${name(under)} · a dab grows it`;
+  return `Over: ${name(under)} · ${name(brush)} keeps off it (Shift-drag rubs it out)`;
+}
+
 export function floorRegionName(floor, names = []) {
   const base = floorName(floor), re = new RegExp(`^${base} (\\d+)$`);
   const most = names.reduce((m, n) => { const hit = re.exec(String(n ?? '')); return hit ? Math.max(m, Number(hit[1])) : m; }, 0);

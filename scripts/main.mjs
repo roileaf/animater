@@ -279,7 +279,7 @@ import { createCavern, fungusTouches, skylightShare } from "./engines/motion/cav
 import { createWebs, webCorners } from "./engines/motion/webs.mjs";
 import { createDecorations, decorWreckTile } from "./engines/motion/decorations.mjs";
 import { createDecorLights } from "./engines/motion/decor-lights.mjs";
-import { colourAt as floorColourAt, dabCells as floorDabCells, planFloorStroke, floorRegionName, modelMaskFor } from "./engines/regions/floor-brush.mjs";
+import { colourAt as floorColourAt, dabCells as floorDabCells, planFloorStroke, floorRegionName, modelMaskFor, hoverLine as floorHoverLine } from "./engines/regions/floor-brush.mjs";
 import { toRegionData as floorRegionData, floorColour as floorTint, fitSize as floorFitSize } from "./engines/regions/floor-detect.mjs";
 import { nearbyClicks as smartNearbyClicks } from "./engines/regions/smart-select.mjs";
 import { decorSettings, strokeShapes, circleArea as decorCircle, decorPlacements, trunkWalls, carryDecor } from "./engines/motion/decor-regions.mjs";
@@ -2504,7 +2504,8 @@ const startDecorBrush = (doc = null) => {
     const floorsText = [...counts].map(([f, n]) => `${floorRegionName(f, []).replace(/ 1$/, "")}${n > 1 ? ` ×${n}` : ""}`);
     let painted = 0; for (const r of regionsHere()) painted += decorSettings(r.flags?.[ID]?.decor)?.brushed?.length ?? 0;
     const parts = [...floorsText, ...(painted ? [`${painted} decorations`] : [])];
-    const text = floorsOn() && !fl.map ? (fl.why || "Reading the map…") : floorsOn() && modelOn() && sam.status ? sam.status : parts.length ? `On this level: ${parts.join(" · ")}` : "Nothing painted yet";
+    // (Hovering the map on Floors: what is under the pointer, and what a dab there would do.)
+    const text = floorsOn() && !fl.map ? (fl.why || "Reading the map…") : floorsOn() && modelOn() && sam.status ? sam.status : floorsOn() && fl.hoverText ? fl.hoverText : parts.length ? `On this level: ${parts.join(" · ")}` : "Nothing painted yet";
     state.bar?.setStatus(text, { undo: decorSteps.undo.length > 0, redo: decorSteps.redo.length > 0 });
   };
   const toImage = (p) => ({ x: ((p.x - fl.map.rect.x) * fl.map.width) / fl.map.rect.width, y: ((p.y - fl.map.rect.y) * fl.map.height) / fl.map.rect.height });
@@ -2551,16 +2552,26 @@ const startDecorBrush = (doc = null) => {
     claimedMask = new Uint8Array(fl.map.width * fl.map.height); for (const s of fl.saved) if (s.floor !== floor) for (const px of s.pixels) claimedMask[px] = 1;
     claimedKey = { saved: fl.saved, floor }; return claimedMask;
   };
-  const hideHover = () => { hoverAt = null; if (fl.hover) fl.hover.visible = false; };
+  // Which floor region holds each pixel of the map image (the saved region's floor, or none), made again when the regions change.
+  let ownerKey = null, ownerMap = null;
+  const floorUnder = (i) => {
+    if (ownerKey !== fl.saved) { ownerMap = new Uint16Array(fl.map.width * fl.map.height); fl.saved.forEach((s, n) => { for (const px of s.pixels) ownerMap[px] = n + 1; }); ownerKey = fl.saved; }
+    return fl.saved[ownerMap[i] - 1]?.floor ?? null;
+  };
+  const setHoverText = (text) => { if ((fl.hoverText ?? "") === (text ?? "")) return; fl.hoverText = text ?? ""; refreshStatus(); };
+  const hideHover = () => { hoverAt = null; if (fl.hover) fl.hover.visible = false; setHoverText(""); };
   const drawHover = () => {
     hoverTimer = null; const p = hoverAt, m = fl.map; if (!p || !m || state.down || !floorsOn() || decorBrushing !== state) return hideHover();
-    const c = brushChoices(), q = toImage(p), radius = ((sizeNow() * grid()) / 2) * (m.width / m.rect.width), R = Math.ceil(radius) + 1;
+    const c = brushChoices(), q = toImage(p);
+    if (q.x < 0 || q.y < 0 || q.x >= m.width || q.y >= m.height) return hideHover();
+    setHoverText(floorHoverLine(floorUnder(Math.floor(q.y) * m.width + Math.floor(q.x)), c.floor));
+    const radius = ((sizeNow() * grid()) / 2) * (m.width / m.rect.width), R = Math.ceil(radius) + 1;
     const x0 = Math.max(0, Math.floor(q.x) - R), y0 = Math.max(0, Math.floor(q.y) - R), w = Math.max(1, Math.min(m.width, Math.floor(q.x) + R + 1) - x0), h = Math.max(1, Math.min(m.height, Math.floor(q.y) + R + 1) - y0);
     const claimed = claimedBy(c.floor);
     // With the model: the outline under the pointer, asked once the pointer rests a moment (and kept while it stays inside).
     let within = null;
     if (modelOn()) {
-      if (!sam.ready) { void loadSam(); return hideHover(); }
+      if (!sam.ready) { void loadSam(); if (fl.hover) fl.hover.visible = false; return; }
       if (!fl.hoverWithin?.[Math.round(q.y) * m.width + Math.round(q.x)]) {
         clearTimeout(fl.hoverAsk); if (fl.hover) fl.hover.visible = false;
         // (One quick question, once the pointer has rested a little: the model runs on this page, so the five-point read a

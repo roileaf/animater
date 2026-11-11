@@ -1,6 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { colourAt, dabCells, planFloorStroke, floorRegionName } from '../../../scripts/engines/regions/floor-brush.mjs';
+import { colourAt, dabCells, planFloorStroke, floorRegionName, hoverLine } from '../../../scripts/engines/regions/floor-brush.mjs';
+import { readFileSync } from 'node:fs';
+
+// Roi, of "On this level: Wood": "shouldnt this say what im hovering over?" Hovering says what is under the pointer.
+test('hovering says what floor region is under the pointer and what a dab would do there', () => {
+  assert.equal(hoverLine(null, 'grass'), 'Over: no floor yet · a dab adds Grass');
+  assert.equal(hoverLine('wood', 'wood'), 'Over: Wood · a dab grows it');
+  assert.equal(hoverLine('stone', 'grass'), 'Over: Stone · Grass keeps off it (Shift-drag rubs it out)');
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /setHoverText\(floorHoverLine\(floorUnder\(Math\.floor\(q\.y\) \* m\.width \+ Math\.floor\(q\.x\)\), c\.floor\)\);/);
+  assert.match(main, /floorsOn\(\) && fl\.hoverText \? fl\.hoverText : parts\.length \? `On this level:/, 'off the map, the level count again');
+});
 import { areaPixels } from '../../../scripts/engines/regions/floor-detect.mjs';
 
 // Roi: "can we add quick smart free hand tool to create regions? something like our decorator brush but for floors?"

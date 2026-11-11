@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Map painting says what is under the pointer.** Hovering the map on the Floors tab, the header line names the floor region under the pointer and what a dab there would do: "Over: Wood · a dab grows it", "Over: no floor yet · a dab adds Grass", or another floor that the brush keeps off. Off the map it shows the level's floors and decorations again.
+
 ## 4.1.1
 
 Delete a region from its panel, and the floor brush starts on Model when the smart model is already here.
