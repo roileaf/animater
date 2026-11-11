@@ -27,7 +27,7 @@ import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cle
 import { propsInArea, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls, blockingWalls, wallStop } from "./engines/props/prop-walls.mjs";
 import { wallMid, readWallNote, wallTraits, wallBreakFormMerge, wallFormDoor, canBreakWall } from "./engines/props/wall-break.mjs";
-import { wallBreachUpdate, breachPartData, wallRepairPlan, breachWallAt, breachPartOf, crossingPoint, areaShapeCentre, templateShape } from "./engines/props/wall-breach.mjs";
+import { wallBreachUpdate, breachPartData, wallRepairPlan, breachWallAt, breachableWalls, breachPartOf, crossingPoint, areaShapeCentre, templateShape } from "./engines/props/wall-breach.mjs";
 import { firePatchAt } from "./engines/props/prop-wreck-layout.mjs";
 import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest, handEdited, handEditUpdate, slamSenderOk, breaksSure } from "./engines/props/wall-break-requests.mjs";
 import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, smashFrom, nextToMiss } from "./engines/props/wall-triggers.mjs";
@@ -3889,7 +3889,7 @@ const repairPropsAsk = async () => {
     await repairAllProps(scene);
   } catch (e) { runtime?.trace("props", `repair: ${e?.message ?? e}`); } finally { repairAsking = false; }
 };
-// The toolbar's Breach wall (GM): the breakable wall under the pointer lights up; a click breaches it there, as the GM's
+// The toolbar's Breach wall (GM): every wall it can breach is marked, the one under the pointer lights up; a click breaches it there, as the GM's
 // own smash (wall-breach.mjs breachWallAt picks it; the GM's write checks it as any breach). Escape or right click cancels.
 // The blow comes from the GM's one controlled token, else from the side of the wall clicked on.
 const aimBreach = () => {
@@ -3899,13 +3899,15 @@ const aimBreach = () => {
   if (scene?.flags?.[ID]?.breakableProps !== true || scene.flags[ID].breakWalls === false) { ui.notifications?.warn("Breach wall: this scene needs Breakable props and Doors and windows break on."); return; }
   const glow = new PIXI.Graphics(); glow.eventMode = "none"; (canvas.interface ?? canvas.stage).addChild(glow);
   const at = (e) => canvas.canvasCoordinatesFromClient({ x: e.clientX, y: e.clientY }), onCanvas = (e) => e.target === canvas.app.view;
-  const pick = (p) => breachWallAt(p, (scene.walls?.contents ?? []).map(wallView), scene, propGrid(scene), canvas.level?.id);
-  const move = (e) => {
-    if (!onCanvas(e)) return;
-    const w = pick(at(e));
+  const views = () => (scene.walls?.contents ?? []).map(wallView);
+  const pick = (p) => breachWallAt(p, views(), scene, propGrid(scene), canvas.level?.id);
+  const paint = (hot) => {
     glow.clear();
-    if (w) { const [x1, y1, x2, y2] = w.c; glow.lineStyle(10 / (canvas.stage.scale.x || 1), 0xff8a3d, 0.75).moveTo(x1, y1).lineTo(x2, y2); }
+    const k = canvas.stage.scale.x || 1, line = (w, width, alpha) => { const [x1, y1, x2, y2] = w.c; glow.lineStyle(width / k, 0xff8a3d, alpha).moveTo(x1, y1).lineTo(x2, y2); };
+    for (const w of breachableWalls(views(), scene, canvas.level?.id)) if (w.id !== hot?.id) line(w, 7, 0.6);
+    if (hot) line(hot, 10, 0.85);
   };
+  const move = (e) => { if (onCanvas(e)) paint(pick(at(e))); };
   const down = (e) => {
     if (!onCanvas(e)) return;
     e.stopImmediatePropagation(); e.preventDefault();
@@ -3922,7 +3924,9 @@ const aimBreach = () => {
   const none = () => {};
   caveInAim = { ring: glow, move, down, key, up: none, wheel: none };
   window.addEventListener("pointermove", move, true); window.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key, true);
-  ui.notifications?.info("Breach wall: click on a breakable wall to breach it there. Escape or right click to cancel.");
+  paint(null);
+  if (!breachableWalls(views(), scene, canvas.level?.id).length) ui.notifications?.info("Breach wall: no wall here is marked breakable. Set Breakable wall: Yes in a wall's configuration first.");
+  else ui.notifications?.info("Breach wall: the breakable walls are marked in orange; click on one to breach it there. Escape or right click to cancel.");
 };
 let rubbleAsking = false;
 const clearRubbleAsk = async () => {
@@ -10062,7 +10066,7 @@ Hooks.once("init", () => {
   for (const [key,name,hint] of [
     ['toolCaveIn','Show the Cave-in button','In the Animater controls. Hidden, a Region can still bring a ceiling down.'],
     ['toolEnergyBlast','Show the Energy Blast button','In the Animater controls.'],
-    ['toolDecorate','Show the Decorations button','In the Animater controls: a brush for painting rocks, trees, bushes and more onto the map. It is the only way to lay decorations.'],
+    ['toolDecorate','Show the Decorations button','In the Animater controls: a brush for painting rocks, trees, bushes and more onto the map. A region\'s Decorations section can still scatter them.'],
     ['toolClearRubble','Show the Clear rubble button','In the Animater controls.'],
     ['toolRepairProps','Show the Repair broken props button','In the Animater controls, for the GM: unhides every broken prop in the scene and puts its walls, doors, windows and decorations back, as the scene configuration\'s Repair button does.'],
     ['toolBreachWall','Show the Breach wall button','In the Animater controls, for the GM: click on a wall marked Breakable wall: Yes to breach it there at once.'],

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { wallTraits, canBreakWall, readWallNote, wallMaterialOf, wallRestoreUpdate } from "../../../scripts/engines/props/wall-break.mjs";
-import { projectOnWall, crossingPoint, breachSplit, wallBreachUpdate, breachPartData, wallRepairPlan, breachWallAt, breachPartOf, areaShapeCentre, templateShape } from "../../../scripts/engines/props/wall-breach.mjs";
+import { projectOnWall, crossingPoint, breachSplit, wallBreachUpdate, breachPartData, wallRepairPlan, breachWallAt, breachableWalls, breachPartOf, areaShapeCentre, templateShape } from "../../../scripts/engines/props/wall-breach.mjs";
 import { validWallBreakRequest, handEdited } from "../../../scripts/engines/props/wall-break-requests.mjs";
 import { doorsInArea, wallsCrossed } from "../../../scripts/engines/props/wall-triggers.mjs";
 import { blastTargets } from "../../../scripts/engines/props/prop-blast.mjs";
@@ -210,6 +210,14 @@ test("the GM tool picks the nearest breakable intact wall within half a square o
   const broken = { ...a, flags: { animater: { breakWall: { wall: "yes", broken: {} } } } };
   assert.equal(breachWallAt({ x: 250, y: 205 }, [broken], scene(), 100), null, "already breached");
   assert.equal(breachWallAt({ x: 250, y: 205 }, [{ ...a, levels: ["L2"] }], scene(), 100, ["L1"]), null);
+});
+
+test("the Breach wall tool marks every intact breakable plain wall on the level", () => {
+  const a = plain("wood"), b = { ...plain("stone"), id: "w2", c: [0, 260, 500, 260] }, door = { ...plain(), id: "d", door: 1, c: [0, 230, 500, 230] };
+  const unmarked = { ...a, id: "u", flags: {} }, broken = { ...a, id: "x", flags: { animater: { breakWall: { wall: "yes", broken: {} } } } };
+  const up = { ...a, id: "up", levels: ["L2"] };
+  assert.deepEqual(breachableWalls([a, b, door, unmarked, broken, up], scene(), ["L1"]).map((w) => w.id), ["w1", "w2"]);
+  assert.deepEqual(breachableWalls(null, scene()), []);
 });
 
 // ---- GM validation ----

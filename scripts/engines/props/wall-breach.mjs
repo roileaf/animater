@@ -85,6 +85,11 @@ export function wallRepairPlan(walls) {
   return { updates, deletes };
 }
 
+// The walls the GM tool can breach, all marked while it is aimed: intact breakable plain walls on the levels.
+export function breachableWalls(walls, scene, levels) {
+  return (walls ?? []).filter((w) => segment(w?.c) && intact(w) && onLevel(w.levels, levels) && wallTraits(w, scene).kind === "wall");
+}
+
 // The GM tool's pick: the nearest intact breakable plain wall within half a square of the click p, on the levels (a tie
 // goes to the first). A click in a breach's own gap picks nothing.
 export function breachWallAt(p, walls, scene, grid = 100, levels) {
@@ -95,8 +100,7 @@ export function breachWallAt(p, walls, scene, grid = 100, levels) {
     if (gap && onLevel(w.levels, levels) && dist(gap) < reach) return null;
   }
   let best = null, bestD = reach;
-  for (const w of walls ?? []) {
-    if (!segment(w?.c) || !intact(w) || !onLevel(w.levels, levels) || wallTraits(w, scene).kind !== "wall") continue;
+  for (const w of breachableWalls(walls, scene, levels)) {
     const d = dist(w.c);
     if (d < bestD || (d === bestD && !best)) { best = w; bestD = d; }
   }
