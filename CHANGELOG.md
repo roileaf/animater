@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- **Shift-drag rubs out only the picked floor.** On Map painting's Floors tab, Shift-drag now takes away only the floor picked on the bar: rubbing out grass across a riverbank leaves the water's region whole. The stroke shows only where it will rub out. To rub out another floor, pick it first.
+
 ## 4.1.2
 
 Ringed tokens can reflect whole in still water, a locked token's reflection keeps still, and Map painting says what is under the pointer.

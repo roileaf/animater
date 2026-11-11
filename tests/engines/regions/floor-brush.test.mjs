@@ -6,8 +6,8 @@ import { readFileSync } from 'node:fs';
 // Roi, of "On this level: Wood": "shouldnt this say what im hovering over?" Hovering says what is under the pointer.
 test('hovering says what floor region is under the pointer and what a dab would do there', () => {
   assert.equal(hoverLine(null, 'grass'), 'Over: no floor yet · a dab adds Grass');
-  assert.equal(hoverLine('wood', 'wood'), 'Over: Wood · a dab grows it');
-  assert.equal(hoverLine('stone', 'grass'), 'Over: Stone · Grass keeps off it (Shift-drag rubs it out)');
+  assert.equal(hoverLine('wood', 'wood'), 'Over: Wood · a dab grows it, Shift-drag rubs it out');
+  assert.equal(hoverLine('stone', 'grass'), 'Over: Stone · Grass keeps off it (pick Stone to rub it out)');
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
   assert.match(main, /setHoverText\(floorHoverLine\(floorUnder\(Math\.floor\(q\.y\) \* m\.width \+ Math\.floor\(q\.x\)\), c\.floor\)\);/);
   assert.match(main, /floorsOn\(\) && fl\.hoverText \? fl\.hoverText : parts\.length \? `On this level:/, 'off the map, the level count again');
@@ -76,11 +76,15 @@ test('a stroke of another floor beside a region leaves it alone and makes its ow
   assert.equal(plan.creates.length, 1); assert.equal(plan.updates.length, 0);
 });
 
-test('rubbing out takes pixels from any floor region it crosses, and removes one it empties', () => {
-  const a = saved('A', 'grass', square(22, 5, 32, 10)), b = saved('B', 'water', square(2, 2, 6, 6));
-  const plan = planFloorStroke({ saved: [a, b], floor: 'grass', stroke: (() => { const s = strokeOf(26, 0, 28, 20); for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) s[y * W + x] = 1; return s; })(), erase: true, width: W, height: H });
-  assert.deepEqual(plan.removes, ['B']);
+// Roi: "lets make shift click to rub out a floor in brush mode only rub out the selected floor type".
+test('rubbing out takes pixels only from the picked floor\'s regions, and removes one it empties', () => {
+  const a = saved('A', 'grass', square(22, 5, 32, 10)), b = saved('B', 'water', square(2, 2, 6, 6)), c = saved('C', 'grass', square(2, 12, 6, 16));
+  const stroke = (() => { const s = strokeOf(26, 0, 28, 20); for (let y = 0; y < 18; y++) for (let x = 0; x < 8; x++) s[y * W + x] = 1; return s; })();
+  const plan = planFloorStroke({ saved: [a, b, c], floor: 'grass', stroke, erase: true, width: W, height: H });
+  assert.deepEqual(plan.removes, ['C'], 'the grass it covers goes; the water under the same stroke stays');
   assert.deepEqual(plan.updates.map((u) => u.regionId), ['A']);
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /fl\.claimed = erase \? notFloor\(c\.floor\) : claimedBy\(c\.floor\);/, 'and the stroke shows only over the picked floor');
   const left = areaPixels(plan.updates[0].loops, W, H);
   assert.ok(left.length < a.pixels.length && left.length > 0);
   assert.ok(![...left].some((i) => i % W >= 26 && i % W < 28), 'the rubbed strip is gone');

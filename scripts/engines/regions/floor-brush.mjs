@@ -86,7 +86,8 @@ function touches(pixels, stroke, width, height) {
  * What a finished stroke does to the floor regions (pure). `saved`: the level's brushable floor regions as
  * { regionId, floor, pixels } (floor-regions-ui savedAreaProposals); `stroke`: a 0/1 mask of what it covered.
  * Painting grows the first region of its floor it touches (the others it bridges are folded in and removed), else makes one.
- * Rubbing out takes the stroke from every region it overlaps and removes those it empties. Loops are in image pixels.
+ * Rubbing out takes the stroke from the regions of its floor it overlaps (other floors' are left alone) and removes those it
+ * empties. Loops are in image pixels.
  */
 export function planFloorStroke({ saved = [], floor, stroke, erase = false, width, height }) {
   const plan = { updates: [], creates: [], removes: [] };
@@ -94,6 +95,7 @@ export function planFloorStroke({ saved = [], floor, stroke, erase = false, widt
   if (painted < LEAST) return plan;
   if (erase) {
     for (const s of saved) {
+      if (s.floor !== floor) continue;
       if (!Array.prototype.some.call(s.pixels, (p) => stroke[p])) continue;
       const left = maskOf(s.pixels, width * height); let n = 0;
       for (let p = 0; p < left.length; p++) { if (stroke[p]) left[p] = 0; n += left[p]; }
@@ -115,12 +117,13 @@ export function planFloorStroke({ saved = [], floor, stroke, erase = false, widt
 
 /** A new floor region's name (pure): its floor's, numbered on from the highest of that name already there ("Grass 3"). */
 // The status line while hovering the map (pure): the floor region under the pointer (`under`, a floor key or null) and what a
-// dab of `brush` would do there. Another floor's region is kept off; Shift-drag rubs any floor out.
+// dab of `brush` would do there. Another floor's region is kept off, painting and rubbing out alike: Shift-drag rubs out only the
+// brush's floor.
 export function hoverLine(under, brush) {
   const name = (f) => floorName(f);
   if (!under) return `Over: no floor yet · a dab adds ${name(brush)}`;
-  if (under === brush) return `Over: ${name(under)} · a dab grows it`;
-  return `Over: ${name(under)} · ${name(brush)} keeps off it (Shift-drag rubs it out)`;
+  if (under === brush) return `Over: ${name(under)} · a dab grows it, Shift-drag rubs it out`;
+  return `Over: ${name(under)} · ${name(brush)} keeps off it (pick ${name(under)} to rub it out)`;
 }
 
 export function floorRegionName(floor, names = []) {

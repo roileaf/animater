@@ -160,7 +160,7 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
     more.addEventListener('click', () => { remembered.more = !remembered.more; draw(); });
     row.append(more); extra.hidden = !remembered.more;
     body.append(grid, row, extra);
-    const keys = el('div', 'an-db-hint an-mp-keys', 'Drag to paint · Shift-drag rubs out · Ctrl+wheel: brush size · 1 / 2: tabs · Saved as you paint');
+    const keys = el('div', 'an-db-hint an-mp-keys', `Drag to paint · Shift-drag rubs out${floors ? ' the picked floor' : ''} · Ctrl+wheel: brush size · 1 / 2: tabs · Saved as you paint`);
     keys.title = floors ? 'Ctrl+wheel: size · Alt+wheel: how alike · Ctrl+Z undo · Ctrl+Shift+Z redo · Esc stops' : 'Ctrl+wheel: size · Shift+wheel: rotate · Ctrl+Shift+wheel: density · Alt+wheel: decoration size · Ctrl+Z undo · Esc stops';
     bar.append(head, body, keys);
     if (typing) { const s = bar.querySelector('.an-db-search'); s?.focus(); s?.setSelectionRange(s.value.length, s.value.length); }

@@ -2559,6 +2559,8 @@ const startDecorBrush = (doc = null) => {
     return fl.saved[ownerMap[i] - 1]?.floor ?? null;
   };
   const setHoverText = (text) => { if ((fl.hoverText ?? "") === (text ?? "")) return; fl.hoverText = text ?? ""; refreshStatus(); };
+  // What rubbing out `floor` may not touch: every pixel outside that floor's regions.
+  const notFloor = (floor) => { const out = new Uint8Array(fl.map.width * fl.map.height).fill(1); for (const s of fl.saved) if (s.floor === floor) for (const px of s.pixels) out[px] = 0; return out; };
   const hideHover = () => { hoverAt = null; if (fl.hover) fl.hover.visible = false; setHoverText(""); };
   const drawHover = () => {
     hoverTimer = null; const p = hoverAt, m = fl.map; if (!p || !m || state.down || !floorsOn() || decorBrushing !== state) return hideHover();
@@ -2642,8 +2644,8 @@ const startDecorBrush = (doc = null) => {
     if (model && !sam.ready) { void loadSam(); ui.notifications?.info?.("The smart model is getting ready; paint again in a moment (or set Edges to Colour)."); return false; }
     const m = fl.map, c = brushChoices(), q = toImage(p);
     fl.stroke = new Uint8Array(m.width * m.height); fl.erasing = erase; fl.seed = floorColourAt(m.rgba, m.width, m.height, q.x, q.y);
-    // Painting keeps off the other floors' regions (rubbing out takes from any).
-    fl.claimed = erase ? new Uint8Array(m.width * m.height) : claimedBy(c.floor);
+    // Painting keeps off the other floors' regions; rubbing out takes only from the picked floor's.
+    fl.claimed = erase ? notFloor(c.floor) : claimedBy(c.floor);
     // With the model, the stroke paints inside the outlines it has asked for, starting from the one hovering already found.
     fl.model = model; fl.dabs = []; fl.asking = null; fl.within = model ? new Uint8Array(m.width * m.height) : null;
     if (model && fl.hoverWithin?.[Math.round(q.y) * m.width + Math.round(q.x)]) fl.within.set(fl.hoverWithin);
