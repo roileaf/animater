@@ -926,7 +926,9 @@ export function createWallShadows({ PIXI, root, render }) {
     sprite = null; texture = null; sunlitTexture = null; sunlit = null;
   };
   return {
-    build({ quads = [], bounds, alpha = 1, indoors = [], open = [], grid = 100 } = {}) {
+    // `tops`: raised ground ([{ areas: [flat x, y, �], height: squares up from the floor }]): a wall no taller throws no shadow onto
+    // it, and the sun stays on it. (Roi: "a wall which is 0-10 and the slope is 40 ft yet the wall shadow is on its top?")
+    build({ quads = [], bounds, alpha = 1, indoors = [], open = [], grid = 100, tops = [] } = {}) {
       drop();
       if (!quads.length || !bounds || !(alpha > 0)) return;
       // Never past what any graphics card takes (a huge scene's picture is drawn a little smaller still).
@@ -938,6 +940,9 @@ export function createWallShadows({ PIXI, root, render }) {
       for (const q of quads) { g.beginFill(0x000000, q.alpha); g.drawPolygon(at(q.points)); g.endFill(); }
       // Under a roof (a region that keeps the weather out) the sun never reaches: nothing drawn there.
       if (indoors.length) g.addChild(...eraseRooms(PIXI, indoors, at, grid * k));
+      const tallest = quads.reduce((m, q) => Math.max(m, Number.isFinite(q.top) ? q.top : Infinity), 0), above = tops.filter((t) => t?.height >= tallest && t.areas?.length);
+      const onTops = (color, blend) => { const c = new PIXI.Graphics(); if (blend) c.blendMode = blend; c.beginFill(color, 1); for (const t of above) for (const a of t.areas) c.drawPolygon(at(Array.from(a))); c.endFill(); return c; };
+      if (above.length) g.addChild(onTops(0xffffff, PIXI.BLEND_MODES.ERASE));
       g.filters = [new PIXI.BlurFilter(SOFTNESS)];
       texture = PIXI.RenderTexture.create({ width: w, height: h });
       try { render(g, texture); } finally { try { g.destroy({ children: true }); } catch { /* drawn */ } }
@@ -955,7 +960,7 @@ export function createWallShadows({ PIXI, root, render }) {
       const shade = new PIXI.Graphics();
       shade.blendMode = PIXI.BLEND_MODES.ERASE;
       for (const q of quads) { shade.beginFill(0xffffff, q.alpha); shade.drawPolygon(at(q.points)); shade.endFill(); }
-      lit.addChild(shade, ...eraseRooms(PIXI, indoors, at, grid * k), ...openRooms(PIXI, open, at, grid * k));
+      lit.addChild(shade, ...eraseRooms(PIXI, indoors, at, grid * k), ...openRooms(PIXI, open, at, grid * k), ...(above.length ? [onTops(0xffffff, null)] : []));
       lit.filters = [new PIXI.BlurFilter(SOFTNESS)];
       sunlitTexture = PIXI.RenderTexture.create({ width: w, height: h });
       try { render(lit, sunlitTexture); } finally { try { lit.destroy({ children: true }); } catch { /* drawn */ } }

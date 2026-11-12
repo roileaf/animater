@@ -91,7 +91,7 @@ test('the sun\'s layers fade in at a room\'s edge as the weather does', async ()
   assert.equal(out[1].filters[0].r, 25); assert.equal(out[1].filters[0].blendMode, 'erase');
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
   assert.match(main, /const rooms = eraseRooms\(PIXI, indoorPolygons\(\), at, canvas\.grid\.size \* k\)/);
-  assert.match(main, /indoors: indoorPolygons\(\), open: [^,]+, grid: canvas\.grid\.size \}\);/);
+  assert.match(main, /indoors: indoorPolygons\(\), open: [^,]+, grid: canvas\.grid\.size, tops: wallShadowTops\(\) \}\);/);
 });
 
 test('a hole in a roof lets the sun in, and fades at its edge too', async () => {

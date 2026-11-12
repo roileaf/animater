@@ -1689,6 +1689,8 @@ const wallShadowRootOf = () => {
   return wallShadowRoot;
 };
 const wallShadows = createWallShadows({ PIXI: globalThis.PIXI, root: wallShadowRootOf, render: (g, rt) => canvas.app.renderer.render(g, { renderTexture: rt, clear: true }) });
+// The raised ground as wall shadows see it: each part's outline and height in squares up from the floor (wall-shadows.mjs).
+const wallShadowTops = () => { try { const per = Number(canvas.grid?.distance) || 5; return heightsOf(canvas.scene, canvas.level?.id ?? null).parts.map((p) => ({ areas: p.areas, height: p.height / per })); } catch { return []; } };
 const wallShadowsOn = () => { try { return !shadowsOffHere() && movementFeelSettingOn("wallShadows") && movementFeelSettingOn("wallShadowsLocal") && qualityRank(localQuality()) >= 2; } catch { return false; } };
 // Where a wall stands, in squares up from the level's floor (engines/motion/wall-shadows.mjs wallSpan): the Wall Height
 // module's top and bottom, else its own Animater shadow fields, else the level's ceiling, else the world's height.
@@ -1768,7 +1770,7 @@ const rebuildWallShadows = () => {
     // The moon shines by night: the darkness is its time, not a reason to fade.
     const darkness = Number(canvas.environment?.darknessLevel) || 0, sun = (sunNow.moon ? 1 : Math.max(0, 1 - darkness * 1.2)) * (Number(sunNow.strength) || 0);
     wallQuads = sun > 0.02 ? wallShadowQuads({ walls: wallsHere(), sun: sunNow, grid: canvas.grid.size, height: Number(hotSetting("wallShadowHeight")) || 2 }) : [];
-    wallShadows.build({ quads: wallQuads, bounds: canvas.dimensions.sceneRect, alpha: 0.35 * sun, indoors: indoorPolygons(), open: undergroundScene() ? [] : landedOpenings(), grid: canvas.grid.size });
+    wallShadows.build({ quads: wallQuads, bounds: canvas.dimensions.sceneRect, alpha: 0.35 * sun, indoors: indoorPolygons(), open: undergroundScene() ? [] : landedOpenings(), grid: canvas.grid.size, tops: wallShadowTops() });
   } catch { wallQuads = []; wallShadows.clear(); } finally {
     // Creatures look again for whether they stand in the shade or indoors (with wall shadows off too), and their sun
     // shadows lie under the new sunlit floor.
@@ -2308,7 +2310,7 @@ const rebuildCanopy = () => {
     canopyHeight = heightOf(trees, 3); roofHeight = heightOf(roofs, 4);
     canopySunKey = sunKeyOf(sunNow);
     let water = []; try { water = surfacesHere().water; } catch { /* no flecks kept off */ }
-    canopyLight.build({ trees, roofs, indoors: indoorPolygons(), water, bounds: canvas.dimensions.sceneRect, grid: canvas.grid.size, sun: sunNow, treeShade: canopyOn() && !shadowsOffHere() });
+    canopyLight.build({ trees, roofs, indoors: indoorPolygons(), water, bounds: canvas.dimensions.sceneRect, grid: canvas.grid.size, sun: sunNow, treeShade: canopyOn() && !shadowsOffHere(), raised: wallShadowTops().map((p) => ({ areas: p.areas, up: p.height })) });
     lookCanopy();
     shadeWater();
   } catch { canopyLight.clear(); }
@@ -3371,10 +3373,13 @@ const drawHeightShadows = () => {
   // bridge drawn in weathered wood and hemp (engines/regions/height-crossings.mjs), their shadows softened under them.
   if (ramps.length) {
     const g = new PIXI.Graphics(), built = new PIXI.Graphics(), shade = new PIXI.Container(), sh = new PIXI.Graphics(), k = grid / 100, Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter;
-    shade.eventMode = "none"; sh.filters = [new PIXI.BlurFilter(grid * 0.02)]; if (Alpha) shade.filters = [new Alpha(0.45)]; else shade.alpha = 0.45; shade.addChild(sh); // (As dark as a cliff's cast shadow: at 0.3 a bridge's planks did not read on dark ground.)
+    shade.eventMode = "none"; sh.filters = [new PIXI.BlurFilter(grid * 0.02)]; if (Alpha) shade.filters = [new Alpha(0.45)]; else shade.alpha = 0.45; shade.addChild(sh);
+    // (The shadows of what stands against a cliff or spans over it, over the rock faces, not under them: on the ground layer the
+    // painted face hid them. Roi: "i do expect to have shadow on the cliff side". Kept off the tops by each bridge's own cut.)
+    const faceShade = new PIXI.Container(), faceSh = new PIXI.Graphics(); faceShade.eventMode = "none"; faceSh.filters = [new PIXI.BlurFilter(grid * 0.02)]; if (Alpha) faceShade.filters = [new Alpha(0.45)]; else faceShade.alpha = 0.45; faceShade.addChild(faceSh); faceRoot.addChild(faceShade); // (As dark as a cliff's cast shadow: at 0.3 a bridge's planks did not read on dark ground.)
     for (const ramp of ramps) {
       const [lo, hi] = field.rampEnds(ramp), seed = [...String(ramp.id)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 3);
-      if (ramp.kind === "ladder" || ramp.kind === "rope") { const top = hi >= lo ? ramp.b : ramp.a, foot = hi >= lo ? ramp.a : ramp.b; if (ramp.kind === "ladder") drawLadder(built, sh, top.x, top.y, foot.x, foot.y, { w: Math.min(ramp.w, grid * 0.45), sun, k, seed, reach: Math.min(30, (Math.abs(hi - lo) * (grid / step) * 0.12) / k), wet, snow }); else swayPiece({ a: top, b: foot, half: 26 * k, pad: 16 * k, sun, seed, root: faceRoot, weight: ropeWeight, draw: (g, la, lb, sunL) => drawRope(g, new PIXI.Graphics(), la.x, la.y, lb.x, lb.y, { sun: sunL, k, seed, wet, snow }), shadow: { root: shade, reach: 10 * k, blur: grid * 0.02, draw: (g, la, lb, sunL) => drawRope(new PIXI.Graphics(), g, la.x, la.y, lb.x, lb.y, { sun: sunL, k, seed, wet, snow }) } }); continue; }
+      if (ramp.kind === "ladder" || ramp.kind === "rope") { const top = hi >= lo ? ramp.b : ramp.a, foot = hi >= lo ? ramp.a : ramp.b; if (ramp.kind === "ladder") drawLadder(built, faceSh, top.x, top.y, foot.x, foot.y, { w: Math.min(ramp.w, grid * 0.45), sun, k, seed, reach: Math.min(30, (Math.abs(hi - lo) * (grid / step) * 0.12) / k), wet, snow }); else swayPiece({ a: top, b: foot, half: 26 * k, pad: 16 * k, sun, seed, root: faceRoot, weight: ropeWeight, draw: (g, la, lb, sunL) => drawRope(g, new PIXI.Graphics(), la.x, la.y, lb.x, lb.y, { sun: sunL, k, seed, wet, snow }), shadow: { root: faceShade, reach: 10 * k, blur: grid * 0.02, draw: (g, la, lb, sunL) => drawRope(new PIXI.Graphics(), g, la.x, la.y, lb.x, lb.y, { sun: sunL, k, seed, wet, snow }) } }); continue; }
       if (ramp.kind === "bridge") { const mid = { x: (ramp.a.x + ramp.b.x) / 2, y: (ramp.a.y + ramp.b.y) / 2 }, drop = Math.max(0, (lo + hi) / 2 - field.groundAt(mid)) * (grid / step) * 0.6; const box = new PIXI.Container(), deck = new PIXI.Graphics(), low = Math.min(lo, hi), rise = (t) => { const p = { x: ramp.a.x + (ramp.b.x - ramp.a.x) * t, y: ramp.a.y + (ramp.b.y - ramp.a.y) * t }; return Math.min(grid * 1.5, Math.max(0, lo + (hi - lo) * t - field.groundAt(p)) * (grid / step) * 0.6); }, look = { w: ramp.w, drop: Math.min(drop, grid * 1.5), rise, sun, k, seed, wet, snow }; box.eventMode = "none"; box.sortLayer = 656; box.elevation = (Number(canvas.level?.elevation?.base) || 0) + low; deck.destroy();
       // Where it is held: still from each end it rests on to that end's posts, which stand on the top a little back from where either
       // rail leaves it, on one of the sheet's own rows; it sways only between them, its rails swinging from the posts. (Roi: "what was
@@ -3390,7 +3395,7 @@ const drawHeightShadows = () => {
       const holdWeight = (v) => (hold1 - hold0 < 0.1 || v <= hold0 || v >= hold1 ? 0 : Math.sin((Math.PI * (v - hold0)) / (hold1 - hold0)));
       // (Its shadow in a box of its own, rubbed off raised ground as high as its top end: thrown as onto the low ground, it fell
       // across the clifftop, higher than the bridge there. Roi: "how is there shadow there of the bridge on TOP of the cliff?")
-      const bridgeShade = new PIXI.Container(); bridgeShade.eventMode = "none"; { const Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter; if (Alpha) { const whole = new Alpha(1); whole.padding = grid * 2; bridgeShade.filters = [whole]; } } shade.addChild(bridgeShade);
+      const bridgeShade = new PIXI.Container(); bridgeShade.eventMode = "none"; { const Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter; if (Alpha) { const whole = new Alpha(1); whole.padding = grid * 2; bridgeShade.filters = [whole]; } } faceShade.addChild(bridgeShade);
       const deckPiece = swayPiece({ a: ramp.a, b: ramp.b, half: ramp.w * 0.56 + 6 * k, pad: sheetPad, sun, seed, root: box, weight: holdWeight, draw: (g, la, lb, sunL) => drawBridge(g, new PIXI.Graphics(), la.x, la.y, lb.x, lb.y, { ...look, sun: sunL, rise: (t) => rise(t) }), shadow: { root: bridgeShade, reach: grid * 1.5 + 8 * k, blur: grid * 0.02, draw: (g, la, lb, sunL) => drawBridge(new PIXI.Graphics(), g, la.x, la.y, lb.x, lb.y, { ...look, sun: sunL, rise: (t) => rise(t) }) } }); // (Its ends where they rest on raised ground drawn on that ground, with the creatures there over them: only the span over lower ground stands up over what passes under it. Roi: "animals should not render below bridges on cliff edges".)
       // (The still copy on the ground only where it rests on raised ground, masked to those tops: whole, it showed under the swaying
       // span as a second bridge. Roi: "the bridge is... duplicated when swaying?")

@@ -260,7 +260,7 @@ export function createCanopyLight({ PIXI, root, render, above = root, pattern = 
     meshes = []; masks = []; own = [];
   };
   return {
-    build({ trees = [], roofs = [], indoors = [], water = [], bounds, grid = 100, sun = null, treeShade = true } = {}) {
+    build({ trees = [], roofs = [], indoors = [], water = [], bounds, grid = 100, sun = null, treeShade = true, raised = [] } = {}) {
       drop();
       if ((!trees.length && !roofs.length) || !bounds) return;
       const k = Math.min(RESOLUTION, MAX_TEXTURE / Math.max(1, bounds.width, bounds.height));
@@ -314,10 +314,13 @@ export function createCanopyLight({ PIXI, root, render, above = root, pattern = 
         stage.addChild(g);
       };
       const none = () => {};
+      // (A roof's shadow never on raised ground as high as the roof or higher (`raised`: [{ areas, up: squares }]): a building no
+      // taller than a clifftop shades nothing up there. Roi: "the slope is 40 ft yet the wall shadow is on its top?")
+      const roofCast = (stage) => { sprites(roofs, false, true)(stage); const tallest = Math.max(0, ...roofs.map((r) => Number(r.up) || 0)), high = (raised ?? []).filter((p) => (Number(p.up) || 0) >= tallest).flatMap((p) => p.areas ?? []); if (!high.length) return; const cut = new PIXI.Container(); polygons(high)(cut); for (const g of cut.children) g.blendMode = PIXI.BLEND_MODES.ERASE; stage.addChild(...cut.removeChildren()); };
       const uniforms = {
         uTrees: bake(trees.length ? sprites(trees, false, true, kt, true) : none, 1.5, true), uTreesAt: bake(trees.length ? sprites(trees) : none, 1),
         // Which kind of tree each spot of shade is under (its tile where its shade falls, red = its code in eighths), unblurred so a kind never blends into its neighbour.
-        uKinds: bake(trees.length ? sprites(trees, true, true, k, false, kindTint) : none, 0), uRoofCast: bake(roofs.length ? sprites(roofs, false, true) : none, 2),
+        uKinds: bake(trees.length ? sprites(trees, true, true, k, false, kindTint) : none, 0), uRoofCast: bake(roofs.length ? roofCast : none, 2),
         uRoofs: bake(roofs.length ? sprites(roofs) : none, 2),
         uRoofArea: bake(roofs.length ? sprites(roofs, true) : none, 1), uIndoor: bake(indoors.length ? polygons(indoors) : none, 1), uWater: bake(water.length ? polygons(water) : none, 1),
         uSize: [bounds.width, bounds.height], uShift: [0, 0], uRoofShift: [0, 0], uDir: [1, 0], uTime: clock, uWind: 0.35, uStrength: 0, uDirect: 1, uCloudClock: 0, uCloudRun: 0, uCloudWind: 0, uCloudsOn: 0, uCloudShift: [0, 0], uCloudDir: [1, 0], uDeck: [0, 0, 0, 1], uStretch: 1,
