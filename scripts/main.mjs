@@ -286,6 +286,7 @@ import { decorSettings, strokeShapes, circleArea as decorCircle, decorPlacements
 import { openBrushBar, brushChoices, BRUSH_EDGE } from "./ui/decor-brush-bar.mjs";
 import { readHeight, readRamp, readOpenEdges, edgeTouches, openAt as heightOpenAt, OPEN_EDGES_MOST, heightField, walkerPath, nextHeight, rampFromDrag, rampOutline, heightRegionData, rampRegionData, cliffEdges, cliffRuns, heightsHoverLine, heightName, HEIGHT_STEP, BRIDGE_REACH, refitHeights, simplifyLoop } from "./engines/regions/heights.mjs";
 import { swayAt, bridgeWeight, ropeWeight, pieceFrame, BRIDGE_REST } from "./engines/regions/crossing-sway.mjs";
+import { spillPieces, lightPasses, reachableParts } from "./engines/regions/light-spill.mjs";
 import { drawCliffRun, drawSlope, footShade, topGlow, castOffset, depthHaze as heightDepthHaze, cliffColours, weatherColours, layOut as cliffLayOut, faceFeet as cliffFaceFeet, cliffStops, onCliffFace } from "./engines/regions/height-look.mjs";
 import { drawLadder, drawRope, drawBridge, drawPost } from "./engines/regions/height-crossings.mjs";
 import { DECOR_KINDS, stampDecor, paintDecor } from "./engines/motion/decor-paint.mjs";
@@ -3185,11 +3186,51 @@ Hooks.once("setup", () => {
       try { return testCollision.call(this, origin, destination, config); } finally { movingFeet = was; }
     };
     Sweep.prototype._testEdgeInclusion = function (edge, edgeTypes) {
+      // (A sweep asked to leave some walls out: the light reaching raised ground over walls no taller than it, below.)
+      if (typeof this.config?.animaterIgnore === "function" && this.config.animaterIgnore(edge)) return false;
       if (movingFeet !== null && this.config?.type === "move") { const wall = edge?.object?.document ?? edge?.object, at = Number(wall?.flags?.[ID]?.bridgeAt); if (Number.isFinite(at) && movingFeet >= at - BRIDGE_REACH) return false; }
       return include.call(this, edge, edgeTypes);
     };
   } catch (err) { console.warn("Animater | heights: bridge ends block everyone", err); }
 });
+// Light over short walls onto raised ground (engines/regions/light-spill.mjs): for each light near raised ground, its sweep with
+// the walls no taller than that ground left out, kept on that ground where the light did not already fall, shown as local copies
+// of the light shaped to those pieces (on this screen only, never documents). Worked out again a moment after the lights, the
+// walls or the heights change.
+const spillLights = [];
+let spillKey = "", spillTimer = null, spillHeights = null;
+const SPILL = `${ID}.spill.`;
+const dropSpill = () => { for (const s of spillLights.splice(0)) { try { s.destroy(); } catch { /* gone */ } } };
+const lightsForSpill = () => [...(canvas?.effects?.lightSources?.values?.() ?? [])].filter((s) => !String(s.sourceId ?? "").startsWith(SPILL) && s.active !== false && Number(s.data?.radius) > 0 && !(s instanceof (foundry.canvas.sources?.GlobalLightSource ?? class {})));
+const spillKeyNow = () => { const h = canvas?.scene ? heightsOf(canvas.scene, canvas.level?.id ?? null) : null; if (h !== spillHeights) return null; return lightsForSpill().map((s) => `${s.sourceId}|${Math.round(s.data.x)}|${Math.round(s.data.y)}|${Math.round(s.data.radius)}|${s.data.angle ?? 360}|${Math.round(s.data.rotation ?? 0)}`).join(";"); };
+const syncLightSpill = () => {
+  dropSpill();
+  try {
+    if (!canvas?.ready || !globalThis.ClipperLib) return;
+    const { parts } = heightsOf(canvas.scene, canvas.level?.id ?? null); spillHeights = heightsOf(canvas.scene, canvas.level?.id ?? null);
+    if (parts.length) {
+      const per = Number(canvas.grid?.distance) || HEIGHT_STEP, Light = CONFIG.Canvas.lightSourceClass, Backend = CONFIG.Canvas.polygonBackends.light;
+      for (const src of lightsForSpill()) {
+        const groups = reachableParts(parts, { x: src.data.x, y: src.data.y, radius: src.data.radius }); if (!groups.length || !src.shape?.points) continue;
+        let n = 0;
+        for (const { height, areas } of groups) {
+          const ignore = (edge) => { const w = edge?.type === "wall" ? (edge.object?.document ?? edge.object) : null; if (!w) return false; const span = wallSpanOf(w), top = Number.isFinite(span.top) ? span.top : (Number(span.bottom) || 0) + (Number(hotSetting("wallShadowHeight")) || 2); return lightPasses(top * per, height); }; // (A wall with no height of its own stands as tall as walls do for their shadows: the Wall shadow height setting.)
+          const reach = Backend.create(src.origin ?? { x: src.data.x, y: src.data.y, elevation: src.data.elevation ?? 0 }, { ...src._getPolygonConfiguration(), animaterIgnore: ignore });
+          for (const piece of spillPieces({ ClipperLib: globalThis.ClipperLib, reach: Array.from(reach.points), raised: areas, lit: Array.from(src.shape.points), least: (canvas.grid?.size ?? 100) ** 2 * 0.02 })) {
+            const light = new Light({ sourceId: `${SPILL}${src.sourceId}.${n++}`, object: null }), shape = new PIXI.Polygon(piece);
+            light._createShapes = function () { this.shape = shape; };
+            light.initialize(foundry.utils.deepClone(src.data)); light.add(); spillLights.push(light);
+          }
+        }
+      }
+    }
+  } catch (err) { runtime?.trace?.("raised ground", `light: ${err?.message ?? err}`); }
+  try { canvas.perception.update({ refreshLighting: true }); } catch { /* going */ }
+};
+const lightSpillSoon = () => { clearTimeout(spillTimer); spillTimer = setTimeout(() => { spillTimer = null; syncLightSpill(); spillKey = spillKeyNow() ?? ""; }, 150); };
+Hooks.on("initializeLightSources", () => { spillKey = ""; lightSpillSoon(); });
+Hooks.on("lightingRefresh", () => { if (spillTimer) return; const key = spillKeyNow(); if (key === null || key !== spillKey) lightSpillSoon(); });
+Hooks.on("canvasTearDown", () => { clearTimeout(spillTimer); spillTimer = null; spillKey = ""; spillHeights = null; dropSpill(); });
 // Cliff walls: made by the GM who changed the heights (or, on a scene shown afresh, the lead GM), each marked as its raised
 // part's (flags.animater.cliffOf), so no other wall is ever touched; kept in step as parts and ramps change, gone with them.
 let cliffWallsTimer = null;
