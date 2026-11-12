@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Burrow Holes</title>
+<style>body { margin: 0; background: #111; } canvas { display: block; }</style>
+</head>
+<body>
+<script type="module">
+// Check, not shipped: the module's own burrow holes (burrowHole + holePixels), placed and drawn by its own code.
+import * as PIXI from '/preview-pixi.mjs';
+import { createMovementFeelLayer } from '/modules/animater/scripts/engines/motion/movement-feel-render.mjs';
+import { burrowHole, particleState } from '/modules/animater/scripts/engines/motion/movement-feel.mjs';
+const W = 790, H = 590, G = 70;
+const app = new PIXI.Application({ width: W, height: H, background: 0x222222, preserveDrawingBuffer: true, antialias: true });
+document.body.append(app.view); globalThis.__PIXI_APP__ = app;
+const map = await PIXI.Assets.load('/modules/animater/tools/fx-gallery/bokken-canopy-grass.webp').catch(() => null);
+if (map) { const bg = new PIXI.Sprite(map); bg.width = W / 2; bg.height = H; app.stage.addChild(bg); }
+const plain = new PIXI.Graphics(); plain.beginFill(0x7a6236).drawRect(W / 2, 0, W / 2, H).endFill(); app.stage.addChild(plain);
+const floor = new PIXI.Container(); app.stage.addChild(floor);
+const layer = createMovementFeelLayer({ PIXI, root: () => floor, overRoot: () => floor, renderer: () => app.renderer });
+const label = (text, x, y) => { const t = new PIXI.Text(text, { fill: 0xffffff, fontSize: 15, fontWeight: '600', stroke: 0x000000, strokeThickness: 3 }); t.position.set(x, y); app.stage.addChild(t); };
+const lay = (x, y, opts) => { for (const spec of burrowHole({ x, y, heading: opts.heading ?? 0 }, { grid: G, ...opts })) { if (spec.kind !== 'hole' && !opts.gravel) continue; const q = layer.addParticle(spec), st = particleState(spec, (spec.delay ?? 0) + (spec.kind === 'hole' ? 1500 : 2000)); if (q && st) layer.updateParticle(q, st); } };
+for (const [half, ox] of [[0, 0], [1, W / 2]]) {
+  ['in', 'out'].forEach((way, r) => {
+    label(way === 'in' ? 'Going in (heading →)' : 'Coming out (heading →)', ox + 10, 10 + r * 200);
+    ['a', 'b'].forEach((seed, i) => lay(ox + 90 + i * 190, 110 + r * 200, { seed: seed + half, exit: way === 'out', width: G }));
+  });
+  label('Big: in ↓ / out ↗', ox + 10, 400);
+  lay(ox + 100, 500, { seed: 'big' + half, width: G * 2.5, heading: Math.PI / 2 });
+  lay(ox + 290, 500, { seed: 'big2' + half, width: G * 2.5, exit: true, heading: -Math.PI / 4 });
+}
+</script>
+</body>
+</html>

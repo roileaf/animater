@@ -245,6 +245,96 @@ export function hollowPixels(mask, n, { look = 'snow', turn = 0, wet = false } =
   return px;
 }
 
+// A burrow's mouth, painted: a ragged opening with an ink edge, its inner wall shaded down into the dark (deepest where
+// the tunnel runs on under the ground, along +x, the way the creature went), and the earth dug out of it heaped round
+// it in lit and shadowed steps with chunky clods: thrown back behind on the way in, heaved up all round (most ahead) on
+// the way out. Light from the upper left of the map (`turn` the hole's own turn, so the light stays put). `variant`
+// seeds its shape. A picture `n` px wide standing for 2 × HOLE_SPAN of the hole's radius.
+export const HOLE_N = 128, HOLE_SPAN = 1.7;
+const EARTH = { deep: [10, 6, 3], wall: [62, 43, 25], wallLit: [124, 92, 56], soil: [92, 67, 41], soilLit: [138, 104, 66], soilDark: [58, 41, 24], ink: [22, 13, 6] };
+const mixRgb = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+const smooth01 = (e0, e1, x) => { const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+export function holePixels(n = HOLE_N, { variant = 0, exit = false, turn = 0 } = {}) {
+  const off = variant * 17.3 + (exit ? 101 : 0);
+  const vnoise = (x, y) => { const ix = Math.floor(x), iy = Math.floor(y); let fx = x - ix, fy = y - iy; fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy); const a = hash01(ix + off, iy), b = hash01(ix + 1 + off, iy), c = hash01(ix + off, iy + 1), d = hash01(ix + 1 + off, iy + 1); return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy; };
+  const fbm = (x, y) => 0.55 * vnoise(x, y) + 0.3 * vnoise(x * 2.1, y * 2.1) + 0.15 * vnoise(x * 4.3, y * 4.3);
+  let s = Math.floor(hash01(variant + 3.1, exit ? 7.7 : 2.2) * 2 ** 31) || 1;
+  const rnd = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+  // Clods on the heap, [x, y, radius, height, index] in radius units: a few big broken ones near the edge, and smaller
+  // pebbles of earth flung further.
+  const clods = [];
+  for (let i = 0, big = exit ? 11 : 7, count = big + (exit ? 14 : 10); i < count; i++) {
+    const small = i >= big, a = exit ? rnd() * Math.PI * 2 : Math.PI + (rnd() - 0.5) * (small ? 2.8 : 2.2);
+    const d = small ? 1.15 + rnd() * 0.75 : (exit ? 1.0 : 1.05) + rnd() * (exit ? 0.4 : 0.45);
+    clods.push([Math.cos(a) * d, Math.sin(a) * d * 0.95, small ? 0.025 + rnd() * 0.03 : 0.06 + rnd() * (exit ? 0.11 : 0.08), 0.5 + rnd() * 0.5, i]);
+  }
+  const N = n * n, h = new Float32Array(N), kind = new Uint8Array(N), cover = new Float32Array(N), dd = new Float32Array(N), clodEdge = new Float32Array(N), dark = new Float32Array(N), face = new Float32Array(N);
+  const px = new Uint8ClampedArray(N * 4), step = (2 * HOLE_SPAN) / n;
+  const c = Math.cos(-turn), sn = Math.sin(-turn), lw = [-0.55, -0.45, 0.7], L = [lw[0] * c - lw[1] * sn, lw[0] * sn + lw[1] * c, lw[2]], Ln = Math.hypot(...L);
+  // The opening: an ellipse, a little long along the tunnel going in, rounder coming out, with a ragged edge.
+  const rx = exit ? 0.78 : 0.82, ry = exit ? 0.72 : 0.64, cxo = exit ? 0 : 0.06;
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const k = j * n + i, x = (i + 0.5) * step - HOLE_SPAN, y = (j + 0.5) * step - HOLE_SPAN, a = Math.atan2(y, x);
+    const rag = (fbm(Math.cos(a) * 2.2 + 5, Math.sin(a) * 2.2 + 5) - 0.5) * 0.42 + (vnoise(x * 9, y * 9) - 0.5) * 0.08;
+    const d = Math.hypot((x - cxo) / rx, y / ry) - rag;
+    dd[k] = d;
+    if (d < 1) {
+      // Down into it: the wall shows for a band inside the edge and then it is black. Going in, the tunnel slopes away
+      // under +x: a long ramp of wall shows behind (-x), hardly any ahead, where the lip overhangs the dark.
+      const e = 1 - d, wall = exit ? 0.34 : 0.12 + 0.5 * Math.pow(Math.max(0, -Math.cos(a)), 1.2) + 0.08 * Math.max(0, Math.abs(Math.sin(a)));
+      dark[k] = smooth01(wall * 0.15, wall, e);
+      face[k] = -(Math.cos(a) * L[0] + Math.sin(a) * L[1]) / Math.hypot(L[0], L[1]);
+      h[k] = -0.6 * e; kind[k] = 1; cover[k] = 1; continue;
+    }
+    // The heap: highest just past the edge, falling away; behind going in, all round (most ahead) coming out.
+    const back = exit ? 0.75 + 0.25 * Math.cos(a) : 0.25 + 0.75 * Math.pow(Math.max(0, -Math.cos(a)), 0.8);
+    const reach = (exit ? 0.85 : 0.7 + 0.55 * Math.max(0, -Math.cos(a))) * (0.8 + 0.4 * fbm(x * 1.6 + 9, y * 1.6));
+    const t = (d - 1) / reach, heap = back * Math.max(0, 1 - t) * (0.55 + 0.45 * Math.min(1, t * 6));
+    let height = heap * 0.38 * (0.75 + 0.5 * fbm(x * 3.5, y * 3.5)), onClod = 0;
+    for (const [cx, cy, cr, ch, ci] of clods) {
+      const ang = Math.atan2(y - cy, x - cx), q = Math.hypot(x - cx, y - cy) / (cr * (0.65 + 0.7 * vnoise(Math.cos(ang) * 1.4 + ci * 5.1, Math.sin(ang) * 1.4 + ci * 2.7)));
+      if (q < 1) { const lump = ch * cr * 1.2 * Math.sqrt(1 - q * q); if (lump + 0.12 > height) { height = Math.max(height, 0.12 + lump); onClod = Math.max(onClod, 1 - q); } }
+    }
+    h[k] = height; clodEdge[k] = onClod;
+    // Loose earth thins out to bare ground in a crumbly edge, not a circle.
+    const crumb = heap + (fbm(x * 6 + 3, y * 6) - 0.5) * 0.55 * Math.min(1, heap * 4) + (onClod ? 1 : 0);
+    cover[k] = smooth01(0.12, 0.3, crumb);
+    if (cover[k] > 0) kind[k] = onClod ? 3 : 2;
+  }
+  const at = (i, j) => h[Math.max(0, Math.min(n - 1, j)) * n + Math.max(0, Math.min(n - 1, i))];
+  const kindAt = (i, j) => kind[Math.max(0, Math.min(n - 1, j)) * n + Math.max(0, Math.min(n - 1, i))];
+  // Painted, not smooth: light in three steps.
+  const band = (v) => (v > 0.35 ? 1 : v > -0.05 ? 0.5 : 0);
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const k = j * n + i, o = k * 4, kd = kind[k];
+    if (!kd) continue;
+    const gx = (at(i + 1, j) - at(i - 1, j)) / (2 * step), gy = (at(i, j + 1) - at(i, j - 1)) / (2 * step), nn = Math.hypot(gx, gy, 1);
+    const lit = ((-gx * L[0] - gy * L[1] + L[2]) / (nn * Ln) - L[2] / Ln) * 2.2;
+    const grain = (hash01(i * 1.7 + off, j * 2.3) - 0.5) * 0.14;
+    let col;
+    if (kd === 1) {
+      // The wall: lit where it faces the light (the far side), in shadow where it faces away, darkening in steps down
+      // into black.
+      const wallCol = mixRgb(EARTH.wall, EARTH.wallLit, band(face[k] * 0.9)), dk = dark[k] + (vnoise(i * 0.35, j * 0.35) - 0.5) * 0.15;
+      col = mixRgb(wallCol, EARTH.deep, dk > 0.8 ? 1 : dk > 0.4 ? 0.6 : 0);
+    } else {
+      col = band(lit) === 1 ? EARTH.soilLit : band(lit) === 0.5 ? EARTH.soil : EARTH.soilDark;
+      // Clods cast a little shadow down-light of them onto the heap.
+      if (kd === 2) { const li = Math.round(i + L[0] * -3), lj = Math.round(j + L[1] * -3); if (kindAt(li, lj) === 3) col = mixRgb(col, EARTH.soilDark, 0.7); }
+    }
+    col = col.map((v) => v * (1 + grain));
+    // Ink: round the opening, and round each clod.
+    let ink = 0;
+    if (kd === 1 && dd[k] > 0.95) ink = smooth01(0.95, 0.99, dd[k]);
+    if (kd !== 1 && dd[k] < 1.04) ink = Math.max(ink, 1 - smooth01(1.0, 1.04, dd[k]));
+    if (kd === 3 && clodEdge[k] < 0.22) ink = Math.max(ink, 0.8 * (1 - clodEdge[k] / 0.22));
+    if (kd === 2) for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (kindAt(i + di, j + dj) === 3) { ink = Math.max(ink, 0.8); break; }
+    col = mixRgb(col, EARTH.ink, ink);
+    px[o] = col[0]; px[o + 1] = col[1]; px[o + 2] = col[2]; px[o + 3] = Math.round(cover[k] * (kd === 1 ? 255 : 240));
+  }
+  return px;
+}
+
 export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouettes: given = null, sunlit: sunlitOf = null, renderer = null }) {
   const live = new Set();
   const add = (g, to = root) => { g.eventMode = 'none'; to().addChild(g); live.add(g); return g; };
@@ -422,6 +512,22 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
     hollows.set(key, tex);
     return tex;
   };
+  // Burrow mouths (holePixels), each shape, way and direction made once and kept.
+  const holes = new Map();
+  const holeTexture = (spec) => {
+    if (typeof document === 'undefined') return null;
+    const turn = (((Math.round((spec.rotation ?? 0) / (Math.PI / 8)) % 16) + 16) % 16) * (Math.PI / 8);
+    const key = `${spec.variant ?? 0}:${spec.exit ? 'out' : 'in'}:${turn.toFixed(3)}`;
+    if (holes.has(key)) return holes.get(key);
+    let tex = null;
+    try {
+      const px = holePixels(HOLE_N, { variant: spec.variant ?? 0, exit: !!spec.exit, turn });
+      const cv = document.createElement('canvas'); cv.width = cv.height = HOLE_N; cv.getContext('2d').putImageData(new ImageData(px, HOLE_N, HOLE_N), 0, 0);
+      tex = PIXI.Texture.from(cv);
+    } catch { tex = null; }
+    holes.set(key, tex);
+    return tex;
+  };
   // A breath's cloud: a soft, torn puff of noise drawn once (CLOUD px), every cloud a sprite of it.
   let cloud = null;
   const CLOUD = 64;
@@ -462,6 +568,15 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
           const sp = new PIXI.Sprite(tex);
           sp.anchor.set(0.5); sp.position.set(spec.x, spec.y); sp.rotation = spec.rotation ?? 0; sp.alpha = 0;
           sp.__animaterRadius = spec.radius; sp.__animaterUnit = (DRAW * HOLLOW_SPAN) / HOLLOW_N;
+          return add(sp);
+        }
+      }
+      if (spec.kind === 'hole' && typeof PIXI.Sprite === 'function') {
+        const tex = holeTexture(spec);
+        if (tex) {
+          const sp = new PIXI.Sprite(tex);
+          sp.anchor.set(0.5); sp.position.set(spec.x, spec.y); sp.rotation = spec.rotation ?? 0; sp.alpha = 0;
+          sp.__animaterRadius = spec.radius; sp.__animaterUnit = (DRAW * HOLE_SPAN) / HOLE_N;
           return add(sp);
         }
       }

@@ -1095,7 +1095,8 @@ export function burrowHole(at, { seed = '', grid = 100, width = grid, exit = fal
     const a = (i / 9) * Math.PI * 2 + (random() - 0.5) * 0.4;
     rim.push([round3(Math.cos(a) * (1.05 + random() * 0.15)), round3(Math.sin(a) * (1.05 + random() * 0.15)), round3(0.22 + random() * 0.18)]);
   }
-  const out = [{ kind: 'hole', color: L.color, rimColor: L.rim[Math.floor(random() * L.rim.length) % L.rim.length], rim, x: at.x, y: at.y,
+  // `variant` picks one of the painted shapes (movement-feel-render.mjs holePixels), `exit` which way it was dug.
+  const out = [{ kind: 'hole', color: L.color, rimColor: L.rim[Math.floor(random() * L.rim.length) % L.rim.length], rim, variant: Math.floor(random() * 4) % 4, exit, x: at.x, y: at.y,
     vx: 0, vy: 0, radius, rotation: heading, alpha: L.alpha, life: L.life, hold: L.hold, grow: 0, delay: 0, spin: 0, lasting: true }];
   // Gravel and clods: thrown out from the hole's edge, hopping and settling within about a second.
   const count = exit ? 12 : 7;
