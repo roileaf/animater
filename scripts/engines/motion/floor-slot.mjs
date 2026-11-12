@@ -4,6 +4,15 @@ export const MAP_SORT = Object.freeze({
   floorTextures: 400,
   floorShadows: 405,
   floorLooks: 410,
+  // The other map layers, by what they hold (main.mjs floorLayer), named here so their order reads in one place.
+  floorEdges: 406,
+  heightShadows: 649,
+  decorFlat: 641,
+  decorShadows: 651,
+  decorations: 655,
+  heightFaces: 656,
+  decorCrowns: 740,
+  decorBrush: 1102,
 });
 
 export function floorSlot(plane, kind) {
@@ -15,7 +24,8 @@ export function floorSlot(plane, kind) {
     return {
       elevation: Number.isFinite(elevation) ? elevation : 0,
       sortLayer: TILE_SORT_LAYER,
-      sort: (Number.isFinite(sort) ? sort : 0) + 1,
+      // (Half a step over its tile: a whole one tied with the next tile's own sort, which could then draw under it.)
+      sort: (Number.isFinite(sort) ? sort : 0) + 0.5,
     };
   }
   if (plane.id?.kind !== "map") return null;

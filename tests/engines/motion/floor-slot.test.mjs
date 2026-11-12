@@ -16,13 +16,13 @@ test("a map plane keeps 400, 405, and 410", () => {
 });
 
 test("a floor tile draws just above that tile", () => {
-  const onDeck = { elevation: 0, sortLayer: 500, sort: 1 };
+  const onDeck = { elevation: 0, sortLayer: 500, sort: 0.5 };
   assert.deepEqual(floorSlot(deck, "floorTextures"), onDeck);
   assert.deepEqual(floorSlot(deck, "floorShadows"), onDeck);
   assert.deepEqual(floorSlot(deck, "floorLooks"), onDeck);
-  assert.equal(floorSlot({ ...deck, sort: 4 }, "floorTextures").sort, 5);
-  assert.equal(floorSlot({ ...deck, sort: 4 }, "floorShadows").sort, 5);
-  assert.equal(floorSlot({ ...deck, sort: 4 }, "floorLooks").sort, 5);
+  assert.equal(floorSlot({ ...deck, sort: 4 }, "floorTextures").sort, 4.5);
+  assert.equal(floorSlot({ ...deck, sort: 4 }, "floorShadows").sort, 4.5);
+  assert.equal(floorSlot({ ...deck, sort: 4 }, "floorLooks").sort, 4.5);
 });
 
 test("an overhead plane is not a floor layer", () => {

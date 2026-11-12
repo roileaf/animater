@@ -113,7 +113,7 @@ test('decorations feed the other engines: canopy trees, moving water, the cavern
 test('a ghost of the next dab follows the brush, changes with the bar, and a click lays exactly it', () => {
   const main = read('scripts/main.mjs');
   // The ghost lies lit on the floor; the ring sits above the lighting (Roi: the Floors preview was lost in a night scene).
-  assert.match(main, /floorLayer\("decorBrush", 1102\)\(\)\.addChild\(ghost\); top\.addChild\(ring\);/);
+  assert.match(main, /decorBrushRoot\(\)\.addChild\(ghost\); top\.addChild\(ring\);/);
   assert.match(main, /const top = new PIXI\.Container\(\); top\.eventMode = "none"; canvas\.interface\.addChild\(top\);/);
   assert.match(main, /top\.addChildAt\(fl\.preview, 1\)/); assert.match(main, /top\.addChildAt\(fl\.hover, 1\)/); assert.match(main, /top\.addChildAt\(fl\.overlay, 0\)/);
   assert.match(main, /openBrushBar\(\{ onClose: \(\) => stopDecorBrush\(\), onChange: \(\) => \{ draw\(\);[^\n]*region, thumb,/);

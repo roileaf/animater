@@ -8,6 +8,10 @@
 import { STEP_LOOKS, spreadFrom } from './region-steps.mjs';
 import { areaOf, insideAreas } from './floor-motion.mjs';
 
+// A region's outline as a key, its holes with it: JSON.stringify of an outline array drops its `holes`, so a hole added or taken
+// away inside an unchanged outline never repainted (the audit's finding; decorations and floor shadows already keyed them).
+export const shapeKey = (areas) => JSON.stringify((areas ?? []).map((a) => [Array.from(a ?? []), (a?.holes ?? []).map((h) => Array.from(h))]));
+
 const VERT = `precision highp float;
 attribute vec2 aVertexPosition;
 uniform mat3 projectionMatrix, translationMatrix;
@@ -1078,7 +1082,7 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
       for (const spec of list) {
         seen.add(spec.id);
         if (spec.roofed) roofed.add(spec.id); else roofed.delete(spec.id);
-        const shape = JSON.stringify(spec.areas), edge = spec.edge ?? 1, style = spec.style ?? '', useBlades = spec.blades !== false, shineOn = spec.shine !== false, entry = known.get(spec.id);
+        const shape = shapeKey(spec.areas), edge = spec.edge ?? 1, style = spec.style ?? '', useBlades = spec.blades !== false, shineOn = spec.shine !== false, entry = known.get(spec.id);
         // How much it covers the map (the region's Texture opacity): what its alpha stands at once faded in.
         const opacity = Math.min(1, Math.max(0, Number(spec.opacity ?? 1)));
         scaleNow = spec.scale ?? 1;
@@ -1267,7 +1271,7 @@ export function createFloorLooks({ PIXI, root, render, renderer, pixels, grid = 
       for (const spec of list) {
         seen.add(spec.id);
         if (spec.roofed) roofed.add(spec.id); else roofed.delete(spec.id);
-        const shape = JSON.stringify(spec.areas), cover = !!spec.cover, edge = spec.edge ?? 1, strength = spec.strength ?? 1, sheenOn = spec.sheen !== false;
+        const shape = shapeKey(spec.areas), cover = !!spec.cover, edge = spec.edge ?? 1, strength = spec.strength ?? 1, sheenOn = spec.sheen !== false;
         let entry = known.get(spec.id);
         if (!entry) { entry = { id: spec.id, scale: spec.scale ?? 1, clip: !!spec.shore, look: spec.look, shape, cover, edge, strength, sheenOn, mesh: null, sprite: null, image: null, old: null, running: false }; known.set(spec.id, entry); start(entry, spec, false); continue; }
         entry.spec = spec;

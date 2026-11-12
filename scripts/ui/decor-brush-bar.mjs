@@ -121,7 +121,7 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
       }
       if (sceneTicks) {
         const now = sceneTicks.get() ?? {};
-        for (const [key, label, tip] of [['walls', 'Cliff edges block movement', 'Walls that stop movement (not sight) along raised edges no ramp meets. Kept on this scene.'], ['shadows', 'Draw raised ground', 'An ink rim round each raised part, a painted cliff face below it and a short shadow away from the sun. Kept on this scene.']]) {
+        for (const [key, label, tip] of [['walls', 'Cliff edges block movement', 'Walls that stop movement (not sight) along raised edges no ramp meets. Kept on this scene.'], ['shadows', 'Draw raised ground', 'An ink rim round each raised part, a painted cliff face below it, a short shadow away from the sun, and its ladders, ropes and bridges. Kept on this scene.']]) {
           const box = el('label', 'an-mp-tick'), input = el('input'); input.type = 'checkbox'; input.checked = now[key] !== false; input.dataset.sceneTick = key;
           input.addEventListener('change', () => sceneTicks.set(key, input.checked)); box.title = tip; box.append(input, el('span', '', label)); extra.append(box);
         }

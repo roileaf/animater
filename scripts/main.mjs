@@ -2280,7 +2280,7 @@ const weatherNow = () => {
 };
 // The light past the tiles and over the ground follows the sun as soon as it is known (a calendar ready after the
 // canvas, a new hour), not only when the walls' shadows are next rebuilt.
-const lookSunlit = () => { if (!canvas?.ready) return; try { lookCanopy(); lookSky(); } catch { /* not built yet */ } try { syncDecorations(); } catch { /* not built yet */ } };
+const lookSunlit = () => { if (!canvas?.ready) return; try { lookCanopy(); lookSky(); } catch { /* not built yet */ } try { decorationsLook(); } catch (err) { runtime?.trace?.("decorations", err?.message ?? String(err)); } };
 const lookCanopy = () => {
   try {
     const weather = weatherNow(), leaves = leavesOn() ? leavesOf({ season: seasonNow(), wind: weather.wind }) : null;
@@ -2351,10 +2351,11 @@ const underCeiling = (at) => {
 Hooks.on("canvasTearDown", () => { ceilingDust.clear(); });
 // Life in the dark and water dripping (engines/motion/vermin.mjs, drips.mjs): rats on the floor under the creatures,
 // bats over everything; puddles on the floor where a region says it drips.
-const floorLayer = (key, sortLayer) => {
+// (`key` names it, for finding it among the map's layers; its place among them is MAP_SORT[key] (floor-slot.mjs) unless given.)
+const floorLayer = (key, sortLayer = MAP_SORT[key]) => {
   let c = null;
   return () => {
-    if (!c || c.destroyed) { c = new PIXI.Container(); c.eventMode = "none"; c.sortLayer = sortLayer; canvas.primary.addChild(c); }
+    if (!c || c.destroyed) { c = new PIXI.Container(); c.eventMode = "none"; c.sortLayer = sortLayer; c.name = `animater.${key}`; canvas.primary.addChild(c); }
     c.elevation = Number(canvas.level?.elevation?.base) || 0;
     return c;
   };
@@ -2399,22 +2400,59 @@ const floorMotion = createFloorMotion({ PIXI: globalThis.PIXI, root: floorLayer(
 // creatures; the trees' crowns over the creatures, opening round one beneath.
 // (Flat ones, moss and a puddle's mud, lie under the sky's lying snow, at 641; the rest stand over it, with their own snow.)
 // The decorations' lights (engines/motion/decor-lights.mjs): local Foundry light sources, never documents.
+// Where a region's decorations are drawn: on the map, or, for a region on a raised floor tile (its plane), on that tile: the flat,
+// shadow and standing ones in the tile's own box over its floor looks, the crowns at the tile's height over the creatures there.
+// (Always on the map's floor, they were drawn under the tile they were painted on: the audit's finding.)
+const decorTileBoxes = new Map();
+const decorDrawRoot = (kind) => {
+  const map = floorLayer(kind), onTile = floorDrawRoot("floorLooks");
+  return (spec) => {
+    const plane = spec?.plane; if (plane?.id?.kind !== "tile") return map();
+    const key = `${plane.id.tileId}|${kind}`; let box = decorTileBoxes.get(key);
+    if (kind === "decorCrowns") {
+      if (!box || box.destroyed) { box = new PIXI.Container(); box.eventMode = "none"; canvas.primary.addChild(box); decorTileBoxes.set(key, box); }
+      box.elevation = Number(plane.elevation) || 0; box.sortLayer = MAP_SORT[kind]; return box;
+    }
+    const tile = onTile({ plane });
+    if (!box || box.destroyed || box.parent !== tile) { box = new PIXI.Container(); box.eventMode = "none"; box.zIndex = MAP_SORT[kind]; tile.addChild(box); decorTileBoxes.set(key, box); }
+    return box;
+  };
+};
+Hooks.on("deleteTile", (doc) => { const id = String(doc?.id ?? ""); for (const [key, box] of decorTileBoxes) if (key.startsWith(`${id}|`)) { try { box.destroy({ children: true }); } catch { /* gone */ } decorTileBoxes.delete(key); } });
+Hooks.on("canvasTearDown", () => decorTileBoxes.clear());
+// How many decorations at most light the map at once (their lamps, braziers, candles).
+const DECOR_LIGHTS_MOST = 48;
 const decorLights = createDecorLights({
   makeSource: (id) => new CONFIG.Canvas.lightSourceClass({ sourceId: `${ID}.decor.${id}`, object: null }),
   refresh: () => canvas?.perception?.update({ refreshLighting: true, refreshVision: true }),
   grid: () => canvas?.grid?.size ?? 100,
   centre: () => (canvas?.stage ? { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y } : null),
+  max: DECOR_LIGHTS_MOST,
 });
-const decorations = createDecorations({ PIXI: globalThis.PIXI, flat: floorLayer("decorFlat", 641), shadows: floorLayer("decorShadows", 651), ground: floorLayer("decorations", 655), above: floorLayer("decorCrowns", 740), grid: () => canvas.grid?.size ?? 100, render: (object, renderTexture) => canvas.app.renderer.render(object, { renderTexture, clear: true }) });
+const decorations = createDecorations({ PIXI: globalThis.PIXI, flat: decorDrawRoot("decorFlat"), shadows: decorDrawRoot("decorShadows"), ground: decorDrawRoot("decorations"), above: decorDrawRoot("decorCrowns"), grid: () => canvas.grid?.size ?? 100, render: (object, renderTexture) => canvas.app.renderer.render(object, { renderTexture, clear: true }) });
+// (Past the cap on lit decorations, those nearest the middle of the view are lit: chosen again a moment after the view moves, not
+// only when the decorations are drawn again, so panning away never leaves the wrong lamps lit. The audit's finding.)
+let decorPanTimer = null;
+Hooks.on("canvasPan", () => { clearTimeout(decorPanTimer); decorPanTimer = setTimeout(() => { decorPanTimer = null; try { const lights = decorations.lights(); if (lights.length > DECOR_LIGHTS_MOST) decorLights.sync(lights); } catch (err) { runtime?.trace?.("decorations", `lights: ${err?.message ?? err}`); } }, 400); });
 // A puddle's water colour: dark, peaty teal (a painted water floor's is a lake's, too pale and clear for a puddle on grass).
 let pondBedTexture = null;
 const decorPondBed = () => { if (!pondBedTexture || pondBedTexture.baseTexture?.destroyed) pondBedTexture = PIXI.Texture.fromBuffer(new Uint8Array([24, 58, 56, 255]), 1, 1); return pondBedTexture; };
 // What a region's decorations look like now: the season, rain and lying snow, night (what glows), underground.
-const decorLook = (settings) => { const soaked = groundOf().now, darkness = Number(canvas.environment?.darknessLevel) || 0; return { season: seasonNow() ?? "summer", wet: wetOn() && soaked.wet > 0.4 ? 1 : 0, snow: snowCoverOn() && settings.where !== "cave" ? Math.round((soaked.snow ?? 0) * 4) / 4 : 0, night: darkness > 0.6 || settings.where === "cave", cave: settings.where === "cave" }; };
+// How dark before decorations show their night look, and how wet before they show wet (decorLook, decorWeatherNow).
+const DECOR_NIGHT_DARK = 0.6, DECOR_WET = 0.4;
+const decorLook = (settings) => { const soaked = groundOf().now, darkness = Number(canvas.environment?.darknessLevel) || 0; return { season: seasonNow() ?? "summer", wet: wetOn() && soaked.wet > DECOR_WET ? 1 : 0, snow: snowCoverOn() && settings.where !== "cave" ? Math.round((soaked.snow ?? 0) * 4) / 4 : 0, night: darkness > DECOR_NIGHT_DARK || settings.where === "cave", cave: settings.where === "cave" }; };
 let decorTreesKey = "", decorLampsAt = 0, decorWeatherAt = 0, decorWeatherKey = "";
 // What the decorations show of the ground's weather and the season, coarse enough that it changes only when it shows: as snow
 // builds up or melts, rain soaks in or dries, or the season turns, they are drawn again (not only when the clock jumps).
-const decorWeatherNow = () => { try { const g = groundOf().now; return `${snowCoverOn() ? Math.round((g.snow ?? 0) * 20) : 0}|${wetOn() && g.wet > 0.4 ? 1 : 0}|${seasonNow() ?? ""}`; } catch { return ""; } };
+// (Night too: decorLook's night look turns on with the darkness, and the clock's hooks now only look at this key, not rebuild.)
+const decorWeatherNow = () => { try { const g = groundOf().now; return `${snowCoverOn() ? Math.round((g.snow ?? 0) * 20) : 0}|${wetOn() && g.wet > DECOR_WET ? 1 : 0}|${seasonNow() ?? ""}|${(Number(canvas.environment?.darknessLevel) || 0) > DECOR_NIGHT_DARK ? 1 : 0}`; } catch { return ""; } };
+// On the clock's and the settings' hooks: decorations built again only when what they show changed (the key above), else
+// only lit afresh. (Built again on every tick, twice, they serialised every region and tree each time: the audit's finding.)
+const decorationsLook = (force = false) => { const key = decorWeatherNow(); if (force || key !== decorWeatherKey) { decorWeatherKey = key; syncDecorations(); } else lightDecorations(); };
+// (A new scene shown: built afresh whatever the key says.)
+Hooks.on("canvasTearDown", () => { decorWeatherKey = ""; });
+// The raised floor tile a decoration region was made on (its image source), or none.
+const decorPlaneOf = (region) => { try { return floorPlaneOf(planeOfRegion(region)); } catch { return null; } };
 const syncDecorations = () => {
   if (!canvas?.ready) return;
   const list = [];
@@ -2422,14 +2460,15 @@ const syncDecorations = () => {
     try {
       let settings = decorSettings(region.flags?.[ID]?.decor);
       // While the brush paints this region, what it has painted shows at once, before it is saved.
-      if (settings && decorBrushing?.id === region.id) settings = { ...settings, brushed: decorBrushing.brushed, erased: decorBrushing.erased };
-      if (settings) list.push({ id: region.id, settings, areas: regionAreas(region), look: decorLook(settings), broken: decorBrokenKeys(region) });
-    } catch { /* a broken region never breaks the rest */ }
+      const live = !!settings && decorBrushing?.id === region.id;
+      if (live) settings = { ...settings, brushed: decorBrushing.brushed, erased: decorBrushing.erased };
+      if (settings) list.push({ id: region.id, settings, areas: regionAreas(region), look: decorLook(settings), broken: decorBrokenKeys(region), ...(live ? { live: true } : {}), ...(decorPlaneOf(region) ? { plane: decorPlaneOf(region) } : {}) });
+    } catch (err) { runtime?.trace?.("decorations", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
   }
   // A stroke on open ground, before its region is made: what it has painted, within the circles it has swept.
   if (decorBrushing?.id === NEW_DECOR_REGION && decorBrushing.circles.length) {
     const settings = { where: decorBrushing.fresh.where, kinds: {}, density: 0, scale: 1, seed: 1, brushed: decorBrushing.brushed, erased: [] };
-    list.push({ id: NEW_DECOR_REGION, settings, areas: decorBrushing.circles.map(([x, y, r]) => decorCircle(x, y, r)), look: decorLook(settings) });
+    list.push({ id: NEW_DECOR_REGION, settings, areas: decorBrushing.circles.map(([x, y, r]) => decorCircle(x, y, r)), look: decorLook(settings), live: true });
   }
   decorations.sync(list);
   // The lamps, braziers and candles among them light the map: real light sources, the same on every screen.
@@ -2437,7 +2476,7 @@ const syncDecorations = () => {
   lightDecorations();
   // Their trees join the canopy's shade: built again when they change.
   const key = JSON.stringify(decorations.trees().map((t) => [t.id, t.kind, Math.round(t.x), Math.round(t.y)]));
-  if (key !== decorTreesKey) { decorTreesKey = key; try { canopySoon(); } catch { /* not ready */ } }
+  if (key !== decorTreesKey && !decorBrushing) { decorTreesKey = key; try { canopySoon(); } catch { /* not ready */ } }
 };
 // The decorations brush: paints decorations by hand, each dab a few within its circle, kept off what already stands there.
 // From a region's Decorations section (Brush) it paints that region's ticked kinds into it. From the Decorations tool in
@@ -2446,6 +2485,12 @@ const syncDecorations = () => {
 // rubs out (the scatter leaves those places bare). What a stroke paints shows at once and is saved when it ends.
 // [ and ] make the brush smaller or bigger; right-click or Esc stops.
 let decorBrushing = null;
+// (One layer for the brush's ghost, made once: made afresh on each open, an empty container was left behind every time.)
+const decorBrushRoot = floorLayer("decorBrush");
+// While a stroke paints: its decorations shown again at most every tenth of a second, not on every dab (each built the whole
+// region again: every sprite, its filters and its snow); built whole, snow and canopy too, once the stroke ends.
+let decorBrushSyncAt = 0, decorBrushSyncTimer = null;
+const decorBrushSyncSoon = () => { if (decorBrushSyncTimer) return; const wait = Math.max(0, 100 - (performance.now() - decorBrushSyncAt)); decorBrushSyncTimer = setTimeout(() => { decorBrushSyncTimer = null; decorBrushSyncAt = performance.now(); if (decorBrushing) syncDecorations(); }, wait); };
 const NEW_DECOR_REGION = "animater-decor-new";
 const DECOR_BRUSH = { min: 0.5, max: 6, usual: 1.5 };
 const decorBrushTarget = (p) => regionsHere().find((r) => decorSettings(r.flags?.[ID]?.decor) && regionPointIn(p, regionAreas(r)));
@@ -2458,7 +2503,7 @@ const startDecorBrush = (doc = null) => {
   // (The ghost lies lit on the floor like the decorations it shows; the ring and the Floors tab's previews sit above the
   // scene's lighting, in canvas.interface, so they show in their own colours at night too.)
   const top = new PIXI.Container(); top.eventMode = "none"; canvas.interface.addChild(top);
-  ring.eventMode = "none"; floorLayer("decorBrush", 1102)().addChild(ghost); top.addChild(ring);
+  ring.eventMode = "none"; decorBrushRoot().addChild(ghost); top.addChild(ring);
   const state = decorBrushing = { id: null, doc: null, brushed: [], erased: [], circles: [], fresh: null, size: DECOR_BRUSH.usual, down: false, last: null, at: null, seed: Date.now() % 1e6, ring, ghost, ghostKey: null, ghostItems: [], ghostSeed: Date.now() % 1e5, bar: null };
   // A region's own brush shows the bar too, with only its place and its ticked kinds; either way it paints one kind at a time.
   const own = doc ? decorSettings(doc.flags?.[ID]?.decor) : null;
@@ -2908,7 +2953,7 @@ const startDecorBrush = (doc = null) => {
       if (first && state.ghostItems.length) { for (const g of state.ghostItems) { const d = withProp({ ...g, x: Math.round(p.x + g.x), y: Math.round(p.y + g.y), seed: (g.seed ^ state.seed++) >>> 0 }); if (!areas || regionPointIn(d, areas)) state.brushed.push(d); } state.ghostSeed++; }
       else for (let i = 0, n = dabCount(density); i < n; i++) { const d = withProp(stampDecor({ x: p.x, y: p.y, radius, grid: grid(), kinds, seed: state.seed++, existing: state.brushed, scale, turn })); if (d && (!areas || regionPointIn(d, areas))) state.brushed.push(d); }
     }
-    syncDecorations();
+    decorBrushSyncSoon();
   };
   const finish = async () => {
     const { doc: target, brushed, erased, circles, fresh } = state;
@@ -3175,7 +3220,7 @@ for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(ho
 // shadow side, stones at its foot, grass over its lip, and a soft contact shadow; a ramp's slope hatched faintly downhill.
 // Coloured from the map beside it. The shadow lies under the creatures' own; the face and rim over the ground and its
 // decorations, under the creatures. Nothing is drawn over a raised part higher still.
-const heightShadowRoot = floorLayer("heightShadows", 649), heightFaceRoot = floorLayer("heightFaces", 656);
+const heightShadowRoot = floorLayer("heightShadows"), heightFaceRoot = floorLayer("heightFaces");
 // Each bridge on its own, at its height: the map sorts by elevation first, so a token walking under it goes under it and one on
 // it (as high or higher) over it. (Roi, of a token under a bridge drawn over it: "probably we draw the bridge on the same layer?")
 const heightBridgeBoxes = [];
@@ -3195,9 +3240,20 @@ const heightMapFor = () => {
   return null;
 };
 const heightMapColour = (m, points) => { let r = 0, g = 0, b = 0, n = 0; for (const p of points) { const x = Math.floor(((p.x - m.rect.x) * m.width) / m.rect.width), y = Math.floor(((p.y - m.rect.y) * m.height) / m.rect.height); if (x < 0 || y < 0 || x >= m.width || y >= m.height) continue; const i = (y * m.width + x) * 4; r += m.rgba[i]; g += m.rgba[i + 1]; b += m.rgba[i + 2]; n++; } return n ? (Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n) : null; };
+// What the raised ground was last drawn for: drawn again only when that changes (the heights, the level, the sun by a few
+// degrees, its strength by a little, the map's colours once read), not on every tick of the clock. (Built afresh each time,
+// some 7,000 shapes and two dozen filters: the audit's finding.)
+let heightsDrawn = { key: "", value: null, root: null };
+const heightsDrawKey = (scene, value) => { const round = (v, s) => Math.round((Number(v) || 0) / s) * s; const sunShadow = sunNow && !sunNow.moon && !shadowsOffHere() ? (Number.isFinite(Number(sunNow.strength)) ? Math.max(0, Math.min(1, Number(sunNow.strength))) : 1) * directSun(skyCoverNow) : 0; return [scene?.id, canvas.level?.id ?? "", heightsSceneOn("shadows", scene), value ? 1 : 0, sunNow ? round(sunNow.angle, 3) : "x", sunNow ? round(sunNow.height, 3) : "x", round(sunShadow, 0.05), !!sunNow?.moon, heightMapFor() ? 1 : 0, canvas.grid?.size ?? 100].join("|"); };
+// A layer of blurred shadows drawn once into a picture and shown from it, not blurred again every frame (they only change when
+// drawn again). Kept to a size every graphics card takes, at a lower resolution for a big one (blurred, it shows no loss).
+const stillPicture = (box) => { try { const b = box.getLocalBounds(), most = Math.max(b.width, b.height, 1); if (!Number.isFinite(most)) return; box.cacheAsBitmapResolution = Math.min(canvas.app.renderer.resolution || 1, 4096 / most); box.cacheAsBitmap = true; } catch (err) { runtime?.trace?.("raised ground", `picture: ${err?.message ?? err}`); } };
 const drawHeightShadows = () => {
   if (!canvas?.ready) return;
   const roots = [heightShadowRoot(), heightFaceRoot()];
+  { const scene = canvas.scene, value = heightsOf(scene, canvas.level?.id ?? null), key = heightsDrawKey(scene, value);
+    if (key === heightsDrawn.key && value === heightsDrawn.value && roots[1] === heightsDrawn.root) return;
+    heightsDrawn = { key, value, root: roots[1] }; }
   for (const root of roots) for (const c of root.removeChildren()) { try { c.destroy({ children: true }); } catch { /* gone */ } }
   for (const box of heightBridgeBoxes.splice(0)) { try { box.destroy({ children: true }); } catch { /* gone */ } }
   const scene = canvas.scene; if (!heightsSceneOn("shadows", scene)) return;
@@ -3285,6 +3341,7 @@ const drawHeightShadows = () => {
     }
     shadowRoot.addChild(shade); faceRoot.addChild(g, built);
   }
+  for (const box of shadowRoot.children) stillPicture(box);
 };
 for (const hook of ["canvasReady", "updateWorldTime", "calendaria.dateTimeChange", "calendaria.weatherChange", "simple-calendar-date-time-change"]) Hooks.on(hook, () => { heightShadowsSoon(); });
 Hooks.on("canvasReady", () => { cliffWallsSoon(); });
@@ -3332,6 +3389,8 @@ const withSort = (plane) => {
   return { id: plane.id, role: plane.role, elevation: plane.elevation, sort: tileDocumentSort(plane.id.tileId) };
 };
 const floorPlaneOf = (plane) => (plane?.role === "floor" && plane.id?.kind === "tile" ? withSort(plane) : null);
+// A region made from a tile that is not a floor (an awning, a roof): it draws no floor look or painted floor of its own.
+const notOnFloor = (own, bound) => own?.imageRegion?.source?.kind === "tile" && bound?.role !== "floor";
 const syncFloorLooks = () => {
   if (!canvas?.ready) return;
   floorLevel = floorDetail(localQuality());
@@ -3341,7 +3400,7 @@ const syncFloorLooks = () => {
   if (floorLevel.show && regionStepsOn()) for (const region of regionsHere()) {
     try {
       const own = region.flags?.[ID], bound = planeOfRegion(region);
-      if (own?.imageRegion?.source?.kind === "tile" && bound?.role !== "floor") continue;
+      if (notOnFloor(own, bound)) continue;
       const floor = plainFloorOf(region);
       if (floor && Array.isArray(own?.steps)) {
         const flags = stepFlags(own) ?? {}, seaHere = floor === "water" && waterKindOf(flags) === "sea" && !flags.sea && movingWaterOn() && own.seaBeach !== "off";
@@ -3351,7 +3410,7 @@ const syncFloorLooks = () => {
         if (home) spec.plane = { ...home, zIndex: MAP_SORT.floorLooks };
         list.push(spec);
       }
-    } catch { /* a broken region never breaks the rest */ }
+    } catch (err) { runtime?.trace?.("floor looks", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
   }
   floorLooks.sync(list);
   // What moves on those looks: as this screen's quality level allows.
@@ -3362,7 +3421,7 @@ const syncFloorLooks = () => {
   if (floorLevel.show && regionStepsOn()) for (const region of regionsHere()) {
     try {
       const own = region.flags?.[ID] ?? {}, bound = planeOfRegion(region);
-      if (own?.imageRegion?.source?.kind === "tile" && bound?.role !== "floor") continue;
+      if (notOnFloor(own, bound)) continue;
       const floor = plainFloorOf(region);
       if (floor && showsTexture(own, sceneChoice) && !movingIds.has(region.id)) {
         const spec = { id: region.id, areas: regionAreas(region), floor: textureFloor(own, floor), style: textureStyleOf(own, textureFloor(own, floor)), seconds: stepLook(own, floor).seconds, edge: stepEdge(own), scale: stepScale(own), opacity: textureOpacity(own), blades: floorLevel.blades, shine: floorLevel.shine, roofed: roofedRegion(regionAreas(region)) };
@@ -3370,7 +3429,7 @@ const syncFloorLooks = () => {
         if (home) spec.plane = { ...home, zIndex: MAP_SORT.floorTextures };
         painted.push(spec);
       }
-    } catch { /* a broken region never breaks the rest */ }
+    } catch (err) { runtime?.trace?.("floor looks", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
   }
   floorTextures.sync(painted);
   syncMovingWater(moving);
@@ -3379,19 +3438,28 @@ const syncFloorLooks = () => {
 // Moving water (engines/motion/water-engine.mjs): every water region's, on every scene, as far as each screen's quality level and the Moving water setting allow.
 const waterEngine = createWaterEngine({ PIXI: globalThis.PIXI, root: floorLayer("waterEngine", 395), grid: () => canvas.grid?.size ?? 100 });
 // What raised floors throw on what is below them: over the painted floors (400), under what lies on them (410).
-const floorShadows = createFloorShadows({ PIXI: globalThis.PIXI, root: floorDrawRoot("floorShadows"), edges: floorLayer("floorEdges", 406), grid: () => canvas.grid?.size ?? 100 });
+const floorShadows = createFloorShadows({ PIXI: globalThis.PIXI, root: floorDrawRoot("floorShadows"), edges: floorLayer("floorEdges"), grid: () => canvas.grid?.size ?? 100 });
 // Whether two sets of areas have boxes that overlap at all.
-const boxesMeet = (a, b) => { const box = (areas) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const area of areas) for (let i = 0; i + 1 < area.length; i += 2) { x0 = Math.min(x0, area[i]); x1 = Math.max(x1, area[i]); y0 = Math.min(y0, area[i + 1]); y1 = Math.max(y1, area[i + 1]); } return { x0, y0, x1, y1 }; }, p = box(a), q = box(b); return p.x0 < q.x1 && q.x0 < p.x1 && p.y0 < q.y1 && q.y0 < p.y1; };
+// (Each set of areas' box worked out once and kept with it; each region's areas kept till it changes: floor shadows asked them
+// again for every tile, every caster, every other region. The audit's finding.)
+const areaBoxes = new WeakMap();
+const areasBox = (areas) => { let b = areaBoxes.get(areas); if (b) return b; let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const area of areas) for (let i = 0; i + 1 < area.length; i += 2) { x0 = Math.min(x0, area[i]); x1 = Math.max(x1, area[i]); y0 = Math.min(y0, area[i + 1]); y1 = Math.max(y1, area[i + 1]); } b = { x0, y0, x1, y1 }; areaBoxes.set(areas, b); return b; };
+// Whether a region runs more across the map than down it (its box wider than tall).
+const acrossOf = (areas) => { const b = areasBox(areas); return b.x1 - b.x0 > b.y1 - b.y0; };
+const boxesMeet = (a, b) => { const p = areasBox(a), q = areasBox(b); return p.x0 < q.x1 && q.x0 < p.x1 && p.y0 < q.y1 && q.y0 < p.y1; };
+let keptAreas = new WeakMap();
+const regionAreasKept = (region) => { let a = keptAreas.get(region); if (!a) { a = regionAreas(region); keptAreas.set(region, a); } return a; };
+for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options) => { if (quietSave(first, changes, options)) return; keptAreas = new WeakMap(); });
 const shadowOn = (region, caster) => {
   const fromTile = caster?.id?.kind === "tile" ? Number(caster.elevation) : NaN;
   const fromRegion = Number(region?.elevation?.bottom);
   const elevation = Number.isFinite(fromTile) ? fromTile : (Number.isFinite(fromRegion) ? fromRegion : null);
   if (elevation == null) return null;
-  const areas = regionAreas(region);
+  const areas = regionAreasKept(region), others = regionsHere();
   const floors = [];
   for (const plane of planesHere()) {
     if (plane.role !== "floor" || plane.id.kind !== "tile") continue;
-    const meets = regionsHere().some((other) => other !== region && sameSource(other.flags?.[ID]?.imageRegion?.source, plane.id) && boxesMeet(regionAreas(other), areas));
+    const meets = others.some((other) => other !== region && sameSource(other.flags?.[ID]?.imageRegion?.source, plane.id) && boxesMeet(regionAreasKept(other), areas));
     floors.push({ id: plane.id, role: plane.role, elevation: plane.elevation, meets });
   }
   const seen = shadowFloor(elevation, caster?.id?.kind === "tile" ? caster.id.tileId : null, floors);
@@ -3426,13 +3494,13 @@ const movingWaterList = () => {
       const kind = waterKindOf(own);
       // "This is a waterfall" has its own drawing (engines/motion/waterfall.mjs): the two together fight.
       if (own.waterfall && bothSettingsOn("waterfalls")) continue;
-      const areas = regionAreas(region), toward = waterFlows(kind) ? own.flowTo || "s" : "", plain = plainFloorOf(region);
+      const areas = regionAreasKept(region), toward = waterFlows(kind) ? own.flowTo || "s" : "", plain = plainFloorOf(region);
       const under = plain && floorLevel.show && regionStepsOn() && showsTexture(own, sceneChoice) ? { floor: textureFloor(own, plain), edge: stepEdge(own) } : null;
       const bed = under ? { texture: floorTextures.tile(under.floor, textureStyleOf(own, under.floor)), key: `${under.floor}/${textureStyleOf(own, under.floor)}`, edge: under.edge, colourOnly: under.floor === "water" } : null;
       // (Its shadow by how far above this water it stands; with several, the highest that reaches it.)
-      const above = over.filter((r) => r.id !== region.id && boxesMeet(regionAreas(r), areas));
-      list.push({ id: region.id, areas, watery: true, over: above.map((r) => { const shape = regionAreas(r), xs = shape.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 0)), ys = shape.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 1)); return { areas: shape, ...overShadowOf(r.flags?.[ID], plainFloorOf(r) ?? ""), contact: false, cut: r.flags?.[ID]?.overWater === true, casts: castsShadow(r.flags?.[ID]), painted: !!plainFloorOf(r) && regionStepsOn() && !!floorLevel.show && showsTexture(r.flags?.[ID] ?? {}, sceneChoice), across: Math.max(...xs) - Math.min(...xs) > Math.max(...ys) - Math.min(...ys) }; }), lift: Math.max(0, ...above.filter((r) => castsShadow(r.flags?.[ID])).map((r) => overLiftOf({ above: r.elevation?.bottom, water: region.elevation?.bottom, distance: canvas.dimensions?.distance, grid: canvas.grid.size }))) || undefined, bed, kind, followsWind: toward === "wind", edge: stepEdge(own), depth: waterDepthLook(own.waterDepth), beach: own.seaBeach !== "off", sand: kind === "sea" && own.seaBeach !== "off" ? floorTextures.tile("sand", "beach") : null, map: canvas.dimensions?.sceneRect ? { x: canvas.dimensions.sceneRect.x, y: canvas.dimensions.sceneRect.y, width: canvas.dimensions.sceneRect.width, height: canvas.dimensions.sceneRect.height } : null, waves: kind === "sea" && own.waveTo in WIND_FROM ? ((WIND_FROM[own.waveTo] - 90) * Math.PI) / 180 : null, angle: toward in WIND_FROM ? ((WIND_FROM[toward] - 90) * Math.PI) / 180 : kind === "falls" ? fallWindAngle(skyWindAngle) : null, current: riverCurrent(stepFlags(own)?.current), keeps: !!own.noFreeze, roofed: roofedRegion(areas), hulls: kind === "sea" ? hullsOver(areas) : undefined });
-    } catch { /* a broken region never breaks the rest */ }
+      const above = over.filter((r) => r.id !== region.id && boxesMeet(regionAreasKept(r), areas));
+      list.push({ id: region.id, areas, watery: true, over: above.map((r) => { const shape = regionAreasKept(r); return { areas: shape, ...overShadowOf(r.flags?.[ID], plainFloorOf(r) ?? ""), contact: false, cut: r.flags?.[ID]?.overWater === true, casts: castsShadow(r.flags?.[ID]), painted: !!plainFloorOf(r) && regionStepsOn() && !!floorLevel.show && showsTexture(r.flags?.[ID] ?? {}, sceneChoice), across: acrossOf(shape) }; }), lift: Math.max(0, ...above.filter((r) => castsShadow(r.flags?.[ID])).map((r) => overLiftOf({ above: r.elevation?.bottom, water: region.elevation?.bottom, distance: canvas.dimensions?.distance, grid: canvas.grid.size }))) || undefined, bed, kind, followsWind: toward === "wind", edge: stepEdge(own), depth: waterDepthLook(own.waterDepth), beach: own.seaBeach !== "off", sand: kind === "sea" && own.seaBeach !== "off" ? floorTextures.tile("sand", "beach") : null, map: canvas.dimensions?.sceneRect ? { x: canvas.dimensions.sceneRect.x, y: canvas.dimensions.sceneRect.y, width: canvas.dimensions.sceneRect.width, height: canvas.dimensions.sceneRect.height } : null, waves: kind === "sea" && own.waveTo in WIND_FROM ? ((WIND_FROM[own.waveTo] - 90) * Math.PI) / 180 : null, angle: toward in WIND_FROM ? ((WIND_FROM[toward] - 90) * Math.PI) / 180 : kind === "falls" ? fallWindAngle(skyWindAngle) : null, current: riverCurrent(stepFlags(own)?.current), keeps: !!own.noFreeze, roofed: roofedRegion(areas), hulls: kind === "sea" ? hullsOver(areas) : undefined });
+    } catch (err) { runtime?.trace?.("moving water", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
   }
   // The decorations' puddles and cave pools: still water in the outline their painted rim goes round, deep, the colour of a painted water floor.
   if (on) for (const pool of decorations.water()) {
@@ -3456,26 +3524,25 @@ const syncFloorShadows = (moving) => {
       const own = region.flags?.[ID], floor = plainFloorOf(region), caster = planeOfRegion(region);
       if (caster?.role === "overhead") {
         if (own?.castShadow === false || (own?.castShadow !== true && caster.blocksLight !== true)) continue;
-        const areas = regionAreas(region);
+        const areas = regionAreasKept(region);
         if (roofedRegion(areas)) continue;
         const seen = shadowOn(region, caster);
         if (!seen) continue;
-        const xs = areas.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 0)), ys = areas.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 1));
         const heightOf = (other) => { const plane = planeOfRegion(other); const tile = plane?.id?.kind === "tile" ? Number(plane.elevation) : NaN; return Number.isFinite(tile) ? tile : bottomOf(other); };
-        const high = floors.filter((r) => r !== region && heightOf(r) >= caster.elevation).map((r) => regionAreas(r));
-        list.push({ id: region.id, areas, ...overShadowOf(own, ""), across: Math.max(...xs) - Math.min(...xs) > Math.max(...ys) - Math.min(...ys), lift: overLiftOf({ above: caster.elevation, water: seen.elevation, distance: canvas.dimensions?.distance, grid: canvas.grid.size }), blockers: [...high, ...moving.map((m) => m.areas)], above: high, onWater: moving.some((m) => boxesMeet(m.areas, areas)), plane: { ...seen, zIndex: MAP_SORT.floorShadows } });
+        const high = floors.filter((r) => r !== region && heightOf(r) >= caster.elevation).map((r) => regionAreasKept(r));
+        list.push({ id: region.id, areas, ...overShadowOf(own, ""), across: acrossOf(areas), lift: overLiftOf({ above: caster.elevation, water: seen.elevation, distance: canvas.dimensions?.distance, grid: canvas.grid.size }), blockers: [...high, ...moving.map((m) => m.areas)], above: high, onWater: moving.some((m) => boxesMeet(m.areas, areas)), plane: { ...seen, zIndex: MAP_SORT.floorShadows } });
         continue;
       }
       if (!floor || floor === "water" || !castsShadow(own)) continue;
-      const areas = regionAreas(region);
+      const areas = regionAreasKept(region);
       if (roofedRegion(areas)) continue;
-      const bottom = bottomOf(region), beneath = floors.filter((r) => r !== region && bottomOf(r) < bottom && boxesMeet(regionAreas(r), areas)).map(bottomOf), xs = areas.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 0)), ys = areas.flatMap((a) => Array.from(a).filter((_, i) => i % 2 === 1));
-      const high = floors.filter((r) => r !== region && bottomOf(r) >= bottom).map((r) => regionAreas(r));
+      const bottom = bottomOf(region), beneath = floors.filter((r) => r !== region && bottomOf(r) < bottom && boxesMeet(regionAreasKept(r), areas)).map(bottomOf);
+      const high = floors.filter((r) => r !== region && bottomOf(r) >= bottom).map((r) => regionAreasKept(r));
       const seen = shadowOn(region, caster);
-      const spec = { id: region.id, areas, ...overShadowOf(own, floor), across: Math.max(...xs) - Math.min(...xs) > Math.max(...ys) - Math.min(...ys), lift: overLiftOf({ above: bottom, water: Math.max(base, ...beneath), distance: canvas.dimensions?.distance, grid: canvas.grid.size }), blockers: [areas, ...high, ...moving.map((m) => m.areas)], above: high, onWater: moving.some((m) => boxesMeet(m.areas, areas)), ...floorBodyOf(region, own, floor, areas, bottom, base) };
+      const spec = { id: region.id, areas, ...overShadowOf(own, floor), across: acrossOf(areas), lift: overLiftOf({ above: bottom, water: Math.max(base, ...beneath), distance: canvas.dimensions?.distance, grid: canvas.grid.size }), blockers: [areas, ...high, ...moving.map((m) => m.areas)], above: high, onWater: moving.some((m) => boxesMeet(m.areas, areas)), ...floorBodyOf(region, own, floor, areas, bottom, base) };
       if (seen) spec.plane = { ...seen, zIndex: MAP_SORT.floorShadows };
       list.push(spec);
-    } catch { /* a broken region never breaks the rest */ }
+    } catch (err) { runtime?.trace?.("floor shadows", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
   }
   floorShadows.sync(list);
 };
@@ -3485,8 +3552,21 @@ const syncMovingWater = (list) => {
 };
 let floorLooksTimer = null;
 const floorLooksSoon = () => { clearTimeout(floorLooksTimer); floorLooksTimer = setTimeout(syncFloorLooks, 50); };
-for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) { forgetPlanes(); floorLooksSoon(); } });
-for (const hook of ["createTile", "updateTile"]) Hooks.on(hook, () => { forgetPlanes(); floorLooksSoon(); });
+// Floors built again only for what concerns them: this scene's regions and itself, this module's settings, and not the ground
+// weather's saves (sent to every screen every couple of seconds as the ground changes) nor an edit to a region's decorations
+// alone (that one repaints the decorations by itself, below). (Built again on any scene's, any module's, and those, they were
+// rebuilt for nothing: the audit's finding.)
+const decorOnlyEdit = (changes) => { const keys = Object.keys(changes ?? {}).filter((k) => k !== "_id" && k !== "_stats"); if (keys.length !== 1 || keys[0] !== "flags") return false; const flags = Object.keys(changes.flags ?? {}); return flags.length === 1 && flags[0] === ID && Object.keys(changes.flags[ID] ?? {}).every((k) => /^(-=)?decor$/.test(k)); };
+const floorsCare = (hook, first, changes, options) => {
+  if (options?.animaterGround) return false;
+  if (hook === "updateSetting") return String(first?.key ?? "").startsWith(`${ID}.`);
+  if (hook === "clientSettingChanged") return String(first ?? "").startsWith(`${ID}.`);
+  if (hook === "updateScene") return first?.id === canvas?.scene?.id;
+  if (hook.endsWith("Region")) return first?.parent === canvas?.scene && !(hook === "updateRegion" && decorOnlyEdit(changes));
+  return true;
+};
+for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first, changes, options) => { if (!floorsCare(hook, first, changes, options)) return; if (!quietSave(first, changes, options)) { forgetPlanes(); floorLooksSoon(); } });
+for (const hook of ["createTile", "updateTile"]) Hooks.on(hook, (doc) => { if (doc?.parent !== canvas?.scene) return; forgetPlanes(); floorLooksSoon(); });
 Hooks.on("deleteTile", (doc) => {
   forgetPlanes();
   const id = String(doc?.id ?? doc?._id ?? "");

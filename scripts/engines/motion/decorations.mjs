@@ -175,8 +175,17 @@ export function crownOpen(d, creatures = [], grid = 100) {
  * light({ sun: { angle (radians, toward the shadow), length, strength } | null, treesByCanopy }) aims the shadows.
  * creatures([{ x, y, width }]) and tick(seconds) open the crowns over them. Feeds: trees(), water(), cavern(). clear().
  */
-export function createDecorations({ PIXI, shadows, ground, above, flat = ground, grid = () => 100, make = null, render = null }) {
-  const pictures = new Map(), regions = new Map();
+// The look a region is keyed by: its snow only where it has trees (their crowns carry their own painted snow); the rest are
+// painted without snow and take theirs from the snow layer's light, so a snowfall never builds them again (the audit's finding).
+const hasTrees = (spec) => Object.keys(spec.settings?.kinds ?? {}).some((k) => DECOR_KINDS[k]?.tree) || (spec.settings?.brushed ?? []).some((d) => DECOR_KINDS[d?.kind]?.tree);
+export const lookKey = (spec) => (hasTrees(spec) ? spec.look : { ...(spec.look ?? {}), snow: 0 });
+
+export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, above: aboveOf, flat: flatOf = groundOf, grid = () => 100, make = null, render = null }) {
+  // (Each layer asked for the region being drawn (`at`, its spec): on a raised floor tile its decorations go on that tile, not
+  // under it. Set while sync draws a region; null otherwise.)
+  let at = null;
+  const shadows = () => shadowsOf(at), ground = () => groundOf(at), above = () => aboveOf(at), flat = () => flatOf(at);
+  const pictures = new Map(), regions = new Map(), PICTURES_KEPT = 240;
   // The wind now (0-1, blowing toward angle in radians) and a clock for the cloth it stirs.
   let air = { strength: 0, angle: 0 }, clock = 0;
   let sun = null, canopyTrees = false, open = new Map(), snow = { amount: 0, toSun: [0, 0], z: 0, low: 1, color: [1, 0.97, 0.9] };
@@ -252,11 +261,12 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
         const { canBreak: _switch, prop: _options, ...drawn } = spec.settings ?? {};
         // (An area's holes are a property of its array, which JSON drops: written out, so a new hole rebuilds too.)
         const shape = (spec.areas ?? []).map((a) => [Array.from(a), a.holes ?? []]);
-        const key = JSON.stringify([drawn, shape, spec.look, g, spec.broken ?? []]), had = regions.get(spec.id);
+        const key = JSON.stringify([drawn, shape, lookKey(spec), g, spec.broken ?? [], !!spec.live]), had = regions.get(spec.id);
         if (had?.key === key) { had.prop = spec.settings?.prop; continue; }
         if (had) dropRegion(had);
+        at = spec;
         const { placements, shown } = decorShown(spec, g), where = spec.settings?.where ?? 'surface';
-        const r = { key, placements, shown, where, look: spec.look, prop: spec.settings?.prop, sprites: [], shadowSprites: [], crowns: [], cloth: [], castLayer: null };
+        const r = { key, placements, shown, where, look: spec.look, prop: spec.settings?.prop, sprites: [], shadowSprites: [], crowns: [], cloth: [], castLayer: null, pictures: new Set() };
         // Shadows: the soft dark at each standing one's foot whatever the light, then the cast ones in a layer of their own (one alpha for all, so overlaps never stack darker).
         const contact = new PIXI.Container(), cast = new PIXI.Container(), Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter;
         if (PIXI.BlurFilter) { contact.filters = [new PIXI.BlurFilter(g * 0.05)]; cast.filters = [new PIXI.BlurFilter(g * 0.015), ...(Alpha ? [new Alpha(1)] : [])]; }
@@ -267,7 +277,8 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
         for (const d of shown) {
           const role = decorRole(d, where); if (!role || role === 'cavern') continue;
           // (Standing ones take their snow from the snow layer over them, flat ones the ground's lying over them; a tree's crown has its own painted.)
-          const { pic, scale } = picture(d, role !== 'tree' && render ? { ...spec.look, snow: 0 } : spec.look); if (!pic) continue;
+          const seenLook = role !== 'tree' && render ? { ...spec.look, snow: 0 } : spec.look; r.pictures.add(pictureOf(d, seenLook).key);
+          const { pic, scale } = picture(d, seenLook); if (!pic) continue;
           if (pic.shadow && role !== 'flat') {
             const foot = place(new PIXI.Sprite(pic.shadow), d, pic, scale); foot.tint = 0x06070c; foot.position.set(d.x + g * 0.02, d.y + g * 0.03); foot.scale.set(foot.scale.x * 1.06, foot.scale.y * 1.06); contact.addChild(foot);
             // The cast one: an outer holder turned to the sun (to stretch), the silhouette inside turned to the decoration's own way.
@@ -285,10 +296,15 @@ export function createDecorations({ PIXI, shadows, ground, above, flat = ground,
         }
         shadows().addChild(contact); shadows().addChild(cast); shadows().addChild(lampLayer); r.sprites.push(contact, cast, lampLayer);
         // Snow on the standing ones (not underground). (A tree's crown carries its own, painted, as it opens over the creatures.)
-        if (where !== 'cave') { const standing = shown.filter((d) => decorRole(d, where) === 'standing' && !DECOR_KINDS[d.kind].light).map((d) => ({ d, ...picture(d, { ...spec.look, snow: 0 }) })).filter((it) => it.pic); try { r.snow = bakeSnow(r, standing); } catch (err) { console.warn('Animater | decoration snow', err); } }
-        regions.set(spec.id, r); aim(r);
+        // (Not while a stroke still paints it (`live`): baked once, when the stroke ends.)
+        if (where !== 'cave' && !spec.live) { const standing = shown.filter((d) => decorRole(d, where) === 'standing' && !DECOR_KINDS[d.kind].light).map((d) => ({ d, ...picture(d, { ...spec.look, snow: 0 }) })).filter((it) => it.pic); try { r.snow = bakeSnow(r, standing); } catch (err) { console.warn('Animater | decoration snow', err); } }
+        regions.set(spec.id, r); aim(r); at = null;
       }
       for (const [id, r] of regions) if (!seen.has(id)) { dropRegion(r); regions.delete(id); }
+      // (Pictures for looks no longer shown let go once there are many: out of PIXI's cache, not destroyed, so a wreck or the
+      // brush's ghost still holding one keeps it. Kept for good till the scene closed, a season, the wet, night and snow each
+      // made a whole new set: the audit's finding.)
+      if (pictures.size > PICTURES_KEPT) { const used = new Set(); for (const r of regions.values()) for (const k of r.pictures ?? []) used.add(k); for (const [k, p] of pictures) { if (used.has(k)) continue; pictures.delete(k); for (const t of [p?.art, p?.shadow, p?.trunk, p?.cloth]) { try { if (t) { PIXI.Texture.removeFromCache?.(t); PIXI.BaseTexture.removeFromCache?.(t.baseTexture); } } catch { /* gone */ } } } }
     },
     // snowAmount 0-1: how much snow lies now (as the ground's), its light from the same sun or moon (moon: its cooler colour).
     light({ sun: now = null, treesByCanopy = false, snowAmount = 0, moon = false } = {}) {
