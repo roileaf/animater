@@ -102,3 +102,14 @@ export function drawBridge(g, sh, x0, y0, x1, y1, { w = 30, drop = 20, rise = nu
   }
   return planks;
 }
+
+/** A bridge's post (into `g`) at (x, y): a stout round of wood seen from above, inked, lit on top, its shadow a little away from the
+ *  sun into `sh`; snow on it when some lies. Where a swaying span leaves its still end, a pair of these hold its rope rails
+ *  (Roi, of a rail cut off there: "you can fix it by putting another pole where it cuts off"). */
+export function drawPost(g, sh, x, y, { k = 1, sun = { x: -Math.SQRT1_2, y: -Math.SQRT1_2 }, wet = 0, snow = 0 } = {}) {
+  const r = 4.2 * k, tone = 0.35 * (1 - 0.45 * Math.max(0, Math.min(1, wet)));
+  if (sh) { sh.lineStyle(0); sh.beginFill(0x0d0905, 1); sh.drawCircle(x - sun.x * 5 * k, y - sun.y * 5 * k, r); sh.endFill(); }
+  g.lineStyle(k, INK, 0.85); g.beginFill(wood(tone), 1); g.drawEllipse(x, y, r, r * 0.88); g.endFill();
+  g.lineStyle(0); g.beginFill(wood(tone + 0.35), 1); g.drawEllipse(x - 0.9 * k, y - 0.9 * k, r * 0.5, r * 0.42); g.endFill();
+  if (snow > 0.05) { g.beginFill(0xf3f6fb, Math.min(1, snow * 1.3)); g.drawEllipse(x, y - r * 0.2, r * 0.75, r * 0.5); g.endFill(); }
+}
