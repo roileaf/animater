@@ -1697,6 +1697,18 @@ const wallShadowsOn = () => { try { return !shadowsOffHere() && movementFeelSett
 // module's top and bottom, else its own Animater shadow fields, else the level's ceiling, else the world's height.
 const wallSpanOf = (doc) => wallSpan(doc.flags, { floor: Number(canvas.level?.elevation?.bottom) || 0, per: Number(canvas.grid?.distance) || 1, ceiling: canvas.level?.elevation?.top ?? null });
 // The walls of the level shown (a wall on no level stands on all of them).
+// A wall's top over the level's floor, standing on the ground under it (the raised ground's height at its middle): a 10 ft wall
+// on a 20 ft clifftop stands to 30 ft. In squares. Walls whose height the Wall Height module sets are taken as given (its
+// heights are the scene's own), and a wall to the ceiling stays to the ceiling. (Roi chose to raise a whole clifftop, house
+// and all, with "walls fixed": the house walls keep stopping light and shading up there.)
+const wallTopOnGround = (d) => {
+  const span = wallSpanOf(d), mod = d.flags?.["wall-height"] ?? {}, given = (v) => v !== null && v !== undefined && v !== "" && Number.isFinite(Number(v));
+  const height = Number(hotSetting("wallShadowHeight")) || 2, own = d.flags?.[ID] ?? {};
+  if (given(mod.top) || given(mod.bottom)) return Number.isFinite(span.top) ? span.top : (Number(span.bottom) || 0) + height;
+  if (Number.isFinite(span.top) && !given(own.shadowTop)) return span.top;
+  let ground = 0; try { const { field } = heightsOf(canvas.scene, canvas.level?.id ?? null); if (field.parts.length) { const c = d.c; ground = Math.max(0, field.groundAt({ x: (c[0] + c[2]) / 2, y: (c[1] + c[3]) / 2 })) / (Number(canvas.grid?.distance) || HEIGHT_STEP); } } catch { /* none */ }
+  return (Number.isFinite(span.top) ? span.top : (Number(span.bottom) || 0) + height) + ground;
+};
 const wallsHere = () => {
   const level = canvas.level?.id;
   return (canvas.walls?.placeables ?? []).map((w) => w.document).filter((d) => !d.levels?.size || !level || d.levels.has(level))
@@ -1771,7 +1783,7 @@ const rebuildWallShadows = () => {
     // The moon shines by night: the darkness is its time, not a reason to fade.
     const darkness = Number(canvas.environment?.darknessLevel) || 0, sun = (sunNow.moon ? 1 : Math.max(0, 1 - darkness * 1.2)) * (Number(sunNow.strength) || 0);
     wallQuads = sun > 0.02 ? wallShadowQuads({ walls: wallsHere(), sun: sunNow, grid: canvas.grid.size, height: Number(hotSetting("wallShadowHeight")) || 2 }) : [];
-    wallShadows.build({ quads: wallQuads, bounds: canvas.dimensions.sceneRect, alpha: 0.35 * sun, indoors: indoorPolygons(), open: undergroundScene() ? [] : landedOpenings(), grid: canvas.grid.size, tops: wallShadowTops() });
+    wallShadows.build({ quads: wallQuads, bounds: canvas.dimensions.sceneRect, alpha: 0.35 * sun, indoors: indoorPolygons(), open: undergroundScene() ? [] : landedOpenings(), grid: canvas.grid.size, tops: wallShadowTops(), wallTop: Math.max(0, ...(canvas.walls?.placeables ?? []).filter((w) => !w.document.flags?.[ID]?.cliffOf && Number(w.document.light) > 0).map((w) => wallTopOnGround(w.document))) });
   } catch { wallQuads = []; wallShadows.clear(); } finally {
     // Creatures look again for whether they stand in the shade or indoors (with wall shadows off too), and their sun
     // shadows lie under the new sunlit floor.
@@ -3214,7 +3226,7 @@ const syncLightSpill = () => {
         const groups = reachableParts(parts, { x: src.data.x, y: src.data.y, radius: src.data.radius }); if (!groups.length || !src.shape?.points) continue;
         let n = 0;
         for (const { height, areas } of groups) {
-          const ignore = (edge) => { const w = edge?.type === "wall" ? (edge.object?.document ?? edge.object) : null; if (!w) return false; const span = wallSpanOf(w), top = Number.isFinite(span.top) ? span.top : (Number(span.bottom) || 0) + (Number(hotSetting("wallShadowHeight")) || 2); return lightPasses(top * per, height); }; // (A wall with no height of its own stands as tall as walls do for their shadows: the Wall shadow height setting.)
+          const ignore = (edge) => { const w = edge?.type === "wall" ? (edge.object?.document ?? edge.object) : null; if (!w) return false; return lightPasses(wallTopOnGround(w) * per, height); }; // (A wall with no height of its own stands as tall as walls do for their shadows: the Wall shadow height setting.)
           const reach = Backend.create(src.origin ?? { x: src.data.x, y: src.data.y, elevation: src.data.elevation ?? 0 }, { ...src._getPolygonConfiguration(), animaterIgnore: ignore });
           for (const piece of spillPieces({ ClipperLib: globalThis.ClipperLib, reach: Array.from(reach.points), raised: areas, lit: Array.from(src.shape.points), least: (canvas.grid?.size ?? 100) ** 2 * 0.02, overlap: (canvas.grid?.size ?? 100) * 0.35 })) {
             // (Its shape carries the light's own middle and reach, as Foundry's sweeps do: it builds the light's mesh from them, and

@@ -928,7 +928,8 @@ export function createWallShadows({ PIXI, root, render }) {
   return {
     // `tops`: raised ground ([{ areas: [flat x, y, �], height: squares up from the floor }]): a wall no taller throws no shadow onto
     // it, and the sun stays on it. (Roi: "a wall which is 0-10 and the slope is 40 ft yet the wall shadow is on its top?")
-    build({ quads = [], bounds, alpha = 1, indoors = [], open = [], grid = 100, tops = [] } = {}) {
+    // (`wallTop`: the tallest wall's top over the floor, standing on its own ground, when the caller knows it.)
+    build({ quads = [], bounds, alpha = 1, indoors = [], open = [], grid = 100, tops = [], wallTop = null } = {}) {
       drop();
       if (!quads.length || !bounds || !(alpha > 0)) return;
       // Never past what any graphics card takes (a huge scene's picture is drawn a little smaller still).
@@ -940,7 +941,7 @@ export function createWallShadows({ PIXI, root, render }) {
       for (const q of quads) { g.beginFill(0x000000, q.alpha); g.drawPolygon(at(q.points)); g.endFill(); }
       // Under a roof (a region that keeps the weather out) the sun never reaches: nothing drawn there.
       if (indoors.length) g.addChild(...eraseRooms(PIXI, indoors, at, grid * k));
-      const tallest = quads.reduce((m, q) => Math.max(m, Number.isFinite(q.top) ? q.top : Infinity), 0), above = tops.filter((t) => t?.height >= tallest && t.areas?.length);
+      const tallest = Number.isFinite(wallTop) ? wallTop : quads.reduce((m, q) => Math.max(m, Number.isFinite(q.top) ? q.top : Infinity), 0), above = tops.filter((t) => t?.height >= tallest && t.areas?.length);
       const onTops = (color, blend) => { const c = new PIXI.Graphics(); if (blend) c.blendMode = blend; c.beginFill(color, 1); for (const t of above) for (const a of t.areas) c.drawPolygon(at(Array.from(a))); c.endFill(); return c; };
       if (above.length) g.addChild(onTops(0xffffff, PIXI.BLEND_MODES.ERASE));
       g.filters = [new PIXI.BlurFilter(SOFTNESS)];
