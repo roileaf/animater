@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 4.2.1
+
+Cliffs seen from above, hills, and sight past raised ground.
+
+- **Top-down cliffs.** A Cliff view toggle (Heights tab and a raised part's panel) draws cliffs as a top-down map shows them: a stepped band of rock out from the rim, a ring every 5 ft. Walls stand at the band's outer edge, and the cliff throws its shadow from there, as long as the sun's height makes it (up to six squares), fading out along its length and shorter over lower raised ground. Faces turned from the sun lie in shade.
+- **Hills.** A raised part's Edge can be Cliff or Hill. A hill slopes out gradually (about 0.6 squares per 5 ft), walked up step by step, its flank shaded and, seen from above, crossed by contour lines.
+- **Raised ground hides what lies past it.** From below a clifftop or hilltop you no longer see past its rim; standing as high or higher you do. A bridge's landing is seen past from the bridge's low end up, so you see along it. Hills, crossings and parts with cliff walls off hide without blocking movement.
+- **Cliff faces at 2:1.** Faces are drawn half as deep as the drop, one rock band per 5 ft, with walls at their very foot. Ladders and ropes reach from rim to foot and get a rung a foot.
+- **Light over short walls.** A light reaches raised ground and bridge decks past walls no taller than they are, as one light (no seams). Walls count their height from the ground they stand on.
+- **Shadows.** A token on a bridge or raised top keeps its shadow on it. A bridge's rope rails shadow its deck; its own shadow stays off the clifftop; ladder and rope shadows stay off it too. Wall and roof shadows no longer fall on higher ground.
+- **Burrow holes** are painted: a ragged inked opening, its inner wall shaded into the dark, dug earth heaped around it.
+- **Fixes.** A bridge holds still up to its posts and sways from them. Cliff walls no longer gap where the outline turns sharply. Ladders no longer break slope lines. Walls update at once when a crossing is added or removed.
+
 ## 4.2.0
 
 Raised ground: cliffs, ramps, ladders, ropes and bridges you paint on the map, that tokens and animals respect.
