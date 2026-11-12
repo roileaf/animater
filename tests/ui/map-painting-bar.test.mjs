@@ -176,7 +176,7 @@ test('main: the Heights tab raises, lays ramps and steps heights on the wheel; w
   assert.match(main, /if \(!box\.filters\?\.length\) \{ const Alpha = PIXI\.AlphaFilter \?\? PIXI\.filters\?\.AlphaFilter; if \(!Alpha\) return; const whole = new Alpha\(1\); whole\.padding = grid; box\.filters = \[whole\]; \}/, 'live: erasing straight onto the map punched a black hole');
   assert.match(main, /const kind = brushChoices\(\)\.crossKind, w = kind === "ladder" \? grid\(\) \* 0\.45 : kind === "rope" \? grid\(\) \* 0\.3 : Math\.max\(grid\(\) \* 0\.5, sizeNow\(\) \* grid\(\)\);/, 'a ramp or bridge as wide as the brush, a ladder or rope its own width');
   // Roi: "can we also add option to put ladders/ropes/bridges?" Each drawn as mocked, a ramp hatched.
-  assert.match(main, /if \(ramp\.kind === "ladder"\) drawLadder\(built, faceSh, top\.x, top\.y, foot\.x, foot\.y,/);
+  assert.match(main, /if \(ramp\.kind === "ladder"\) drawLadder\(built, own\.g, top\.x, top\.y, foot\.x, foot\.y,/);
   assert.match(main, /swayPiece\(\{ a: ramp\.a, b: ramp\.b, half: ramp\.w \* 0\.56 \+ 6 \* k, pad: sheetPad, sun, seed, root: box, weight: holdWeight,/, 'the raised deck sways in the wind');
   // Roi: "it was supposed to cover it": still up to its posts, swaying only between them.
   assert.match(main, /const holdWeight = \(v\) => \(hold1 - hold0 < 0\.1 \|\| v <= hold0 \|\| v >= hold1 \? 0 :/);
