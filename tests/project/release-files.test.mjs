@@ -6,6 +6,7 @@ import path from 'node:path';
 import { releaseFiles } from '../../tools/release-files.mjs';
 import { gaitStepFiles, bodyStepFiles, FOOTSTEP_FILES, MOVE_SOUND_FILES, THUD_FILES } from '../../scripts/engines/motion/movement-feel.mjs';
 import { BREAK_SOUNDS, SPLASH_SOUNDS } from '../../scripts/engines/props/prop-sounds.mjs';
+import { ART_GROUPS } from '../../scripts/engines/motion/animal-art.mjs';
 
 test('release includes every bundled movement recording and its attribution', () => {
   const files = new Set(releaseFiles());
@@ -53,4 +54,11 @@ test('release includes workers a module reaches through new URL(..., import.meta
   const files = new Set(releaseFiles());
   assert.ok(files.has('scripts/engines/camera/lens-blood-paint-worker.mjs'), 'the lens blood paint worker ships');
   assert.ok(files.has('scripts/engines/camera/lens-blood-paint.mjs'), 'and what it imports');
+});
+
+// GitHub issue #23: animal-art.mjs builds its sheet paths from group names (`${base}/${group}.json`), which the literal scan
+// cannot see, so 4.1.4 shipped without assets/animals and every world logged seven 404s.
+test('release includes every painted animal sheet: its map, its picture and its light map', () => {
+  const files = new Set(releaseFiles());
+  for (const group of ART_GROUPS) for (const name of [`${group}.json`, `${group}.webp`, `${group}-n.webp`]) assert.ok(files.has(`assets/animals/${name}`), `Missing animal sheet: ${name}`);
 });

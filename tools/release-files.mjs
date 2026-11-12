@@ -40,6 +40,12 @@ export function releaseFiles(root = ROOT) {
     }
   };
   bundledSounds('assets/sounds');
+  // The painted animal sheets (engines/motion/animal-art.mjs) are fetched by group name, so the scan cannot see them either:
+  // ship each sheet's map and pictures. (GitHub issue #23: 4.1.4 shipped without them.)
+  const animals = 'assets/animals';
+  if (existsSync(path.join(root, animals))) for (const entry of readdirSync(path.join(root, animals), { withFileTypes: true })) {
+    if (entry.isFile() && /\.(json|webp)$/i.test(entry.name)) seen.add(path.posix.join(animals, entry.name));
+  }
   return [...EXTRA.filter(f => existsSync(path.join(root, f))), ...[...seen].filter(f => f !== 'module.json').sort()];
 }
 
