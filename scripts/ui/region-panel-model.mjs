@@ -188,3 +188,12 @@ export function summaryOf(id, own = {}, floor) {
     default: return '';
   }
 }
+
+// A region's shapes moved by (dx, dy) (pure): a polygon's points, a rectangle's or an ellipse's corner or middle. (Dragged with
+// its panel open: Roi, "when right clicking a region lets allow draggin it to move it?")
+export const movedShapes = (shapes, dx, dy) => (shapes ?? []).map((shape) => {
+  const o = typeof shape?.toObject === "function" ? shape.toObject() : { ...shape };
+  if (Array.isArray(o.points)) o.points = o.points.map((v, i) => Math.round(v + (i % 2 ? dy : dx)));
+  else if (Number.isFinite(o.x) && Number.isFinite(o.y)) { o.x = Math.round(o.x + dx); o.y = Math.round(o.y + dy); }
+  return o;
+});

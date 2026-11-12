@@ -245,3 +245,11 @@ test('a raised part or a crossing opens on its Height section; it is never offer
   assert.equal(summaryOf('height', { ramp: { ax: 0, ay: 0, bx: 10, by: 0, w: 4, kind: 'bridge', lo: 15 } }), 'Bridge · 15 → ground');
   assert.ok(!moreSections('ground', {}).some((s) => s.id === 'height'));
 });
+
+// Roi: "when right clicking a region lets allow draggin it to move it?"
+test('a dragged region\'s shapes move by the drag: polygon points, a rectangle\'s corner', async () => {
+  const { movedShapes } = await import('../../scripts/ui/region-panel-model.mjs');
+  const out = movedShapes([{ type: 'polygon', points: [0, 0, 100, 0, 100, 100], hole: false }, { type: 'rectangle', x: 10, y: 20, width: 50, height: 50 }, { toObject: () => ({ type: 'ellipse', x: 5, y: 5, radiusX: 3, radiusY: 3 }) }], 50, -25);
+  assert.deepEqual(out[0].points, [50, -25, 150, -25, 150, 75]); assert.equal(out[0].hole, false);
+  assert.deepEqual([out[1].x, out[1].y, out[1].width], [60, -5, 50]); assert.deepEqual([out[2].x, out[2].y], [55, -20]);
+});

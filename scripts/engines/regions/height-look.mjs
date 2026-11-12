@@ -19,6 +19,15 @@ const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
  *  colour pushed most of the way toward stone, so a sandy bank stays sandy and a grassy rise turns earthen. */
 import { openAt, inAreas } from './heights.mjs';
 
+// Lying snow's white, a little blue, and the grey-blue line under it.
+export const SNOW = 0xf3f6fb, SNOW_EDGE = 0x5a6e8c;
+/** The rock's colours in the weather (pure): wet, darker and cooler; under snow, paler and cooler; the top's grass whitened.
+ *  `wet`, `snow` 0-1, as the ground's (Roi: "lets make heights support weather"; he chose the mock's look). */
+export function weatherColours(colours, { wet = 0, snow = 0 } = {}) {
+  const w = Math.max(0, Math.min(1, Number(wet) || 0)), sn = Math.max(0, Math.min(1, Number(snow) || 0)); if (!w && !sn) return colours;
+  const tone = (c, dark) => { let v = rgb(c); if (w) v = mix(v, dark ? [14, 16, 22] : [70, 72, 78], (dark ? 0.5 : 0.45) * w); if (sn) v = mix(v, dark ? [80, 88, 104] : [190, 198, 210], (dark ? 0.3 : 0.35) * sn); return hexOf(v); };
+  return { ...colours, stone: tone(colours.stone), light: tone(colours.light), dark: tone(colours.dark, true), tuft: hexOf(mix(rgb(colours.tuft), [236, 240, 246], 0.85 * sn)) };
+}
 export function cliffColours(ground = null, top = null) {
   // (A colour that is no number, a map not read right, is none: live, it painted the cliffs black.)
   const known = (c) => Number.isInteger(c) && c >= 0 && c <= 0xffffff;
@@ -49,7 +58,9 @@ export function layOut(run, { grid = 100, step = 5, sun = null, seed = 0 } = {})
     // (Where an open run ends, its wall tapers to nothing over half a square: a cliff dying into level ground.)
     const from = along[idx], ends = run.closed ? 1 : Math.max(0, Math.min(1, from / (grid * 0.5), (len - from) / (grid * 0.5))), taper = ends * ends * (3 - 2 * ends);
     // (Its depth wanders only a little: wandering a lot, its foot became a spiky hem.)
-    const w = deep * (0.12 + 0.88 * south) * (0.88 + 0.24 * noise(p.s / (grid * 0.9), seed + 3)) * (0.9 + 0.2 * away) * taper;
+    // (Not by the sun: deeper facing away from it, the wall grew and shrank as the day went on. Roi: "why changing time of day
+    // changes cliff height?")
+    const w = deep * (0.12 + 0.88 * south) * (0.88 + 0.24 * noise(p.s / (grid * 0.9), seed + 3)) * taper;
     const rx = p.x + p.nx * r, ry = p.y + p.ny * r;
     return { ...p, rx, ry, fx: rx + p.nx * w * 0.25, fy: ry + w, w, away, lit, south };
   });
@@ -132,7 +143,7 @@ function stepStops(field, a, b, grid, step, gap) {
 /** One loose rock (into `g`) at (x, y), about `r` px: an angular, chipped outline flat at its foot (5 to 7 corners), a dark
  *  shadow tucked under it, a lit facet on its top toward the sun and a crease across it. (Roi, of round pebbles at a cliff's
  *  foot: "can the circles look more realistic like rocks?") Pure but for `g`'s calls. */
-export function drawStone(g, x, y, r, { seed = 0, body = [120, 110, 95], ink = 0x1a120b, k = 1, sun = null } = {}) {
+export function drawStone(g, x, y, r, { seed = 0, body = [120, 110, 95], ink = 0x1a120b, k = 1, sun = null, wet = 0, snow = 0 } = {}) {
   const n = 5 + Math.floor(hash(seed) * 3), turn = hash(seed + 1) * Math.PI * 2, ring = [];
   for (let q = 0; q < n; q++) {
     const ang = turn + (q / n) * Math.PI * 2 + (hash(seed + q * 3) - 0.5) * 0.7, rr = r * (0.72 + hash(seed + q * 5) * 0.4);
@@ -148,12 +159,15 @@ export function drawStone(g, x, y, r, { seed = 0, body = [120, 110, 95], ink = 0
   const low = ring.filter(([px, py]) => (px - x) * sx + (py - y) * sy < 0 && py >= y - r * 0.1);
   if (low.length >= 2) { const sh = [...low, [x, y + r * 0.1]].flatMap(([px, py]) => [x + (px - x) * 0.9, y + (py - y) * 0.9]); g.lineStyle(0); g.beginFill(hexOf(mix(body, [8, 5, 3], 0.45)), 0.75); g.drawPolygon(sh); g.endFill(); }
   if (r > 3 * k && hash(seed + 7) > 0.4) { g.lineStyle(Math.max(0.6, 0.7 * k), ink, 0.55); g.moveTo(x - r * 0.5, y - r * 0.15 + hash(seed + 8) * r * 0.3); g.lineTo(x + r * 0.1, y + r * 0.05); g.lineTo(x + r * 0.4, y - r * 0.25); }
+  // (In the weather: its foot darkened wet; snow lying on its top, more the more lies.)
+  if (wet > 0.05) { g.lineStyle(Math.max(0.8, 1.1 * k), 0x0a0c12, 0.55 * wet); g.moveTo(x - r * 1.1, y + r * 0.42); g.lineTo(x + r * 1.1, y + r * 0.38); }
+  if (snow > 0.05) { g.lineStyle(0); g.beginFill(SNOW, Math.min(1, snow * 1.2)); g.drawEllipse(x - r * 0.05, y - r * 0.42, r * 0.95 * (0.6 + 0.4 * snow), r * 0.32 * (0.6 + 0.4 * snow)); g.endFill(); }
   return n;
 }
 
 /** Draws one cliff run into `g` (a PIXI.Graphics): its wall in columns of rock, streaks and a ledge or two down it, scree at
  *  its foot, the top's grass over its lip and its rim's ink. `colours` from cliffColours. Returns how many columns it drew. */
-export function drawCliffRun(g, run, { grid = 100, step = 5, sun = null, seed = 0, colours = cliffColours() } = {}) {
+export function drawCliffRun(g, run, { grid = 100, step = 5, sun = null, seed = 0, colours = cliffColours(), wet = 0, snow = 0 } = {}) {
   const L = layOut(run, { grid, step, sun, seed }), n = L.length; if (n < 2) return 0;
   const light = rgb(colours.light), dark = rgb(colours.dark), k = grid / 100, last = run.closed ? n : n - 1, P = (i) => L[((i % n) + n) % n];
   const at = (p, t) => [p.rx + (p.fx - p.rx) * t, p.ry + (p.fy - p.ry) * t];
@@ -174,18 +188,22 @@ export function drawCliffRun(g, run, { grid = 100, step = 5, sun = null, seed = 
     const p = P(i), q = P(i + 1); if (p.w < grid * 0.06) continue;
     if (Math.abs(mass(q) - mass(p)) > 0.035) { g.lineStyle(Math.max(1, 1.8 * k), 0x0a0603, 0.75); const [x1, y1] = at(p, 0.02), [x2, y2] = at(p, 0.6 + hash(p.s * 2) * 0.4); g.moveTo(x1, y1); g.lineTo(x2 + (hash(p.s) - 0.5) * 4 * k, y2); }
     else if (i % 4 === 0) { g.lineStyle(Math.max(0.6, 0.8 * k), 0x0a0603, 0.28); const [x1, y1] = at(p, 0.02), [x2, y2] = at(p, 0.3 + hash(p.s * 3) * 0.5); g.moveTo(x1, y1); g.lineTo(x2, y2); }
+    // (Wet: glossy dark runs down from the rim, a pale glint beside each.)
+    if (wet > 0.05 && i % 2 === 1 && hash(p.s * 1.9 + seed) < 0.55) { const [x1, y1] = at(p, 0.03), [x2, y2] = at(p, 0.45 + hash(p.s * 4.7) * 0.5), [x3, y3] = at(p, 0.4 * hash(p.s * 2.9) + 0.15); g.lineStyle(Math.max(1, 1.8 * k), 0x0a0c12, 0.5 * wet); g.moveTo(x1, y1); g.lineTo(x2 + (hash(p.s * 6) - 0.5) * 2 * k, y2); g.lineStyle(Math.max(0.6, 0.7 * k), 0xdce6ff, 0.28 * wet); g.moveTo(x1 + k, y1 + 2 * k); g.lineTo(x3 + k, y3); }
   }
   // Ledges across a tall face: one for each seven tenths of a square of it, three at most, broken here and there.
   const tallest = L.reduce((m, p) => Math.max(m, p.w), 0), ledges = Math.min(3, Math.floor(tallest / (grid * 0.7)));
   for (let l = 1; l <= ledges; l++) {
     const tt = l / (ledges + 1); g.lineStyle(Math.max(0.8, 1.2 * k), 0x0a0603, 0.45); let on = false;
     for (let i = 0; i <= last; i++) { const p = P(i); if (p.w < grid * 0.3 || noise(p.s / (grid * 0.6), seed + l * 5) < 0.35) { on = false; continue; } const pt = at(p, tt); if (on) g.lineTo(...pt); else { g.moveTo(...pt); on = true; } }
+    // (Snow lying along it.)
+    if (snow > 0.1) { g.lineStyle(Math.max(1, 2.6 * k * (0.5 + 0.5 * snow)), SNOW, Math.min(1, snow * 1.3)); on = false; for (let i = 0; i <= last; i++) { const p = P(i); if (p.w < grid * 0.3 || noise(p.s / (grid * 0.6), seed + l * 5) < 0.35) { on = false; continue; } const [x, y] = at(p, tt); if (on) g.lineTo(x, y - 1.5 * k); else { g.moveTo(x, y - 1.5 * k); on = true; } } }
   }
   // Its foot buried in rubble: stones, bigger under a taller wall.
   for (const p of L) {
     if (p.w < grid * 0.08 || hash(p.s * 0.37 + seed) > 0.22) continue;
     const r = (2.5 + hash(p.s) * 5 * (0.6 + (tallest / grid) * 0.25)) * k, x = p.fx + (hash(p.s * 5) - 0.5) * 10 * k, y = p.fy - 2 * k + hash(p.s * 7) * 8 * k;
-    drawStone(g, x, y, r, { seed: p.s * 13 + seed, body: mix(light, dark, 0.35 + hash(p.s * 9) * 0.3), ink: colours.ink, k, sun });
+    drawStone(g, x, y, r, { seed: p.s * 13 + seed, body: mix(light, dark, 0.35 + hash(p.s * 9) * 0.3), ink: colours.ink, k, sun, wet, snow });
   }
   // The top's grass hanging over the lip, in clumps.
   for (const p of L) {
@@ -198,6 +216,18 @@ export function drawCliffRun(g, run, { grid = 100, step = 5, sun = null, seed = 
     const a = P(i), b = P(i + 1), fade = run.closed ? 1 : Math.min(1, i / 3, (n - 2 - i) / 3); if (fade <= 0) continue;
     g.lineStyle({ width: (1.4 + 2 * a.south) * k * (0.5 + 0.5 * fade), color: colours.ink, alpha: 0.95 * fade, cap: 'round' }); g.moveTo(a.rx, a.ry); g.lineTo(b.rx, b.ry);
     if (a.lit > 0.3) { g.lineStyle(Math.max(0.8, 1.2 * k), 0xfaecc8, 0.35 * a.lit * fade); g.moveTo(a.rx - a.nx * 2 * k, a.ry - a.ny * 2 * k); g.lineTo(b.rx - b.nx * 2 * k, b.ry - b.ny * 2 * k); }
+    // (Wet: a sheen along the rim, just down its face.)
+    if (wet > 0.05) { g.lineStyle(Math.max(0.6, 0.9 * k), 0xe1ebff, 0.45 * wet * fade); const [x1, y1] = at(a, Math.min(0.12, (2 * k) / Math.max(a.w, 1))), [x2, y2] = at(b, Math.min(0.12, (2 * k) / Math.max(b.w, 1))); g.moveTo(x1, y1); g.lineTo(x2, y2); }
+  }
+  // Snow: a ragged white cap along the rim, over its lip and a way down a south face, thicker the more lies.
+  if (snow > 0.05) {
+    const cap = (p) => Math.min(p.w * 0.35, (2 + 5 * Math.abs(Math.sin(p.s / (grid * 0.09) + seed))) * k * snow * (0.4 + 0.6 * p.south));
+    for (let i = 0; i < last; i++) {
+      const a = P(i), b = P(i + 1), fade = run.closed ? 1 : Math.min(1, i / 3, (n - 2 - i) / 3); if (fade <= 0) continue;
+      const [ax, ay] = at(a, cap(a) / Math.max(a.w, 1)), [bx, by] = at(b, cap(b) / Math.max(b.w, 1));
+      g.lineStyle(0); g.beginFill(SNOW, Math.min(1, 0.4 + snow) * fade); g.drawPolygon([a.rx - a.nx * 1.6 * k, a.ry - a.ny * 1.6 * k, b.rx - b.nx * 1.6 * k, b.ry - b.ny * 1.6 * k, bx, by + 1.2 * k, ax, ay + 1.2 * k]); g.endFill();
+      g.lineStyle(Math.max(0.6, 0.8 * k), SNOW_EDGE, 0.5 * fade); g.moveTo(ax, ay + 1.2 * k); g.lineTo(bx, by + 1.2 * k);
+    }
   }
   return columns;
 }

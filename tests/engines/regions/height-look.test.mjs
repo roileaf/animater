@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cliffColours, faceDepth, layOut, drawCliffRun, footShade, topGlow, castOffset, drawSlope, depthHaze, drawStone, faceFeet, cliffStops, onCliffFace } from '../../../scripts/engines/regions/height-look.mjs';
+import { cliffColours, faceDepth, layOut, drawCliffRun, footShade, topGlow, castOffset, drawSlope, depthHaze, drawStone, faceFeet, cliffStops, onCliffFace, weatherColours, SNOW } from '../../../scripts/engines/regions/height-look.mjs';
 import { cliffRuns, heightField } from '../../../scripts/engines/regions/heights.mjs';
 
 // Roi's friend, of rock boulders round the rim: "this doesnt look elevated at all"; the friend's "brighter in the middle and
@@ -120,4 +120,21 @@ test('the ground under a south cliff\'s painted wall is its face; open ground, a
   const field = heightField({ parts: [{ id: 'P', height: 20, areas: [sq(100, 100, 300, 300)] }], ramps: [{ id: 'R', a: { x: 200, y: 450 }, b: { x: 200, y: 280 }, w: 60, kind: 'ramp', lo: null, hi: null }] });
   assert.ok(onCliffFace(field, { x: 250, y: 330 }, { grid: 100 }));
   assert.ok(!onCliffFace(field, { x: 250, y: 600 }, { grid: 100 }) && !onCliffFace(field, { x: 250, y: 200 }, { grid: 100 }) && !onCliffFace(field, { x: 200, y: 330 }, { grid: 100 }));
+});
+
+test('a cliff\'s wall is as deep whatever the time of day', () => {
+  const run = mesa(), at = (sun) => layOut(run, { grid: 100, sun }).map((p) => p.w);
+  assert.deepEqual(at({ x: -1, y: 0 }), at({ x: 1, y: 0 })); assert.deepEqual(at(sun), at(null));
+});
+
+// Roi: "lets make heights support weather"; he chose the mock's wet and snowy looks.
+test('in the rain the rock is darker with runs down it; under snow a white cap lies on the rim and the ledges, the rock paler', () => {
+  const lum = (h) => ((h >> 16) & 255) + ((h >> 8) & 255) + (h & 255), base = cliffColours();
+  assert.ok(lum(weatherColours(base, { wet: 1 }).stone) < lum(base.stone) && lum(weatherColours(base, { snow: 1 }).stone) > lum(base.stone));
+  assert.equal(weatherColours(base, {}), base, 'dry: as it was');
+  const draw = (w) => { const g = fakeG(); drawCliffRun(g, mesa(), { grid: 100, sun, colours: cliffColours(), ...w }); return g.calls; };
+  const fills = (calls, c) => calls.filter(([k, a]) => k === 'beginFill' && a[0] === c).length;
+  assert.equal(fills(draw({}), SNOW), 0); assert.ok(fills(draw({ snow: 1 }), SNOW) > 20, 'a cap along the rim, snow on the stones');
+  const runs = (calls) => calls.filter(([k, a]) => k === 'lineStyle' && a[1] === 0x0a0c12).length;
+  assert.equal(runs(draw({})), 0); assert.ok(runs(draw({ wet: 1 })) > 5, 'dark wet runs down the face');
 });

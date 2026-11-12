@@ -36,7 +36,7 @@ test('the clock and unrelated changes build nothing again; the brush and heights
   assert.match(main, /decorBrushSyncSoon\(\);/, 'a dab shows again at most every tenth of a second');
   assert.match(main, /if \(key !== decorTreesKey && !decorBrushing\)/, 'no canopy rebuild mid-stroke');
   assert.match(main, /if \(key === heightsDrawn\.key && value === heightsDrawn\.value && roots\[1\] === heightsDrawn\.root\) return;/, 'heights drawn again only when they change');
-  assert.match(main, /for \(const box of shadowRoot\.children\) stillPicture\(box\);/, 'blurred shadows drawn once into a picture');
+  assert.doesNotMatch(main, /cacheAsBitmap = true/, 'shadows never cached as pictures: cached, their fades and cut-outs were lost');
   assert.match(main, /const decorBrushRoot = floorLayer\("decorBrush"\);/, 'one brush layer, made once');
   assert.match(main, /flat: decorDrawRoot\("decorFlat"\), shadows: decorDrawRoot\("decorShadows"\), ground: decorDrawRoot\("decorations"\), above: decorDrawRoot\("decorCrowns"\)/, 'decorations on their tile');
 });

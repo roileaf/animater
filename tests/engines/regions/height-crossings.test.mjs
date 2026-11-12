@@ -42,3 +42,13 @@ test('a bridge\'s shadow is its planks, each thrown by its own height over the g
   const foot = pts.filter(([, y]) => y >= 119), top = pts.filter(([, y]) => y <= 6);
   assert.ok(foot.every(([x]) => Math.abs(Math.abs(x) - 10) < 0.5), 'touching at its foot'); assert.ok(top.some(([x]) => x > 15), 'away at its top');
 });
+
+test('snow lies on a bridge\'s planks, a ladder\'s rungs and a rope\'s coil; wet wood is darker', () => {
+  const snowy = (draw) => { const g = fakeG(), sh = fakeG(); draw(g, sh); return g.calls.filter(([k, a]) => k === 'beginFill' && a[0] === 0xf3f6fb).length; };
+  assert.equal(snowy((g, sh) => drawBridge(g, sh, 0, 0, 0, 200, { w: 60 })), 0);
+  assert.ok(snowy((g, sh) => drawBridge(g, sh, 0, 0, 0, 200, { w: 60, snow: 1 })) > 10);
+  assert.ok(snowy((g, sh) => drawLadder(g, sh, 0, 0, 0, 120, { w: 20, snow: 1 })) > 5);
+  assert.equal(snowy((g, sh) => drawRope(g, sh, 0, 0, 10, 100, { snow: 1 })), 1);
+  const tone = (wet) => { const g = fakeG(); drawBridge(g, fakeG(), 0, 0, 0, 200, { w: 60, wet }); const f = g.calls.find(([k]) => k === 'beginFill'); return ((f[1][0] >> 16) & 255); };
+  assert.ok(tone(1) < tone(0), 'darker wet');
+});

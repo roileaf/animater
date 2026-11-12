@@ -259,7 +259,7 @@ import { createFloorLooks, createFloorTextures, skyForFloors } from "./engines/m
 import { createFloorMotion } from "./engines/motion/floor-motion.mjs";
 import { openStepsWindow, refreshStepsWindow } from "./ui/region-steps-ui.mjs";
 import { createRegionPanel } from "./ui/region-panel.mjs";
-import { shownFloorOf } from "./ui/region-panel-model.mjs";
+import { shownFloorOf, movedShapes } from "./ui/region-panel-model.mjs";
 import { createFarmLife } from "./engines/motion/farm-life.mjs";
 import { loadAnimalArt, restyle as restyleAnimals, litPIXI, setAnimalLight } from "./engines/motion/animal-art.mjs";
 import { regionAnimalCounts, regionHasAnimals, regionAnimalSize, townLevelOf, exactCountOf } from "./engines/motion/region-animals.mjs";
@@ -285,7 +285,7 @@ import { nearbyClicks as smartNearbyClicks, cleanSelection } from "./engines/reg
 import { decorSettings, strokeShapes, circleArea as decorCircle, decorPlacements, trunkWalls, carryDecor, shapesBox } from "./engines/motion/decor-regions.mjs";
 import { openBrushBar, brushChoices, BRUSH_EDGE } from "./ui/decor-brush-bar.mjs";
 import { readHeight, readRamp, readOpenEdges, edgeTouches, openAt as heightOpenAt, OPEN_EDGES_MOST, heightField, walkerPath, nextHeight, rampFromDrag, rampOutline, heightRegionData, rampRegionData, cliffEdges, cliffRuns, heightsHoverLine, heightName, HEIGHT_STEP, BRIDGE_REACH, refitHeights, simplifyLoop } from "./engines/regions/heights.mjs";
-import { drawCliffRun, drawSlope, footShade, topGlow, castOffset, depthHaze as heightDepthHaze, cliffColours, layOut as cliffLayOut, faceFeet as cliffFaceFeet, cliffStops, onCliffFace } from "./engines/regions/height-look.mjs";
+import { drawCliffRun, drawSlope, footShade, topGlow, castOffset, depthHaze as heightDepthHaze, cliffColours, weatherColours, layOut as cliffLayOut, faceFeet as cliffFaceFeet, cliffStops, onCliffFace } from "./engines/regions/height-look.mjs";
 import { drawLadder, drawRope, drawBridge } from "./engines/regions/height-crossings.mjs";
 import { DECOR_KINDS, stampDecor, paintDecor } from "./engines/motion/decor-paint.mjs";
 import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, seasonGround, groundInputs, groundStep, groundMoved, iceHours } from "./engines/motion/ambient-life.mjs";
@@ -2441,7 +2441,7 @@ const decorPondBed = () => { if (!pondBedTexture || pondBedTexture.baseTexture?.
 // How dark before decorations show their night look, and how wet before they show wet (decorLook, decorWeatherNow).
 const DECOR_NIGHT_DARK = 0.6, DECOR_WET = 0.4;
 const decorLook = (settings) => { const soaked = groundOf().now, darkness = Number(canvas.environment?.darknessLevel) || 0; return { season: seasonNow() ?? "summer", wet: wetOn() && soaked.wet > DECOR_WET ? 1 : 0, snow: snowCoverOn() && settings.where !== "cave" ? Math.round((soaked.snow ?? 0) * 4) / 4 : 0, night: darkness > DECOR_NIGHT_DARK || settings.where === "cave", cave: settings.where === "cave" }; };
-let decorTreesKey = "", decorLampsAt = 0, decorWeatherAt = 0, decorWeatherKey = "";
+let decorTreesKey = "", decorLampsAt = 0, decorWeatherAt = 0, decorWeatherKey = "", heightsWeatherKey = "", heightsWeatherAt = 0;
 // What the decorations show of the ground's weather and the season, coarse enough that it changes only when it shows: as snow
 // builds up or melts, rain soaks in or dries, or the season turns, they are drawn again (not only when the clock jumps).
 // (Night too: decorLook's night look turns on with the darkness, and the clock's hooks now only look at this key, not rebuild.)
@@ -3244,10 +3244,10 @@ const heightMapColour = (m, points) => { let r = 0, g = 0, b = 0, n = 0; for (co
 // degrees, its strength by a little, the map's colours once read), not on every tick of the clock. (Built afresh each time,
 // some 7,000 shapes and two dozen filters: the audit's finding.)
 let heightsDrawn = { key: "", value: null, root: null };
-const heightsDrawKey = (scene, value) => { const round = (v, s) => Math.round((Number(v) || 0) / s) * s; const sunShadow = sunNow && !sunNow.moon && !shadowsOffHere() ? (Number.isFinite(Number(sunNow.strength)) ? Math.max(0, Math.min(1, Number(sunNow.strength))) : 1) * directSun(skyCoverNow) : 0; return [scene?.id, canvas.level?.id ?? "", heightsSceneOn("shadows", scene), value ? 1 : 0, sunNow ? round(sunNow.angle, 3) : "x", sunNow ? round(sunNow.height, 3) : "x", round(sunShadow, 0.05), !!sunNow?.moon, heightMapFor() ? 1 : 0, canvas.grid?.size ?? 100].join("|"); };
-// A layer of blurred shadows drawn once into a picture and shown from it, not blurred again every frame (they only change when
-// drawn again). Kept to a size every graphics card takes, at a lower resolution for a big one (blurred, it shows no loss).
-const stillPicture = (box) => { try { const b = box.getLocalBounds(), most = Math.max(b.width, b.height, 1); if (!Number.isFinite(most)) return; box.cacheAsBitmapResolution = Math.min(canvas.app.renderer.resolution || 1, 4096 / most); box.cacheAsBitmap = true; } catch (err) { runtime?.trace?.("raised ground", `picture: ${err?.message ?? err}`); } };
+// The weather on the raised ground: the ground's own lying snow and wetness (as decorations take it), in tenths, none underground.
+// (Roi: "lets make heights support weather"; he chose the mock's wet and snowy looks.)
+const heightsWeather = () => { try { if (undergroundScene()) return { wet: 0, snow: 0 }; const g = groundOf().now, tenth = (v) => Math.round(Math.max(0, Math.min(1, Number(v) || 0)) * 10) / 10; return { wet: wetOn() ? tenth(g.wet) : 0, snow: snowCoverOn() ? tenth(g.snow) : 0 }; } catch { return { wet: 0, snow: 0 }; } };
+const heightsDrawKey = (scene, value) => { const round = (v, s) => Math.round((Number(v) || 0) / s) * s; const sunShadow = sunNow && !sunNow.moon && !shadowsOffHere() ? (Number.isFinite(Number(sunNow.strength)) ? Math.max(0, Math.min(1, Number(sunNow.strength))) : 1) * directSun(skyCoverNow) : 0; return [scene?.id, canvas.level?.id ?? "", heightsSceneOn("shadows", scene), value ? 1 : 0, sunNow ? round(sunNow.angle, 3) : "x", sunNow ? round(sunNow.height, 3) : "x", round(sunShadow, 0.05), !!sunNow?.moon, heightMapFor() ? 1 : 0, canvas.grid?.size ?? 100, heightsWeather().wet, heightsWeather().snow].join("|"); };
 const drawHeightShadows = () => {
   if (!canvas?.ready) return;
   const roots = [heightShadowRoot(), heightFaceRoot()];
@@ -3258,7 +3258,7 @@ const drawHeightShadows = () => {
   for (const box of heightBridgeBoxes.splice(0)) { try { box.destroy({ children: true }); } catch { /* gone */ } }
   const scene = canvas.scene; if (!heightsSceneOn("shadows", scene)) return;
   const { parts, ramps, field } = heightsOf(scene, canvas.level?.id ?? null); if (!parts.length && !ramps.length) return;
-  const [shadowRoot, faceRoot] = roots, grid = canvas.grid?.size ?? 100, step = heightStep(scene), map = heightMapFor();
+  const [shadowRoot, faceRoot] = roots, grid = canvas.grid?.size ?? 100, step = heightStep(scene), map = heightMapFor(), { wet, snow } = heightsWeather();
   // The way the light comes from (a painted map's north-west by night or underground, so the faces keep their shading).
   const angle = sunNow ? ((Number(sunNow.angle) || 0) * Math.PI) / 180 : (-135 * Math.PI) / 180, sun = { x: Math.cos(angle), y: Math.sin(angle) };
   const moved = (pts) => pts;
@@ -3316,7 +3316,7 @@ const drawHeightShadows = () => {
       // (Below a tall cliff the ground far down reads darker and hazier, the further down the more. Roi chose B of the scale mock.)
       const deepest = run.points?.reduce?.((m, p) => Math.max(m, Number(p.drop) || 0), 0) ?? 0, k = heightDepthHaze(deepest);
       if (k > 0) { hazed = Math.max(hazed, k); haze.beginFill(0x0a0d12, 1); for (const piece of footShade(run, { grid, step, sun, seed: seed + i, far: 1.6 + 2.4 * k })) haze.drawPolygon(piece); haze.endFill(); }
-      drawCliffRun(g, run, { grid, step, sun, seed: seed + i, colours });
+      drawCliffRun(g, run, { grid, step, sun, seed: seed + i, colours: weatherColours(colours, { wet, snow }), wet, snow });
     });
     if (hazed > 0) { hazeBox.addChild(haze); faded(hazeBox, 0.42 * hazed); cutHigher(hazeBox, part.height); shadowRoot.addChild(hazeBox); } else haze.destroy();
     shade.addChild(soft); cutHigher(shade, part.height); shadowRoot.addChild(shade);
@@ -3329,8 +3329,8 @@ const drawHeightShadows = () => {
     shade.eventMode = "none"; sh.filters = [new PIXI.BlurFilter(grid * 0.02)]; if (Alpha) shade.filters = [new Alpha(0.45)]; else shade.alpha = 0.45; shade.addChild(sh); // (As dark as a cliff's cast shadow: at 0.3 a bridge's planks did not read on dark ground.)
     for (const ramp of ramps) {
       const [lo, hi] = field.rampEnds(ramp), seed = [...String(ramp.id)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 3);
-      if (ramp.kind === "ladder" || ramp.kind === "rope") { const top = hi >= lo ? ramp.b : ramp.a, foot = hi >= lo ? ramp.a : ramp.b; if (ramp.kind === "ladder") drawLadder(built, sh, top.x, top.y, foot.x, foot.y, { w: Math.min(ramp.w, grid * 0.45), sun, k, seed, reach: Math.min(30, (Math.abs(hi - lo) * (grid / step) * 0.12) / k) }); else drawRope(built, sh, top.x, top.y, foot.x, foot.y, { sun, k, seed }); continue; }
-      if (ramp.kind === "bridge") { const mid = { x: (ramp.a.x + ramp.b.x) / 2, y: (ramp.a.y + ramp.b.y) / 2 }, drop = Math.max(0, (lo + hi) / 2 - field.groundAt(mid)) * (grid / step) * 0.6; const box = new PIXI.Container(), deck = new PIXI.Graphics(), low = Math.min(lo, hi), rise = (t) => { const p = { x: ramp.a.x + (ramp.b.x - ramp.a.x) * t, y: ramp.a.y + (ramp.b.y - ramp.a.y) * t }; return Math.min(grid * 1.5, Math.max(0, lo + (hi - lo) * t - field.groundAt(p)) * (grid / step) * 0.6); }, look = { w: ramp.w, drop: Math.min(drop, grid * 1.5), rise, sun, k, seed }; box.eventMode = "none"; box.sortLayer = 656; box.elevation = (Number(canvas.level?.elevation?.base) || 0) + low; drawBridge(deck, sh, ramp.a.x, ramp.a.y, ramp.b.x, ramp.b.y, look); box.addChild(deck); // (Its ends where they rest on raised ground drawn on that ground, with the creatures there over them: only the span over lower ground stands up over what passes under it. Roi: "animals should not render below bridges on cliff edges".)
+      if (ramp.kind === "ladder" || ramp.kind === "rope") { const top = hi >= lo ? ramp.b : ramp.a, foot = hi >= lo ? ramp.a : ramp.b; if (ramp.kind === "ladder") drawLadder(built, sh, top.x, top.y, foot.x, foot.y, { w: Math.min(ramp.w, grid * 0.45), sun, k, seed, reach: Math.min(30, (Math.abs(hi - lo) * (grid / step) * 0.12) / k), wet, snow }); else drawRope(built, sh, top.x, top.y, foot.x, foot.y, { sun, k, seed, wet, snow }); continue; }
+      if (ramp.kind === "bridge") { const mid = { x: (ramp.a.x + ramp.b.x) / 2, y: (ramp.a.y + ramp.b.y) / 2 }, drop = Math.max(0, (lo + hi) / 2 - field.groundAt(mid)) * (grid / step) * 0.6; const box = new PIXI.Container(), deck = new PIXI.Graphics(), low = Math.min(lo, hi), rise = (t) => { const p = { x: ramp.a.x + (ramp.b.x - ramp.a.x) * t, y: ramp.a.y + (ramp.b.y - ramp.a.y) * t }; return Math.min(grid * 1.5, Math.max(0, lo + (hi - lo) * t - field.groundAt(p)) * (grid / step) * 0.6); }, look = { w: ramp.w, drop: Math.min(drop, grid * 1.5), rise, sun, k, seed, wet, snow }; box.eventMode = "none"; box.sortLayer = 656; box.elevation = (Number(canvas.level?.elevation?.base) || 0) + low; drawBridge(deck, sh, ramp.a.x, ramp.a.y, ramp.b.x, ramp.b.y, look); box.addChild(deck); // (Its ends where they rest on raised ground drawn on that ground, with the creatures there over them: only the span over lower ground stands up over what passes under it. Roi: "animals should not render below bridges on cliff edges".)
       { const none = new PIXI.Graphics(); drawBridge(built, none, ramp.a.x, ramp.a.y, ramp.b.x, ramp.b.y, look); none.destroy(); } cutHigher(box, low - 0.5); canvas.primary.addChild(box); heightBridgeBoxes.push(box); continue; }
       if (lo === hi) continue;
       const vx = ramp.b.x - ramp.a.x, vy = ramp.b.y - ramp.a.y, len = Math.hypot(vx, vy) || 1, ux = vx / len, uy = vy / len, nx = -uy, ny = ux, lines = Math.max(2, Math.round(ramp.w / (grid * 0.16)));
@@ -3341,7 +3341,8 @@ const drawHeightShadows = () => {
     }
     shadowRoot.addChild(shade); faceRoot.addChild(g, built);
   }
-  for (const box of shadowRoot.children) stillPicture(box);
+  // (Not drawn once into cached pictures: cached, their fades and the cut-outs over higher ground were lost and the shadows
+  // vanished. Roi: "something broke the shadows...")
 };
 for (const hook of ["canvasReady", "updateWorldTime", "calendaria.dateTimeChange", "calendaria.weatherChange", "simple-calendar-date-time-change"]) Hooks.on(hook, () => { heightShadowsSoon(); });
 Hooks.on("canvasReady", () => { cliffWallsSoon(); });
@@ -3594,6 +3595,32 @@ const outlinePanelRegion = (doc) => {
 Hooks.on("canvasTearDown", () => { panelOutline = null; });
 const regionPanel = createRegionPanel({ brush: (doc) => startDecorBrush(doc), repairDecor: (doc) => repairDecorRegionAsk(doc), cliffWalls: { get: () => heightsSceneOn("walls"), set: (on) => void canvas.scene?.update({ [`flags.${ID}.cliffWalls`]: on }) }, addCrossing: (kind) => { startDecorBrush(); decorBrushing?.bar?.setCrossing?.(kind); }, shows: outlinePanelRegion, flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]), configure: (doc) => doc.sheet?.render({ force: true }), remove: (doc) => doc.deleteDialog?.(), confirm: (text) => foundry.applications.api.DialogV2.confirm({ window: { title: "Animater: None" }, content: `<p>${foundry.utils.escapeHTML?.(text) ?? text}</p>`, rejectClose: false }).then((yes) => yes === true) });
 Hooks.on("updateRegion", (doc, change) => { const flags = change?.flags?.[ID]; if (flags && "step" in flags) refreshStepsWindow(doc.id); });
+// With a region's panel open, a left-drag inside that region moves it: its outline follows the pointer, and on letting go the
+// region is moved by as much (its decorations, heights and crossings go with it, by their own hooks). Shift lays it off the grid.
+// A token under the pointer keeps its own drag. (Roi: "when right clicking a region lets allow draggin it to move it?")
+let regionDrag = null;
+Hooks.once("canvasReady", () => {
+  const view = () => canvas?.app?.view;
+  const worldAt = (e) => { const r = view().getBoundingClientRect(), t = canvas.stage.worldTransform; return { x: (e.clientX - r.left - t.tx) / t.a, y: (e.clientY - r.top - t.ty) / t.d }; };
+  window.addEventListener("pointerdown", (e) => {
+    const doc = regionPanel.doc; if (e.button !== 0 || !doc || !game.user?.isGM || e.target !== view() || doc.parent !== canvas?.scene) return;
+    const at = worldAt(e); let inside = false; try { inside = regionAreas(doc).some((area) => pointInPolygon(at, area)); } catch { /* none */ } if (!inside) return;
+    if ((canvas.tokens?.placeables ?? []).some((t) => t.visible && t.bounds?.contains?.(at.x, at.y))) return;
+    e.preventDefault(); e.stopImmediatePropagation(); regionDrag = { doc, from: at, dx: 0, dy: 0 };
+  }, true);
+  window.addEventListener("pointermove", (e) => {
+    if (!regionDrag) return; e.preventDefault(); e.stopImmediatePropagation();
+    const at = worldAt(e), grid = canvas.grid?.size ?? 100, step = e.shiftKey ? 1 : grid / 2, snap = (v) => Math.round(v / step) * step;
+    regionDrag.dx = snap(at.x - regionDrag.from.x); regionDrag.dy = snap(at.y - regionDrag.from.y);
+    if (panelOutline && !panelOutline.destroyed) panelOutline.position.set(regionDrag.dx, regionDrag.dy);
+  }, true);
+  window.addEventListener("pointerup", (e) => {
+    const drag = regionDrag; if (!drag || e.button !== 0) return; regionDrag = null; e.preventDefault(); e.stopImmediatePropagation();
+    if (!drag.dx && !drag.dy) { if (panelOutline && !panelOutline.destroyed) panelOutline.position.set(0, 0); return; }
+    void drag.doc.update({ shapes: movedShapes(drag.doc.shapes, drag.dx, drag.dy) }).then(() => { if (regionPanel.doc === drag.doc) outlinePanelRegion(drag.doc); }).catch((err) => { console.warn("Animater | moving a region", err); if (panelOutline && !panelOutline.destroyed) panelOutline.position.set(0, 0); });
+  }, true);
+});
+Hooks.on("canvasTearDown", () => { regionDrag = null; });
 // The menu stands by the spot it was opened for: when the map moves under it, it goes.
 Hooks.on("canvasPan", () => { regionPanel.close(); });
 Hooks.on("deleteRegion", (doc) => { if (regionPanel.doc === doc) regionPanel.close(); });
@@ -6569,6 +6596,9 @@ function skyTick() {
   if (cavern.busy) tickCavern(seconds, performance.now());
   if (webs.count) webs.tick(seconds, { view: viewNow(), air: airAt });
   // The decorations' crowns open over the creatures beneath them.
+  // The raised ground, once a second, as its snow and wetness change: drawn again only if they moved (its own check: the
+  // decorations' runs only where there are decorations).
+  heightsWeatherAt += seconds; if (heightsWeatherAt >= 1) { heightsWeatherAt = 0; const hw = heightsWeather(), hk = `${hw.wet}|${hw.snow}`; if (hk !== heightsWeatherKey) { heightsWeatherKey = hk; heightShadowsSoon(); } }
   if (decorations.busy) {
     decorations.creatures(tokensOnFloor()); decorations.wind({ strength: undergroundScene() ? 0 : skyWindNow, angle: skyWindAngle }); decorations.tick(seconds);
     // The lights' shadows of them, a few times a second (lights move with the creatures carrying them), as strong as each light is against the sky.

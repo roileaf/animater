@@ -171,7 +171,7 @@ test('main: the Heights tab raises, lays ramps and steps heights on the wheel; w
   assert.match(main, /const wall = edge\?\.object\?\.document \?\? edge\?\.object, at = Number\(wall\?\.flags\?\.\[ID\]\?\.bridgeAt\);/, 'bridge walls read off the wall document');
   // Roi, of look C: "i feel like you can do a much better job"; then, of the painted cliff from his references, "what if it's raised only from one side?", and "ok".
   assert.match(main, /const runs = cliffRuns\(\{ field, step: Math\.max\(3, grid \/ 25\), bounds: canvas\.dimensions\?\.sceneRect \?\? null, climbs: true \}\);/, 'drawn only where the ground drops, the map edge level, whole behind a ladder or rope');
-  assert.match(main, /drawCliffRun\(g, run, \{ grid, step, sun, seed: seed \+ i, colours \}\);/);
+  assert.match(main, /drawCliffRun\(g, run, \{ grid, step, sun, seed: seed \+ i, colours: weatherColours\(colours, \{ wet, snow \}\), wet, snow \}\);/, 'in the weather of the ground');
   assert.match(main, /const higher = parts\.filter\(\(p\) => p\.height > h\);/, 'never over a raised part higher still');
   assert.match(main, /if \(!box\.filters\?\.length\) \{ const Alpha = PIXI\.AlphaFilter \?\? PIXI\.filters\?\.AlphaFilter; if \(!Alpha\) return; const whole = new Alpha\(1\); whole\.padding = grid; box\.filters = \[whole\]; \}/, 'live: erasing straight onto the map punched a black hole');
   assert.match(main, /const kind = brushChoices\(\)\.crossKind, w = kind === "ladder" \? grid\(\) \* 0\.45 : kind === "rope" \? grid\(\) \* 0\.3 : Math\.max\(grid\(\) \* 0\.5, sizeNow\(\) \* grid\(\)\);/, 'a ramp or bridge as wide as the brush, a ladder or rope its own width');
