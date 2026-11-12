@@ -90,6 +90,19 @@ export function drawBridge(g, sh, x0, y0, x1, y1, { w = 30, drop = 20, rise = nu
       plank(g, cx + nx * shrink + ux * sk, cy + ny * shrink + uy * sk, cx - nx * shrink - ux * sk, cy - ny * shrink - uy * sk, pw, 100 + i + seed, sun, k, weather); planks++; }
     t += pw + (0.8 + hash(i * 2.2 + seed) * 1.2) * k; i++;
   }
+  // The rope rails' shadows across the deck, by the sun: hung a little over it, a rail's shadow falls inward onto the planks from the
+  // side the sun comes from (and none when it falls outward). Only where it lands on the deck. (Roi: "can the ropes cast shadows on
+  // the bridge itself (depending on the sun)?")
+  if (sun) {
+    const half = Math.hypot(nx, ny) || 1, ax = nx / half, ay = ny / half, lift = 14 * k, sx = -sun.x * lift, sy = -sun.y * lift;
+    for (const side of [-1, 1]) {
+      const px0 = x0 + nx * side * 1.12, py0 = y0 + ny * side * 1.12, px1 = x1 + nx * side * 1.12, py1 = y1 + ny * side * 1.12, cx = (px0 + px1) / 2 + 3 * k, cy = (py0 + py1) / 2 + 5 * k;
+      for (const [wd, a] of [[5 * k, 0.14], [2.4 * k, 0.32]]) {
+        g.lineStyle({ width: wd, color: 0x0d0905, alpha: a, cap: 'round', join: 'round' }); let on = false;
+        for (let q = 0; q <= 1.0001; q += 1 / 40) { const [bx, by] = bezier(px0, py0, cx, cy, px1, py1, q), x = bx + sx, y = by + sy, across = Math.abs((x - x0) * ax + (y - y0) * ay); if (across > half * 0.96) { on = false; continue; } if (on) g.lineTo(x, y); else { g.moveTo(x, y); on = true; } }
+      }
+    }
+  }
   for (const s of [-1, 1]) {
     const px0 = x0 + nx * s * 1.12, py0 = y0 + ny * s * 1.12, px1 = x1 + nx * s * 1.12, py1 = y1 + ny * s * 1.12, cx = (px0 + px1) / 2 + 3 * k, cy = (py0 + py1) / 2 + 5 * k;
     sh.lineStyle({ width: 2.2 * k, color: 0x0d0905, alpha: 1, cap: 'round', join: 'round' }); for (let q = 0; q <= 1.0001; q += 1 / 24) { const [bx, by] = bezier(px0, py0, cx, cy, px1, py1, q), [ox, oy] = push(q); if (q) sh.lineTo(bx + ox * 1.05, by + oy * 1.05); else sh.moveTo(bx + ox * 1.05, by + oy * 1.05); }
