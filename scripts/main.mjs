@@ -3254,6 +3254,8 @@ for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(ho
 // part's (flags.animater.cliffOf), so no other wall is ever touched; kept in step as parts and ramps change, gone with them.
 let cliffWallsTimer = null;
 const cliffWallsSoon = (mine = false) => { clearTimeout(cliffWallsTimer); cliffWallsTimer = setTimeout(() => { cliffWallsTimer = null; void syncCliffWalls(mine); }, 700); };
+// Whether a point lies on a ladder's or rope's line carried on down the face (its region may end partway: it is drawn to the foot).
+const climbsHere = (r, p, grid) => { if (r.kind !== "ladder" && r.kind !== "rope") return false; const vx = r.b.x - r.a.x, vy = r.b.y - r.a.y, len2 = vx * vx + vy * vy; if (!len2) return false; const t = ((p.x - r.a.x) * vx + (p.y - r.a.y) * vy) / len2, off = Math.abs((p.x - r.a.x) * vy - (p.y - r.a.y) * vx) / Math.sqrt(len2); return off <= r.w / 2 + grid * 0.1 && t > -6 && t < 7; };
 const VISIONER = "pf2e-visioner";
 const syncCliffWalls = async (mine = false) => {
   if (!canvas?.ready || !game.user?.isGM || !(mine || leadGM())) return;
@@ -3273,7 +3275,7 @@ const syncCliffWalls = async (mine = false) => {
         // seed, so the walls stand on its bottom edge and not partway up the rock. Roi, of the deeper faces: "our walls should block
         // movement at the base of the cliff". Where a ladder or rope stands against the face, no wall: it is climbed there.)
         const runs = cliffRuns({ field: here.field, step: Math.max(3, grid / 25), bounds: canvas.dimensions?.sceneRect ?? null, climbs: true }).filter((r) => !plain.has(r.of));
-        for (const part of here.parts) { const seed = [...String(part.id)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7); for (const e of cliffFaceFeet(runs.filter((r) => r.of === part.id), { grid, step: heightStep(scene), piece: grid / 4, seed, inset: 0.97 })) { const mid = { x: (e.c[0] + e.c[2]) / 2, y: (e.c[1] + e.c[3]) / 2 }, over = here.field.rampAt(mid); if (over?.ramp?.kind === "ladder" || over?.ramp?.kind === "rope") continue; const bridge = over?.ramp?.kind === "bridge" ? Math.round(Math.min(...here.field.rampEnds(over.ramp)) * 2) / 2 : null; if (!want.has(e.of)) want.set(e.of, []); want.get(e.of).push({ c: e.c, levels: levelId ? [levelId] : [], bridge }); } } }
+        for (const part of here.parts) { const seed = [...String(part.id)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7); for (const e of cliffFaceFeet(runs.filter((r) => r.of === part.id), { grid, step: heightStep(scene), piece: grid / 4, seed, inset: 0.97 })) { const mid = { x: (e.c[0] + e.c[2]) / 2, y: (e.c[1] + e.c[3]) / 2 }, over = here.field.rampAt(mid); if (over?.ramp?.kind === "ladder" || over?.ramp?.kind === "rope" || here.ramps.some((r) => climbsHere(r, mid, grid))) continue; const bridge = over?.ramp?.kind === "bridge" ? Math.round(Math.min(...here.field.rampEnds(over.ramp)) * 2) / 2 : null; if (!want.has(e.of)) want.set(e.of, []); want.get(e.of).push({ c: e.c, levels: levelId ? [levelId] : [], bridge }); } } }
     }
   }
   for (const wall of scene.walls ?? []) { const of = wall.flags?.[ID]?.cliffOf; if (!of) continue; if (!have.has(of)) have.set(of, []); have.get(of).push(wall); }
@@ -3387,6 +3389,25 @@ const drawHeightShadows = () => {
   const sweep = (g, areas, dx, dy, n) => { for (let i = 1; i <= n; i++) { const ox = (dx * i) / n, oy = (dy * i) / n; for (const a of areas) { g.drawPolygon(a.map((v, j) => v + (j % 2 ? oy : ox))); for (const h of a.holes ?? []) { g.beginHole(); g.drawPolygon(h.map((v, j) => v + (j % 2 ? oy : ox))); g.endHole(); } } } };
   // (Rubbed off this part's own top and any as high or higher: a shadow falls only on lower ground.)
   const cutTops = (box, h) => { const cut = new PIXI.Graphics(); cut.blendMode = PIXI.BLEND_MODES.ERASE; cut.beginFill(0xffffff, 1); for (const p of parts) if (p.height >= h) fill(cut, p.areas); cut.endFill(); box.addChild(cut); };
+  // A ladder or rope drawn from where its line meets the cliff's rim down to that face's very foot, laid out as the face is drawn,
+  // whatever length its region was drawn: as faces change depth (2:1), one never hangs partway down the rock. (Roi, of a ladder
+  // left hanging mid-face: "Make them fit the face".) None when it meets no deep face (it keeps its own ends).
+  const partSeed = (id) => [...String(id)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7);
+  const fitClimb = (ramp, lo, hi) => {
+    // (Along its own line, carried on past its ends, the drop nearest it, wherever its ends lie: its region may stop short of the rim
+    // it was laid against, or lie wholly on the top beside it.)
+    const high = hi >= lo ? ramp.b : ramp.a, low = hi >= lo ? ramp.a : ramp.b, len = Math.hypot(high.x - low.x, high.y - low.y) || 1, far = Math.max(2, (grid * 2) / len), at = (t) => ({ x: low.x + (high.x - low.x) * t, y: low.y + (high.y - low.y) * t });
+    const n = 80, ts = Array.from({ length: n + 1 }, (_, i) => -far + ((2 * far + 1) * i) / n), gs = ts.map((t) => field.groundAt(at(t)));
+    let pick = null; for (let i = 0; i < n; i++) { if (Math.abs(gs[i + 1] - gs[i]) < step * 0.5) continue; const d = Math.abs((ts[i] + ts[i + 1]) / 2 - 0.5); if (!pick || d < pick.d) pick = { i, d }; }
+    if (!pick) return null;
+    const upAt = gs[pick.i + 1] > gs[pick.i], topH = Math.max(gs[pick.i], gs[pick.i + 1]), onTop = (t) => field.groundAt(at(t)) >= topH - step * 0.5;
+    let a = upAt ? ts[pick.i] : ts[pick.i + 1], b = upAt ? ts[pick.i + 1] : ts[pick.i]; for (let j = 0; j < 18; j++) { const m = (a + b) / 2; if (onTop(m)) b = m; else a = m; }
+    const inward = upAt ? 0.02 : -0.02;
+    const rim = at(b), part = field.partAt(at(b + inward)); if (!part) return null;
+    let best = null; runs.filter((r) => r.of === part.id).forEach((run, i) => { for (const p of cliffLayOut(run, { grid, step, sun, seed: partSeed(part.id) + i })) { const d = Math.hypot(p.rx - rim.x, p.ry - rim.y); if (!best || d < best.d) best = { d, p }; } });
+    if (!best || best.d > grid * 0.6 || best.p.w < grid * 0.3) return null;
+    const p = best.p; return { top: { x: p.rx - p.nx * 3 * (grid / 100), y: p.ry - p.ny * 3 * (grid / 100) }, foot: { x: p.fx, y: p.fy } };
+  };
   for (const part of [...parts].sort((x, y) => x.height - y.height)) {
     // (Cliff look None: it stands raised, but draws no cliff. Earth: a bank of soil, not rock.)
     const mine = part.look === "none" ? [] : runs.filter((r) => r.of === part.id);
@@ -3445,7 +3466,7 @@ const drawHeightShadows = () => {
     const faceShade = new PIXI.Container(), faceSh = new PIXI.Graphics(); faceShade.eventMode = "none"; faceSh.filters = [new PIXI.BlurFilter(grid * 0.02)]; if (Alpha) faceShade.filters = [new Alpha(0.45)]; else faceShade.alpha = 0.45; faceShade.addChild(faceSh); faceRoot.addChild(faceShade); // (As dark as a cliff's cast shadow: at 0.3 a bridge's planks did not read on dark ground.)
     for (const ramp of ramps) {
       const [lo, hi] = field.rampEnds(ramp), seed = [...String(ramp.id)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 3);
-      if (ramp.kind === "ladder" || ramp.kind === "rope") { const top = hi >= lo ? ramp.b : ramp.a, foot = hi >= lo ? ramp.a : ramp.b, own = ownShade(Math.max(lo, hi)); if (ramp.kind === "ladder") drawLadder(built, own.g, top.x, top.y, foot.x, foot.y, { w: Math.min(ramp.w, grid * 0.45), sun, k, seed, reach: Math.min(30, (Math.abs(hi - lo) * (grid / step) * 0.12) / k), wet, snow }); else swayPiece({ a: top, b: foot, half: 26 * k, pad: 16 * k, sun, seed, root: faceRoot, weight: ropeWeight, draw: (g, la, lb, sunL) => drawRope(g, new PIXI.Graphics(), la.x, la.y, lb.x, lb.y, { sun: sunL, k, seed, wet, snow }), shadow: { root: own.box, reach: 10 * k, blur: grid * 0.02, draw: (g, la, lb, sunL) => drawRope(new PIXI.Graphics(), g, la.x, la.y, lb.x, lb.y, { sun: sunL, k, seed, wet, snow }) } }); own.done(); continue; }
+      if (ramp.kind === "ladder" || ramp.kind === "rope") { const fit = fitClimb(ramp, lo, hi), top = fit?.top ?? (hi >= lo ? ramp.b : ramp.a), foot = fit?.foot ?? (hi >= lo ? ramp.a : ramp.b), own = ownShade(Math.max(lo, hi)); if (ramp.kind === "ladder") drawLadder(built, own.g, top.x, top.y, foot.x, foot.y, { w: Math.min(ramp.w, grid * 0.45), sun, k, seed, reach: Math.min(30, (Math.abs(hi - lo) * (grid / step) * 0.12) / k), wet, snow }); else swayPiece({ a: top, b: foot, half: 26 * k, pad: 16 * k, sun, seed, root: faceRoot, weight: ropeWeight, draw: (g, la, lb, sunL) => drawRope(g, new PIXI.Graphics(), la.x, la.y, lb.x, lb.y, { sun: sunL, k, seed, wet, snow }), shadow: { root: own.box, reach: 10 * k, blur: grid * 0.02, draw: (g, la, lb, sunL) => drawRope(new PIXI.Graphics(), g, la.x, la.y, lb.x, lb.y, { sun: sunL, k, seed, wet, snow }) } }); own.done(); continue; }
       if (ramp.kind === "bridge") { const mid = { x: (ramp.a.x + ramp.b.x) / 2, y: (ramp.a.y + ramp.b.y) / 2 }, drop = Math.max(0, (lo + hi) / 2 - field.groundAt(mid)) * (grid / step) * 0.6; const box = new PIXI.Container(), deck = new PIXI.Graphics(), low = Math.min(lo, hi), rise = (t) => { const p = { x: ramp.a.x + (ramp.b.x - ramp.a.x) * t, y: ramp.a.y + (ramp.b.y - ramp.a.y) * t }; return Math.min(grid * 1.5, Math.max(0, lo + (hi - lo) * t - field.groundAt(p)) * (grid / step) * 0.6); }, look = { w: ramp.w, drop: Math.min(drop, grid * 1.5), rise, sun, k, seed, wet, snow }; box.eventMode = "none"; box.sortLayer = 656; box.elevation = (Number(canvas.level?.elevation?.base) || 0) + low; box.sort = 1; // (Over the faces and the crossings' shadows at the same height and layer: with a ground-level end, the face layer drew over it and laid the bridge's own shadow on its deck. Roi: "whats the shadow on the bridge now??") deck.destroy();
       // Where it is held: still from each end it rests on to that end's posts, which stand on the top a little back from where either
       // rail leaves it, on one of the sheet's own rows; it sways only between them, its rails swinging from the posts. (Roi: "what was
