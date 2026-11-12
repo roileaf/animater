@@ -3387,7 +3387,12 @@ const drawHeightShadows = () => {
       { const Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter; if (Alpha) { const whole = new Alpha(1); whole.padding = grid; box.filters = [whole]; const cut = resting(new PIXI.Graphics()); cut.blendMode = PIXI.BLEND_MODES.ERASE; box.addChild(cut); } }
       // A pair of posts where the swaying span leaves each still end, holding its rails there (over the cut, so never rubbed off).
       { const posts = new PIXI.Graphics(), vx = ramp.b.x - ramp.a.x, vy = ramp.b.y - ramp.a.y, len = Math.hypot(vx, vy) || 1, nx = (-vy / len) * ramp.w * 0.56, ny = (vx / len) * ramp.w * 0.56; let any = false;
-        for (let i = 1; i + 1 < rowsAt.length; i++) { const t = rowsAt[i]; if (!(t > 0.02 && t < 0.98) || !still(t) || (still(rowsAt[i - 1]) && still(rowsAt[i + 1]))) continue; const px = ramp.a.x + vx * t, py = ramp.a.y + vy * t; for (const side of [1, -1]) drawPost(posts, sh, px + nx * side, py + ny * side, { k, sun, wet, snow }); any = true; }
+        // (On the clifftop: where it leaves the raised ground, found along it, a post's width back on the top. Roi: "the poles need
+        // to be on the top of the cliff".)
+        const n = 60, back = (7 * k + grid * 0.1) / len, lo0 = lo, hi0 = hi;
+        // (Each rail its own: the rim runs aslant under a bridge, so one place for both stood one post on the rim, the other past it.)
+        for (const side of [1, -1]) { const at = (t) => ({ x: ramp.a.x + vx * t + nx * side, y: ramp.a.y + vy * t + ny * side }), onTop = (t) => lo0 + (hi0 - lo0) * t - field.groundAt(at(t)) <= step * 0.5;
+          for (let i = 0; i < n; i++) { const t0 = i / n, t1 = (i + 1) / n, r0 = onTop(t0), r1 = onTop(t1); if (r0 === r1) continue; let lo = r0 ? t0 : t1, hi = r0 ? t1 : t0; for (let j = 0; j < 14; j++) { const mid = (lo + hi) / 2; if (onTop(mid)) lo = mid; else hi = mid; } const t = Math.max(0, Math.min(1, lo + (r0 ? -back : back))); if (t < 0.02 || t > 0.98) continue; const p = at(t); drawPost(posts, sh, p.x, p.y, { k, sun, wet, snow }); any = true; } }
         if (any) box.addChild(posts); else posts.destroy(); } canvas.primary.addChild(box); heightBridgeBoxes.push(box); continue; }
       if (lo === hi) continue;
       const vx = ramp.b.x - ramp.a.x, vy = ramp.b.y - ramp.a.y, len = Math.hypot(vx, vy) || 1, ux = vx / len, uy = vy / len, nx = -uy, ny = ux, lines = Math.max(2, Math.round(ramp.w / (grid * 0.16)));
