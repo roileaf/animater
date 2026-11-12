@@ -3269,8 +3269,11 @@ const syncCliffWalls = async (mine = false) => {
       // (And along the painted face's foot, so a token below cannot walk onto the rock: Roi, "make sure the cliff is not passable on
       // the cliff side". Not under a part drawn with no cliff.)
       { const here = heightsOf(scene, levelId), grid = canvas.grid?.size ?? 100, plain = new Set(here.parts.filter((p) => p.look === "none").map((p) => p.id));
-        const runs = cliffRuns({ field: here.field, step: Math.max(3, grid / 25), bounds: canvas.dimensions?.sceneRect ?? null }).filter((r) => !plain.has(r.of));
-        for (const e of cliffFaceFeet(runs, { grid, step: heightStep(scene), piece: grid / 4 })) { const mid = { x: (e.c[0] + e.c[2]) / 2, y: (e.c[1] + e.c[3]) / 2 }, over = here.field.rampAt(mid), bridge = over?.ramp?.kind === "bridge" ? Math.round(Math.min(...here.field.rampEnds(over.ramp)) * 2) / 2 : null; if (!want.has(e.of)) want.set(e.of, []); want.get(e.of).push({ c: e.c, levels: levelId ? [levelId] : [], bridge }); } }
+        // (At the face's very foot, laid out exactly as it is drawn: the same runs, whole behind ladders and ropes, and each part's own
+        // seed, so the walls stand on its bottom edge and not partway up the rock. Roi, of the deeper faces: "our walls should block
+        // movement at the base of the cliff". Where a ladder or rope stands against the face, no wall: it is climbed there.)
+        const runs = cliffRuns({ field: here.field, step: Math.max(3, grid / 25), bounds: canvas.dimensions?.sceneRect ?? null, climbs: true }).filter((r) => !plain.has(r.of));
+        for (const part of here.parts) { const seed = [...String(part.id)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7); for (const e of cliffFaceFeet(runs.filter((r) => r.of === part.id), { grid, step: heightStep(scene), piece: grid / 4, seed, inset: 0.97 })) { const mid = { x: (e.c[0] + e.c[2]) / 2, y: (e.c[1] + e.c[3]) / 2 }, over = here.field.rampAt(mid); if (over?.ramp?.kind === "ladder" || over?.ramp?.kind === "rope") continue; const bridge = over?.ramp?.kind === "bridge" ? Math.round(Math.min(...here.field.rampEnds(over.ramp)) * 2) / 2 : null; if (!want.has(e.of)) want.set(e.of, []); want.get(e.of).push({ c: e.c, levels: levelId ? [levelId] : [], bridge }); } } }
     }
   }
   for (const wall of scene.walls ?? []) { const of = wall.flags?.[ID]?.cliffOf; if (!of) continue; if (!have.has(of)) have.set(of, []); have.get(of).push(wall); }
@@ -5307,7 +5310,7 @@ for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(ho
 // through the face's foot: live, a rabbit hopped about for good in the strip under a cliff, under a bridge. Roi: "theres a stuck rabbit under the bridge".)
 // (From anywhere down to past its foot's walls, to anywhere past them: judged deep where it starts and shallow where it lands, so
 // a step across the foot's walls always counts as off.)
-const offTheFace = (a, b) => onCliffFaceHere(a.x, a.y, 0.9) && !onCliffFaceHere(b.x, b.y, 0.5) && !cliffBlocks(a, b);
+const offTheFace = (a, b) => onCliffFaceHere(a.x, a.y, 1.25) && !onCliffFaceHere(b.x, b.y, 0.5) && !cliffBlocks(a, b);
 const wallBlocks = (a, b) => !offTheFace(a, b) && (wallOnlyBlocks(a, b) || (cliffBlocks(a, b) && !boxedIn(a)));
 // Regions creatures keep out of (the right-click panel → Animals → Keep out): a sealed room with no rats, a shrine with no
 // moths. Each kind's areas, looked at with the rest of the life.
@@ -5522,7 +5525,7 @@ const okOn = (ground, kind, x, y) => {
   return !!(kind === "fish" || kind === "ducks" || kind === "frogs" ? ground?.inWater(x, y) : ground?.at(x, y)) && !keptOut(kind, { x, y });
 };
 // (`reach`: how far down the face counts, a share of its depth: its foot's walls stand at about two thirds.)
-const onCliffFaceHere = (x, y, reach = 0.85) => { try { const scene = canvas?.scene; if (!scene) return false; const { field } = creatureHeights(scene, canvas.level?.id ?? null); return onCliffFace(field, { x, y }, { grid: canvas.grid?.size ?? 100, step: heightStep(scene), reach }); } catch { return false; } };
+const onCliffFaceHere = (x, y, reach = 1.15) => { try { const scene = canvas?.scene; if (!scene) return false; const { field } = creatureHeights(scene, canvas.level?.id ?? null); return onCliffFace(field, { x, y }, { grid: canvas.grid?.size ?? 100, step: heightStep(scene), reach }); } catch { return false; } };
 const wildOk = (kind, x, y) => okOn(wildOpen ?? placedGround, kind, x, y);
 // Heard where they are, the hawk and the crows from far off, by distance for everyone (earsNow).
 const wildCalls = critterVoices({ gaps: WILD_GAPS });

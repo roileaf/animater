@@ -137,3 +137,11 @@ test('in the rain the rock is darker with runs down it; under snow a white cap l
   const runs = (calls) => calls.filter(([k, a]) => k === 'lineStyle' && a[1] === 0x0a0c12).length;
   assert.equal(runs(draw({})), 0); assert.ok(runs(draw({ wet: 1 })) > 5, 'dark wet runs down the face');
 });
+
+// Roi: "the height rings of the cliff needs to be each 5 ft so for a 40 ft cliff i expect to see 8 rings".
+test('a cliff shows one band of rock for each 5 ft of its height', () => {
+  const runOf = (h) => cliffRuns({ field: heightField({ parts: [{ id: 'P', height: h, areas: [box(100, 100, 300, 300)] }] }), step: 5 })[0];
+  const polys = (h) => { const g = fakeG(), cols = drawCliffRun(g, runOf(h), { grid: 100, sun, colours: cliffColours(), step: 5 }); return { cols, n: g.calls.filter(([k]) => k === 'drawPolygon').length }; };
+  const a = polys(20), b = polys(40);
+  assert.equal(a.cols, b.cols); assert.ok(Math.abs((b.n - a.n) - b.cols * 4) <= b.cols * 0.5, `four more bands a column (${b.n - a.n} over ${b.cols} columns)`);
+});

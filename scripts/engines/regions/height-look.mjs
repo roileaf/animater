@@ -178,10 +178,13 @@ export function drawCliffRun(g, run, { grid = 100, step = 5, sun = null, seed = 
   // steps so no band shows. (Roi, of three hard tone bands and even streaks: it looked like a curtain.)
   let columns = 0;
   const mass = (p) => noise(p.s / (grid * 0.26), seed + 7);
+  // (One band of rock for each step of height (5 ft on a 5 ft grid): a 40 ft cliff in eight, lit at the top, darkest at the foot.
+  // Roi: "the height rings of the cliff needs to be each 5 ft so for a 40 ft cliff i expect to see 8 rings".)
+  const tallestDrop = L.reduce((m, p) => Math.max(m, Number(p.drop) || 0), 0), rings = Math.max(1, Math.min(40, Math.round(tallestDrop / (step || 5))));
   for (let i = 0; i < last; i++) {
     const a = P(i), b = P(i + 1); if (a.w < 0.5 && b.w < 0.5) continue;
     const base = mix(light, dark, Math.min(1, Math.max(0, 0.3 + 0.45 * a.away + (mass(a) - 0.5) * 0.45)));
-    const bands = [[0, 0.15, mix(base, [240, 228, 200], 0.15)], [0.15, 0.32, mix(base, [240, 228, 200], 0.07)], [0.32, 0.5, base], [0.5, 0.68, mix(base, [8, 5, 3], 0.2)], [0.68, 0.85, mix(base, [8, 5, 3], 0.45)], [0.85, 1, mix(base, [8, 5, 3], 0.68)]];
+    const bands = Array.from({ length: rings }, (_, r) => { const t0 = r / rings, t1 = (r + 1) / rings, mid = (t0 + t1) / 2; return [t0, t1, mid < 0.32 ? mix(base, [240, 228, 200], 0.15 * (1 - mid / 0.32)) : mix(base, [8, 5, 3], Math.max(0, (mid - 0.32) / 0.68) * 0.68)]; });
     g.lineStyle(0);
     for (const [t0, t1, c] of bands) { const [ax0, ay0] = at(a, t0), [bx0, by0] = at(b, t0), [bx1, by1] = at(b, t1), [ax1, ay1] = at(a, t1); g.beginFill(hexOf(c), 1); g.drawPolygon([ax0, ay0, bx0 + 0.5, by0, bx1 + 0.5, by1, ax1, ay1]); g.endFill(); }
     columns++;
