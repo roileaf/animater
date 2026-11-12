@@ -180,7 +180,7 @@ test('main: the Heights tab raises, lays ramps and steps heights on the wheel; w
   assert.match(main, /swayPiece\(\{ a: ramp\.a, b: ramp\.b, half: ramp\.w \* 0\.56 \+ 6 \* k, pad: 8 \* k, sun, seed, root: box, weight: \(v\) => bridgeWeight\(v, rise, grid\),/, 'the raised deck sways in the wind');
   // Roi: "animals should not render below bridges on cliff edges": its ends on raised ground drawn on that ground, the raised copy cut there.
   assert.match(main, /const ends = new PIXI\.Container\(\), deckEnds = new PIXI\.Graphics\(\), mask = resting\(new PIXI\.Graphics\(\)\);/, 'the still copy only where it rests');
-  assert.match(main, /if \(rise\(\(t0 \+ t1\) \/ 2\) > grid \* 0\.04\) continue;/, 'resting: next to nothing over the ground under it');
+  assert.match(main, /if \(!\(t1 > t0\) \|\| !still\(t0\) \|\| !still\(t1\)\) continue;/, 'resting: between the sheet\'s own rows, both still');
   // Roi, of a token walking under a bridge drawn over it: each bridge at its own height, so the map sorts tokens under or over it.
   assert.match(main, /box\.sortLayer = 656; box\.elevation = \(Number\(canvas\.level\?\.elevation\?\.base\) \|\| 0\) \+ low;/);
   assert.match(main, /smooth: \(canvas\.grid\?\.size \?\? 100\) \/ 12, bounds: canvas\.dimensions\?\.sceneRect \?\? null \}\)\)/, 'no cliff walls along the map\'s edge');

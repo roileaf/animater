@@ -24,7 +24,10 @@ export function swayAt({ v, time, wind, grid = 100, weight = 1, seed = 0 }) {
 
 /** A bridge's swing along it: none at its ends, most at mid-span, none where it rests on raised ground (`rise(v)`, px over the
  *  ground under it; `grid` px a square). */
-export const bridgeWeight = (v, rise = null, grid = 100) => Math.sin(Math.PI * Math.max(0, Math.min(1, v))) * (rise ? Math.min(1, Math.max(0, rise(v)) / (grid * 0.3)) : 1);
+// (Not at all where it rests, a twentieth of a square or less over the ground: main.mjs shows it still there, and any sway at all
+// left its rope rails cut off at the seam. Roi: "the bridge ropes cut off in the sway".)
+export const BRIDGE_REST = 0.05;
+export const bridgeWeight = (v, rise = null, grid = 100) => Math.sin(Math.PI * Math.max(0, Math.min(1, v))) * (rise ? Math.min(1, Math.max(0, rise(v) - grid * BRIDGE_REST) / (grid * 0.25)) : 1);
 
 /** A climbing rope's swing from its stake (v 0) to its foot (v 1): growing toward the foot. */
 export const ropeWeight = (v) => Math.pow(Math.max(0, Math.min(1, v)), 1.3) * 0.6;

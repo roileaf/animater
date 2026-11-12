@@ -15,6 +15,7 @@ test('the sway grows with the wind: a few pixels in a breeze, about a quarter sq
 test('a bridge swings most at mid-span and not at its ends nor where it rests on raised ground; a rope most toward its foot', () => {
   assert.equal(bridgeWeight(0), 0); assert.ok(Math.abs(bridgeWeight(1)) < 1e-9); assert.equal(bridgeWeight(0.5), 1);
   assert.equal(bridgeWeight(0.5, () => 0, 100), 0, 'resting on the top');
+  assert.equal(bridgeWeight(0.5, () => 4, 100), 0, 'not a hair of sway just over it either (its rails would not meet the still part)');
   assert.equal(ropeWeight(0), 0); assert.ok(ropeWeight(1) > ropeWeight(0.5));
 });
 
