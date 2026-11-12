@@ -284,7 +284,7 @@ import { toRegionData as floorRegionData, floorColour as floorTint, fitSize as f
 import { nearbyClicks as smartNearbyClicks, cleanSelection } from "./engines/regions/smart-select.mjs";
 import { decorSettings, strokeShapes, circleArea as decorCircle, decorPlacements, trunkWalls, carryDecor, shapesBox } from "./engines/motion/decor-regions.mjs";
 import { openBrushBar, brushChoices, BRUSH_EDGE } from "./ui/decor-brush-bar.mjs";
-import { readHeight, readRamp, readOpenEdges, edgeTouches, openAt as heightOpenAt, OPEN_EDGES_MOST, heightField, walkerPath, nextHeight, rampFromDrag, rampOutline, heightRegionData, rampRegionData, cliffEdges, cliffRuns, heightsHoverLine, heightName, HEIGHT_STEP, BRIDGE_REACH, refitHeights, simplifyLoop } from "./engines/regions/heights.mjs";
+import { readHeight, readRamp, readOpenEdges, edgeTouches, openAt as heightOpenAt, OPEN_EDGES_MOST, heightField, walkerPath, nextHeight, rampFromDrag, rampOutline, heightRegionData, rampRegionData, cliffEdges, cliffRuns, heightsHoverLine, heightName, HEIGHT_STEP, BRIDGE_REACH, refitHeights, simplifyLoop, inAreas as inHeightAreas } from "./engines/regions/heights.mjs";
 import { swayAt, bridgeWeight, ropeWeight, pieceFrame, BRIDGE_REST } from "./engines/regions/crossing-sway.mjs";
 import { grownShape, lightPasses, reachableParts } from "./engines/regions/light-spill.mjs";
 import { drawCliffRun, drawSlope, footShade, topGlow, castOffset, depthHaze as heightDepthHaze, cliffColours, weatherColours, drawCliffRings, ringsReach, layOut as cliffLayOut, faceFeet as cliffFaceFeet, cliffStops, onCliffFace } from "./engines/regions/height-look.mjs";
@@ -3132,7 +3132,7 @@ const heightsOf = (scene, levelId = null) => {
     try {
       const levels = [...(region.levels ?? [])]; if (levelId && levels.length && !levels.includes(levelId)) continue;
       const own = region.flags?.[ID], height = readHeight(own), ramp = height ? null : readRamp(own);
-      if (height) parts.push({ id: region.id, height, areas: regionAreas(region), levels, look: ["earth", "none"].includes(own?.cliffLook) ? own.cliffLook : "", open: readOpenEdges(own), hill: own?.edgeKind === "hill" });
+      if (height) parts.push({ id: region.id, height, areas: regionAreas(region), levels, look: ["earth", "none"].includes(own?.cliffLook) ? own.cliffLook : "", open: readOpenEdges(own), hill: own?.edgeKind === "hill", reach: own?.edgeKind === "hill" ? Math.min(6, (height / heightStep(scene)) * 0.6) * (Number(scene?.grid?.size) || 100) : 0 });
       else if (ramp) ramps.push({ id: region.id, ...ramp, levels });
     } catch { /* a broken region never breaks the rest */ }
   }
@@ -3142,6 +3142,10 @@ const heightsOf = (scene, levelId = null) => {
 // The deck a token stands on, when it is on a bridge at its height: the elevation its shadow lies at (a hair over the bridge's
 // planks, drawn at its lower end's height), else null.
 const bridgeDeckAt = (c, elevation, base, levelId = null) => { try { const { ramps, field } = heightsOf(canvas.scene, levelId); if (!ramps.some((r) => r.kind === "bridge")) return null; const hit = field.rampAt(c, elevation - base); return hit?.ramp?.kind === "bridge" ? base + Math.min(...field.rampEnds(hit.ramp)) + 0.01 : null; } catch { return null; } };
+// The outline a token stands on when up off the ground (flat [x, y, �]): a bridge's deck, or the raised top at its height; else
+// null. Its shadow in the sun is kept to it: past the edge it falls far below, too faint and soft to show. (Roi, of a shadow off
+// a bridge laid full length over the cliff's face: "do it".)
+const standingOn = (c, elevation, base, levelId = null) => { try { const { parts, ramps, field } = heightsOf(canvas.scene, levelId); if (!parts.length && !ramps.length) return null; const feet = elevation - base, hit = field.rampAt(c, feet); if (hit?.ramp?.kind === "bridge") { const r = hit.ramp, vx = r.b.x - r.a.x, vy = r.b.y - r.a.y, len = Math.hypot(vx, vy) || 1, nx = (-vy / len) * (r.w / 2), ny = (vx / len) * (r.w / 2); return [r.a.x + nx, r.a.y + ny, r.b.x + nx, r.b.y + ny, r.b.x - nx, r.b.y - ny, r.a.x - nx, r.a.y - ny]; } if (hit) return null; const part = field.partAt(c); if (!part || !(part.height > 0) || Math.abs(feet - part.height) > 1) return null; const area = part.areas.find((a) => inHeightAreas(c, [a])); return area?.length >= 6 ? Array.from(area) : null; } catch { return null; } };
 // The heights as the creatures go by them: each outline smoothed just as the cliff walls' are (cliffEdges, a twelfth of a square),
 // so the two lines agree. (On the raw outline, a wolf stood in the hair between them, walled one way and over a drop the other,
 // and stuck. Roi: "it's stuck i think".)
@@ -3202,6 +3206,9 @@ Hooks.once("setup", () => {
     Sweep.prototype._testEdgeInclusion = function (edge, edgeTypes) {
       // (A sweep asked to leave some walls out: the light reaching raised ground over walls no taller than it, below.)
       if (typeof this.config?.animaterIgnore === "function" && this.config.animaterIgnore(edge)) return false;
+      // (A clifftop's or hilltop's rim hides what lies past it (flags.animater.seenOver: the top's elevation) from eyes below it, not
+      // from those up at it or higher. Roi: "if theres 40 ft between celdar and ezren they should NOT be able to see each other".)
+      if (this.config?.type === "sight") { const wall = edge?.object?.document ?? edge?.object, over = Number(wall?.flags?.[ID]?.seenOver); if (Number.isFinite(over)) { const eye = Number(this.origin?.elevation ?? this.config?.source?.elevation ?? this.config?.source?.data?.elevation); if (Number.isFinite(eye) && eye >= over - 0.5) return false; } }
       if (movingFeet !== null && this.config?.type === "move") { const wall = edge?.object?.document ?? edge?.object, at = Number(wall?.flags?.[ID]?.bridgeAt); if (Number.isFinite(at) && movingFeet >= at - BRIDGE_REACH) return false; }
       return include.call(this, edge, edgeTypes);
     };
@@ -3254,8 +3261,10 @@ Hooks.on("canvasReady", () => { try { if (heightsOf(canvas.scene, canvas.level?.
 for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options) => { if (quietSave(first, changes, options) || first?.parent !== canvas?.scene) return; const own = first.flags?.[ID]; if (readHeight(own) || readRamp(own) || changes?.flags?.[ID]?.height !== undefined || changes?.flags?.[ID]?.ramp !== undefined) lightsReshapeSoon(); });
 // Cliff walls: made by the GM who changed the heights (or, on a scene shown afresh, the lead GM), each marked as its raised
 // part's (flags.animater.cliffOf), so no other wall is ever touched; kept in step as parts and ramps change, gone with them.
-let cliffWallsTimer = null;
-const cliffWallsSoon = (mine = false) => { clearTimeout(cliffWallsTimer); cliffWallsTimer = setTimeout(() => { cliffWallsTimer = null; void syncCliffWalls(mine); }, 700); };
+// (Made by this GM if any change in the wait was theirs: a later one by someone else no longer drops it, leaving the walls to a lead
+// GM whose screen may not be up. Roi: "deletig a crossing doesnt update the walls?")
+let cliffWallsTimer = null, cliffWallsMine = false;
+const cliffWallsSoon = (mine = false) => { clearTimeout(cliffWallsTimer); cliffWallsMine = cliffWallsMine || mine; cliffWallsTimer = setTimeout(() => { const own = cliffWallsMine; cliffWallsTimer = null; cliffWallsMine = false; void syncCliffWalls(own); }, 700); };
 // Whether a point lies on a ladder's or rope's line carried on down the face (its region may end partway: it is drawn to the foot).
 const climbsHere = (r, p, grid) => { if (r.kind !== "ladder" && r.kind !== "rope") return false; const vx = r.b.x - r.a.x, vy = r.b.y - r.a.y, len2 = vx * vx + vy * vy; if (!len2) return false; const t = ((p.x - r.a.x) * vx + (p.y - r.a.y) * vy) / len2, off = Math.abs((p.x - r.a.x) * vy - (p.y - r.a.y) * vx) / Math.sqrt(len2); return off <= r.w / 2 + grid * 0.1 && t > -6 && t < 7; };
 const VISIONER = "pf2e-visioner";
@@ -3266,13 +3275,22 @@ const syncCliffWalls = async (mine = false) => {
   // get its cover by how much the edge hides. Only the rims, not the face's foot. Roi: "if visioner is turned on we should mark
   // the edge of the cliff as a ledge no? but just the top part of the cliff walls".)
   const ledges = game.modules?.get?.(VISIONER)?.active === true, levelBase = (levelId) => Number(scene.levels?.get?.(levelId)?.elevation?.base ?? 0) || 0;
-  if (heightsSceneOn("walls", scene)) {
+  // (With cliff walls off a rim still hides what lies past it from eyes below: kept, but no wall to walk into. Roi: "if theres 40
+  // ft between celdar and ezren they should NOT be able to see each other".)
+  { const blocking = heightsSceneOn("walls", scene);
     const all = heightsOf(scene, null), levelIds = [...new Set([...all.parts, ...all.ramps].flatMap((p) => p.levels))];
     for (const levelId of levelIds.length ? levelIds : [null]) {
-      for (const e of cliffEdges({ field: heightsOf(scene, levelId).field, piece: (canvas.grid?.size ?? 100) / 4, smooth: (canvas.grid?.size ?? 100) / 12, bounds: canvas.dimensions?.sceneRect ?? null })) { if (!want.has(e.of)) want.set(e.of, []); const top = ledges ? heightsOf(scene, levelId).parts.find((p) => p.id === e.of)?.height : null; want.get(e.of).push({ c: e.c, levels: levelId ? [levelId] : [], bridge: e.bridge ?? null, ledge: Number.isFinite(top) ? levelBase(levelId) + top : null }); }
+      // (Where a bridge meets a rim it is seen past from the bridge's low end up: looking along the bridge you see the top it reaches.
+      // Roi: "I meant vision when there is a bridge".)
+      for (const e of cliffEdges({ field: heightsOf(scene, levelId).field, piece: (canvas.grid?.size ?? 100) / 4, smooth: (canvas.grid?.size ?? 100) / 12, bounds: canvas.dimensions?.sceneRect ?? null, sight: true })) { if (!want.has(e.of)) want.set(e.of, []); const height = heightsOf(scene, levelId).parts.find((p) => p.id === e.of)?.height, top = Number.isFinite(height) ? levelBase(levelId) + height : null; want.get(e.of).push({ c: e.c, levels: levelId ? [levelId] : [], bridge: e.bridge ?? null, ledge: ledges && blocking && !e.open ? top : null, open: !!e.open || !blocking, seenOver: Number.isFinite(top) && Number.isFinite(e.bridge) ? Math.min(top, levelBase(levelId) + e.bridge) : top }); }
       // (And along the painted face's foot, so a token below cannot walk onto the rock: Roi, "make sure the cliff is not passable on
       // the cliff side". Not under a part drawn with no cliff.)
-      if (!cliffsTopDown(scene)) { const here = heightsOf(scene, levelId), grid = canvas.grid?.size ?? 100, plain = new Set(here.parts.filter((p) => p.look === "none").map((p) => p.id));
+      // (Seen from above the face is the ring band: its foot is the band's outer edge. Roi: "we re also missing the movement blocking
+      // walls at the bottom of the cliff".)
+      if (blocking && cliffsTopDown(scene)) { const here = heightsOf(scene, levelId), grid = canvas.grid?.size ?? 100, step = heightStep(scene), plain = new Set(here.parts.filter((p) => p.look === "none").map((p) => p.id)), every = Math.max(1, Math.round(grid / 4 / Math.max(3, grid / 25)));
+        for (const run of cliffRuns({ field: here.field, step: Math.max(3, grid / 25), bounds: canvas.dimensions?.sceneRect ?? null, climbs: true })) { if (plain.has(run.of)) continue; const pts = run.points.map((p) => { const out = ringsReach(p.drop, grid, step) * 0.97; return { x: p.x + p.nx * out, y: p.y + p.ny * out }; }), n = pts.length, last = run.closed ? n : n - 1;
+          for (let i = 0; i < last; i += every) { const a = pts[i], b = pts[Math.min(i + every, last) % n], mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, over = here.field.rampAt(mid); if (over?.ramp?.kind === "ladder" || over?.ramp?.kind === "rope" || here.ramps.some((r) => climbsHere(r, mid, grid))) continue; const bridge = over?.ramp?.kind === "bridge" ? Math.round(Math.min(...here.field.rampEnds(over.ramp)) * 2) / 2 : null; if (!want.has(run.of)) want.set(run.of, []); want.get(run.of).push({ c: [a.x, a.y, b.x, b.y].map(Math.round), levels: levelId ? [levelId] : [], bridge }); } } }
+      if (blocking && !cliffsTopDown(scene)) { const here = heightsOf(scene, levelId), grid = canvas.grid?.size ?? 100, plain = new Set(here.parts.filter((p) => p.look === "none").map((p) => p.id));
         // (At the face's very foot, laid out exactly as it is drawn: the same runs, whole behind ladders and ropes, and each part's own
         // seed, so the walls stand on its bottom edge and not partway up the rock. Roi, of the deeper faces: "our walls should block
         // movement at the base of the cliff". Where a ladder or rope stands against the face, no wall: it is climbed there.)
@@ -3281,10 +3299,10 @@ const syncCliffWalls = async (mine = false) => {
     }
   }
   for (const wall of scene.walls ?? []) { const of = wall.flags?.[ID]?.cliffOf; if (!of) continue; if (!have.has(of)) have.set(of, []); have.get(of).push(wall); }
-  const key = (list) => list.map((w) => `${Array.from(w.c).join(",")}@${[...(w.levels ?? [])].join(",")}#${w.bridge ?? w.flags?.[ID]?.bridgeAt ?? ""}L${w.ledge ?? w.flags?.[VISIONER]?.ledgeElevation ?? ""}`).sort().join("|");
+  const key = (list) => list.map((w) => `${Array.from(w.c).join(",")}@${[...(w.levels ?? [])].join(",")}#${w.bridge ?? w.flags?.[ID]?.bridgeAt ?? ""}L${w.ledge ?? w.flags?.[VISIONER]?.ledgeElevation ?? ""}S${w.seenOver ?? w.flags?.[ID]?.seenOver ?? ""}O${w.open ?? w.flags?.[ID]?.open ?? false}`).sort().join("|");
   const gone = [], made = [], none = CONST.WALL_SENSE_TYPES?.NONE ?? 0;
   for (const [id, walls] of have) { const w = want.get(id); if (!w || key(walls) !== key(w)) gone.push(...walls.map((x) => x.id)); }
-  for (const [id, w] of want) { const had = have.get(id); if (had && key(had) === key(w)) continue; for (const { c, levels, bridge, ledge } of w) made.push({ c, move: CONST.WALL_MOVEMENT_TYPES.NORMAL, sight: none, light: none, sound: none, levels, flags: { [ID]: { cliffOf: id, ...(bridge !== null && bridge !== undefined ? { bridgeAt: bridge } : {}) }, ...(ledge !== null && ledge !== undefined ? { [VISIONER]: { ledge: true, ledgeElevation: ledge } } : {}) } }); }
+  for (const [id, w] of want) { const had = have.get(id); if (had && key(had) === key(w)) continue; for (const { c, levels, bridge, ledge, open = false, seenOver = null } of w) made.push({ c, move: open ? none : CONST.WALL_MOVEMENT_TYPES.NORMAL, sight: Number.isFinite(seenOver) ? (CONST.WALL_SENSE_TYPES?.NORMAL ?? 20) : none, light: none, sound: none, levels, flags: { [ID]: { cliffOf: id, open, ...(Number.isFinite(seenOver) ? { seenOver } : {}), ...(bridge !== null && bridge !== undefined ? { bridgeAt: bridge } : {}) }, ...(ledge !== null && ledge !== undefined ? { [VISIONER]: { ledge: true, ledgeElevation: ledge } } : {}) } }); }
   try { if (gone.length) await scene.deleteEmbeddedDocuments("Wall", gone); if (made.length) await scene.createEmbeddedDocuments("Wall", made); }
   catch (err) { console.warn("Animater | cliff walls", err); }
 };
@@ -3382,7 +3400,9 @@ const drawHeightShadows = () => {
   const cutHigher = (box, h) => { const higher = parts.filter((p) => p.height > h); if (!higher.length) return; if (!box.filters?.length) { const Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter; if (!Alpha) return; const whole = new Alpha(1); whole.padding = grid; box.filters = [whole]; } const cut = new PIXI.Graphics(); cut.blendMode = PIXI.BLEND_MODES.ERASE; cut.beginFill(0xffffff, 1); for (const p of higher) fill(cut, p.areas); cut.endFill(); box.addChild(cut); };
   const runs = cliffRuns({ field, step: Math.max(3, grid / 25), bounds: canvas.dimensions?.sceneRect ?? null, climbs: true });
   // (Its open stretches: slopes, the ground darkening as it falls away.)
-  const slopes = cliffRuns({ field, step: Math.max(3, grid / 25), bounds: canvas.dimensions?.sceneRect ?? null, want: "slope" });
+  // (Whole behind ladders and ropes, as the cliffs are: a ladder leaning on a hill broke its contour lines. Roi: "ladders should not
+  // change the structure of the height lines".)
+  const slopes = cliffRuns({ field, step: Math.max(3, grid / 25), bounds: canvas.dimensions?.sceneRect ?? null, want: "slope", climbs: true });
   // (Its cast shadow only by day; how strong, by the sun's strength and the sky.)
   const sunShadow = sunNow && !sunNow.moon && !shadowsOffHere() ? (Number.isFinite(Number(sunNow.strength)) ? Math.max(0, Math.min(1, Number(sunNow.strength))) : 1) * directSun(skyCoverNow) : 0;
   // (Each fade given room round what it holds: a blur inside reaches past its bounds, and a fade without room cut it off in a
@@ -3422,18 +3442,32 @@ const drawHeightShadows = () => {
       clip.beginFill(0xffffff, 1); fill(clip, part.areas); for (const c of part.open ?? []) clip.drawCircle(c.x, c.y, c.r * 0.9); clip.endFill(); glow.addChild(light, clip); glow.mask = clip;
       faded(glow, topGlow(part.height, step)); cutHigher(glow, part.height); faceRoot.addChild(glow); }
     // Its cast shadow over the lower ground, away from the sun: two painted steps, darker close in.
-    const off = sunShadow > 0.02 && mine.length ? castOffset({ height: part.height, grid, step, sun, sunHeight: sunNow?.height }) : null;
-    if (off) for (const [reach, alpha] of [[1, 0.34], [0.45, 0.16]]) {
-      const box = new PIXI.Container(), g = new PIXI.Graphics(); box.eventMode = "none";
-      g.beginFill(0x0e0905, 1); sweep(g, part.areas, off.x * reach, off.y * reach, 28); g.endFill(); g.filters = [new PIXI.BlurFilter(grid * (reach === 1 ? 0.07 : 0.04))];
-      box.addChild(g); cutTops(box, part.height);
+    let off = sunShadow > 0.02 && mine.length ? castOffset({ height: part.height, grid, step, sun, sunHeight: sunNow?.height }) : null;
+    // (Seen from above the face is the ring band out past the rim, solid over the ground: the shadow is thrown from its foot, so it
+    // reaches that much further, or the band hid it. Roi: "shouldnt this area have shadow from the cliff? according to where the sun is now".)
+    // (And as long as the sun's height makes it, at the faces' 2:1, up to six squares: painted short it barely showed past the band.
+    // Roi: "i think the cliff should cast a larger shadow on the ground surface no?")
+    const flat = !!off && cliffsTopDown(scene);
+    if (flat) { const len = Math.hypot(off.x, off.y) || 1, tall = Math.min(6 * grid, ((part.height / step) * grid * 0.5) / Math.tan((Math.max(12, Math.min(85, Number(sunNow?.height) || 45)) * Math.PI) / 180)), more = (Math.max(len, tall) + ringsReach(part.height, grid, step)) / len; off = { x: off.x * more, y: off.y * more }; }
+    // (Seen from above: darkest by the cliff and fading out along its length, in many thin steps, its outline a little ragged, as a
+    // painted shadow is. Over lower raised ground it reaches only as far as the cliff stands above that ground. Roi, of a 50 ft
+    // cliff's flat dark box of a shadow, the length the same over a 40 ft top as over the ground: "do it".)
+    const rag = (areas, amp, sd) => areas.map((a) => { const out = [], n = a.length / 2; for (let i = 0; i < n; i++) { const x1 = a[i * 2], y1 = a[i * 2 + 1], x2 = a[((i + 1) % n) * 2], y2 = a[((i + 1) % n) * 2 + 1], len = Math.hypot(x2 - x1, y2 - y1) || 1, k = Math.max(1, Math.ceil(len / (grid / 6))), nx = -(y2 - y1) / len, ny = (x2 - x1) / len; for (let j = 0; j < k; j++) { const x = x1 + ((x2 - x1) * j) / k, y = y1 + ((y2 - y1) * j) / k, h = Math.sin(x * 12.9898 + y * 78.233 + sd) * 43758.5453, r = (h - Math.floor(h) - 0.5) * 2 * amp; out.push(x + nx * r, y + ny * r); } } out.holes = a.holes; return out; });
+    const lower = off ? parts.filter((q) => q.id !== part.id && q.height > 0 && q.height < part.height).sort((x, y) => x.height - y.height) : [], from = flat ? rag(part.areas, grid * 0.06, part.height) : part.areas;
+    if (off) for (const [reach, alpha] of flat ? [[1, 0.16], [0.8, 0.16], [0.6, 0.16], [0.4, 0.16], [0.2, 0.16]] : [[1, 0.34], [0.45, 0.16]]) {
+      const box = new PIXI.Container(); box.eventMode = "none";
+      const blur = grid * (flat ? 0.04 + 0.1 * reach : reach === 1 ? 0.07 : 0.04), cast = (k) => { const g = new PIXI.Graphics(); g.beginFill(0x0e0905, 1); sweep(g, from, off.x * reach * k, off.y * reach * k, 28); g.endFill(); g.filters = [new PIXI.BlurFilter(blur)]; return g; };
+      box.addChild(cast(1));
+      for (const q of lower) { const cut = new PIXI.Graphics(), on = new PIXI.Container(), clip = new PIXI.Graphics(); cut.blendMode = PIXI.BLEND_MODES.ERASE; cut.beginFill(0xffffff, 1); fill(cut, q.areas); cut.endFill(); clip.beginFill(0xffffff, 1); fill(clip, q.areas); clip.endFill(); on.addChild(cast((part.height - q.height) / part.height), clip); on.mask = clip; box.addChild(cut, on); }
+      cutTops(box, part.height);
       // (No hard shadow off a slope: only a cliff throws one.)
       if (part.open?.length) { const cut = new PIXI.Graphics(); cut.blendMode = PIXI.BLEND_MODES.ERASE; cut.beginFill(0xffffff, 1); for (const c of part.open) cut.drawCircle(c.x - off.x * reach * 0.5, c.y - off.y * reach * 0.5, c.r * 1.3 + Math.hypot(off.x, off.y) * reach * 0.5); cut.endFill(); box.addChild(cut); }
       faded(box, alpha * sunShadow); shadowRoot.addChild(box);
     }
     // Its slopes, softened.
     const down = slopes.filter((r) => r.of === part.id);
-    if (down.length) { const box = new PIXI.Container(), g = new PIXI.Graphics(); box.eventMode = "none"; for (const run of down) drawSlope(g, run, { grid, step, sun, seed: [...String(part.id)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7) }); if (cliffsTopDown(scene)) for (const run of down) drawCliffRings(g, run, { grid, step, sun, colours: cliffColours(), hill: true }); const soften = new PIXI.BlurFilter(grid * 0.18, 6); soften.padding = grid * 0.5; g.filters = [soften]; box.addChild(g); cutHigher(box, part.height); shadowRoot.addChild(box); }
+    if (down.length) { const box = new PIXI.Container(), g = new PIXI.Graphics(); box.eventMode = "none"; for (const run of down) drawSlope(g, run, { grid, step, sun, seed: [...String(part.id)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7), out: part.hill ? part.reach : 0 }); // (A hill's contour lines on their own, sharp: drawn under the slope's soft blur they were blurred away. Roi: "hill still doesnt show rings".)
+      const lines = new PIXI.Graphics(); if (cliffsTopDown(scene) && part.hill) for (const run of down) drawCliffRings(lines, run, { grid, step, sun, colours: cliffColours(), hill: true, spread: part.reach }); const soften = new PIXI.BlurFilter(grid * 0.18, 6); soften.padding = grid * 0.5; g.filters = [soften]; box.addChild(g, lines); cutHigher(box, part.height); shadowRoot.addChild(box); }
     if (!mine.length) continue;
     const seed = [...String(part.id)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7);
     const shade = new PIXI.Container(), soft = new PIXI.Graphics(), box = new PIXI.Container(), g = new PIXI.Graphics();
@@ -3470,7 +3504,7 @@ const drawHeightShadows = () => {
     const faceShade = new PIXI.Container(), faceSh = new PIXI.Graphics(); faceShade.eventMode = "none"; faceSh.filters = [new PIXI.BlurFilter(grid * 0.02)]; if (Alpha) faceShade.filters = [new Alpha(0.45)]; else faceShade.alpha = 0.45; faceShade.addChild(faceSh); faceRoot.addChild(faceShade); // (As dark as a cliff's cast shadow: at 0.3 a bridge's planks did not read on dark ground.)
     for (const ramp of ramps) {
       const [lo, hi] = field.rampEnds(ramp), seed = [...String(ramp.id)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 3);
-      if (ramp.kind === "ladder" || ramp.kind === "rope") { const fit = fitClimb(ramp, lo, hi), top = fit?.top ?? (hi >= lo ? ramp.b : ramp.a), foot = fit?.foot ?? (hi >= lo ? ramp.a : ramp.b), own = ownShade(Math.max(lo, hi)); if (ramp.kind === "ladder") drawLadder(built, own.g, top.x, top.y, foot.x, foot.y, { w: Math.min(ramp.w, grid * 0.45), sun, k, seed, reach: Math.min(30, (Math.abs(hi - lo) * (grid / step) * 0.12) / k), wet, snow }); else swayPiece({ a: top, b: foot, half: 26 * k, pad: 16 * k, sun, seed, root: faceRoot, weight: ropeWeight, draw: (g, la, lb, sunL) => drawRope(g, new PIXI.Graphics(), la.x, la.y, lb.x, lb.y, { sun: sunL, k, seed, wet, snow }), shadow: { root: own.box, reach: 10 * k, blur: grid * 0.02, draw: (g, la, lb, sunL) => drawRope(new PIXI.Graphics(), g, la.x, la.y, lb.x, lb.y, { sun: sunL, k, seed, wet, snow }) } }); own.done(); continue; }
+      if (ramp.kind === "ladder" || ramp.kind === "rope") { const fit = fitClimb(ramp, lo, hi), top = fit?.top ?? (hi >= lo ? ramp.b : ramp.a), foot = fit?.foot ?? (hi >= lo ? ramp.a : ramp.b), own = ownShade(Math.max(lo, hi)); if (ramp.kind === "ladder") drawLadder(built, own.g, top.x, top.y, foot.x, foot.y, { w: Math.min(ramp.w, grid * 0.45), sun, k, seed, reach: Math.min(30, (Math.abs(hi - lo) * (grid / step) * 0.12) / k), wet, snow, feet: Math.abs(hi - lo) }); else swayPiece({ a: top, b: foot, half: 26 * k, pad: 16 * k, sun, seed, root: faceRoot, weight: ropeWeight, draw: (g, la, lb, sunL) => drawRope(g, new PIXI.Graphics(), la.x, la.y, lb.x, lb.y, { sun: sunL, k, seed, wet, snow }), shadow: { root: own.box, reach: 10 * k, blur: grid * 0.02, draw: (g, la, lb, sunL) => drawRope(new PIXI.Graphics(), g, la.x, la.y, lb.x, lb.y, { sun: sunL, k, seed, wet, snow }) } }); own.done(); continue; }
       if (ramp.kind === "bridge") { const mid = { x: (ramp.a.x + ramp.b.x) / 2, y: (ramp.a.y + ramp.b.y) / 2 }, drop = Math.max(0, (lo + hi) / 2 - field.groundAt(mid)) * (grid / step) * 0.6; const box = new PIXI.Container(), deck = new PIXI.Graphics(), low = Math.min(lo, hi), rise = (t) => { const p = { x: ramp.a.x + (ramp.b.x - ramp.a.x) * t, y: ramp.a.y + (ramp.b.y - ramp.a.y) * t }; return Math.min(grid * 1.5, Math.max(0, lo + (hi - lo) * t - field.groundAt(p)) * (grid / step) * 0.6); }, look = { w: ramp.w, drop: Math.min(drop, grid * 1.5), rise, sun, k, seed, wet, snow }; box.eventMode = "none"; box.sortLayer = 656; box.elevation = (Number(canvas.level?.elevation?.base) || 0) + low; box.sort = 1; // (Over the faces and the crossings' shadows at the same height and layer: with a ground-level end, the face layer drew over it and laid the bridge's own shadow on its deck. Roi: "whats the shadow on the bridge now??") deck.destroy();
       // Where it is held: still from each end it rests on to that end's posts, which stand on the top a little back from where either
       // rail leaves it, on one of the sheet's own rows; it sways only between them, its rails swinging from the posts. (Roi: "what was
@@ -6914,7 +6948,7 @@ const movementFeel = createMovementFeel({
       const sound = movementSoundMix(d.flags?.[ID]?.movementSound);
       const soundBody = sound.body === 'none' ? null : sound.body || movementFeelBody(d);
       const view = {
-        id: d.id, x: c.x, y: c.y, width: t.w ?? 100, elevation: d.elevation ?? 0, base, action, deck: bridgeDeckAt(c, d.elevation ?? 0, base, level),
+        id: d.id, x: c.x, y: c.y, width: t.w ?? 100, elevation: d.elevation ?? 0, base, action, deck: bridgeDeckAt(c, d.elevation ?? 0, base, level), stand: standingOn(c, d.elevation ?? 0, base, level),
         ...((d.elevation??0)<base?{floor:movementFeelFloor(c,d)}:{}),
         statuses: d.actor?.statuses, gait: sound.gait || movementFeelGait(d), printShape: printShape(sound.gait || movementFeelGait(d), { actor: d.actor, name: d.name }), bulk: movementFeelBulk(d),
         body: soundBody, flight: sound.flight || (['air', 'fire', 'water'].includes(soundBody) ? 'flight' : movementFeelFlight(d)), sound,

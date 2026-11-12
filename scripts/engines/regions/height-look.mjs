@@ -249,10 +249,10 @@ export const ringsReach = (drop, grid, step = 5) => Math.min(3 * grid, Math.max(
  *  facing the sun, darker away from it. A 40 ft cliff shows eight. (Roi, of the side view on a top-down map: "is there anyway to
  *  add support for top down mode?"; he took B of the mock, height rings, with A's rim and C's lit and shaded sides.) Returns how
  *  many rings it drew. */
-export function drawCliffRings(g, run, { grid = 100, step = 5, sun = null, seed = 0, colours = cliffColours(), hill = false } = {}) {
+export function drawCliffRings(g, run, { grid = 100, step = 5, sun = null, seed = 0, colours = cliffColours(), hill = false, spread = 0 } = {}) {
   const pts = run.points, n = pts.length; if (n < 2) return 0;
   // (A hill's: faint contour lines over the ground, three times as far apart, no rock and no heavy rim.)
-  const k = grid / 100, tallest = pts.reduce((m, p) => Math.max(m, Number(p.drop) || 0), 0), rings = Math.max(1, Math.min(24, Math.round(tallest / (step || 5)))), gap = RING_SPACING * grid * (hill ? 3 : 1);
+  const k = grid / 100, tallest = pts.reduce((m, p) => Math.max(m, Number(p.drop) || 0), 0), rings = Math.max(1, Math.min(24, Math.round(tallest / (step || 5)))), gap = hill && spread > 0 ? spread / (rings + 1) : RING_SPACING * grid * (hill ? 3 : 1);
   const along = [0]; for (let i = 1; i < n; i++) along.push(along[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
   const len = along[n - 1], last = run.closed ? n : n - 1, P = (i) => pts[((i % n) + n) % n];
   // (Tapering away where an open run ends, as the side view's wall does: a cliff dying into level ground.)
@@ -261,19 +261,22 @@ export function drawCliffRings(g, run, { grid = 100, step = 5, sun = null, seed 
   // The slope between the rim and the outermost ring, solid rock seen from above, one step of tone a ring: lit at the rim, darker
   // toward the foot, lighter on the side facing the sun. (At 42% it was see-through, the grass showing through the rock. Roi:
   // "why is it see through?")
+  // (Not a hill's: laid see-through over its wide flank the pieces overlapped into dark wedges where the outline turns. Its flank
+  // is shaded softly by drawSlope instead, and its lines drawn heavier.)
   if (!hill) for (let i = 0; i < last; i++) {
     const a = P(i), b = P(i + 1), ta = taper(i % n), tb = taper((i + 1) % n), toward = sun ? a.nx * sun.x + a.ny * sun.y : 0;
     const ra = Math.max(1, Math.round((Number(a.drop) || 0) / (step || 5))), rb = Math.max(1, Math.round((Number(b.drop) || 0) / (step || 5))), steps = Math.max(ra, rb);
     if (ta < 0.02 && tb < 0.02) continue;
     for (let r = 0; r < steps; r++) {
       const da0 = Math.min(r, ra) * gap * ta, da1 = Math.min(r + 1, ra) * gap * ta, db0 = Math.min(r, rb) * gap * tb, db1 = Math.min(r + 1, rb) * gap * tb; if (da1 - da0 < 0.2 && db1 - db0 < 0.2) continue;
-      const depth = (r + 0.5) / steps, tone = mix(light, dark, Math.min(1, Math.max(0, 0.12 + depth * 0.62 - toward * 0.28)));
+      // (The faces turned from the sun in shade, those toward it lit. Roi: "it should make a shadow on the far from the sun walls".)
+      const depth = (r + 0.5) / steps, tone = mix(light, dark, Math.min(1, Math.max(0, 0.1 + depth * 0.5 + Math.max(0, -toward) * 0.45 - Math.max(0, toward) * 0.3)));
       g.lineStyle(0); g.beginFill(hexOf(tone), 0.92); g.drawPolygon([a.x + a.nx * da0, a.y + a.ny * da0, b.x + b.nx * db0, b.y + b.ny * db0, b.x + b.nx * db1, b.y + b.ny * db1, a.x + a.nx * da1, a.y + a.ny * da1]); g.endFill();
     }
   }
   // The rings, each a ragged line out from the rim, fainter and lighter-inked the further out.
   for (let r = 1; r <= rings; r++) {
-    const out = r / rings; g.lineStyle({ width: Math.max(0.7, (1.5 - out * 0.7) * k * (hill ? 0.8 : 1)), color: colours.ink, alpha: (hill ? 0.28 : 0.55) * (1 - out * 0.6), cap: 'round', join: 'round' }); let on = false;
+    const out = r / rings; g.lineStyle({ width: Math.max(0.7, (1.5 - out * 0.7) * k * (hill ? 1.8 : 1)), color: colours.ink, alpha: (hill ? 0.65 : 0.55) * (1 - out * 0.5), cap: 'round', join: 'round' }); let on = false;
     for (let i = 0; i <= last; i++) {
       const p = P(i), t = taper(i % n), ownRings = Math.max(1, Math.round((Number(p.drop) || 0) / (step || 5)));
       if (r > ownRings || t < 0.05) { on = false; continue; }
@@ -326,19 +329,22 @@ export function castOffset({ height, grid = 100, step = 5, sun = null, sunHeight
  *  gone just past it, so the top rolls over into the slope instead of ending in a ring. (Roi, of the first slopes: the sun
  *  light and the unnatural blend into the slope's upper part.) Fading in where the slope meets a cliff. Bands, to be softened
  *  by the caller. Returns how many bands it drew. */
-export function drawSlope(g, run, { grid = 100, step = 5, sun = null, seed = 0 } = {}) {
+export function drawSlope(g, run, { grid = 100, step = 5, sun = null, seed = 0, out = 0 } = {}) {
   const pts = run.points, n = pts.length; if (n < 2) return 0;
   const drop = pts.reduce((m, p) => Math.max(m, p.drop || 0), 0), deep = (0.9 + 0.3 * Math.log2(1 + drop / (step || 5)) / Math.log2(11)) * grid;
   const along = [0]; for (let i = 1; i < n; i++) along.push(along[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
   // (From the shading's start inside the top, t = -1, out to just past the edge, t = 0.12: rising smoothly, then gone.)
-  const T = [-1, -0.75, -0.5, -0.3, -0.15, -0.05, 0, 0.06, 0.12], weight = (t) => (t <= 0 ? ((t + 1) ** 2) * (3 - 2 * (t + 1)) : Math.max(0, 1 - t / 0.12));
+  // (A hill's (`out`: its slope's reach past the edge, px): the whole flank, from a little inside the top out to its foot, fullest just
+  // past the edge and fading to nothing at the foot.)
+  const flank = out > 0, T = flank ? [-0.25, -0.1, 0, 0.12, 0.25, 0.4, 0.55, 0.7, 0.85, 1] : [-1, -0.75, -0.5, -0.3, -0.15, -0.05, 0, 0.06, 0.12];
+  const weight = flank ? (t) => (t <= 0 ? Math.max(0, 1 + t / 0.25) : (1 - t) ** 1.4) : (t) => (t <= 0 ? ((t + 1) ** 2) * (3 - 2 * (t + 1)) : Math.max(0, 1 - t / 0.12));
   let bands = 0;
   const last = run.closed ? n : n - 1;
   for (let i = 0; i < last; i++) {
     const a = pts[i], b = pts[(i + 1) % n], facing = sun ? a.nx * sun.x + a.ny * sun.y : 0;
     const ends = run.closed ? 1 : Math.max(0, Math.min(1, along[i] / (grid * 0.5), (along[n - 1] - along[i]) / (grid * 0.5))), fade = ends * ends * (3 - 2 * ends);
     if (fade < 0.01) continue;
-    const reach = deep * (0.8 + 0.6 * noise(a.s / (grid * 0.9), seed + 61)), reachB = deep * (0.8 + 0.6 * noise(b.s / (grid * 0.9), seed + 61));
+    const span = flank ? out : deep, reach = span * (0.8 + 0.6 * noise(a.s / (grid * 0.9), seed + 61) * (flank ? 0.4 : 1)), reachB = span * (0.8 + 0.6 * noise(b.s / (grid * 0.9), seed + 61) * (flank ? 0.4 : 1));
     const lit = Math.max(0, facing), dim = Math.max(0, -facing);
     for (let k = 0; k < T.length - 1; k++) {
       const t0 = T[k], t1 = T[k + 1], w = (weight(t0) + weight(t1)) / 2 * fade; if (w < 0.01) continue;

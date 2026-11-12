@@ -60,7 +60,15 @@ export const inAreas = (p, areas) => (areas ?? []).some((a) => inLoop(p.x, p.y, 
 export const BRIDGE_REACH = 2.5;
 export function heightField({ parts = [], ramps = [] } = {}) {
   const partAt = (p) => { let best = null; for (const part of parts) if ((!best || part.height > best.height) && inAreas(p, part.areas)) best = part; return best; };
-  const groundAt = (p) => partAt(p)?.height ?? 0;
+  // (Round a hill (`hill`, its slope reaching `reach` px out from its edge) the ground falls away gradually, eased, to the level
+  // ground at its foot: walked up step by step. Roi: "hill should have more slope area instead of removing the slopes".)
+  const hills = parts.filter((part) => part.hill && part.reach > 0).map((part) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const a of part.areas ?? []) for (let i = 0; i + 1 < a.length; i += 2) { x0 = Math.min(x0, a[i]); x1 = Math.max(x1, a[i]); y0 = Math.min(y0, a[i + 1]); y1 = Math.max(y1, a[i + 1]); } return { part, box: { x0: x0 - part.reach, y0: y0 - part.reach, x1: x1 + part.reach, y1: y1 + part.reach } }; });
+  const edgeDistance = (p, areas) => { let best = Infinity; for (const a of areas ?? []) for (const pts of [a, ...(a.holes ?? [])]) { const n = pts.length / 2; for (let i = 0; i < n; i++) { const ax = pts[i * 2], ay = pts[i * 2 + 1], bx = pts[((i + 1) % n) * 2], by = pts[((i + 1) % n) * 2 + 1], vx = bx - ax, vy = by - ay, l2 = vx * vx + vy * vy, t = l2 ? Math.max(0, Math.min(1, ((p.x - ax) * vx + (p.y - ay) * vy) / l2)) : 0; best = Math.min(best, Math.hypot(ax + vx * t - p.x, ay + vy * t - p.y)); } } return best; };
+  const groundAt = (p) => {
+    let h = partAt(p)?.height ?? 0;
+    for (const { part, box } of hills) { if (part.height <= h || p.x < box.x0 || p.x > box.x1 || p.y < box.y0 || p.y > box.y1 || inAreas(p, part.areas)) continue; const d = edgeDistance(p, part.areas); if (d >= part.reach) continue; const e = 1 - d / part.reach; h = Math.max(h, part.height * e * e * (3 - 2 * e)); }
+    return h;
+  };
   const rampEnds = (ramp) => [ramp.lo ?? groundAt(ramp.a), ramp.hi ?? groundAt(ramp.b)];
   // (`stay`: the id of the crossing a walker is on: where crossings overlap it keeps to that one. Live, a ladder under a bridge took
   // over a token walking down the bridge and carried it to the ground. Roi: "working for going up a bridge not down a bridge".)
@@ -162,7 +170,10 @@ export function simplifyLoop(pts, eps) {
  *  `bounds` ({ x, y, width, height }, the map): past its edge the ground counts as level, so a part painted off the map has no
  *  cliff there. */
 const offMap = (p, bounds) => !!bounds && (p.x < bounds.x || p.y < bounds.y || p.x > bounds.x + bounds.width || p.y > bounds.y + bounds.height);
-export function cliffEdges({ field, gap = 2.5, probe = 4, piece = 25, smooth = 0, bounds = null }) {
+// (`sight`: hills' and open edges too, marked `open`: no step there to stop a walker, but a 40 ft mound still hides what is past
+// it from those below. Roi, of two tokens either side of one: "if theres 40 ft between celdar and ezren they should NOT be able to
+// see each other".)
+export function cliffEdges({ field, gap = 2.5, probe = 4, piece = 25, smooth = 0, bounds = null, sight = false }) {
   // (A bridge spans over the rim: the cliff and its wall stay, marked `bridge` (its height there), so only those walking at its
   // height pass. Roi: "tokens should be able to walk UNDER bridges"; opened, the low ground under it led up onto the top.)
   const bridgeAt = (q) => { const hit = field.rampAt(q); return hit?.ramp?.kind === 'bridge' ? hit : null; };
@@ -176,20 +187,27 @@ export function cliffEdges({ field, gap = 2.5, probe = 4, piece = 25, smooth = 0
         const x1 = pts[i * 2], y1 = pts[i * 2 + 1], x2 = pts[((i + 1) % n) * 2], y2 = pts[((i + 1) % n) * 2 + 1], len = Math.hypot(x2 - x1, y2 - y1);
         if (!(len > 0)) continue;
         const nx = -(y2 - y1) / len, ny = (x2 - x1) / len, k = Math.max(1, Math.ceil(len / piece));
-        let run = null, tag = null;
-        const close = () => { if (run) { out.push({ of: part.id, c: run.map(Math.round), ...(tag !== null ? { bridge: tag } : {}) }); run = null; tag = null; } };
+        let run = null, tag = null, wide = false;
+        const close = () => { if (run) { out.push({ of: part.id, c: run.map(Math.round), ...(tag !== null ? { bridge: tag } : {}), ...(wide ? { open: true } : {}) }); run = null; tag = null; wide = false; } };
         for (let s = 0; s < k; s++) {
           const ax = x1 + ((x2 - x1) * s) / k, ay = y1 + ((y2 - y1) * s) / k, bx = x1 + ((x2 - x1) * (s + 1)) / k, by = y1 + ((y2 - y1) * (s + 1)) / k, mx = (ax + bx) / 2, my = (ay + by) / 2;
-          const q1 = { x: mx + nx * probe, y: my + ny * probe }, q2 = { x: mx - nx * probe, y: my - ny * probe };
+          // (Round a hill the ground just past its edge is nearly as high: its outer side is read at its slope's foot.)
+          // (Read past the smoothing too: where the smoothed outline cut a corner of the drawn one by more than `probe`, both sides fell
+          // on the same ground and that piece had no wall. Roi, of gaps in a cliff's walls: "cliff has issues?")
+          const near = probe + smooth, far = part.hill && part.reach > 0 ? part.reach + near : near, out1 = far > near && !inAreas({ x: mx + nx * 2, y: my + ny * 2 }, part.areas);
+          const q1 = { x: mx + nx * (out1 ? far : near), y: my + ny * (out1 ? far : near) }, q2 = { x: mx - nx * (far > near && !out1 ? far : near), y: my - ny * (far > near && !out1 ? far : near) };
           if (offMap(q1, bounds) || offMap(q2, bounds)) { close(); continue; }
-          const h1 = under(q1), h2 = under(q2), mid = { x: mx, y: my }, over = bridgeAt(mid);
-          const cliff = Math.abs(h1 - h2) >= gap && Math.max(h1, h2) === part.height && (over || !field.rampAt(mid)) && !openAt(part, mid);
-          if (!cliff) { close(); continue; }
+          // (For sight a crossing keeps the rim too, open to walkers: the ground either side read without it. Roi: "instead of removing
+          // the wall where the crossing is there should still be a wall there but it shouldnt block movement".)
+          const mid = { x: mx, y: my }, over = bridgeAt(mid), crossed = !over && !!field.rampAt(mid), read = crossed && sight ? field.groundAt : under;
+          const h1 = read(q1), h2 = read(q2);
+          const cliff = Math.abs(h1 - h2) >= gap && Math.max(h1, h2) === part.height && (over || !crossed || sight), open = openAt(part, mid) || crossed;
+          if (!cliff || (open && !sight)) { close(); continue; }
           // (Its lower end's height: a token's height is checked as it was where the drag began, so marked with the height at the
           // far, higher end, live a token on a sloping bridge was stopped at its other end. Roi: "my token cant cross the bridge".)
           const here = over ? Math.round(Math.min(...field.rampEnds(over.ramp)) * 2) / 2 : null;
-          if (run && here !== tag) close();
-          if (run) { run[2] = bx; run[3] = by; } else { run = [ax, ay, bx, by]; tag = here; }
+          if (run && (here !== tag || open !== wide)) close();
+          if (run) { run[2] = bx; run[3] = by; } else { run = [ax, ay, bx, by]; tag = here; wide = open; }
         }
         close();
       }
@@ -230,7 +248,8 @@ export function cliffRuns({ field, gap = 2.5, probe = 4, step = 4, bounds = null
         // (Outward: off the part. A hole's outward is into the hole.)
         if (inAreas({ x: p.x + nx * 2, y: p.y + ny * 2 }, part.areas)) { nx = -nx; ny = -ny; }
         p.nx = nx; p.ny = ny;
-        const qo = { x: p.x + nx * probe, y: p.y + ny * probe }, qi = { x: p.x - nx * probe, y: p.y - ny * probe };
+        // (A hill's drop is measured at its slope's foot: just past its edge its ground is nearly as high as its top.)
+        const out = part.hill && part.reach > 0 ? part.reach + probe : probe, qo = { x: p.x + nx * out, y: p.y + ny * out }, qi = { x: p.x - nx * probe, y: p.y - ny * probe };
         const hi = heightAt(qi), ho = offMap(qo, bounds) ? hi : heightAt(qo);
         p.drop = hi - ho;
         const drops = p.drop >= gap && hi === part.height && !crossing(p) && !crossing(qo);

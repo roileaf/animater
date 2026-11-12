@@ -165,7 +165,8 @@ test('main: the Heights tab raises, lays ramps and steps heights on the wheel; w
   assert.match(main, /const target = "CONFIG\.Token\.documentClass\.prototype\._preUpdate";/, 'before Foundry fixes the move');
   assert.match(main, /if \(waypoints\) waypoints\.forEach\(\(w, i\) => \{ w\.elevation = heights\[i\]; \}\);/, 'each waypoint at the ground there');
   assert.match(main, /if \(byHand\(changed\.elevation\) \|\| waypoints\?\.some\(\(w\) => byHand\(w\.elevation\)\)\) return;/, 'an elevation set by hand wins');
-  assert.match(main, /made\.push\(\{ c, move: CONST\.WALL_MOVEMENT_TYPES\.NORMAL, sight: none, light: none, sound: none, levels, flags: \{ \[ID\]: \{ cliffOf: id, \.\.\.\(bridge !== null && bridge !== undefined \? \{ bridgeAt: bridge \} : \{\}\) \}, \.\.\.\(ledge !== null && ledge !== undefined \? \{ \[VISIONER\]: \{ ledge: true, ledgeElevation: ledge \} \} : \{\}\) \} \}\)/, 'cliff walls stop movement only, and are marked as theirs');
+  assert.match(main, /seenOver\); if \(Number\.isFinite\(over\)\) \{ const eye = .*eye >= over - 0\.5\) return false;/, 'eyes up at a rim or higher see past it');
+  assert.match(main, /made\.push\(\{ c, move: open \? none : CONST\.WALL_MOVEMENT_TYPES\.NORMAL, sight: Number\.isFinite\(seenOver\) \? \(CONST\.WALL_SENSE_TYPES\?\.NORMAL \?\? 20\) : none, light: none, sound: none, levels, flags: \{ \[ID\]: \{ cliffOf: id, open,/, 'cliff walls stop movement (not on a hill) and sight from below, and are marked as theirs');
   assert.match(main, /const of = wall\.flags\?\.\[ID\]\?\.cliffOf; if \(!of\) continue;/, 'no other wall is touched');
   // Roi: "my token cant cross the bridge now": in v14 an edge's object is the WallDocument itself.
   assert.match(main, /const wall = edge\?\.object\?\.document \?\? edge\?\.object, at = Number\(wall\?\.flags\?\.\[ID\]\?\.bridgeAt\);/, 'bridge walls read off the wall document');
@@ -186,6 +187,6 @@ test('main: the Heights tab raises, lays ramps and steps heights on the wheel; w
   assert.match(main, /if \(!\(t1 > t0\) \|\| !still\(t0\) \|\| !still\(t1\)\) continue;/, 'resting: between the sheet\'s own rows, both still');
   // Roi, of a token walking under a bridge drawn over it: each bridge at its own height, so the map sorts tokens under or over it.
   assert.match(main, /box\.sortLayer = 656; box\.elevation = \(Number\(canvas\.level\?\.elevation\?\.base\) \|\| 0\) \+ low;/);
-  assert.match(main, /smooth: \(canvas\.grid\?\.size \?\? 100\) \/ 12, bounds: canvas\.dimensions\?\.sceneRect \?\? null \}\)\)/, 'no cliff walls along the map\'s edge');
+  assert.match(main, /smooth: \(canvas\.grid\?\.size \?\? 100\) \/ 12, bounds: canvas\.dimensions\?\.sceneRect \?\? null, sight: true \}\)\)/, 'no cliff walls along the map\'s edge');
   assert.match(main, /const heightsSceneOn = \(key, scene = canvas\?\.scene\) => scene\?\.flags\?\.\[ID\]\?\.\[key === "walls" \? "cliffWalls" : "heightShadows"\] !== false;/);
 });

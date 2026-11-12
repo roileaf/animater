@@ -1594,7 +1594,8 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
             // The shadows its lights cast, and the rim below: no big round one under it (on a token's disc it read as
             // a coin's drop shadow).
             Object.assign(geom, { width: Number(token.width) || size, lift: 0, flat: 1, ...(art ? { art } : {}) });
-            const laid = [main, ...(both ? others : [])].map((fall) => fallen(geom, fall, point, true));
+            // (Up on a bridge or a raised top (token.stand: its outline), kept to it: past its edge the shadow would fall far below.)
+            const laid = [main, ...(both ? others : [])].map((fall) => fallen(geom, fall, point, true)).map((g) => (token.stand?.length >= 6 && !g.clip ? { ...g, clip: token.stand } : g));
             const done = layer.updateShadow(handle, laid[0]) !== false;
             remember(move, key, refs, second(id, both ? laid.slice(1) : null) && done);
             // A big creature's shadows fall over the smaller ones behind it, each light's (with "Flier shadows fall on

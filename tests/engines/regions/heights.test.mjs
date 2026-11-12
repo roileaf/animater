@@ -245,3 +245,29 @@ test('a hill is a slope on every side: no cliff edges nor walls, only slopes', (
   assert.equal(cliffRuns({ field, step: 5 }).length, 0); assert.equal(cliffEdges({ field, piece: 25 }).length, 0);
   assert.ok(cliffRuns({ field, step: 5, want: 'slope' }).length >= 1);
 });
+
+test('round a hill the ground falls away gradually to its foot, walked up step by step, and its flank is shaded as a slope', () => {
+  const sq = (x0, y0, x1, y1) => [x0, y0, x1, y0, x1, y1, x0, y1];
+  const field = heightField({ parts: [{ id: 'H', height: 20, areas: [sq(100, 100, 300, 300)], hill: true, reach: 200 }] });
+  assert.equal(field.groundAt({ x: 200, y: 200 }), 20); assert.equal(field.groundAt({ x: 200, y: 520 }), 0, 'level past the foot');
+  const mid = field.groundAt({ x: 200, y: 400 }); assert.ok(mid > 5 && mid < 15, `halfway down (${mid})`);
+  assert.ok(field.groundAt({ x: 200, y: 310 }) > field.groundAt({ x: 200, y: 450 }));
+  assert.ok(cliffRuns({ field, step: 5, want: 'slope' }).length >= 1, 'its flank shaded'); assert.equal(cliffEdges({ field, piece: 25 }).length, 0, 'no walls');
+});
+
+test('for sight, a hill and an open edge keep their rim, marked open (no wall to walk into, but hiding what lies past)', () => {
+  const sq = (x0, y0, x1, y1) => [x0, y0, x1, y0, x1, y1, x0, y1];
+  const field = heightField({ parts: [{ id: 'H', height: 40, areas: [sq(100, 100, 300, 300)], hill: true, reach: 200 }, { id: 'C', height: 20, areas: [sq(600, 100, 800, 300)] }] });
+  assert.equal(cliffEdges({ field, piece: 25 }).filter((e) => e.of === 'H').length, 0);
+  const seen = cliffEdges({ field, piece: 25, sight: true });
+  assert.ok(seen.some((e) => e.of === 'H' && e.open), 'hill rim for sight');
+  assert.ok(seen.filter((e) => e.of === 'C').every((e) => !e.open), 'cliff rim not open');
+});
+
+test('for sight a crossing keeps its rim, open to walkers', () => {
+  const sq = (x0, y0, x1, y1) => [x0, y0, x1, y0, x1, y1, x0, y1];
+  const field = heightField({ parts: [{ id: 'C', height: 20, areas: [sq(100, 100, 300, 300)] }], ramps: [{ id: 'L', kind: 'ladder', a: { x: 200, y: 360 }, b: { x: 200, y: 280 }, w: 40 }] });
+  const at = (e) => Math.abs(e.c[1] - 300) < 2 && Math.min(e.c[0], e.c[2]) < 200 && Math.max(e.c[0], e.c[2]) > 200;
+  assert.ok(!cliffEdges({ field, piece: 25 }).some(at), 'no wall to climb into');
+  assert.ok(cliffEdges({ field, piece: 25, sight: true }).some((e) => at(e) && e.open), 'still hides, open');
+});

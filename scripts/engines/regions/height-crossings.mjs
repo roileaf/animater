@@ -31,7 +31,7 @@ export function plank(g, ax, ay, bx, by, w, seed, sun, k = 1, { wet = 0, snow = 
 
 /** A ladder down a cliff face from its top (x0, y0, at the rim) to its foot (x1, y1), `w` wide: two worn rails, uneven rungs,
  *  one gone, a little dirt where it stands. Returns how many rungs it drew. */
-export function drawLadder(g, sh, x0, y0, x1, y1, { w = 20, sun = { x: -Math.SQRT1_2, y: -Math.SQRT1_2 }, k = 1, seed = 0, reach = 12, wet = 0, snow = 0 } = {}) {
+export function drawLadder(g, sh, x0, y0, x1, y1, { w = 20, sun = { x: -Math.SQRT1_2, y: -Math.SQRT1_2 }, k = 1, seed = 0, reach = 12, wet = 0, snow = 0, feet = 0 } = {}) {
   const weather = { wet, snow };
   const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len, nx = -uy * w / 2, ny = ux * w / 2;
   // (Its shadow in its own parts, rails and rungs, on the rock behind it: none at its foot, where it stands, growing to `reach`
@@ -39,8 +39,11 @@ export function drawLadder(g, sh, x0, y0, x1, y1, { w = 20, sun = { x: -Math.SQR
   const lean = (t) => { const f = Math.max(0, 1 - t / len) * reach * k; return [-sun.x * f, -sun.y * f * 0.5]; };
   sh.lineStyle({ width: 3.2 * k, color: 0x0d0905, alpha: 1, cap: 'round' });
   for (const side of [-1, 1]) for (let t = 0, first = true; t <= len + 0.01; t += Math.max(4, len / 12), first = false) { const [ox, oy] = lean(t), x = x0 + ux * t + nx * side + ox, y = y0 + uy * t + ny * side + oy; if (first) sh.moveTo(x, y); else sh.lineTo(x, y); }
+  // (`feet`: the height it climbs, a rung a foot, as close as they still read: a rung every 5 ft or so left a 40 ft ladder with
+  // nine (Roi: "we should have more steps for the ladder"); packed tighter it read as a bridge's deck.)
+  const apart = feet > 0 ? Math.max(6.5 * k, (len - 11 * k) / feet) : 10.75 * k, jitter = Math.min(1, apart / (10.75 * k));
   let t = 8 * k, i = 0, rungs = 0;
-  while (t < len - 3 * k) { if (i !== 3) { const sk = (hash(i * 13 + seed) - 0.5) * 2.5 * k, cx = x0 + ux * t, cy = y0 + uy * t, [ox, oy] = lean(t); sh.lineStyle({ width: 2.6 * k, color: 0x0d0905, alpha: 1, cap: 'round' }); sh.moveTo(cx + nx + ox, cy + ny + oy); sh.lineTo(cx - nx + ox, cy - ny + oy); plank(g, cx + nx * 1.05, cy + ny * 1.05 + sk * 0.2, cx - nx * 1.05, cy - ny * 1.05 - sk * 0.2, 3.2 * k, 40 + i + seed, sun, k, weather); rungs++; } t += (9 + hash(i * 7 + seed) * 3.5) * k; i++; }
+  while (t < len - 3 * k) { if (i !== 3) { const sk = (hash(i * 13 + seed) - 0.5) * 2.5 * k, cx = x0 + ux * t, cy = y0 + uy * t, [ox, oy] = lean(t); sh.lineStyle({ width: 2.6 * k, color: 0x0d0905, alpha: 1, cap: 'round' }); sh.moveTo(cx + nx + ox, cy + ny + oy); sh.lineTo(cx - nx + ox, cy - ny + oy); plank(g, cx + nx * 1.05, cy + ny * 1.05 + sk * 0.2, cx - nx * 1.05, cy - ny * 1.05 - sk * 0.2, 3.2 * k, 40 + i + seed, sun, k, weather); rungs++; } t += apart + (hash(i * 7 + seed) - 0.5) * 3.5 * k * jitter; i++; }
   for (const s of [-1, 1]) plank(g, x0 + nx * s - ux * 7 * k, y0 + ny * s - uy * 7 * k, x1 + nx * s + ux * 0.6 * s, y1 + ny * s + uy * 0.6 * s, 3.6 * k, (s > 0 ? 3 : 9) + seed, sun, k, { wet, snow: snow * 0.4 });
   g.lineStyle(0); g.beginFill(0x281e12, 0.45); g.drawEllipse(x1 + ux * 3 * k, y1 + uy * 3 * k, w * 0.6, 3.2 * k); g.endFill();
   return rungs;
