@@ -10,14 +10,21 @@ const toFlat = (path, scale) => path.flatMap((p) => [p.X / scale, p.Y / scale]);
 /** The pieces (flat [x, y, …] outlines) of `reach` (the light's sweep past the short walls) that lie on `raised` (outlines of the
  *  ground it reaches) and outside `lit` (where the light already falls). Each piece at least `least` px² (slivers dropped);
  *  holes are dropped (a light's shape has none). `scale`: the precision clipping works at. */
-export function spillPieces({ ClipperLib, reach, raised = [], lit = null, scale = 10, least = 400 }) {
+// (`overlap` px: how far each piece reaches back under where the light already falls, so the two soft edges blend instead of
+// leaving a dark seam between them. Lights take the brighter where they overlap, so it never lights twice as bright. Roi, of
+// the first: "thoughts?")
+export function spillPieces({ ClipperLib, reach, raised = [], lit = null, scale = 10, least = 400, overlap = 0 }) {
   if (!ClipperLib || !reach?.length || !raised.length) return [];
   const { Clipper, PolyType, ClipType, PolyFillType } = ClipperLib, run = (subject, clip, type) => {
     const c = new Clipper(), out = []; c.AddPaths(subject, PolyType.ptSubject, true); c.AddPaths(clip, PolyType.ptClip, true);
     c.Execute(type, out, PolyFillType.pftNonZero, PolyFillType.pftNonZero); return out;
   };
   let pieces = run([toPath(reach, scale)], raised.map((r) => toPath(r, scale)), ClipType.ctIntersection);
-  if (lit?.length && pieces.length) pieces = run(pieces, [toPath(lit, scale)], ClipType.ctDifference);
+  if (lit?.length && pieces.length) {
+    let under = [toPath(lit, scale)];
+    if (overlap > 0 && ClipperLib.ClipperOffset) { const o = new ClipperLib.ClipperOffset(), out = []; o.AddPaths(under, ClipperLib.JoinType.jtRound, ClipperLib.EndType.etClosedPolygon); o.Execute(out, -overlap * scale); under = out; }
+    pieces = under.length ? run(pieces, under, ClipType.ctDifference) : pieces;
+  }
   return pieces.filter((p) => Clipper.Area(p) > least * scale * scale).map((p) => toFlat(p, scale));
 }
 

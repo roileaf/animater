@@ -3216,7 +3216,7 @@ const syncLightSpill = () => {
         for (const { height, areas } of groups) {
           const ignore = (edge) => { const w = edge?.type === "wall" ? (edge.object?.document ?? edge.object) : null; if (!w) return false; const span = wallSpanOf(w), top = Number.isFinite(span.top) ? span.top : (Number(span.bottom) || 0) + (Number(hotSetting("wallShadowHeight")) || 2); return lightPasses(top * per, height); }; // (A wall with no height of its own stands as tall as walls do for their shadows: the Wall shadow height setting.)
           const reach = Backend.create(src.origin ?? { x: src.data.x, y: src.data.y, elevation: src.data.elevation ?? 0 }, { ...src._getPolygonConfiguration(), animaterIgnore: ignore });
-          for (const piece of spillPieces({ ClipperLib: globalThis.ClipperLib, reach: Array.from(reach.points), raised: areas, lit: Array.from(src.shape.points), least: (canvas.grid?.size ?? 100) ** 2 * 0.02 })) {
+          for (const piece of spillPieces({ ClipperLib: globalThis.ClipperLib, reach: Array.from(reach.points), raised: areas, lit: Array.from(src.shape.points), least: (canvas.grid?.size ?? 100) ** 2 * 0.02, overlap: (canvas.grid?.size ?? 100) * 0.35 })) {
             // (Its shape carries the light's own middle and reach, as Foundry's sweeps do: it builds the light's mesh from them, and
             // without them none was made and the flicker failed on every frame. Roi: "i see a LOT of errors". One that still fails is
             // dropped, never left half made.)
