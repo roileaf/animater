@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 4.2.2
+
+Farm animals no longer spin at edges.
+
+- **Farm animals go along edges.** Sheep, cows, goats, pigs and horses that met a region's edge, a wall or ground they may not stand on could get stuck and spin on the spot, worst when fleeing into an edge or a corner. They now take the nearest open way round and keep to it, or stand still if there is none; one standing just over an edge walks back off it.
+
 ## 4.2.1
 
 Cliffs seen from above, hills, and sight past raised ground.
