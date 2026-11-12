@@ -133,7 +133,7 @@ test('Heights: Raise or Ramp, Edges for Raise, and the scene\'s cliff walls and 
   assert.deepEqual(all(root, (n) => n.dataset?.edges).map((b) => b.dataset.edges), ['off', 'colour', 'model'], 'Edges for Raise');
   assert.ok(find(root, (n) => n.textContent === 'Brush'), 'Raise is a brush');
   const boxes = all(root, (n) => n.dataset?.sceneTick);
-  assert.deepEqual(boxes.map((b) => [b.dataset.sceneTick, b.checked]), [['walls', true], ['shadows', false]]);
+  assert.deepEqual(boxes.map((b) => [b.dataset.sceneTick, b.checked]), [['walls', true], ['shadows', false], ['topdown', false]]);
   boxes[1].checked = true; boxes[1].listeners.change[0](); assert.deepEqual(ticks, [['shadows', true]]);
   find(root, (n) => n.dataset?.heightMode === 'ramp').listeners.click[0]();
   assert.equal(brushChoices().heightMode, 'ramp');

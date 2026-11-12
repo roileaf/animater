@@ -98,7 +98,7 @@ export function faceFeet(runs, { grid = 100, step = 5, piece = 25, seed = 0, ins
  *  (not where the edge is open, a slope; a ramp is walked, a ladder, rope or bridge is not), or onto a rock face, the ground
  *  just below a cliff where its painted wall hangs (from off the face it may step off it). With or without the scene's cliff
  *  walls. (Roi: "all non flying animals should know about cliffs and not walk on them like they are ground".) */
-export function cliffStops({ field, a, b, grid = 100, step = 5, gap = 2.5 }) {
+export function cliffStops({ field, a, b, grid = 100, step = 5, gap = 2.5, faces = true }) {
   if (!field?.parts?.length) return false;
   // (Along the whole way, a fifth of a square at a time: creatures look ahead up to three squares to steer, and judged by its
   // two ends a look clean over a raised part came back clear, so they kept walking into the cliff and stuck. Roi: "they are getting stuck".)
@@ -106,8 +106,8 @@ export function cliffStops({ field, a, b, grid = 100, step = 5, gap = 2.5 }) {
   const boxes = partBoxes(field, grid), x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
   if (!boxes.some((q) => x1 >= q.x0 && x0 <= q.x1 && y1 >= q.y0 && y0 <= q.y1)) return false;
   const len = Math.hypot(b.x - a.x, b.y - a.y), n = Math.min(24, Math.max(1, Math.ceil(len / (grid * 0.2))));
-  if (n > 1) { let p = a; for (let i = 1; i <= n; i++) { const q = { x: a.x + ((b.x - a.x) * i) / n, y: a.y + ((b.y - a.y) * i) / n }; if (stepStops(field, p, q, grid, step, gap)) return true; p = q; } return false; }
-  return stepStops(field, a, b, grid, step, gap);
+  if (n > 1) { let p = a; for (let i = 1; i <= n; i++) { const q = { x: a.x + ((b.x - a.x) * i) / n, y: a.y + ((b.y - a.y) * i) / n }; if (stepStops(field, p, q, grid, step, gap, faces)) return true; p = q; } return false; }
+  return stepStops(field, a, b, grid, step, gap, faces);
 }
 // Each raised part's box, grown by a cliff's reach (its face hangs up to three squares below it), kept with the field.
 const BOXES = new WeakMap();
@@ -136,11 +136,12 @@ function faceAt(field, p, h, grid, step, gap, reach = 0.75) {
   }
   return false;
 }
-function stepStops(field, a, b, grid, step, gap) {
+function stepStops(field, a, b, grid, step, gap, faces = true) {
   const footing = (p) => { const hit = field.rampAt(p); if (hit?.ramp?.kind === 'ramp') { const [lo, hi] = field.rampEnds(hit.ramp); return lo + (hi - lo) * hit.t; } return field.groundAt(p); };
   const ha = footing(a), hb = footing(b);
   if (Math.abs(ha - hb) >= gap) { const high = field.partAt(ha > hb ? a : b); if (!(high && (openAt(high, a) || openAt(high, b)))) return true; }
-  return faceAt(field, b, hb, grid, step, gap) && !faceAt(field, a, ha, grid, step, gap);
+  // (Seen from above (top-down cliffs) there is no face hanging below to keep off.)
+  return faces && faceAt(field, b, hb, grid, step, gap) && !faceAt(field, a, ha, grid, step, gap);
 }
 
 /** One loose rock (into `g`) at (x, y), about `r` px: an angular, chipped outline flat at its foot (5 to 7 corners), a dark
@@ -236,6 +237,50 @@ export function drawCliffRun(g, run, { grid = 100, step = 5, sun = null, seed = 
     }
   }
   return columns;
+}
+
+/** How far out a top-down cliff's rings reach (px) for a drop of `drop`: about an eighth of a square a ring, tight, so a 40 ft cliff's eight
+ *  span about a square, never past three squares. */
+export const RING_SPACING = 0.13;
+export const ringsReach = (drop, grid, step = 5) => Math.min(3 * grid, Math.max(1, Math.round(Math.max(0, drop) / (step || 5))) * RING_SPACING * grid);
+
+/** Draws one cliff run seen from straight above (into `g`): a heavy inked rim, then one ring every step of height (5 ft on a 5 ft
+ *  grid) stepping out from it like contour lines, close together, each fainter and darker than the last; lighter on the side
+ *  facing the sun, darker away from it. A 40 ft cliff shows eight. (Roi, of the side view on a top-down map: "is there anyway to
+ *  add support for top down mode?"; he took B of the mock, height rings, with A's rim and C's lit and shaded sides.) Returns how
+ *  many rings it drew. */
+export function drawCliffRings(g, run, { grid = 100, step = 5, sun = null, seed = 0, colours = cliffColours() } = {}) {
+  const pts = run.points, n = pts.length; if (n < 2) return 0;
+  const k = grid / 100, tallest = pts.reduce((m, p) => Math.max(m, Number(p.drop) || 0), 0), rings = Math.max(1, Math.min(24, Math.round(tallest / (step || 5)))), gap = RING_SPACING * grid;
+  const along = [0]; for (let i = 1; i < n; i++) along.push(along[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+  const len = along[n - 1], last = run.closed ? n : n - 1, P = (i) => pts[((i % n) + n) % n];
+  // (Tapering away where an open run ends, as the side view's wall does: a cliff dying into level ground.)
+  const taper = (i) => { if (run.closed) return 1; const e = Math.max(0, Math.min(1, along[i] / (grid * 0.5), (len - along[i]) / (grid * 0.5))); return e * e * (3 - 2 * e); };
+  const light = rgb(colours.light), dark = rgb(colours.dark);
+  // The band between the rim and the outermost ring, washed from rock at the rim to the ground, shaded by the sun.
+  for (let i = 0; i < last; i++) {
+    const a = P(i), b = P(i + 1), ta = taper(i % n), tb = taper((i + 1) % n), toward = sun ? a.nx * sun.x + a.ny * sun.y : 0;
+    const reachA = ringsReach(a.drop, grid, step) * ta, reachB = ringsReach(b.drop, grid, step) * tb; if (reachA < 0.5 && reachB < 0.5) continue;
+    const tone = mix(light, dark, Math.min(1, Math.max(0, 0.45 - toward * 0.35)));
+    g.lineStyle(0); g.beginFill(hexOf(tone), 0.42); g.drawPolygon([a.x, a.y, b.x, b.y, b.x + b.nx * reachB, b.y + b.ny * reachB, a.x + a.nx * reachA, a.y + a.ny * reachA]); g.endFill();
+  }
+  // The rings, each a ragged line out from the rim, fainter and lighter-inked the further out.
+  for (let r = 1; r <= rings; r++) {
+    const out = r / rings; g.lineStyle({ width: Math.max(0.7, (1.5 - out * 0.7) * k), color: colours.ink, alpha: 0.55 * (1 - out * 0.6), cap: 'round', join: 'round' }); let on = false;
+    for (let i = 0; i <= last; i++) {
+      const p = P(i), t = taper(i % n), ownRings = Math.max(1, Math.round((Number(p.drop) || 0) / (step || 5)));
+      if (r > ownRings || t < 0.05) { on = false; continue; }
+      const d = r * gap * t + (noise(along[i % n] / (grid * 0.1), seed + r) - 0.5) * gap * 0.35, x = p.x + p.nx * d, y = p.y + p.ny * d;
+      if (on) g.lineTo(x, y); else { g.moveTo(x, y); on = true; }
+    }
+  }
+  // The rim: heavy ink, heavier on the side away from the sun, fading out at an open run's ends.
+  for (let i = 0; i < last; i++) {
+    const a = P(i), b = P(i + 1), fade = run.closed ? 1 : Math.min(1, i / 3, (n - 2 - i) / 3); if (fade <= 0) continue;
+    const away = sun ? Math.max(0, -(a.nx * sun.x + a.ny * sun.y)) : 0.5;
+    g.lineStyle({ width: (2.2 + 1.4 * away) * k * (0.5 + 0.5 * fade), color: colours.ink, alpha: 0.95 * fade, cap: 'round' }); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y);
+  }
+  return rings;
 }
 
 /** The darker ground just below a run's wall (pure): pieces of a band from its foot down the map, a little past it, each a flat

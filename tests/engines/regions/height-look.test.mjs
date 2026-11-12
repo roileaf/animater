@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cliffColours, faceDepth, layOut, drawCliffRun, footShade, topGlow, castOffset, drawSlope, depthHaze, drawStone, faceFeet, cliffStops, onCliffFace, weatherColours, SNOW } from '../../../scripts/engines/regions/height-look.mjs';
+import { cliffColours, faceDepth, layOut, drawCliffRun, footShade, topGlow, castOffset, drawSlope, depthHaze, drawStone, faceFeet, cliffStops, onCliffFace, weatherColours, SNOW, drawCliffRings, ringsReach } from '../../../scripts/engines/regions/height-look.mjs';
 import { cliffRuns, heightField } from '../../../scripts/engines/regions/heights.mjs';
 
 // Roi's friend, of rock boulders round the rim: "this doesnt look elevated at all"; the friend's "brighter in the middle and
@@ -144,4 +144,12 @@ test('a cliff shows one band of rock for each 5 ft of its height', () => {
   const polys = (h) => { const g = fakeG(), cols = drawCliffRun(g, runOf(h), { grid: 100, sun, colours: cliffColours(), step: 5 }); return { cols, n: g.calls.filter(([k]) => k === 'drawPolygon').length }; };
   const a = polys(20), b = polys(40);
   assert.equal(a.cols, b.cols); assert.ok(Math.abs((b.n - a.n) - b.cols * 4) <= b.cols * 0.5, `four more bands a column (${b.n - a.n} over ${b.cols} columns)`);
+});
+
+// Roi, of the side view on a top-down map: "is there anyway to add support for top down mode?"; he took the height rings.
+test('seen from above, a cliff is an inked rim and a ring every 5 ft, eight for 40 ft, tight', () => {
+  const run = cliffRuns({ field: heightField({ parts: [{ id: 'P', height: 40, areas: [box(100, 100, 600, 600)] }] }), step: 5 })[0];
+  assert.equal(drawCliffRings(fakeG(), run, { grid: 100, sun, step: 5 }), 8);
+  assert.ok(ringsReach(40, 100, 5) > 90 && ringsReach(40, 100, 5) < 120, 'eight rings about a square');
+  assert.ok(ringsReach(1000, 100, 5) <= 300 + 1e-9);
 });

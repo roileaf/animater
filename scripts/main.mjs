@@ -287,7 +287,7 @@ import { openBrushBar, brushChoices, BRUSH_EDGE } from "./ui/decor-brush-bar.mjs
 import { readHeight, readRamp, readOpenEdges, edgeTouches, openAt as heightOpenAt, OPEN_EDGES_MOST, heightField, walkerPath, nextHeight, rampFromDrag, rampOutline, heightRegionData, rampRegionData, cliffEdges, cliffRuns, heightsHoverLine, heightName, HEIGHT_STEP, BRIDGE_REACH, refitHeights, simplifyLoop } from "./engines/regions/heights.mjs";
 import { swayAt, bridgeWeight, ropeWeight, pieceFrame, BRIDGE_REST } from "./engines/regions/crossing-sway.mjs";
 import { grownShape, lightPasses, reachableParts } from "./engines/regions/light-spill.mjs";
-import { drawCliffRun, drawSlope, footShade, topGlow, castOffset, depthHaze as heightDepthHaze, cliffColours, weatherColours, layOut as cliffLayOut, faceFeet as cliffFaceFeet, cliffStops, onCliffFace } from "./engines/regions/height-look.mjs";
+import { drawCliffRun, drawSlope, footShade, topGlow, castOffset, depthHaze as heightDepthHaze, cliffColours, weatherColours, drawCliffRings, ringsReach, layOut as cliffLayOut, faceFeet as cliffFaceFeet, cliffStops, onCliffFace } from "./engines/regions/height-look.mjs";
 import { drawLadder, drawRope, drawBridge, drawPost } from "./engines/regions/height-crossings.mjs";
 import { DECOR_KINDS, stampDecor, paintDecor } from "./engines/motion/decor-paint.mjs";
 import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, seasonGround, groundInputs, groundStep, groundMoved, iceHours } from "./engines/motion/ambient-life.mjs";
@@ -2528,7 +2528,7 @@ const startDecorBrush = (doc = null) => {
   const thumbs = new Map(), thumb = (kind) => { if (!thumbs.has(kind)) { let pic = null; try { pic = paintDecor(kind, 7, 48, decorLook({ where: brushChoices().where }))?.canvas ?? null; } catch { /* no picture */ } thumbs.set(kind, pic); } return thumbs.get(kind); };
   state.bar = openBrushBar({ onClose: () => stopDecorBrush(), onChange: () => { draw(); if ((floorsOn() || (heightsOn() && brushChoices().heightMode === "raise")) && modelOn()) void loadSam(); refreshHeights(); refreshStatus(); }, region, thumb,
     onTab: () => { if (floorsOn() || heightsOn()) void readMap(); if (!floorsOn()) hideHover(); refreshHeights(); draw(); refreshStatus(); },
-    sceneTicks: { get: () => ({ walls: heightsSceneOn("walls"), shadows: heightsSceneOn("shadows") }), set: (key, on) => void canvas.scene?.update({ [`flags.${ID}.${key === "walls" ? "cliffWalls" : "heightShadows"}`]: on }) },
+    sceneTicks: { get: () => ({ walls: heightsSceneOn("walls"), shadows: heightsSceneOn("shadows"), topdown: cliffsTopDown() }), set: (key, on) => void canvas.scene?.update(key === "topdown" ? { [`flags.${ID}.cliffView`]: on ? "topdown" : "side" } : { [`flags.${ID}.${key === "walls" ? "cliffWalls" : "heightShadows"}`]: on }) },
     onUndo: () => { if (!state.down) void undoDecorStep().then(refreshStatus); }, onRedo: () => { if (!state.down) void redoDecorStep().then(refreshStatus); },
     onReadMap: game.settings.get(ID, "experimentalWaterRegions") === true ? () => { stopDecorBrush(); void openFloorRegionsTool(); } : null });
   const sizeNow = () => brushChoices().size;
@@ -3154,6 +3154,8 @@ const creatureHeights = (scene, levelId = null) => {
 const heightUnits = (scene = canvas?.scene) => scene?.grid?.units || "ft";
 const heightStep = (scene = canvas?.scene) => (Number(scene?.grid?.distance) > 0 ? Number(scene.grid.distance) : HEIGHT_STEP);
 const heightsSceneOn = (key, scene = canvas?.scene) => scene?.flags?.[ID]?.[key === "walls" ? "cliffWalls" : "heightShadows"] !== false;
+// Cliffs seen from straight above (Map painting's Heights, "Top-down cliffs"): rings for each 5 ft instead of a face down the map.
+const cliffsTopDown = (scene = canvas?.scene) => scene?.flags?.[ID]?.cliffView === "topdown";
 for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options) => { if (quietSave(first, changes, options)) return; heightsCache = new Map(); });
 Hooks.on("canvasReady", () => { heightsCache = new Map(); });
 // (Set on the screen that moves the token, before Foundry works out the move: each of its waypoints at the ground's height there,
@@ -3270,7 +3272,7 @@ const syncCliffWalls = async (mine = false) => {
       for (const e of cliffEdges({ field: heightsOf(scene, levelId).field, piece: (canvas.grid?.size ?? 100) / 4, smooth: (canvas.grid?.size ?? 100) / 12, bounds: canvas.dimensions?.sceneRect ?? null })) { if (!want.has(e.of)) want.set(e.of, []); const top = ledges ? heightsOf(scene, levelId).parts.find((p) => p.id === e.of)?.height : null; want.get(e.of).push({ c: e.c, levels: levelId ? [levelId] : [], bridge: e.bridge ?? null, ledge: Number.isFinite(top) ? levelBase(levelId) + top : null }); }
       // (And along the painted face's foot, so a token below cannot walk onto the rock: Roi, "make sure the cliff is not passable on
       // the cliff side". Not under a part drawn with no cliff.)
-      { const here = heightsOf(scene, levelId), grid = canvas.grid?.size ?? 100, plain = new Set(here.parts.filter((p) => p.look === "none").map((p) => p.id));
+      if (!cliffsTopDown(scene)) { const here = heightsOf(scene, levelId), grid = canvas.grid?.size ?? 100, plain = new Set(here.parts.filter((p) => p.look === "none").map((p) => p.id));
         // (At the face's very foot, laid out exactly as it is drawn: the same runs, whole behind ladders and ropes, and each part's own
         // seed, so the walls stand on its bottom edge and not partway up the rock. Roi, of the deeper faces: "our walls should block
         // movement at the base of the cliff". Where a ladder or rope stands against the face, no wall: it is climbed there.)
@@ -3320,7 +3322,7 @@ let heightsDrawn = { key: "", value: null, root: null };
 // The weather on the raised ground: the ground's own lying snow and wetness (as decorations take it), in tenths, none underground.
 // (Roi: "lets make heights support weather"; he chose the mock's wet and snowy looks.)
 const heightsWeather = () => { try { if (undergroundScene()) return { wet: 0, snow: 0 }; const g = groundOf().now, tenth = (v) => Math.round(Math.max(0, Math.min(1, Number(v) || 0)) * 10) / 10; return { wet: wetOn() ? tenth(g.wet) : 0, snow: snowCoverOn() ? tenth(g.snow) : 0 }; } catch { return { wet: 0, snow: 0 }; } };
-const heightsDrawKey = (scene, value) => { const round = (v, s) => Math.round((Number(v) || 0) / s) * s; const sunShadow = sunNow && !sunNow.moon && !shadowsOffHere() ? (Number.isFinite(Number(sunNow.strength)) ? Math.max(0, Math.min(1, Number(sunNow.strength))) : 1) * directSun(skyCoverNow) : 0; return [scene?.id, canvas.level?.id ?? "", heightsSceneOn("shadows", scene), value ? 1 : 0, sunNow ? round(sunNow.angle, 3) : "x", sunNow ? round(sunNow.height, 3) : "x", round(sunShadow, 0.05), !!sunNow?.moon, heightMapFor() ? 1 : 0, canvas.grid?.size ?? 100, heightsWeather().wet, heightsWeather().snow].join("|"); };
+const heightsDrawKey = (scene, value) => { const round = (v, s) => Math.round((Number(v) || 0) / s) * s; const sunShadow = sunNow && !sunNow.moon && !shadowsOffHere() ? (Number.isFinite(Number(sunNow.strength)) ? Math.max(0, Math.min(1, Number(sunNow.strength))) : 1) * directSun(skyCoverNow) : 0; return [scene?.id, canvas.level?.id ?? "", heightsSceneOn("shadows", scene), value ? 1 : 0, sunNow ? round(sunNow.angle, 3) : "x", sunNow ? round(sunNow.height, 3) : "x", round(sunShadow, 0.05), !!sunNow?.moon, heightMapFor() ? 1 : 0, canvas.grid?.size ?? 100, heightsWeather().wet, heightsWeather().snow, cliffsTopDown(scene)].join("|"); };
 // Bridges and climbing ropes in the wind (engines/regions/crossing-sway.mjs): each drawn once, straight down its own picture,
 // shown on a bending sheet laid along it; each frame only the sheet's points move sideways by the wind. (Roi: "we can also make
 // the bridge react to the wind", then "make it move based on the wind strength".) Dropped with the drawing they belong to.
@@ -3405,8 +3407,9 @@ const drawHeightShadows = () => {
     const inward = upAt ? 0.02 : -0.02;
     const rim = at(b), part = field.partAt(at(b + inward)); if (!part) return null;
     let best = null; runs.filter((r) => r.of === part.id).forEach((run, i) => { for (const p of cliffLayOut(run, { grid, step, sun, seed: partSeed(part.id) + i })) { const d = Math.hypot(p.rx - rim.x, p.ry - rim.y); if (!best || d < best.d) best = { d, p }; } });
-    if (!best || best.d > grid * 0.6 || best.p.w < grid * 0.3) return null;
-    const p = best.p; return { top: { x: p.rx - p.nx * 3 * (grid / 100), y: p.ry - p.ny * 3 * (grid / 100) }, foot: { x: p.fx, y: p.fy } };
+    if (!best || best.d > grid * 0.6 || (!cliffsTopDown(scene) && best.p.w < grid * 0.3)) return null;
+    const p = best.p; if (cliffsTopDown(scene)) { const out = ringsReach(p.drop, grid, step); return { top: { x: p.x - p.nx * 3 * (grid / 100), y: p.y - p.ny * 3 * (grid / 100) }, foot: { x: p.x + p.nx * out, y: p.y + p.ny * out } }; }
+    return { top: { x: p.rx - p.nx * 3 * (grid / 100), y: p.ry - p.ny * 3 * (grid / 100) }, foot: { x: p.fx, y: p.fy } };
   };
   for (const part of [...parts].sort((x, y) => x.height - y.height)) {
     // (Cliff look None: it stands raised, but draws no cliff. Earth: a bank of soil, not rock.)
@@ -3447,7 +3450,8 @@ const drawHeightShadows = () => {
       // (Below a tall cliff the ground far down reads darker and hazier, the further down the more. Roi chose B of the scale mock.)
       const deepest = run.points?.reduce?.((m, p) => Math.max(m, Number(p.drop) || 0), 0) ?? 0, k = heightDepthHaze(deepest);
       if (k > 0) { hazed = Math.max(hazed, k); haze.beginFill(0x0a0d12, 1); for (const piece of footShade(run, { grid, step, sun, seed: seed + i, far: 1.6 + 2.4 * k })) haze.drawPolygon(piece); haze.endFill(); }
-      drawCliffRun(g, run, { grid, step, sun, seed: seed + i, colours: weatherColours(colours, { wet, snow }), wet, snow });
+      if (cliffsTopDown(scene)) drawCliffRings(g, run, { grid, step, sun, seed: seed + i, colours: weatherColours(colours, { wet, snow }) });
+      else drawCliffRun(g, run, { grid, step, sun, seed: seed + i, colours: weatherColours(colours, { wet, snow }), wet, snow });
     });
     if (hazed > 0) { hazeBox.addChild(haze); faded(hazeBox, 0.42 * hazed); cutHigher(hazeBox, part.height); shadowRoot.addChild(hazeBox); } else haze.destroy();
     shade.addChild(soft); cutHigher(shade, part.height); shadowRoot.addChild(shade);
@@ -3511,7 +3515,7 @@ const drawHeightShadows = () => {
 };
 for (const hook of ["canvasReady", "updateWorldTime", "calendaria.dateTimeChange", "calendaria.weatherChange", "simple-calendar-date-time-change"]) Hooks.on(hook, () => { heightShadowsSoon(); });
 Hooks.on("canvasReady", () => { cliffWallsSoon(); });
-Hooks.on("updateScene", (scene, change, options, userId) => { if (scene?.id !== canvas?.scene?.id) return; heightShadowsSoon(); const own = change?.flags?.[ID]; if (own && "cliffWalls" in own) cliffWallsSoon(userId === game.user?.id); });
+Hooks.on("updateScene", (scene, change, options, userId) => { if (scene?.id !== canvas?.scene?.id) return; heightShadowsSoon(); const own = change?.flags?.[ID]; if (own && ("cliffWalls" in own || "cliffView" in own)) cliffWallsSoon(userId === game.user?.id); });
 // The sun or moon aims their shadows: away from it, as long as it is low.
 const lightDecorations = () => {
   if (!decorations.busy) return;
@@ -5316,7 +5320,7 @@ Hooks.on("updateWall", (wall, change) => { if (change?.flags?.[ID] && "wildlifeP
 const wallOnlyBlocks = (a, b) => { try { if (!CONFIG.Canvas.polygonBackends.move.testCollision(a, b, { type: "move", mode: "any" })) return false; const net = wildWalls_(); return !net.any || crossesWall(a, b, net.walls); } catch { return false; } };
 // (And the heights, for anything on foot: no stepping up or down a cliff, nor onto its rock face, walls on the scene or not.
 // Roi: "all non flying animals should know about cliffs and not walk on them like they are ground". Bats fly over them.)
-const cliffBlocks = (a, b) => { try { const scene = canvas?.scene; if (!scene) return false; const { field } = creatureHeights(scene, canvas.level?.id ?? null); return cliffStops({ field, a, b, grid: canvas.grid?.size ?? 100, step: heightStep(scene) }); } catch { return false; } };
+const cliffBlocks = (a, b) => { try { const scene = canvas?.scene; if (!scene) return false; const { field } = creatureHeights(scene, canvas.level?.id ?? null); return cliffStops({ field, a, b, grid: canvas.grid?.size ?? 100, step: heightStep(scene), faces: !cliffsTopDown(scene) }); } catch { return false; } };
 // (Boxed in on every side by the two together, as one standing right on a cliff wall's line is, the cliff gives way, so nothing stands
 // stuck there for good: walls still hold. Looked at only where the cliff stops it, and kept a while per spot.)
 const boxedSpots = new Map();
@@ -5546,7 +5550,7 @@ const okOn = (ground, kind, x, y) => {
   return !!(kind === "fish" || kind === "ducks" || kind === "frogs" ? ground?.inWater(x, y) : ground?.at(x, y)) && !keptOut(kind, { x, y });
 };
 // (`reach`: how far down the face counts, a share of its depth: its foot's walls stand at about two thirds.)
-const onCliffFaceHere = (x, y, reach = 1.15) => { try { const scene = canvas?.scene; if (!scene) return false; const { field } = creatureHeights(scene, canvas.level?.id ?? null); return onCliffFace(field, { x, y }, { grid: canvas.grid?.size ?? 100, step: heightStep(scene), reach }); } catch { return false; } };
+const onCliffFaceHere = (x, y, reach = 1.15) => { try { const scene = canvas?.scene; if (!scene || cliffsTopDown(scene)) return false; const { field } = creatureHeights(scene, canvas.level?.id ?? null); return onCliffFace(field, { x, y }, { grid: canvas.grid?.size ?? 100, step: heightStep(scene), reach }); } catch { return false; } };
 const wildOk = (kind, x, y) => okOn(wildOpen ?? placedGround, kind, x, y);
 // Heard where they are, the hawk and the crows from far off, by distance for everyone (earsNow).
 const wildCalls = critterVoices({ gaps: WILD_GAPS });
