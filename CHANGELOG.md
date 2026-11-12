@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 4.2.3
+
+Farm animals turn smoothly in tight places.
+
+- **Farm animals turn at a natural pace.** Running in a narrow passage or a region's corner, farm animals could flick from heading to heading many times a second. Their bodies now come round gradually, slowing to turn, and stop to turn right round.
+
 ## 4.2.2
 
 Farm animals no longer spin at edges.
