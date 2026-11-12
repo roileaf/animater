@@ -60,17 +60,22 @@ export function heightField({ parts = [], ramps = [] } = {}) {
   const partAt = (p) => { let best = null; for (const part of parts) if ((!best || part.height > best.height) && inAreas(p, part.areas)) best = part; return best; };
   const groundAt = (p) => partAt(p)?.height ?? 0;
   const rampEnds = (ramp) => [ramp.lo ?? groundAt(ramp.a), ramp.hi ?? groundAt(ramp.b)];
-  const rampAt = (p, from) => {
+  // (`stay`: the id of the crossing a walker is on: where crossings overlap it keeps to that one. Live, a ladder under a bridge took
+  // over a token walking down the bridge and carried it to the ground. Roi: "working for going up a bridge not down a bridge".)
+  const rampAt = (p, from, stay = null) => {
+    let first = null, bridge = null;
     for (const ramp of ramps) {
       const vx = ramp.b.x - ramp.a.x, vy = ramp.b.y - ramp.a.y, len2 = vx * vx + vy * vy; if (!len2) continue;
       const t = ((p.x - ramp.a.x) * vx + (p.y - ramp.a.y) * vy) / len2, off = Math.abs((p.x - ramp.a.x) * vy - (p.y - ramp.a.y) * vx) / Math.sqrt(len2);
       if (!(t >= 0 && t <= 1 && off <= ramp.w / 2)) continue;
       if (ramp.kind === 'bridge' && from !== undefined && from !== null) { const [lo, hi] = rampEnds(ramp); if (Math.abs(lo + (hi - lo) * t - from) > BRIDGE_REACH) continue; }
-      return { ramp, t };
+      // (On none yet, a bridge first: one at its height is on it, not on what runs under it.)
+      if (ramp.id === stay) return { ramp, t };
+      if (ramp.kind === 'bridge') bridge ??= { ramp, t }; else first ??= { ramp, t };
     }
-    return null;
+    return bridge ?? first;
   };
-  const heightAt = (p, from) => { const hit = rampAt(p, from); if (!hit) return groundAt(p); const [lo, hi] = rampEnds(hit.ramp); return lo + (hi - lo) * hit.t; };
+  const heightAt = (p, from, stay = null) => { const hit = rampAt(p, from, stay); if (!hit) return groundAt(p); const [lo, hi] = rampEnds(hit.ramp); return lo + (hi - lo) * hit.t; };
   return { parts, ramps, partAt, groundAt, rampAt, rampEnds, heightAt };
 }
 
@@ -88,12 +93,19 @@ export function walkerElevation({ elevation, from, to, field, base = 0, toleranc
 
 /** The same along a move's waypoints (`path`, points on the map): a walker's elevation at each, so it climbs a ramp as it
  *  goes; null for one above the ground. */
-export function walkerPath({ elevation, from, path, field, base = 0, tolerance = 0.5 }) {
+export function walkerPath({ elevation, from, path, field, base = 0, tolerance = 0.5, spacing = 10 }) {
   const now = Number(elevation) || 0;
   if (now > base + field.heightAt(from, now - base) + tolerance) return null;
   // (Step by step: a bridge is walked onto from its own height, and stays under one walking beneath it.)
-  let at = now - base;
-  return path.map((p) => { at = field.heightAt(p, at); return half(base + at); });
+  // (And in small steps between waypoints: a long drag up a sloping bridge rose past its reach between two of them, and live the
+  // token fell through to the ground under it. Roi: "ummm".)
+  let at = now - base, last = from, on = field.rampAt(from, at)?.ramp?.id ?? null;
+  const stepTo = (q) => { const hit = field.rampAt(q, at, on); on = hit?.ramp?.id ?? null; if (!hit) { at = field.groundAt(q); return; } const [lo, hi] = field.rampEnds(hit.ramp); at = lo + (hi - lo) * hit.t; };
+  return path.map((p) => {
+    const n = last ? Math.min(400, Math.max(1, Math.ceil(Math.hypot(p.x - last.x, p.y - last.y) / spacing))) : 1;
+    for (let i = 1; i <= n; i++) stepTo(last ? { x: last.x + ((p.x - last.x) * i) / n, y: last.y + ((p.y - last.y) * i) / n } : p);
+    last = p; return half(base + at);
+  });
 }
 
 /** The next height on the wheel: a step up or down, never under one step nor over HEIGHT_MAX. */
@@ -171,7 +183,9 @@ export function cliffEdges({ field, gap = 2.5, probe = 4, piece = 25, smooth = 0
           const h1 = under(q1), h2 = under(q2), mid = { x: mx, y: my }, over = bridgeAt(mid);
           const cliff = Math.abs(h1 - h2) >= gap && Math.max(h1, h2) === part.height && (over || !field.rampAt(mid)) && !openAt(part, mid);
           if (!cliff) { close(); continue; }
-          const here = over ? Math.round(field.heightAt(mid) * 2) / 2 : null;
+          // (Its lower end's height: a token's height is checked as it was where the drag began, so marked with the height at the
+          // far, higher end, live a token on a sloping bridge was stopped at its other end. Roi: "my token cant cross the bridge".)
+          const here = over ? Math.round(Math.min(...field.rampEnds(over.ramp)) * 2) / 2 : null;
           if (run && here !== tag) close();
           if (run) { run[2] = bx; run[3] = by; } else { run = [ax, ay, bx, by]; tag = here; }
         }

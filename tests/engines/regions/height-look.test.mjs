@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cliffColours, faceDepth, layOut, drawCliffRun, footShade, topGlow, castOffset, drawSlope, depthHaze, drawStone, faceFeet } from '../../../scripts/engines/regions/height-look.mjs';
+import { cliffColours, faceDepth, layOut, drawCliffRun, footShade, topGlow, castOffset, drawSlope, depthHaze, drawStone, faceFeet, cliffStops, onCliffFace } from '../../../scripts/engines/regions/height-look.mjs';
 import { cliffRuns, heightField } from '../../../scripts/engines/regions/heights.mjs';
 
 // Roi's friend, of rock boulders round the rim: "this doesnt look elevated at all"; the friend's "brighter in the middle and
@@ -97,4 +97,27 @@ test('the rock face is walled at its foot, shut to the rim at its ends, none alo
   const at = run.points.findIndex((p) => p.ny > 0.9), O = { ...run, closed: false, points: run.points.slice(at, at + 30) }, open = faceFeet([O], { grid: 100 });
   assert.ok(open.length >= 2); { const ends = [open[0].c.slice(0, 2), open.at(-1).c.slice(2)], rim = O.points.map((p) => [p.x, p.y]);
     assert.ok(ends.every(([x, y]) => rim.some(([a, b]) => Math.hypot(a - x, b - y) < 6)), 'shut to the rim'); }
+});
+
+// Roi: "all non flying animals should know about cliffs and not walk on them like they are ground".
+test('a creature on foot never steps up or down a cliff nor onto its face; a slope or a ramp it walks', () => {
+  const sq = (x0, y0, x1, y1) => [x0, y0, x1, y0, x1, y1, x0, y1];
+  const field = heightField({ parts: [{ id: 'P', height: 20, areas: [sq(100, 100, 300, 300)], open: [{ x: 100, y: 200, r: 40 }] }], ramps: [{ id: 'R', a: { x: 200, y: 450 }, b: { x: 200, y: 280 }, w: 60, kind: 'ramp', lo: null, hi: null }, { id: 'L', a: { x: 280, y: 60 }, b: { x: 280, y: 120 }, w: 30, kind: 'ladder', lo: null, hi: null }] });
+  const stops = (a, b) => cliffStops({ field, a, b, grid: 100 });
+  assert.ok(stops({ x: 250, y: 90 }, { x: 250, y: 110 }), 'up the north rim');
+  assert.ok(stops({ x: 250, y: 290 }, { x: 250, y: 310 }) || stops({ x: 250, y: 330 }, { x: 250, y: 320 }), 'down the south rim, or onto its face');
+  assert.ok(stops({ x: 250, y: 500 }, { x: 250, y: 330 }), 'onto the face from below');
+  assert.ok(!stops({ x: 250, y: 330 }, { x: 250, y: 500 }), 'off the face');
+  assert.ok(!stops({ x: 90, y: 200 }, { x: 110, y: 200 }), 'up an open edge');
+  for (let y = 440; y > 290; y -= 5) assert.ok(!stops({ x: 200, y }, { x: 200, y: y - 5 }), `up the ramp at ${y}`);
+  assert.ok(stops({ x: 280, y: 70 }, { x: 280, y: 110 }), 'not up a ladder');
+  assert.ok(!stops({ x: 500, y: 500 }, { x: 520, y: 500 }), 'level ground');
+  assert.ok(stops({ x: 50, y: 250 }, { x: 350, y: 250 }), 'a long look clean over the raised part'); // Roi: "they are getting stuck"
+});
+
+test('the ground under a south cliff\'s painted wall is its face; open ground, a top or a ramp is not', () => {
+  const sq = (x0, y0, x1, y1) => [x0, y0, x1, y0, x1, y1, x0, y1];
+  const field = heightField({ parts: [{ id: 'P', height: 20, areas: [sq(100, 100, 300, 300)] }], ramps: [{ id: 'R', a: { x: 200, y: 450 }, b: { x: 200, y: 280 }, w: 60, kind: 'ramp', lo: null, hi: null }] });
+  assert.ok(onCliffFace(field, { x: 250, y: 330 }, { grid: 100 }));
+  assert.ok(!onCliffFace(field, { x: 250, y: 600 }, { grid: 100 }) && !onCliffFace(field, { x: 250, y: 200 }, { grid: 100 }) && !onCliffFace(field, { x: 200, y: 330 }, { grid: 100 }));
 });

@@ -284,8 +284,8 @@ import { toRegionData as floorRegionData, floorColour as floorTint, fitSize as f
 import { nearbyClicks as smartNearbyClicks, cleanSelection } from "./engines/regions/smart-select.mjs";
 import { decorSettings, strokeShapes, circleArea as decorCircle, decorPlacements, trunkWalls, carryDecor, shapesBox } from "./engines/motion/decor-regions.mjs";
 import { openBrushBar, brushChoices, BRUSH_EDGE } from "./ui/decor-brush-bar.mjs";
-import { readHeight, readRamp, readOpenEdges, edgeTouches, openAt as heightOpenAt, OPEN_EDGES_MOST, heightField, walkerPath, nextHeight, rampFromDrag, rampOutline, heightRegionData, rampRegionData, cliffEdges, cliffRuns, heightsHoverLine, heightName, HEIGHT_STEP, BRIDGE_REACH, refitHeights } from "./engines/regions/heights.mjs";
-import { drawCliffRun, drawSlope, footShade, topGlow, castOffset, depthHaze as heightDepthHaze, cliffColours, layOut as cliffLayOut, faceFeet as cliffFaceFeet } from "./engines/regions/height-look.mjs";
+import { readHeight, readRamp, readOpenEdges, edgeTouches, openAt as heightOpenAt, OPEN_EDGES_MOST, heightField, walkerPath, nextHeight, rampFromDrag, rampOutline, heightRegionData, rampRegionData, cliffEdges, cliffRuns, heightsHoverLine, heightName, HEIGHT_STEP, BRIDGE_REACH, refitHeights, simplifyLoop } from "./engines/regions/heights.mjs";
+import { drawCliffRun, drawSlope, footShade, topGlow, castOffset, depthHaze as heightDepthHaze, cliffColours, layOut as cliffLayOut, faceFeet as cliffFaceFeet, cliffStops, onCliffFace } from "./engines/regions/height-look.mjs";
 import { drawLadder, drawRope, drawBridge } from "./engines/regions/height-crossings.mjs";
 import { DECOR_KINDS, stampDecor, paintDecor } from "./engines/motion/decor-paint.mjs";
 import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, seasonGround, groundInputs, groundStep, groundMoved, iceHours } from "./engines/motion/ambient-life.mjs";
@@ -3078,6 +3078,18 @@ const heightsOf = (scene, levelId = null) => {
   const value = { parts, ramps, field: heightField({ parts, ramps }) };
   heightsCache.set(key, value); return value;
 };
+// The deck a token stands on, when it is on a bridge at its height: the elevation its shadow lies at (a hair over the bridge's
+// planks, drawn at its lower end's height), else null.
+const bridgeDeckAt = (c, elevation, base, levelId = null) => { try { const { ramps, field } = heightsOf(canvas.scene, levelId); if (!ramps.some((r) => r.kind === "bridge")) return null; const hit = field.rampAt(c, elevation - base); return hit?.ramp?.kind === "bridge" ? base + Math.min(...field.rampEnds(hit.ramp)) + 0.01 : null; } catch { return null; } };
+// The heights as the creatures go by them: each outline smoothed just as the cliff walls' are (cliffEdges, a twelfth of a square),
+// so the two lines agree. (On the raw outline, a wolf stood in the hair between them, walled one way and over a drop the other,
+// and stuck. Roi: "it's stuck i think".)
+const creatureHeights = (scene, levelId = null) => {
+  const key = `${scene?.id}|${levelId ?? ""}|creatures`; if (heightsCache.has(key)) return heightsCache.get(key);
+  const { parts, ramps } = heightsOf(scene, levelId), smooth = (canvas.grid?.size ?? 100) / 12;
+  const soft = parts.map((p) => ({ ...p, areas: p.areas.map((a) => Object.assign([...simplifyLoop(a, smooth)], { holes: (a.holes ?? []).map((h) => simplifyLoop(h, smooth)) })) }));
+  const value = { parts: soft, ramps, field: heightField({ parts: soft, ramps }) }; heightsCache.set(key, value); return value;
+};
 const heightUnits = (scene = canvas?.scene) => scene?.grid?.units || "ft";
 const heightStep = (scene = canvas?.scene) => (Number(scene?.grid?.distance) > 0 ? Number(scene.grid.distance) : HEIGHT_STEP);
 const heightsSceneOn = (key, scene = canvas?.scene) => scene?.flags?.[ID]?.[key === "walls" ? "cliffWalls" : "heightShadows"] !== false;
@@ -3112,6 +3124,8 @@ Hooks.once("setup", () => {
 // Under a bridge's end its cliff keeps its wall (flags.animater.bridgeAt: the bridge's height there): a token walking below is
 // stopped by it, one walking on the bridge at its height passes. Walls know no heights, so the movement test is told the
 // mover's feet (its movement origin, less half its depth) and leaves those walls out for one up at the bridge.
+// (In v14 a wall's edge holds the WallDocument itself as its `object`: read through `.document` alone, the walls were never
+// left out, and live a token on the bridge was stopped at its end.)
 let movingFeet = null;
 Hooks.once("setup", () => {
   try {
@@ -3123,7 +3137,7 @@ Hooks.once("setup", () => {
       try { return testCollision.call(this, origin, destination, config); } finally { movingFeet = was; }
     };
     Sweep.prototype._testEdgeInclusion = function (edge, edgeTypes) {
-      if (movingFeet !== null && this.config?.type === "move") { const at = Number(edge?.object?.document?.flags?.[ID]?.bridgeAt); if (Number.isFinite(at) && movingFeet >= at - BRIDGE_REACH) return false; }
+      if (movingFeet !== null && this.config?.type === "move") { const wall = edge?.object?.document ?? edge?.object, at = Number(wall?.flags?.[ID]?.bridgeAt); if (Number.isFinite(at) && movingFeet >= at - BRIDGE_REACH) return false; }
       return include.call(this, edge, edgeTypes);
     };
   } catch (err) { console.warn("Animater | heights: bridge ends block everyone", err); }
@@ -3143,7 +3157,7 @@ const syncCliffWalls = async (mine = false) => {
       // the cliff side". Not under a part drawn with no cliff.)
       { const here = heightsOf(scene, levelId), grid = canvas.grid?.size ?? 100, plain = new Set(here.parts.filter((p) => p.look === "none").map((p) => p.id));
         const runs = cliffRuns({ field: here.field, step: Math.max(3, grid / 25), bounds: canvas.dimensions?.sceneRect ?? null }).filter((r) => !plain.has(r.of));
-        for (const e of cliffFaceFeet(runs, { grid, step: heightStep(scene), piece: grid / 4 })) { const mid = { x: (e.c[0] + e.c[2]) / 2, y: (e.c[1] + e.c[3]) / 2 }, over = here.field.rampAt(mid), bridge = over?.ramp?.kind === "bridge" ? Math.round(here.field.heightAt(mid) * 2) / 2 : null; if (!want.has(e.of)) want.set(e.of, []); want.get(e.of).push({ c: e.c, levels: levelId ? [levelId] : [], bridge }); } }
+        for (const e of cliffFaceFeet(runs, { grid, step: heightStep(scene), piece: grid / 4 })) { const mid = { x: (e.c[0] + e.c[2]) / 2, y: (e.c[1] + e.c[3]) / 2 }, over = here.field.rampAt(mid), bridge = over?.ramp?.kind === "bridge" ? Math.round(Math.min(...here.field.rampEnds(over.ramp)) * 2) / 2 : null; if (!want.has(e.of)) want.set(e.of, []); want.get(e.of).push({ c: e.c, levels: levelId ? [levelId] : [], bridge }); } }
     }
   }
   for (const wall of scene.walls ?? []) { const of = wall.flags?.[ID]?.cliffOf; if (!of) continue; if (!have.has(of)) have.set(of, []); have.get(of).push(wall); }
@@ -3162,6 +3176,9 @@ for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(ho
 // Coloured from the map beside it. The shadow lies under the creatures' own; the face and rim over the ground and its
 // decorations, under the creatures. Nothing is drawn over a raised part higher still.
 const heightShadowRoot = floorLayer("heightShadows", 649), heightFaceRoot = floorLayer("heightFaces", 656);
+// Each bridge on its own, at its height: the map sorts by elevation first, so a token walking under it goes under it and one on
+// it (as high or higher) over it. (Roi, of a token under a bridge drawn over it: "probably we draw the bridge on the same layer?")
+const heightBridgeBoxes = [];
 let heightShadowTimer = null;
 const heightShadowsSoon = () => { clearTimeout(heightShadowTimer); heightShadowTimer = setTimeout(() => { heightShadowTimer = null; try { drawHeightShadows(); } catch (err) { console.warn("Animater | raised ground", err); } }, 150); };
 // The level's map read once (small), for the cliffs' colours: the ground beside each and the grass on top.
@@ -3182,6 +3199,7 @@ const drawHeightShadows = () => {
   if (!canvas?.ready) return;
   const roots = [heightShadowRoot(), heightFaceRoot()];
   for (const root of roots) for (const c of root.removeChildren()) { try { c.destroy({ children: true }); } catch { /* gone */ } }
+  for (const box of heightBridgeBoxes.splice(0)) { try { box.destroy({ children: true }); } catch { /* gone */ } }
   const scene = canvas.scene; if (!heightsSceneOn("shadows", scene)) return;
   const { parts, ramps, field } = heightsOf(scene, canvas.level?.id ?? null); if (!parts.length && !ramps.length) return;
   const [shadowRoot, faceRoot] = roots, grid = canvas.grid?.size ?? 100, step = heightStep(scene), map = heightMapFor();
@@ -3252,11 +3270,12 @@ const drawHeightShadows = () => {
   // bridge drawn in weathered wood and hemp (engines/regions/height-crossings.mjs), their shadows softened under them.
   if (ramps.length) {
     const g = new PIXI.Graphics(), built = new PIXI.Graphics(), shade = new PIXI.Container(), sh = new PIXI.Graphics(), k = grid / 100, Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter;
-    shade.eventMode = "none"; sh.filters = [new PIXI.BlurFilter(grid * 0.03)]; if (Alpha) shade.filters = [new Alpha(0.3)]; else shade.alpha = 0.3; shade.addChild(sh);
+    shade.eventMode = "none"; sh.filters = [new PIXI.BlurFilter(grid * 0.02)]; if (Alpha) shade.filters = [new Alpha(0.45)]; else shade.alpha = 0.45; shade.addChild(sh); // (As dark as a cliff's cast shadow: at 0.3 a bridge's planks did not read on dark ground.)
     for (const ramp of ramps) {
       const [lo, hi] = field.rampEnds(ramp), seed = [...String(ramp.id)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 3);
-      if (ramp.kind === "ladder" || ramp.kind === "rope") { const top = hi >= lo ? ramp.b : ramp.a, foot = hi >= lo ? ramp.a : ramp.b; if (ramp.kind === "ladder") drawLadder(built, sh, top.x, top.y, foot.x, foot.y, { w: Math.min(ramp.w, grid * 0.45), sun, k, seed }); else drawRope(built, sh, top.x, top.y, foot.x, foot.y, { sun, k, seed }); continue; }
-      if (ramp.kind === "bridge") { const mid = { x: (ramp.a.x + ramp.b.x) / 2, y: (ramp.a.y + ramp.b.y) / 2 }, drop = Math.max(0, (lo + hi) / 2 - field.groundAt(mid)) * (grid / step) * 0.6; drawBridge(built, sh, ramp.a.x, ramp.a.y, ramp.b.x, ramp.b.y, { w: ramp.w, drop: Math.min(drop, grid * 1.5), sun, k, seed }); continue; }
+      if (ramp.kind === "ladder" || ramp.kind === "rope") { const top = hi >= lo ? ramp.b : ramp.a, foot = hi >= lo ? ramp.a : ramp.b; if (ramp.kind === "ladder") drawLadder(built, sh, top.x, top.y, foot.x, foot.y, { w: Math.min(ramp.w, grid * 0.45), sun, k, seed, reach: Math.min(30, (Math.abs(hi - lo) * (grid / step) * 0.12) / k) }); else drawRope(built, sh, top.x, top.y, foot.x, foot.y, { sun, k, seed }); continue; }
+      if (ramp.kind === "bridge") { const mid = { x: (ramp.a.x + ramp.b.x) / 2, y: (ramp.a.y + ramp.b.y) / 2 }, drop = Math.max(0, (lo + hi) / 2 - field.groundAt(mid)) * (grid / step) * 0.6; const box = new PIXI.Container(), deck = new PIXI.Graphics(), low = Math.min(lo, hi), rise = (t) => { const p = { x: ramp.a.x + (ramp.b.x - ramp.a.x) * t, y: ramp.a.y + (ramp.b.y - ramp.a.y) * t }; return Math.min(grid * 1.5, Math.max(0, lo + (hi - lo) * t - field.groundAt(p)) * (grid / step) * 0.6); }, look = { w: ramp.w, drop: Math.min(drop, grid * 1.5), rise, sun, k, seed }; box.eventMode = "none"; box.sortLayer = 656; box.elevation = (Number(canvas.level?.elevation?.base) || 0) + low; drawBridge(deck, sh, ramp.a.x, ramp.a.y, ramp.b.x, ramp.b.y, look); box.addChild(deck); // (Its ends where they rest on raised ground drawn on that ground, with the creatures there over them: only the span over lower ground stands up over what passes under it. Roi: "animals should not render below bridges on cliff edges".)
+      { const none = new PIXI.Graphics(); drawBridge(built, none, ramp.a.x, ramp.a.y, ramp.b.x, ramp.b.y, look); none.destroy(); } cutHigher(box, low - 0.5); canvas.primary.addChild(box); heightBridgeBoxes.push(box); continue; }
       if (lo === hi) continue;
       const vx = ramp.b.x - ramp.a.x, vy = ramp.b.y - ramp.a.y, len = Math.hypot(vx, vy) || 1, ux = vx / len, uy = vy / len, nx = -uy, ny = ux, lines = Math.max(2, Math.round(ramp.w / (grid * 0.16)));
       for (let i = 0; i < lines; i++) {
@@ -5022,7 +5041,26 @@ let wildWallNet = null;
 const wildWalls_ = () => (wildWallNet ??= { any: (canvas.walls?.placeables ?? []).some((w) => w.document?.flags?.[ID]?.wildlifePasses === true), walls: groundWalls() });
 for (const hook of ["canvasReady", "createWall", "updateWall", "deleteWall"]) Hooks.on(hook, () => { wildWallNet = null; });
 Hooks.on("updateWall", (wall, change) => { if (change?.flags?.[ID] && "wildlifePasses" in change.flags[ID]) { try { rebuildWildlife(); syncPlacedAnimals(); } catch { /* the next look sees to it */ } } });
-const wallBlocks = (a, b) => { try { if (!CONFIG.Canvas.polygonBackends.move.testCollision(a, b, { type: "move", mode: "any" })) return false; const net = wildWalls_(); return !net.any || crossesWall(a, b, net.walls); } catch { return false; } };
+const wallOnlyBlocks = (a, b) => { try { if (!CONFIG.Canvas.polygonBackends.move.testCollision(a, b, { type: "move", mode: "any" })) return false; const net = wildWalls_(); return !net.any || crossesWall(a, b, net.walls); } catch { return false; } };
+// (And the heights, for anything on foot: no stepping up or down a cliff, nor onto its rock face, walls on the scene or not.
+// Roi: "all non flying animals should know about cliffs and not walk on them like they are ground". Bats fly over them.)
+const cliffBlocks = (a, b) => { try { const scene = canvas?.scene; if (!scene) return false; const { field } = creatureHeights(scene, canvas.level?.id ?? null); return cliffStops({ field, a, b, grid: canvas.grid?.size ?? 100, step: heightStep(scene) }); } catch { return false; } };
+// (Boxed in on every side by the two together, as one standing right on a cliff wall's line is, the cliff gives way, so nothing stands
+// stuck there for good: walls still hold. Looked at only where the cliff stops it, and kept a while per spot.)
+const boxedSpots = new Map();
+const boxedIn = (a) => {
+  const key = `${Math.round(a.x)},${Math.round(a.y)}`; if (boxedSpots.has(key)) return boxedSpots.get(key);
+  const r = (canvas.grid?.size ?? 100) * 0.12, shut = Array.from({ length: 8 }, (_, k) => ({ x: a.x + Math.cos((k * Math.PI) / 4) * r, y: a.y + Math.sin((k * Math.PI) / 4) * r })).every((b) => wallOnlyBlocks(a, b) || cliffBlocks(a, b));
+  if (boxedSpots.size > 500) boxedSpots.clear(); boxedSpots.set(key, shut); return shut;
+};
+for (const hook of ["canvasReady", "createWall", "updateWall", "deleteWall"]) Hooks.on(hook, () => { boxedSpots.clear(); });
+for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options) => { if (quietSave(first, changes, options)) return; boxedSpots.clear(); });
+// (On a cliff's rock face (put there, or walled in as the walls were made), it may always step off it onto the ground below,
+// through the face's foot: live, a rabbit hopped about for good in the strip under a cliff, under a bridge. Roi: "theres a stuck rabbit under the bridge".)
+// (From anywhere down to past its foot's walls, to anywhere past them: judged deep where it starts and shallow where it lands, so
+// a step across the foot's walls always counts as off.)
+const offTheFace = (a, b) => onCliffFaceHere(a.x, a.y, 0.9) && !onCliffFaceHere(b.x, b.y, 0.5) && !cliffBlocks(a, b);
+const wallBlocks = (a, b) => !offTheFace(a, b) && (wallOnlyBlocks(a, b) || (cliffBlocks(a, b) && !boxedIn(a)));
 // Regions creatures keep out of (the right-click panel → Animals → Keep out): a sealed room with no rats, a shrine with no
 // moths. Each kind's areas, looked at with the rest of the life.
 const KEEP_OUT = ["rats", "bats", "moths", "crawlers", "eyes", "rabbits", "deer", "foxes", "wolves", "squirrels", "snakes", "songbirds", "crows", "hawk", "owl", "fish", "frogs", "ducks", "herons", "gulls", "butterflies", "dragonflies", "fireflies", "pigeons", "hens", "cats", "dogs"];
@@ -5038,7 +5076,7 @@ const keptOut = (kind, p) => !!keepOut[kind]?.some((area) => pointInPolygon(p, a
 const wildKept = (kind, x, y) => keptOut(kind, { x, y });
 // A rat or bat may leave a region it keeps out of (one drawn round it), never go in.
 const ratBlocks = (a, b) => wallBlocks(a, b) || (keptOut("rats", b) && !keptOut("rats", a));
-const batBlocks = (a, b) => wallBlocks(a, b) || (keptOut("bats", b) && !keptOut("bats", a));
+const batBlocks = (a, b) => wallOnlyBlocks(a, b) || (keptOut("bats", b) && !keptOut("bats", a));
 // How many of each creature this scene has, and how big (Scene configuration â†’ Animater â†’ Creatures).
 const sceneCreatures = () => { const f = animalFlagsNow(), out = {}; for (const kind of ["rats", "bats", "moths", "crawlers", "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls", "squirrels", "snakes", "crows", "herons", "gulls", "hawks"]) { out[kind] = creatureAmount(f[kind]); out[`${kind}Size`] = creatureSize(f[`${kind}Size`], f.animalScale); } out.wolves = f.wolves ? creatureAmount(f.wolves) : 0; out.wolvesSize = creatureSize(f.wolvesSize, f.animalScale);
   // Crows, a hawk, herons and gulls left at Usual come as they always have (with the birds, the open country, the water birds);
@@ -5097,7 +5135,7 @@ const wildGround = (grid, area, { own = false } = {}) => {
   const closed = (x, y) => { if (own || !onMap(x, y)) return false; const c = walledOff.cellAt(x, y); return c < 0 || inside[c] > 0; };
   const walled = (x, y) => { if (!onMap(x, y)) return false; const c = walledOff.cellAt(x, y); return c < 0 || inside[c] === 2; };
   for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) { const p = middle(i, j); if (closed(p.x, p.y)) roofed[j * cols + i] = 1; }
-  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) { const c = j * cols + i; if (roofed[c]) continue; if (kind[c] === 1) spots.push(middle(i, j)); else if (kind[c] === 2) { const p = middle(i, j); if (!onBeach(p.x, p.y, keepOff * 1.4)) waters.push(p); } }
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) { const c = j * cols + i; if (roofed[c]) continue; if (kind[c] === 1) { const p = middle(i, j); if (!onCliffFaceHere(p.x, p.y)) spots.push(p); } else if (kind[c] === 2) { const p = middle(i, j); if (!onBeach(p.x, p.y, keepOff * 1.4)) waters.push(p); } }
   // Where they may go is the exact floor under that very point, not its square: a square of bank is part river.
   // What stands over the water is no water to swim in, at any height: what swims there would be drawn over it.
   const sceneBase = sceneFloorNow(), regions = regionsHere().map((doc) => ({ name: doc.name, flag: floorFlagOf(doc), doc })).sort((a, b) => (a.doc.flags?.[ID]?.overWater === true ? 1 : 0) - (b.doc.flags?.[ID]?.overWater === true ? 1 : 0)), elevation = canvas.level?.elevation?.base ?? 0;
@@ -5231,8 +5269,12 @@ const okOn = (ground, kind, x, y) => {
   // Ducks and frogs keep to fresh water: the sea is not theirs while the map has any of it for them (found live: a duck
   // put up from the river came down on the sea, and one paddled out of the river mouth). With none, ducks wait on the sea.
   if ((kind === "ducks" || kind === "frogs") && ground?.inWater(x, y) && freshFor(ground, kind) && seaHere(ground, x, y)) return false;
+  // (Not on a cliff's rock face, where its walls would shut one in: live, a wolf put there stood stuck. Roi: "it's stuck i think".)
+  if (kind !== "fish" && kind !== "ducks" && kind !== "frogs" && onCliffFaceHere(x, y)) return false;
   return !!(kind === "fish" || kind === "ducks" || kind === "frogs" ? ground?.inWater(x, y) : ground?.at(x, y)) && !keptOut(kind, { x, y });
 };
+// (`reach`: how far down the face counts, a share of its depth: its foot's walls stand at about two thirds.)
+const onCliffFaceHere = (x, y, reach = 0.85) => { try { const scene = canvas?.scene; if (!scene) return false; const { field } = creatureHeights(scene, canvas.level?.id ?? null); return onCliffFace(field, { x, y }, { grid: canvas.grid?.size ?? 100, step: heightStep(scene), reach }); } catch { return false; } };
 const wildOk = (kind, x, y) => okOn(wildOpen ?? placedGround, kind, x, y);
 // Heard where they are, the hawk and the crows from far off, by distance for everyone (earsNow).
 const wildCalls = critterVoices({ gaps: WILD_GAPS });
@@ -6592,7 +6634,7 @@ const movementFeel = createMovementFeel({
       const sound = movementSoundMix(d.flags?.[ID]?.movementSound);
       const soundBody = sound.body === 'none' ? null : sound.body || movementFeelBody(d);
       const view = {
-        id: d.id, x: c.x, y: c.y, width: t.w ?? 100, elevation: d.elevation ?? 0, base, action,
+        id: d.id, x: c.x, y: c.y, width: t.w ?? 100, elevation: d.elevation ?? 0, base, action, deck: bridgeDeckAt(c, d.elevation ?? 0, base, level),
         ...((d.elevation??0)<base?{floor:movementFeelFloor(c,d)}:{}),
         statuses: d.actor?.statuses, gait: sound.gait || movementFeelGait(d), printShape: printShape(sound.gait || movementFeelGait(d), { actor: d.actor, name: d.name }), bulk: movementFeelBulk(d),
         body: soundBody, flight: sound.flight || (['air', 'fire', 'water'].includes(soundBody) ? 'flight' : movementFeelFlight(d)), sound,

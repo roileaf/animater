@@ -211,3 +211,29 @@ test('a bridge over a rim keeps its cliff drawn and its wall, marked with the br
   const runs = cliffRuns({ field, step: 5 }).filter((r) => r.of === 'N');
   assert.ok(runs.some((r) => r.points.some((p) => Math.abs(p.x - 200) < 5 && Math.abs(p.y - 200) < 3)), 'drawn on under the bridge');
 });
+
+test('a sloping bridge marks both its ends with its lower end\'s height, so one who stepped on at the low end walks off the high one', () => {
+  const sq = (x0, y0, x1, y1) => [x0, y0, x1, y0, x1, y1, x0, y1];
+  const field = heightField({ parts: [{ id: 'N', height: 15, areas: [sq(0, 0, 400, 200)] }, { id: 'S', height: 5, areas: [sq(0, 400, 400, 600)] }], ramps: [{ id: 'B', a: { x: 200, y: 450 }, b: { x: 200, y: 150 }, w: 60, kind: 'bridge', lo: null, hi: null }] });
+  const tagged = cliffEdges({ field, piece: 25 }).filter((e) => e.bridge !== undefined);
+  assert.ok(tagged.some((e) => e.of === 'N') && tagged.every((e) => e.bridge === 5), JSON.stringify(tagged.map((e) => [e.of, e.bridge])));
+});
+
+test('one long drag up a sloping bridge stays on it the whole way, while one walking under it stays on the ground', () => {
+  const sq = (x0, y0, x1, y1) => [x0, y0, x1, y0, x1, y1, x0, y1];
+  const field = heightField({ parts: [{ id: 'N', height: 20, areas: [sq(0, 0, 400, 200)] }, { id: 'S', height: 5, areas: [sq(0, 600, 400, 800)] }], ramps: [{ id: 'B', a: { x: 200, y: 650 }, b: { x: 200, y: 150 }, w: 100, kind: 'bridge', lo: null, hi: null }] });
+  const up = walkerPath({ elevation: 5, from: { x: 200, y: 640 }, path: [{ x: 200, y: 400 }, { x: 200, y: 160 }], field });
+  assert.ok(up[0] > 8 && up[1] >= 19, JSON.stringify(up));
+  assert.deepEqual(walkerPath({ elevation: 0, from: { x: 50, y: 400 }, path: [{ x: 350, y: 400 }], field }), [0]);
+});
+
+// Live: a ladder under a bridge carried a token walking down the bridge to the ground. Roi: "working for going up a bridge not down".
+test('walking down a bridge with a ladder under it keeps to the bridge; from the ground the ladder still climbs', () => {
+  const sq = (x0, y0, x1, y1) => [x0, y0, x1, y0, x1, y1, x0, y1];
+  const field = heightField({ parts: [{ id: 'N', height: 20, areas: [sq(0, 0, 400, 200)] }], ramps: [
+    { id: 'L', a: { x: 200, y: 420 }, b: { x: 200, y: 180 }, w: 60, kind: 'ladder', lo: null, hi: null },
+    { id: 'B', a: { x: 200, y: 800 }, b: { x: 200, y: 180 }, w: 200, kind: 'bridge', lo: null, hi: null }] });
+  const down = walkerPath({ elevation: 20, from: { x: 200, y: 150 }, path: [{ x: 200, y: 500 }, { x: 200, y: 790 }], field });
+  assert.ok(down[0] > 7 && down[0] < 12 && down[1] < 2, JSON.stringify(down));
+  const up = walkerPath({ elevation: 0, from: { x: 200, y: 440 }, path: [{ x: 200, y: 150 }], field }); assert.equal(up[0], 20);
+});

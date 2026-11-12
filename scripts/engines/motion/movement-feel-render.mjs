@@ -345,7 +345,17 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
     sunMask.scale.set(lit.scale, lit.scale);
     sunHome.mask = sunMask;
   };
+  // A shadow on a bridge's deck (`deck`: its elevation): in a box of its own at that height beside the floor's, so the map sorts
+  // it over the planks and under the creature standing there.
+  const decks = new Map();
+  const deckHome = (deck) => {
+    const floor = root(), map = floor?.parent; if (!map) return floor;
+    let box = decks.get(deck);
+    if (!box || box.destroyed || box.parent !== map) { box = new PIXI.Container(); box.eventMode = 'none'; box.sortLayer = floor.sortLayer; box.elevation = deck; map.addChild(box); decks.set(deck, box); }
+    return box;
+  };
   const homeOf = (geom) => {
+    if (Number.isFinite(geom.deck) && typeof PIXI.Container === 'function') return deckHome(geom.deck);
     if (!geom.sun || !sunlitOf || typeof PIXI.Container !== 'function') return root();
     if (!sunHome || sunHome.destroyed) { sunHome = new PIXI.Container(); sunHome.eventMode = 'none'; root().addChild(sunHome); applySunlit(); }
     return sunHome;

@@ -1578,10 +1578,13 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
           const lit = typeof token.light === 'function' ? token.light() : null;
           // Lying on the floor (prone): its shadow is cast from barely above it, short and close.
           const lying = (typeof token.lying === 'function' ? token.lying() : token.statuses?.has?.('prone')) === true;
-          const key = `${point.x}|${point.y}|${token.width}|${size}|${both}|${lying}`, refs = [lit, sun(), art];
+          const key = `${point.x}|${point.y}|${token.width}|${size}|${both}|${lying}|${token.deck ?? ''}`, refs = [lit, sun(), art];
           if (!handle || !unchanged(move, key, refs)) {
           if (!handle) shadows.set(id, handle = layer.addShadow());
           const geom = shadowGeometry({ x: point.x, y: point.y, width: token.width, distance: distance() || 5, grid: size, grounded: true });
+          // (Standing on a bridge (token.deck: its deck's elevation), its shadow lies on the deck, drawn there over the planks, not
+          // on the ground under them. Roi: "shouldnt shadows be affected from elevation?")
+          if (Number.isFinite(token.deck)) geom.deck = token.deck;
           let main = null;
           if (lit) {
             const body = (lying ? LYING_BODY : 0.8) * (Number(token.width) || size) / size;
@@ -1599,7 +1602,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
               ? laid.filter((g) => g.alpha > 0.01).map((g, i) => ({ id: `${id}|${i}`, owner: id, geom: g, width: Number(token.width) || size, elevation: Number(token.elevation) || 0 }))
               : null;
           } else { remember(move, key, refs, layer.updateShadow(handle, geom) !== false); second(id, null); move.lastGround = null; }
-          rim(id, rimGeometry({ x: point.x, y: point.y, width: Number(token.width) || size, art, ring: token.ring || false, away: main }));
+          rim(id, { ...rimGeometry({ x: point.x, y: point.y, width: Number(token.width) || size, art, ring: token.ring || false, away: main }), ...(Number.isFinite(token.deck) ? { deck: token.deck } : {}) });
           }
           if (move.lastGround) {
             const caster = { x: point.x, y: point.y, width: Number(token.width) || size, elevation: Number(token.elevation) || 0, order: orderOf(token) };

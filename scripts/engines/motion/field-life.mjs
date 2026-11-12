@@ -174,8 +174,10 @@ export function wolfStep(wolf, { dt = 1 / 60, grid = 100, near = [], ok = () => 
       if (off > w.goingTo.reach) w.pulling = false;
       w.goingTo = null; w.t = 0;
     }
-    // Round what is in the way; still at it after this long, it forces a way straight out.
-    const forcing = w.t > 25, gap = Math.hypot(w.tx - w.x, w.ty - w.y), straight = Math.atan2(w.ty - w.y, w.tx - w.x), way = gap < grid * 1.8 || forcing ? straight : round(straight);
+    // Round what is in the way; still at it after this long, it slips away (gone) instead of forcing a way through: forced, live,
+    // a wolf walked straight through a cliff. Roi: "animals disregard cliffs entirely".
+    if (w.t > 25) { w.mode = 'away'; w.t = 0; w.v = 0; return w; }
+    const forcing = false, gap = Math.hypot(w.tx - w.x, w.ty - w.y), straight = Math.atan2(w.ty - w.y, w.tx - w.x), way = gap < grid * 1.8 || forcing ? straight : round(straight);
     w.a = turnToward(w.a, way + Math.PI / 2 + (w.pulling ? Math.PI : 0), dt * 3); w.v = grid * (w.pulling ? 0.7 : 0.95);
     let nx = w.x + Math.cos(way) * w.v * dt, ny = w.y + Math.sin(way) * w.v * dt;
     // (The map's own edge stops nothing going out by it.)
@@ -653,8 +655,10 @@ export function createFieldLife({ PIXI, floor, sky, glow = sky, high = sky, high
           if (left) {
             fetchIn = between(Math.random, 8, 20);
             if (Math.hypot(left.x - wolves[0].x, left.y - wolves[0].y) < grid * 1.5) { deer = deer.map((d) => (d.mode === 'dead' ? { ...d, kill: d === left } : d)); packFeeds = between(Math.random, 3, 6); wolves = wolves.map((w) => ({ ...w, mode: 'rest', wait: 45, v: 0 })); }
-            // Tried twice and no way round: it forces one, so nothing lies there for good.
-            else { left.tries = (left.tries ?? 0) + 1; wolves[0] = { ...wolves[0], mode: 'arrive', t: 0, clear: left.tries > 2 ? Infinity : 0, tx: left.x, ty: left.y }; }
+            // Tried twice and no way round: it is left to the crows (gone), so nothing lies there for good. (It used to force a way,
+            // walls and all: live, a wolf walked straight through a cliff to a carcass on top. Roi: "animals disregard cliffs entirely".)
+            else if ((left.tries = (left.tries ?? 0) + 1) > 2) { gone(left.body, left.shadow); left.done = true; deer = deer.filter((d) => !d.done); }
+            else wolves[0] = { ...wolves[0], mode: 'arrive', t: 0, clear: 0, tx: left.x, ty: left.y };
           }
         }
         // Gone a good while: they come back the way anything does, from the edge.

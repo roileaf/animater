@@ -191,3 +191,13 @@ test('the sun shadows lie under the sunlit floor: kept off floor a wall already 
   layer.updateShadow(sun, { x: 5, y: 6, rx: 50, ry: 25, alpha: 0.4, sun: true });
   assert.equal(sun.parent, holder, 'kept together, unmasked');
 });
+
+// Roi, of a token on a bridge whose shadow lay on the ground under it: "shouldnt shadows be affected from elevation?"
+test('a shadow on a bridge deck goes in a box of its own at the deck\'s height, beside the floor\'s', () => {
+  class Container { constructor() { this.children = []; this.parent = null; } addChild(c) { this.children.push(c); c.parent = this; } }
+  const map = new Container(), root = new Container(); root.sortLayer = 650; map.addChild(root);
+  const layer = createMovementFeelLayer({ PIXI: { Graphics, Container }, root: () => root });
+  const s = layer.addShadow(); layer.updateShadow(s, { x: 5, y: 6, rx: 50, ry: 25, alpha: 0.4, deck: 5.01 });
+  assert.notEqual(s.parent, root); assert.equal(s.parent.elevation, 5.01); assert.equal(s.parent.sortLayer, 650); assert.equal(s.parent.parent, map);
+  layer.updateShadow(s, { x: 5, y: 6, rx: 50, ry: 25, alpha: 0.4 }); assert.equal(s.parent, root, 'back on the floor off the bridge');
+});

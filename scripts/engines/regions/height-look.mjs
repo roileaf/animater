@@ -17,6 +17,8 @@ const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
 /** The cliff's colours (pure) from the ground just outside it and the top's (0xrrggbb each, or null: a grey-brown stone and
  *  an olive grass): { light, dark, stone (the rock's own), tuft (the grass over the lip), ink }. The rock is the ground's
  *  colour pushed most of the way toward stone, so a sandy bank stays sandy and a grassy rise turns earthen. */
+import { openAt, inAreas } from './heights.mjs';
+
 export function cliffColours(ground = null, top = null) {
   // (A colour that is no number, a map not read right, is none: live, it painted the cliffs black.)
   const known = (c) => Number.isInteger(c) && c >= 0 && c <= 0xffffff;
@@ -76,6 +78,55 @@ export function faceFeet(runs, { grid = 100, step = 5, piece = 25, seed = 0, ins
     if (open) { const p = L[(total - 1) % n], end = foot(p); push(last, end); if (!(run.closed && L.every(deep))) push(end, [p.rx, p.ry]); }
   });
   return out;
+}
+
+/** Whether a creature on foot is stopped stepping from `a` to `b` by the heights (pure): up or down a drop of `gap` or more
+ *  (not where the edge is open, a slope; a ramp is walked, a ladder, rope or bridge is not), or onto a rock face, the ground
+ *  just below a cliff where its painted wall hangs (from off the face it may step off it). With or without the scene's cliff
+ *  walls. (Roi: "all non flying animals should know about cliffs and not walk on them like they are ground".) */
+export function cliffStops({ field, a, b, grid = 100, step = 5, gap = 2.5 }) {
+  if (!field?.parts?.length) return false;
+  // (Along the whole way, a fifth of a square at a time: creatures look ahead up to three squares to steer, and judged by its
+  // two ends a look clean over a raised part came back clear, so they kept walking into the cliff and stuck. Roi: "they are getting stuck".)
+  // (Nowhere near a raised part, or the face below it, nothing to work out: most of the map, most of the time.)
+  const boxes = partBoxes(field, grid), x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
+  if (!boxes.some((q) => x1 >= q.x0 && x0 <= q.x1 && y1 >= q.y0 && y0 <= q.y1)) return false;
+  const len = Math.hypot(b.x - a.x, b.y - a.y), n = Math.min(24, Math.max(1, Math.ceil(len / (grid * 0.2))));
+  if (n > 1) { let p = a; for (let i = 1; i <= n; i++) { const q = { x: a.x + ((b.x - a.x) * i) / n, y: a.y + ((b.y - a.y) * i) / n }; if (stepStops(field, p, q, grid, step, gap)) return true; p = q; } return false; }
+  return stepStops(field, a, b, grid, step, gap);
+}
+// Each raised part's box, grown by a cliff's reach (its face hangs up to three squares below it), kept with the field.
+const BOXES = new WeakMap();
+function partBoxes(field, grid) {
+  let got = BOXES.get(field); if (got && got.grid === grid) return got.boxes;
+  const pad = grid * 0.5, boxes = field.parts.map((part) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const ar of part.areas ?? []) for (let i = 0; i < ar.length; i += 2) { x0 = Math.min(x0, ar[i]); x1 = Math.max(x1, ar[i]); y0 = Math.min(y0, ar[i + 1]); y1 = Math.max(y1, ar[i + 1]); } return { x0: x0 - pad, y0: y0 - pad, x1: x1 + pad, y1: y1 + grid * 3 + pad }; });
+  BOXES.set(field, { grid, boxes }); return boxes;
+}
+/** Whether `p` (the ground there at `h`) lies on a cliff's rock face (pure): a little way straight up the map from it the ground
+ *  stands a cliff higher, its painted wall hanging down over it. Not on a ramp. (Creatures on foot are never put there: one
+ *  put there was walled in between a cliff's rim and its foot. Roi: "it's stuck i think".) */
+export function onCliffFace(field, p, { grid = 100, step = 5, gap = 2.5, reach = 0.75 } = {}) {
+  if (!field?.parts?.length) return false;
+  if (!partBoxes(field, grid).some((q) => p.x >= q.x0 && p.x <= q.x1 && p.y >= q.y0 && p.y <= q.y1)) return false;
+  const hit = field.rampAt(p), h = hit?.ramp?.kind === 'ramp' ? (() => { const [lo, hi] = field.rampEnds(hit.ramp); return lo + (hi - lo) * hit.t; })() : field.groundAt(p);
+  return faceAt(field, p, h, grid, step, gap, reach);
+}
+// (A face hangs straight down the map under the rim, deeper the higher the drop: a point is on one when, a little way
+// straight up the map from it, the ground stands a cliff higher.)
+function faceAt(field, p, h, grid, step, gap, reach = 0.75) {
+  if (field.rampAt(p)?.ramp?.kind === 'ramp') return false;
+  for (const part of field.parts) {
+    if (part.look === 'none' || part.height < h + gap) continue;
+    const deep = faceDepth(part.height - h, grid, step) * reach;
+    for (const k of [0.3, 0.6, 1]) { const q = { x: p.x, y: p.y - deep * k }; if (inAreas(q, part.areas) && field.groundAt(q) === part.height && !openAt(part, q)) return true; }
+  }
+  return false;
+}
+function stepStops(field, a, b, grid, step, gap) {
+  const footing = (p) => { const hit = field.rampAt(p); if (hit?.ramp?.kind === 'ramp') { const [lo, hi] = field.rampEnds(hit.ramp); return lo + (hi - lo) * hit.t; } return field.groundAt(p); };
+  const ha = footing(a), hb = footing(b);
+  if (Math.abs(ha - hb) >= gap) { const high = field.partAt(ha > hb ? a : b); if (!(high && (openAt(high, a) || openAt(high, b)))) return true; }
+  return faceAt(field, b, hb, grid, step, gap) && !faceAt(field, a, ha, grid, step, gap);
 }
 
 /** One loose rock (into `g`) at (x, y), about `r` px: an angular, chipped outline flat at its foot (5 to 7 corners), a dark

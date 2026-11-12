@@ -28,3 +28,17 @@ test('a rope sags from a stake to a loose coil; a bridge has uneven planks, one 
   const p = fakeG(); plank(p, 0, 0, 10, 0, 4, 1, { x: -0.7, y: -0.7 });
   assert.ok(p.calls.filter(([k]) => k === 'drawPolygon').length >= 3, 'underside, lit side, ink');
 });
+
+// Roi: "can we have realistic shadows for the bridge? and also to a leaning ladder\rope against a cliff".
+test('a bridge\'s shadow is its planks, each thrown by its own height over the ground; a ladder\'s meets it at the foot', () => {
+  const sun = { x: -Math.SQRT1_2, y: -Math.SQRT1_2 }, g = fakeG(), sh = fakeG();
+  const planks = drawBridge(g, sh, 0, 0, 0, 300, { w: 60, sun, rise: (t) => (t < 0.2 || t > 0.8 ? 0 : 40) });
+  const quads = sh.calls.filter(([k]) => k === 'drawPolygon').map(([, a]) => a[0]);
+  assert.equal(quads.length, planks, 'one shadow per plank, gaps between');
+  const ends = quads.filter((q) => q[1] < 50), mid = quads.filter((q) => q[1] > 120 && q[1] < 180);
+  const cx = (q) => (q[0] + q[2] + q[4] + q[6]) / 4; assert.ok(ends.every((q) => Math.abs(cx(q)) < 3) && mid.every((q) => cx(q) > 25), 'none at its ends, pushed off over the low ground');
+  const lg = fakeG(), ls = fakeG(); drawLadder(lg, ls, 0, 0, 0, 120, { w: 20, sun, reach: 12 });
+  const pts = ls.calls.filter(([k]) => k === 'moveTo' || k === 'lineTo').map(([, a]) => a);
+  const foot = pts.filter(([, y]) => y >= 119), top = pts.filter(([, y]) => y <= 6);
+  assert.ok(foot.every(([x]) => Math.abs(Math.abs(x) - 10) < 0.5), 'touching at its foot'); assert.ok(top.some(([x]) => x > 15), 'away at its top');
+});

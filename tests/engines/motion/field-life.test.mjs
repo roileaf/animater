@@ -306,11 +306,12 @@ test('a wolf left behind goes off the map after its pack', () => {
   assert.equal(left.mode, 'away');
 });
 
-test('a wolf hauling forces a way out when it cannot get round', () => {
+test('a wolf hauling that cannot get round slips away, never through the wall', () => {
   // A wall all the way across: no way round it at all.
   const blocked = (a, b) => (a.x < 400) !== (b.x < 400);
   const out = run(wolf({ x: 200, y: 0, a: -Math.PI / 2, mode: 'drag', tx: 800, ty: 0, pulling: true }), { blocked }, 90);
   assert.equal(out.mode, 'away');
+  assert.ok(out.x < 400, 'still on its own side');
 });
 
 test('wolves, squirrels and snakes each have their own keep-out', async () => {
