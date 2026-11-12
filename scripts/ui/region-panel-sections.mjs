@@ -308,6 +308,14 @@ const wallsSeg = (walls) => {
   for (const [value, text] of WALL_CHOICES) { const b = button(text, '', () => { if (walls.get() === value) return; walls.set(value); show(value); }); kids.push([b, value]); box.append(b); }
   show(walls.get() !== false); return box;
 };
+// A choice of the scene's, shown changed at once (the scene's save does not redraw the panel): [value, label] options, { get, set }.
+const VIEW_CHOICES = [['side', 'Side'], ['topdown', 'Top-down']];
+const choiceSeg = (options, store, label) => {
+  const box = element('div', 'an-rp-seg'), kids = []; box.setAttribute('role', 'group'); box.setAttribute('aria-label', label);
+  const show = (now) => { for (const [b, value] of kids) { const on = value === now; b.className = on ? 'an-rp-on' : ''; b.setAttribute('aria-pressed', String(on)); } };
+  for (const [value, text] of options) { const b = button(text, '', () => { if (store.get() === value) return; store.set(value); show(value); }); kids.push([b, value]); box.append(b); }
+  show(store.get()); return box;
+};
 const crossingButtons = (c) => { const box = element('div', 'an-rp-seg'); box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'Add crossing'); for (const [kind, name] of CROSSING_KINDS) box.append(button(name, '', () => { c.close?.(); c.addCrossing(kind); })); return box; };
 function heightSection(c) {
   const { own, act, doc } = c, grid = doc?.parent?.grid ?? globalThis.canvas?.scene?.grid, units = grid?.units || 'ft', step = Number(grid?.distance) > 0 ? Number(grid.distance) : 5;
@@ -320,6 +328,8 @@ function heightSection(c) {
       // (Roi, of the panel: "why not add it there too? as well as adding a crossing for ease of use". The scene's setting, the same
       // as the tick on Map painting's Heights tab: a scene off and one part on would only puzzle.)
       ...(c.cliffWalls ? [row('Cliff walls', wallsSeg(c.cliffWalls), 'Stops tokens walking up or down its cliffs (not sight). The scene\'s setting: the same as the tick on Map painting\'s Heights tab.')] : []),
+      // (Roi: "add top down mode toggle on the region popup". The scene's setting, as on the Heights tab.)
+      ...(c.cliffView ? [row('Cliff view', choiceSeg(VIEW_CHOICES, c.cliffView, 'Cliff view'), 'Side: the rock face hangs down the map, for maps drawn at an angle. Top-down: an inked rim with a ring every 5 ft, for maps drawn straight from above. The scene\'s setting, the same as on Map painting\'s Heights tab.')] : []),
       ...(c.addCrossing ? [row('Add crossing', crossingButtons(c), 'Opens Map painting on Heights with that crossing picked: drag from the low ground up across its edge.')] : [])];
   }
   if (r) {

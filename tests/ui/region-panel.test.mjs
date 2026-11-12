@@ -659,3 +659,12 @@ test('a raised part offers the scene\'s cliff walls, Block or Open, and a crossi
   fire(btn('Ladder'), 'click'); assert.deepEqual(laid, ['ladder']); assert.equal(p.dom.body.children.length, 0, 'the panel steps aside for the brush');
   p.dom.restore();
 });
+
+// Roi: "add top down mode toggle on the region popup".
+test('a raised part offers the scene\'s cliff view, Side or Top-down, shown changed at once', async () => {
+  let view = 'side';
+  const p = await setup({ height: 5 }, 'grass', { extra: { cliffView: { get: () => view, set: (v) => { view = v; } } } });
+  const btn = (t) => [...walk(p.root())].find((n) => n.tagName === 'BUTTON' && n.textContent === t);
+  assert.equal(btn('Side').attrs['aria-pressed'], 'true'); fire(btn('Top-down'), 'click'); assert.equal(view, 'topdown'); assert.equal(btn('Top-down').attrs['aria-pressed'], 'true');
+  p.done();
+});
