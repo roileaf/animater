@@ -51,6 +51,10 @@ export function grownShape({ ClipperLib, lit, reach, raised = [], scale = 10, le
   if (!extra.length) return null;
   const own = [toPath(lit, scale)], added = run(extra, own, ClipType.ctDifference).filter((p) => Math.abs(Clipper.Area(p)) > least * scale * scale);
   if (!added.length) return null;
+  // (The piece holding the light's own middle grows it; any apart from it, touching it nowhere, come back as islands of their
+  // own, lit separately: with no shared edge there is no seam.)
   const union = run(own, extra, ClipType.ctUnion).filter((p) => Clipper.Orientation(p) === Clipper.Orientation(own[0]));
-  return union.length === 1 ? toFlat(union[0], scale) : null;
+  if (!union.length) return null;
+  const centre = own[0][0], inside = (p) => ClipperLib.Clipper.PointInPolygon(centre, p) !== 0, main = union.find(inside) ?? union.reduce((a, b) => (Math.abs(Clipper.Area(b)) > Math.abs(Clipper.Area(a)) ? b : a));
+  return { shape: toFlat(main, scale), islands: union.filter((p) => p !== main && Math.abs(Clipper.Area(p)) > least * scale * scale).map((p) => toFlat(p, scale)) };
 }

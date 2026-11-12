@@ -3212,21 +3212,33 @@ Hooks.once("setup", () => {
 // the heights change.
 const growLightShape = (src) => {
   if (!canvas?.ready || !globalThis.ClipperLib || !src?.shape?.points || String(src.sourceId ?? "").startsWith(`${ID}.`) || !(Number(src.data?.radius) > 0)) return;
-  const { parts } = heightsOf(canvas.scene, canvas.level?.id ?? null); if (!parts.length) return;
-  const groups = reachableParts(parts, { x: src.data.x, y: src.data.y, radius: src.data.radius }); if (!groups.length) return;
+  lightIslandsOf(src.sourceId);
+  const { parts, ramps, field } = heightsOf(canvas.scene, canvas.level?.id ?? null); if (!parts.length && !ramps.length) return;
+  // (A bridge's deck as raised ground too, in strips along it, each at its lowest height there: a deck above a short wall takes the
+  // light past it as a clifftop does. Roi, of the house wall's shadow across a bridge: "whats the shadow on the bridge now??")
+  const decks = []; for (const r of ramps) { if (r.kind !== "bridge") continue; const [lo, hi] = field.rampEnds(r), n = 8, vx = r.b.x - r.a.x, vy = r.b.y - r.a.y, len = Math.hypot(vx, vy) || 1, nx = (-vy / len) * r.w * 0.6, ny = (vx / len) * r.w * 0.6; for (let i = 0; i < n; i++) { const t0 = i / n, t1 = (i + 1) / n, h = Math.min(lo + (hi - lo) * t0, lo + (hi - lo) * t1); if (!(h > 0)) continue; const x0 = r.a.x + vx * t0, y0 = r.a.y + vy * t0, x1 = r.a.x + vx * t1, y1 = r.a.y + vy * t1; decks.push({ height: Math.round(h), areas: [[x0 + nx, y0 + ny, x1 + nx, y1 + ny, x1 - nx, y1 - ny, x0 - nx, y0 - ny]] }); } }
+  const groups = reachableParts([...parts, ...decks], { x: src.data.x, y: src.data.y, radius: src.data.radius }); if (!groups.length) return;
   const per = Number(canvas.grid?.distance) || HEIGHT_STEP, Backend = CONFIG.Canvas.polygonBackends.light, config = src._getPolygonConfiguration(), origin = src.origin ?? { x: src.data.x, y: src.data.y, elevation: src.data.elevation ?? 0 };
-  let lit = Array.from(src.shape.points), grown = false;
+  let lit = Array.from(src.shape.points), grown = false; const islands = [];
   for (const { height, areas } of groups) {
     const ignore = (edge) => { const w = edge?.type === "wall" ? (edge.object?.document ?? edge.object) : null; return !!w && lightPasses(wallTopOnGround(w) * per, height); };
     const reach = Backend.create(origin, { ...config, animaterIgnore: ignore });
     const next = grownShape({ ClipperLib: globalThis.ClipperLib, lit, reach: Array.from(reach.points), raised: areas, least: (canvas.grid?.size ?? 100) ** 2 * 0.02 });
-    if (next) { lit = next; grown = true; }
+    if (next) { lit = next.shape; islands.push(...next.islands); grown = true; }
   }
   if (!grown) return;
   // (Its middle and reach carried over, as Foundry's sweeps hold them: it builds the light's mesh from them.)
-  const shape = new PIXI.Polygon(lit); shape.origin = src.shape.origin ?? { x: src.data.x, y: src.data.y }; shape.config = src.shape.config ?? { radius: src.data.radius }; shape.bounds = shape.getBounds();
-  src.shape = shape;
+  const carry = (pts) => { const shape = new PIXI.Polygon(pts); shape.origin = src.shape.origin ?? { x: src.data.x, y: src.data.y }; shape.config = src.shape.config ?? { radius: src.data.radius }; shape.bounds = shape.getBounds(); return shape; };
+  src.shape = carry(lit);
+  // Islands apart from it (a bridge deck behind a wall, say): local copies of the light, shaped to them, made once the light is
+  // shaped (not while it is), dropped and made again with it.
+  const data = foundry.utils.deepClone(src.data), id = src.sourceId; lightIslandsOf(id);
+  if (islands.length) setTimeout(() => { if (!canvas?.ready || canvas.effects.lightSources.get(id) !== src) return; const made = islands.map((pts, i) => { const light = new CONFIG.Canvas.lightSourceClass({ sourceId: `${ID}.island.${id}.${i}`, object: null }), shape = carry(pts); light._createShapes = function () { this.shape = shape; }; try { light.initialize(data); light.add(); if (!Object.values(light.layers ?? {}).every((l) => l.mesh)) throw new Error("no mesh"); return light; } catch (err) { try { light.remove?.(); light.destroy(); } catch { /* gone */ } return null; } }).filter(Boolean); lightIslands.set(id, made); try { canvas.perception.update({ refreshLighting: true }); } catch { /* going */ } }, 0);
 };
+const lightIslands = new Map();
+const lightIslandsOf = (id) => { for (const l of lightIslands.get(id) ?? []) { try { l.remove?.(); l.destroy(); } catch { /* gone */ } } lightIslands.delete(id); };
+Hooks.on("lightingRefresh", () => { for (const id of [...lightIslands.keys()]) if (!canvas?.effects?.lightSources?.get(id)) lightIslandsOf(id); });
+Hooks.on("canvasTearDown", () => { for (const id of [...lightIslands.keys()]) lightIslandsOf(id); });
 Hooks.once("setup", () => {
   try {
     const proto = CONFIG.Canvas.lightSourceClass?.prototype, createShapes = proto?._createShapes; if (!createShapes || createShapes.animaterGrown) return;
@@ -3237,7 +3249,7 @@ Hooks.once("setup", () => {
 let lightsReshapeTimer = null;
 const lightsReshapeSoon = () => { clearTimeout(lightsReshapeTimer); lightsReshapeTimer = setTimeout(() => { lightsReshapeTimer = null; try { if (canvas?.ready) canvas.perception.update({ initializeLighting: true }); } catch { /* going */ } }, 250); };
 Hooks.on("canvasReady", () => { try { if (heightsOf(canvas.scene, canvas.level?.id ?? null).parts.length) lightsReshapeSoon(); } catch { /* none */ } });
-for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options) => { if (quietSave(first, changes, options) || first?.parent !== canvas?.scene) return; const own = first.flags?.[ID]; if (readHeight(own) || changes?.flags?.[ID]?.height !== undefined) lightsReshapeSoon(); });
+for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options) => { if (quietSave(first, changes, options) || first?.parent !== canvas?.scene) return; const own = first.flags?.[ID]; if (readHeight(own) || readRamp(own) || changes?.flags?.[ID]?.height !== undefined || changes?.flags?.[ID]?.ramp !== undefined) lightsReshapeSoon(); });
 // Cliff walls: made by the GM who changed the heights (or, on a scene shown afresh, the lead GM), each marked as its raised
 // part's (flags.animater.cliffOf), so no other wall is ever touched; kept in step as parts and ramps change, gone with them.
 let cliffWallsTimer = null;
