@@ -19,7 +19,9 @@ export const OPEN_EDGES_MOST = 400;
 /** A region's open edges (its Animater flags) as [{ x, y, r }]. */
 export const readOpenEdges = (own) => (Array.isArray(own?.openEdges) ? own.openEdges : []).map((c) => (Array.isArray(c) ? { x: Number(c[0]), y: Number(c[1]), r: Number(c[2]) } : null)).filter((c) => c && [c.x, c.y, c.r].every(Number.isFinite) && c.r > 0);
 /** Whether a point lies in one of a part's open edges. */
-export const openAt = (part, p) => (part?.open ?? []).some((c) => (p.x - c.x) ** 2 + (p.y - c.y) ** 2 <= c.r * c.r);
+// (A hill (`hill`) is open all the way round: a slope on every side, no cliff and no walls. Roi: "we need another toggle for cliff
+// or hill".)
+export const openAt = (part, p) => part?.hill === true || (part?.open ?? []).some((c) => (p.x - c.x) ** 2 + (p.y - c.y) ** 2 <= c.r * c.r);
 /** Whether a part's outline passes through a circle ({ x, y, r }): sampled every `step` px along it. */
 export function edgeTouches(part, circle, step = 4) {
   for (const a of part.areas ?? []) for (const pts of [a, ...(a.holes ?? [])]) {

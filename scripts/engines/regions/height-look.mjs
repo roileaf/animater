@@ -249,24 +249,31 @@ export const ringsReach = (drop, grid, step = 5) => Math.min(3 * grid, Math.max(
  *  facing the sun, darker away from it. A 40 ft cliff shows eight. (Roi, of the side view on a top-down map: "is there anyway to
  *  add support for top down mode?"; he took B of the mock, height rings, with A's rim and C's lit and shaded sides.) Returns how
  *  many rings it drew. */
-export function drawCliffRings(g, run, { grid = 100, step = 5, sun = null, seed = 0, colours = cliffColours() } = {}) {
+export function drawCliffRings(g, run, { grid = 100, step = 5, sun = null, seed = 0, colours = cliffColours(), hill = false } = {}) {
   const pts = run.points, n = pts.length; if (n < 2) return 0;
-  const k = grid / 100, tallest = pts.reduce((m, p) => Math.max(m, Number(p.drop) || 0), 0), rings = Math.max(1, Math.min(24, Math.round(tallest / (step || 5)))), gap = RING_SPACING * grid;
+  // (A hill's: faint contour lines over the ground, three times as far apart, no rock and no heavy rim.)
+  const k = grid / 100, tallest = pts.reduce((m, p) => Math.max(m, Number(p.drop) || 0), 0), rings = Math.max(1, Math.min(24, Math.round(tallest / (step || 5)))), gap = RING_SPACING * grid * (hill ? 3 : 1);
   const along = [0]; for (let i = 1; i < n; i++) along.push(along[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
   const len = along[n - 1], last = run.closed ? n : n - 1, P = (i) => pts[((i % n) + n) % n];
   // (Tapering away where an open run ends, as the side view's wall does: a cliff dying into level ground.)
   const taper = (i) => { if (run.closed) return 1; const e = Math.max(0, Math.min(1, along[i] / (grid * 0.5), (len - along[i]) / (grid * 0.5))); return e * e * (3 - 2 * e); };
   const light = rgb(colours.light), dark = rgb(colours.dark);
-  // The band between the rim and the outermost ring, washed from rock at the rim to the ground, shaded by the sun.
-  for (let i = 0; i < last; i++) {
+  // The slope between the rim and the outermost ring, solid rock seen from above, one step of tone a ring: lit at the rim, darker
+  // toward the foot, lighter on the side facing the sun. (At 42% it was see-through, the grass showing through the rock. Roi:
+  // "why is it see through?")
+  if (!hill) for (let i = 0; i < last; i++) {
     const a = P(i), b = P(i + 1), ta = taper(i % n), tb = taper((i + 1) % n), toward = sun ? a.nx * sun.x + a.ny * sun.y : 0;
-    const reachA = ringsReach(a.drop, grid, step) * ta, reachB = ringsReach(b.drop, grid, step) * tb; if (reachA < 0.5 && reachB < 0.5) continue;
-    const tone = mix(light, dark, Math.min(1, Math.max(0, 0.45 - toward * 0.35)));
-    g.lineStyle(0); g.beginFill(hexOf(tone), 0.42); g.drawPolygon([a.x, a.y, b.x, b.y, b.x + b.nx * reachB, b.y + b.ny * reachB, a.x + a.nx * reachA, a.y + a.ny * reachA]); g.endFill();
+    const ra = Math.max(1, Math.round((Number(a.drop) || 0) / (step || 5))), rb = Math.max(1, Math.round((Number(b.drop) || 0) / (step || 5))), steps = Math.max(ra, rb);
+    if (ta < 0.02 && tb < 0.02) continue;
+    for (let r = 0; r < steps; r++) {
+      const da0 = Math.min(r, ra) * gap * ta, da1 = Math.min(r + 1, ra) * gap * ta, db0 = Math.min(r, rb) * gap * tb, db1 = Math.min(r + 1, rb) * gap * tb; if (da1 - da0 < 0.2 && db1 - db0 < 0.2) continue;
+      const depth = (r + 0.5) / steps, tone = mix(light, dark, Math.min(1, Math.max(0, 0.12 + depth * 0.62 - toward * 0.28)));
+      g.lineStyle(0); g.beginFill(hexOf(tone), 0.92); g.drawPolygon([a.x + a.nx * da0, a.y + a.ny * da0, b.x + b.nx * db0, b.y + b.ny * db0, b.x + b.nx * db1, b.y + b.ny * db1, a.x + a.nx * da1, a.y + a.ny * da1]); g.endFill();
+    }
   }
   // The rings, each a ragged line out from the rim, fainter and lighter-inked the further out.
   for (let r = 1; r <= rings; r++) {
-    const out = r / rings; g.lineStyle({ width: Math.max(0.7, (1.5 - out * 0.7) * k), color: colours.ink, alpha: 0.55 * (1 - out * 0.6), cap: 'round', join: 'round' }); let on = false;
+    const out = r / rings; g.lineStyle({ width: Math.max(0.7, (1.5 - out * 0.7) * k * (hill ? 0.8 : 1)), color: colours.ink, alpha: (hill ? 0.28 : 0.55) * (1 - out * 0.6), cap: 'round', join: 'round' }); let on = false;
     for (let i = 0; i <= last; i++) {
       const p = P(i), t = taper(i % n), ownRings = Math.max(1, Math.round((Number(p.drop) || 0) / (step || 5)));
       if (r > ownRings || t < 0.05) { on = false; continue; }
@@ -274,8 +281,8 @@ export function drawCliffRings(g, run, { grid = 100, step = 5, sun = null, seed 
       if (on) g.lineTo(x, y); else { g.moveTo(x, y); on = true; }
     }
   }
-  // The rim: heavy ink, heavier on the side away from the sun, fading out at an open run's ends.
-  for (let i = 0; i < last; i++) {
+  // The rim: heavy ink, heavier on the side away from the sun, fading out at an open run's ends (none on a hill).
+  if (!hill) for (let i = 0; i < last; i++) {
     const a = P(i), b = P(i + 1), fade = run.closed ? 1 : Math.min(1, i / 3, (n - 2 - i) / 3); if (fade <= 0) continue;
     const away = sun ? Math.max(0, -(a.nx * sun.x + a.ny * sun.y)) : 0.5;
     g.lineStyle({ width: (2.2 + 1.4 * away) * k * (0.5 + 0.5 * fade), color: colours.ink, alpha: 0.95 * fade, cap: 'round' }); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y);

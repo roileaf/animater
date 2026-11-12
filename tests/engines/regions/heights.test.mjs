@@ -237,3 +237,11 @@ test('walking down a bridge with a ladder under it keeps to the bridge; from the
   assert.ok(down[0] > 7 && down[0] < 12 && down[1] < 2, JSON.stringify(down));
   const up = walkerPath({ elevation: 0, from: { x: 200, y: 440 }, path: [{ x: 200, y: 150 }], field }); assert.equal(up[0], 20);
 });
+
+// Roi: "we need another toggle for cliff or hill".
+test('a hill is a slope on every side: no cliff edges nor walls, only slopes', () => {
+  const sq = (x0, y0, x1, y1) => [x0, y0, x1, y0, x1, y1, x0, y1];
+  const field = heightField({ parts: [{ id: 'H', height: 20, areas: [sq(100, 100, 300, 300)], hill: true }] });
+  assert.equal(cliffRuns({ field, step: 5 }).length, 0); assert.equal(cliffEdges({ field, piece: 25 }).length, 0);
+  assert.ok(cliffRuns({ field, step: 5, want: 'slope' }).length >= 1);
+});

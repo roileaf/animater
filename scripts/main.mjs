@@ -3132,7 +3132,7 @@ const heightsOf = (scene, levelId = null) => {
     try {
       const levels = [...(region.levels ?? [])]; if (levelId && levels.length && !levels.includes(levelId)) continue;
       const own = region.flags?.[ID], height = readHeight(own), ramp = height ? null : readRamp(own);
-      if (height) parts.push({ id: region.id, height, areas: regionAreas(region), levels, look: ["earth", "none"].includes(own?.cliffLook) ? own.cliffLook : "", open: readOpenEdges(own) });
+      if (height) parts.push({ id: region.id, height, areas: regionAreas(region), levels, look: ["earth", "none"].includes(own?.cliffLook) ? own.cliffLook : "", open: readOpenEdges(own), hill: own?.edgeKind === "hill" });
       else if (ramp) ramps.push({ id: region.id, ...ramp, levels });
     } catch { /* a broken region never breaks the rest */ }
   }
@@ -3288,7 +3288,7 @@ const syncCliffWalls = async (mine = false) => {
   try { if (gone.length) await scene.deleteEmbeddedDocuments("Wall", gone); if (made.length) await scene.createEmbeddedDocuments("Wall", made); }
   catch (err) { console.warn("Animater | cliff walls", err); }
 };
-for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options, ...more) => { if (quietSave(first, changes, options) || first?.parent !== canvas?.scene) return; const own = first.flags?.[ID], changed = hook === "updateRegion" ? changes : null; if (!(readHeight(own) || readRamp(own) || changed?.flags?.[ID]?.height !== undefined || changed?.flags?.[ID]?.ramp !== undefined || changed?.flags?.[ID]?.openEdges !== undefined || changed?.flags?.[ID]?.cliffLook !== undefined || (hook === "updateRegion" && changed?.shapes))) return; const userId = [changes, options, ...more].at(-1); cliffWallsSoon(userId === game.user?.id); heightShadowsSoon(); });
+for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options, ...more) => { if (quietSave(first, changes, options) || first?.parent !== canvas?.scene) return; const own = first.flags?.[ID], changed = hook === "updateRegion" ? changes : null; if (!(readHeight(own) || readRamp(own) || changed?.flags?.[ID]?.height !== undefined || changed?.flags?.[ID]?.ramp !== undefined || changed?.flags?.[ID]?.openEdges !== undefined || changed?.flags?.[ID]?.cliffLook !== undefined || changed?.flags?.[ID]?.edgeKind !== undefined || (hook === "updateRegion" && changed?.shapes))) return; const userId = [changes, options, ...more].at(-1); cliffWallsSoon(userId === game.user?.id); heightShadowsSoon(); });
 // How raised ground shows on the map (engines/regions/height-look.mjs), in the painted style of a battlemap's cliffs (Roi's
 // references): only where the ground drops (heights.mjs cliffRuns: not where it meets ground as high, a ramp or the map's
 // edge), a ragged inked rim with a face of rock slabs and boulders below it, thin where the sun strikes and deep on the
@@ -3433,7 +3433,7 @@ const drawHeightShadows = () => {
     }
     // Its slopes, softened.
     const down = slopes.filter((r) => r.of === part.id);
-    if (down.length) { const box = new PIXI.Container(), g = new PIXI.Graphics(); box.eventMode = "none"; for (const run of down) drawSlope(g, run, { grid, step, sun, seed: [...String(part.id)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7) }); const soften = new PIXI.BlurFilter(grid * 0.18, 6); soften.padding = grid * 0.5; g.filters = [soften]; box.addChild(g); cutHigher(box, part.height); shadowRoot.addChild(box); }
+    if (down.length) { const box = new PIXI.Container(), g = new PIXI.Graphics(); box.eventMode = "none"; for (const run of down) drawSlope(g, run, { grid, step, sun, seed: [...String(part.id)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7) }); if (cliffsTopDown(scene)) for (const run of down) drawCliffRings(g, run, { grid, step, sun, colours: cliffColours(), hill: true }); const soften = new PIXI.BlurFilter(grid * 0.18, 6); soften.padding = grid * 0.5; g.filters = [soften]; box.addChild(g); cutHigher(box, part.height); shadowRoot.addChild(box); }
     if (!mine.length) continue;
     const seed = [...String(part.id)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 7);
     const shade = new PIXI.Container(), soft = new PIXI.Graphics(), box = new PIXI.Container(), g = new PIXI.Graphics();

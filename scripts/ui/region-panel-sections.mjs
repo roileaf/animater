@@ -289,6 +289,8 @@ export const SECTIONS = {
 // Map painting's Heights, in the panel: a raised part's height (typed or stepped), how its cliff looks; a crossing's kind and
 // its two ends' heights (each following the ground under it until set by hand; cleared, it follows again).
 const CLIFF_LOOKS = [['', 'Rock'], ['earth', 'Earth'], ['none', 'None']];
+// Its edge: a cliff (sheer, walled) or a hill (a slope all round). (Roi: "we need another toggle for cliff or hill".)
+const EDGE_KINDS = [['', 'Cliff'], ['hill', 'Hill']];
 // A height in the scene's units: typed, or stepped a grid's distance at a time; '' for none (when `blank` is offered).
 const heightField = (value, step, units, save, blank = '') => {
   const box = element('div', 'an-rp-num'), input = element('input'), shown = (v) => (v === null || v === undefined ? blank : `${v}`);
@@ -324,7 +326,8 @@ function heightSection(c) {
     // (Renamed along with it while it keeps the name the brush gave it.)
     const rename = (n) => { if (/^Raised\b/.test(doc?.name ?? '')) void doc?.update?.({ name: heightName(n, units) }); };
     return [row('Height', heightField(h, step, units, (n) => { if (!(n > 0)) return; act({ height: n }); rename(n); }), 'How high its top stands over the level\'s floor. Walking tokens take this height when they step onto it.'),
-      row('Cliff look', seg(CLIFF_LOOKS, own.cliffLook ?? '', (v) => act({ cliffLook: v }), 'Cliff look'), 'Where the ground drops away from it: a rock face, a bank of earth, or nothing drawn (it stays raised).'),
+      row('Edge', seg(EDGE_KINDS, own.edgeKind === 'hill' ? 'hill' : '', (v) => act({ edgeKind: v }), 'Edge'), 'Cliff: a sheer drop, drawn as rock, with walls that stop movement. Hill: a slope on every side, walked up and down, no walls.'),
+      ...(own.edgeKind === 'hill' ? [] : [row('Cliff look', seg(CLIFF_LOOKS, own.cliffLook ?? '', (v) => act({ cliffLook: v }), 'Cliff look'), 'Where the ground drops away from it: a rock face, a bank of earth, or nothing drawn (it stays raised).')]),
       // (Roi, of the panel: "why not add it there too? as well as adding a crossing for ease of use". The scene's setting, the same
       // as the tick on Map painting's Heights tab: a scene off and one part on would only puzzle.)
       ...(c.cliffWalls ? [row('Cliff walls', wallsSeg(c.cliffWalls), 'Stops tokens walking up or down its cliffs (not sight). The scene\'s setting: the same as the tick on Map painting\'s Heights tab.')] : []),
