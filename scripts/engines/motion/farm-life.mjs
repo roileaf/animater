@@ -55,7 +55,14 @@ export function farmStep(animal, { dt = 1 / 20, grid = 100, near = [], ok = () =
     let way = free(aim) ? aim : null;
     for (let i = 1; i <= 8 && way === null; i++) for (const side of i < 8 ? [1, -1] : [1]) { const h = aim + (side * i * Math.PI) / 8; if (free(h)) { way = h; break; } }
     if (way === null) { a.v = 0; a.detourT = 0; if (a.mode === 'walk') { a.mode = 'graze'; a.wait = k.graze * (0.5 + random()); } }
-    else { if (way !== aim || (a.detourT <= 0 && way !== a.a)) { a.detour = way; a.detourT = 1.2; } a.a = way; a.x += Math.sin(way) * a.v * dt; a.y -= Math.cos(way) * a.v * dt; }
+    else {
+      if (way !== aim || (a.detourT <= 0 && way !== a.a)) { a.detour = way; a.detourT = 1.2; } a.a = way;
+      // (Its body comes round at a beast's pace, not at once, and it slows to turn: snapped to each new way, in a narrow passage or a
+      // corner it flicked from heading to heading many times a second. Paulomat: "turning can repeat so often and so fast".)
+      const face = Number.isFinite(a.face) ? a.face : way, off = Math.atan2(Math.sin(way - face), Math.cos(way - face)), most = (a.mode === 'flee' ? 5 : 2.5) * dt;
+      a.face = face + Math.max(-most, Math.min(most, off)); const along = Math.max(0, Math.cos(way - a.face));
+      a.x += Math.sin(way) * a.v * along * dt; a.y -= Math.cos(way) * a.v * along * dt;
+    }
   }
   a.gait = ((a.gait ?? 0) + (a.v * dt) / (body * 0.5)) % 1;
   return a;
@@ -190,7 +197,7 @@ export function createFarmLife({ PIXI, floor, picture = null, restyle = null }) 
         next.body.texture = tex; next.shadow.texture = tex;
         next.body.scale.set(scale); next.shadow.scale.set(scale * 1.02);
         next.body.position.set(next.x, next.y); next.shadow.position.set(next.x + grid * 0.06, next.y + grid * 0.08);
-        next.body.rotation = next.a; next.shadow.rotation = next.a;
+        const face = Number.isFinite(next.face) ? next.face : next.a; next.body.rotation = face; next.shadow.rotation = face;
         const shown = seen(next.x, next.y); next.body.visible = shown; next.shadow.visible = shown;
         if (sound && next.mode === 'flee' && o.mode !== 'flee') sound(FARM_CALLS[o.kind], { x: next.x, y: next.y }, true);
         return next;

@@ -101,3 +101,22 @@ test('a farm animal at an edge goes along it or stops, never spinning on the spo
     assert.ok(turned < Math.PI * 2, name + ': turned ' + (turned / Math.PI).toFixed(1) + ' half-turns in 4 s');
   }
 });
+
+// Paulomat's second report: running in narrow passages and region corners, animals turned so often and so fast they flickered.
+test('a farm animal running in a narrow passage or a corner turns at a beast\'s pace', () => {
+  let seed = 11; const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const cases = {
+    'a passage under a square wide': { ok: (x, y) => x > -40 && x < 40 && y > -1500 && y < 1500, start: { x: 0, y: 0 }, scare: (s) => ({ x: s.x + 30, y: s.y + 90 }) },
+    'a corner': { ok: (x, y) => x > 0 && y > 0 && x < 1500 && y < 1500, start: { x: 40, y: 40 }, scare: () => ({ x: 160, y: 160 }) },
+  };
+  for (const [name, { ok, start, scare }] of Object.entries(cases)) {
+    let s = { kind: 'sheep', x: start.x, y: start.y, a: 0, mode: 'graze', wait: 3, v: 0 }, turned = 0, last = null, worst = 0;
+    for (let i = 0; i < 20 * 6; i++) {
+      s = farmStep(s, { dt: 1 / 20, grid: 100, ok, blocked: (p, q) => ok(p.x, p.y) && !ok(q.x, q.y), near: [scare(s)], random });
+      const face = Number.isFinite(s.face) ? s.face : s.a; if (last !== null) { const d = Math.abs(Math.atan2(Math.sin(face - last), Math.cos(face - last))); turned += d; worst = Math.max(worst, d); } last = face;
+      assert.ok(ok(s.x, s.y), name + ': stays where it may be');
+    }
+    assert.ok(worst <= 5 / 20 + 1e-9, name + ': turns no faster than 5 radians a second (step ' + worst.toFixed(2) + ')');
+    assert.ok(turned < Math.PI * 4, name + ': turned ' + (turned / Math.PI).toFixed(1) + ' half-turns in 6 s');
+  }
+});
