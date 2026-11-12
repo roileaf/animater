@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { spillPieces, lightPasses, reachableParts } from '../../../scripts/engines/regions/light-spill.mjs';
+import { spillPieces, lightPasses, reachableParts, grownShape } from '../../../scripts/engines/regions/light-spill.mjs';
 
 // Roi: "ezren holding a torch next to the wall which is 0-10 and the slope is 40 ft yet the wall shadow is on its top?", then "Build it".
 const sq = (x0, y0, x1, y1) => [x0, y0, x1, y0, x1, y1, x0, y1];
@@ -17,4 +17,7 @@ test('the light reaching raised ground is kept on that ground and only where it 
 test('only the raised parts a light can reach, by height', () => {
   const groups = reachableParts([{ height: 20, areas: [sq(100, 100, 200, 200)] }, { height: 5, areas: [sq(5000, 5000, 5100, 5100)] }], { x: 0, y: 0, radius: 150 });
   assert.equal(groups.length, 1); assert.equal(groups[0].height, 20);
+});
+test('a light grows its own shape over the raised ground past the short walls, as one outline; nothing to add, none', () => {
+  assert.equal(grownShape({ ClipperLib: null, lit: sq(0, 0, 10, 10), reach: sq(0, 0, 10, 10), raised: [sq(0, 0, 5, 5)] }), null);
 });

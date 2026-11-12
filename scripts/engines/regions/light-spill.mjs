@@ -39,3 +39,18 @@ export function reachableParts(parts = [], { x, y, radius }) {
   for (const p of parts) for (const a of p.areas ?? []) if (a?.length >= 6 && near(a)) { if (!by.has(p.height)) by.set(p.height, []); by.get(p.height).push(Array.from(a)); }
   return [...by].map(([height, areas]) => ({ height, areas }));
 }
+
+/** A light's own shape (`lit`) grown over the raised ground it reaches past the short walls (`reach` n `raised`), as one outline
+ *  (pure): its union, or null when nothing is added or the union is not one piece (the light keeps its own shape then). One light,
+ *  so no seam and no doubled tint where two would meet. (Roi, of a bright line where a second light overlapped the first: "i dont
+ *  understand why the light line shows there".) */
+export function grownShape({ ClipperLib, lit, reach, raised = [], scale = 10, least = 400 }) {
+  if (!ClipperLib || !lit?.length || !reach?.length || !raised.length) return null;
+  const { Clipper, PolyType, ClipType, PolyFillType } = ClipperLib, run = (subject, clip, type) => { const c = new Clipper(), out = []; c.AddPaths(subject, PolyType.ptSubject, true); c.AddPaths(clip, PolyType.ptClip, true); c.Execute(type, out, PolyFillType.pftNonZero, PolyFillType.pftNonZero); return out; };
+  const extra = run([toPath(reach, scale)], raised.map((r) => toPath(r, scale)), ClipType.ctIntersection).filter((p) => Math.abs(Clipper.Area(p)) > least * scale * scale);
+  if (!extra.length) return null;
+  const own = [toPath(lit, scale)], added = run(extra, own, ClipType.ctDifference).filter((p) => Math.abs(Clipper.Area(p)) > least * scale * scale);
+  if (!added.length) return null;
+  const union = run(own, extra, ClipType.ctUnion).filter((p) => Clipper.Orientation(p) === Clipper.Orientation(own[0]));
+  return union.length === 1 ? toFlat(union[0], scale) : null;
+}
