@@ -33,7 +33,7 @@ const fire = (n, type, extra = {}) => { const e = { target: n, defaultPrevented:
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 // Opens the panel on one region; `saves` records every save, and flagsOf follows them unless `stick` keeps the region as it was.
-async function setup(start = {}, floor = 'grass', { reject = false, stick = false, texture = () => false, season = () => false, hold = false, what = null, flagsOf = null, confirm = null, configure = null, remove = null, shows = null, roof = null } = {}) {
+async function setup(start = {}, floor = 'grass', { reject = false, stick = false, texture = () => false, season = () => false, hold = false, what = null, flagsOf = null, confirm = null, configure = null, remove = null, shows = null, roof = null, extra = {} } = {}) {
   const dom = installDom();
   const { createRegionPanel } = await import('../../scripts/ui/region-panel.mjs');
   const doc = { name: 'Mill pond' };
@@ -55,6 +55,7 @@ async function setup(start = {}, floor = 'grass', { reject = false, stick = fals
     ...(remove ? { remove } : {}),
     ...(shows ? { shows } : {}),
     ...(roof ? { roof } : {}),
+    ...extra,
   });
   panel.open(what ?? { doc, floor, at: { x: 5, y: 6 }, client: { x: 10, y: 10 }, regions: [{ doc, floor }], first: doc });
   const root = () => dom.body.children[0];
@@ -645,4 +646,16 @@ test('Roof: one switch puts a roof on the region (Foundry Suppress Weather) or t
   await t.click(t.byLabel('Roof'));
   assert.deepEqual(calls, [true, false]);
   t.done();
+});
+
+// Roi, of a raised part's panel: "why not add it there too? as well as adding a crossing for ease of use".
+test('a raised part offers the scene\'s cliff walls, Block or Open, and a crossing of each kind to lay', async () => {
+  let walls = false; const laid = [];
+  const p = await setup({ height: 5 }, 'grass', { extra: { cliffWalls: { get: () => walls, set: (on) => { walls = on; } }, addCrossing: (kind) => laid.push(kind) } });
+  const all = () => [...walk(p.root())], btn = (t) => all().find((n) => n.tagName === 'BUTTON' && n.textContent === t);
+  assert.ok(btn('Block') && btn('Open'), 'cliff walls'); assert.equal(btn('Open').attrs['aria-pressed'], 'true');
+  fire(btn('Block'), 'click'); assert.equal(walls, true); assert.equal(btn('Block').attrs['aria-pressed'], 'true', 'shown at once');
+  for (const t of ['Ramp', 'Rope', 'Bridge']) assert.ok(btn(t), t);
+  fire(btn('Ladder'), 'click'); assert.deepEqual(laid, ['ladder']); assert.equal(p.dom.body.children.length, 0, 'the panel steps aside for the brush');
+  p.dom.restore();
 });

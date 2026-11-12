@@ -53,6 +53,31 @@ export function layOut(run, { grid = 100, step = 5, sun = null, seed = 0 } = {})
   });
 }
 
+/** Walls along the painted rock face's foot (pure), so nothing walks onto the face from below: the rim's walls alone left the
+ *  face, a square or more of painted rock on the low side, open ground. (Roi, of a token walking up a cliff's face: "make sure
+ *  the cliff is not passable on the cliff side".) Laid out as drawn, without the sun and a little inside the drawn foot (its
+ *  depth wanders by the sun and a noise); where the face is deep it closes back to the rim at both ends, where only a thin lip
+ *  shows, none (the rim's wall is enough). Returns [{ of, c: [x1, y1, x2, y2] }], pieces about `piece` px. */
+export function faceFeet(runs, { grid = 100, step = 5, piece = 25, seed = 0, inset = 0.7, least = 0.12 } = {}) {
+  const out = [];
+  (runs ?? []).forEach((run, i) => {
+    const L = layOut(run, { grid, step, sun: null, seed: seed + i }), n = L.length; if (n < 2) return;
+    const foot = (p) => [p.rx + (p.fx - p.rx) * inset, p.ry + (p.fy - p.ry) * inset], deep = (p) => p.w * inset >= grid * least;
+    const push = (a, b) => { if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 0.5) out.push({ of: run.of, c: [a[0], a[1], b[0], b[1]].map((v) => Math.round(v)) }); };
+    // (Stretches of deep face, each walked in pieces about `piece` long and shut to the rim at its ends.)
+    const total = run.closed ? n + 1 : n; let open = null, last = null;
+    for (let k = 0; k < total; k++) {
+      const p = L[k % n];
+      if (!deep(p)) { if (open) { push(last, foot(L[(k - 1 + n) % n])); push(foot(L[(k - 1 + n) % n]), [L[(k - 1 + n) % n].rx, L[(k - 1 + n) % n].ry]); open = null; } continue; }
+      const here = foot(p);
+      if (!open) { open = here; last = here; if (!(run.closed && k === 0 && L.every(deep))) push([p.rx, p.ry], here); continue; }
+      if (Math.hypot(here[0] - last[0], here[1] - last[1]) >= piece) { push(last, here); last = here; }
+    }
+    if (open) { const p = L[(total - 1) % n], end = foot(p); push(last, end); if (!(run.closed && L.every(deep))) push(end, [p.rx, p.ry]); }
+  });
+  return out;
+}
+
 /** One loose rock (into `g`) at (x, y), about `r` px: an angular, chipped outline flat at its foot (5 to 7 corners), a dark
  *  shadow tucked under it, a lit facet on its top toward the sun and a crease across it. (Roi, of round pebbles at a cliff's
  *  foot: "can the circles look more realistic like rocks?") Pure but for `g`'s calls. */

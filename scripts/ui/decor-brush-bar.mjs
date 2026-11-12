@@ -201,6 +201,8 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
     // Turns the brush a step either way (from upright when it was random).
     turnBy: (dir) => { remembered.turn = (((remembered.turn ?? 0) + dir * BRUSH_TURN_STEP) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2); draw(); },
     setTab: (tab) => { const next = (tab === 'floors' || tab === 'heights') && !lock ? tab : 'decor'; if (next === remembered.tab) return; remembered.tab = next; draw(); onTab(next); onChange(); },
+    // (From a raised part's panel, Add crossing: Heights, crossing mode, that kind.)
+    setCrossing: (kind) => { if (lock) return; remembered.heightMode = 'ramp'; if (CROSSING_KINDS.some(([k]) => k === kind)) remembered.crossKind = kind; const tabbed = remembered.tab !== 'heights'; remembered.tab = 'heights'; draw(); if (tabbed) onTab('heights'); onChange(); },
     setStatus: (text, { undo = false, redo = false } = {}) => { status = { text: String(text ?? ''), undo, redo }; draw(); } };
   draw();
   (document.getElementById('board')?.parentElement ?? document.body).append(bar);

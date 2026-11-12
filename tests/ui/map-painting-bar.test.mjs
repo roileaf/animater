@@ -168,7 +168,7 @@ test('main: the Heights tab raises, lays ramps and steps heights on the wheel; w
   assert.match(main, /made\.push\(\{ c, move: CONST\.WALL_MOVEMENT_TYPES\.NORMAL, sight: none, light: none, sound: none, levels, flags: \{ \[ID\]: \{ cliffOf: id \} \} \}\)/, 'cliff walls stop movement only, and are marked as theirs');
   assert.match(main, /const of = wall\.flags\?\.\[ID\]\?\.cliffOf; if \(!of\) continue;/, 'no other wall is touched');
   // Roi, of look C: "i feel like you can do a much better job"; then, of the painted cliff from his references, "what if it's raised only from one side?", and "ok".
-  assert.match(main, /const runs = cliffRuns\(\{ field, step: Math\.max\(3, grid \/ 25\), bounds: canvas\.dimensions\?\.sceneRect \?\? null \}\);/, 'drawn only where the ground drops, the map edge level');
+  assert.match(main, /const runs = cliffRuns\(\{ field, step: Math\.max\(3, grid \/ 25\), bounds: canvas\.dimensions\?\.sceneRect \?\? null, climbs: true \}\);/, 'drawn only where the ground drops, the map edge level, whole behind a ladder or rope');
   assert.match(main, /drawCliffRun\(g, run, \{ grid, step, sun, seed: seed \+ i, colours \}\);/);
   assert.match(main, /const higher = parts\.filter\(\(p\) => p\.height > h\);/, 'never over a raised part higher still');
   assert.match(main, /if \(!box\.filters\?\.length\) \{ const Alpha = PIXI\.AlphaFilter \?\? PIXI\.filters\?\.AlphaFilter; if \(!Alpha\) return; const whole = new Alpha\(1\); whole\.padding = grid; box\.filters = \[whole\]; \}/, 'live: erasing straight onto the map punched a black hole');

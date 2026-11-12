@@ -285,7 +285,7 @@ import { nearbyClicks as smartNearbyClicks, cleanSelection } from "./engines/reg
 import { decorSettings, strokeShapes, circleArea as decorCircle, decorPlacements, trunkWalls, carryDecor, shapesBox } from "./engines/motion/decor-regions.mjs";
 import { openBrushBar, brushChoices, BRUSH_EDGE } from "./ui/decor-brush-bar.mjs";
 import { readHeight, readRamp, readOpenEdges, edgeTouches, openAt as heightOpenAt, OPEN_EDGES_MOST, heightField, walkerPath, nextHeight, rampFromDrag, rampOutline, heightRegionData, rampRegionData, cliffEdges, cliffRuns, heightsHoverLine, heightName, HEIGHT_STEP, refitHeights } from "./engines/regions/heights.mjs";
-import { drawCliffRun, drawSlope, footShade, topGlow, castOffset, depthHaze as heightDepthHaze, cliffColours, layOut as cliffLayOut } from "./engines/regions/height-look.mjs";
+import { drawCliffRun, drawSlope, footShade, topGlow, castOffset, depthHaze as heightDepthHaze, cliffColours, layOut as cliffLayOut, faceFeet as cliffFaceFeet } from "./engines/regions/height-look.mjs";
 import { drawLadder, drawRope, drawBridge } from "./engines/regions/height-crossings.mjs";
 import { DECOR_KINDS, stampDecor, paintDecor } from "./engines/motion/decor-paint.mjs";
 import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, seasonGround, groundInputs, groundStep, groundMoved, iceHours } from "./engines/motion/ambient-life.mjs";
@@ -3120,6 +3120,11 @@ const syncCliffWalls = async (mine = false) => {
     const all = heightsOf(scene, null), levelIds = [...new Set([...all.parts, ...all.ramps].flatMap((p) => p.levels))];
     for (const levelId of levelIds.length ? levelIds : [null]) {
       for (const e of cliffEdges({ field: heightsOf(scene, levelId).field, piece: (canvas.grid?.size ?? 100) / 4, smooth: (canvas.grid?.size ?? 100) / 12, bounds: canvas.dimensions?.sceneRect ?? null })) { if (!want.has(e.of)) want.set(e.of, []); want.get(e.of).push({ c: e.c, levels: levelId ? [levelId] : [] }); }
+      // (And along the painted face's foot, so a token below cannot walk onto the rock: Roi, "make sure the cliff is not passable on
+      // the cliff side". Not under a part drawn with no cliff.)
+      { const here = heightsOf(scene, levelId), grid = canvas.grid?.size ?? 100, plain = new Set(here.parts.filter((p) => p.look === "none").map((p) => p.id));
+        const runs = cliffRuns({ field: here.field, step: Math.max(3, grid / 25), bounds: canvas.dimensions?.sceneRect ?? null }).filter((r) => !plain.has(r.of));
+        for (const e of cliffFaceFeet(runs, { grid, step: heightStep(scene), piece: grid / 4 })) { if (!want.has(e.of)) want.set(e.of, []); want.get(e.of).push({ c: e.c, levels: levelId ? [levelId] : [] }); } }
     }
   }
   for (const wall of scene.walls ?? []) { const of = wall.flags?.[ID]?.cliffOf; if (!of) continue; if (!have.has(of)) have.set(of, []); have.get(of).push(wall); }
@@ -3168,7 +3173,7 @@ const drawHeightShadows = () => {
   // (Rubbed off any raised part higher than this one.)
   // (Erasing only within the box's own picture, a filter's: erased straight onto the map, it punched black holes through it.)
   const cutHigher = (box, h) => { const higher = parts.filter((p) => p.height > h); if (!higher.length) return; if (!box.filters?.length) { const Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter; if (!Alpha) return; const whole = new Alpha(1); whole.padding = grid; box.filters = [whole]; } const cut = new PIXI.Graphics(); cut.blendMode = PIXI.BLEND_MODES.ERASE; cut.beginFill(0xffffff, 1); for (const p of higher) fill(cut, p.areas); cut.endFill(); box.addChild(cut); };
-  const runs = cliffRuns({ field, step: Math.max(3, grid / 25), bounds: canvas.dimensions?.sceneRect ?? null });
+  const runs = cliffRuns({ field, step: Math.max(3, grid / 25), bounds: canvas.dimensions?.sceneRect ?? null, climbs: true });
   // (Its open stretches: slopes, the ground darkening as it falls away.)
   const slopes = cliffRuns({ field, step: Math.max(3, grid / 25), bounds: canvas.dimensions?.sceneRect ?? null, want: "slope" });
   // (Its cast shadow only by day; how strong, by the sun's strength and the sky.)
@@ -3469,7 +3474,7 @@ const outlinePanelRegion = (doc) => {
   g.eventMode = "none"; canvas.interface.addChild(g); panelOutline = g;
 };
 Hooks.on("canvasTearDown", () => { panelOutline = null; });
-const regionPanel = createRegionPanel({ brush: (doc) => startDecorBrush(doc), repairDecor: (doc) => repairDecorRegionAsk(doc), shows: outlinePanelRegion, flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]), configure: (doc) => doc.sheet?.render({ force: true }), remove: (doc) => doc.deleteDialog?.(), confirm: (text) => foundry.applications.api.DialogV2.confirm({ window: { title: "Animater: None" }, content: `<p>${foundry.utils.escapeHTML?.(text) ?? text}</p>`, rejectClose: false }).then((yes) => yes === true) });
+const regionPanel = createRegionPanel({ brush: (doc) => startDecorBrush(doc), repairDecor: (doc) => repairDecorRegionAsk(doc), cliffWalls: { get: () => heightsSceneOn("walls"), set: (on) => void canvas.scene?.update({ [`flags.${ID}.cliffWalls`]: on }) }, addCrossing: (kind) => { startDecorBrush(); decorBrushing?.bar?.setCrossing?.(kind); }, shows: outlinePanelRegion, flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]), configure: (doc) => doc.sheet?.render({ force: true }), remove: (doc) => doc.deleteDialog?.(), confirm: (text) => foundry.applications.api.DialogV2.confirm({ window: { title: "Animater: None" }, content: `<p>${foundry.utils.escapeHTML?.(text) ?? text}</p>`, rejectClose: false }).then((yes) => yes === true) });
 Hooks.on("updateRegion", (doc, change) => { const flags = change?.flags?.[ID]; if (flags && "step" in flags) refreshStepsWindow(doc.id); });
 // The menu stands by the spot it was opened for: when the map moves under it, it goes.
 Hooks.on("canvasPan", () => { regionPanel.close(); });

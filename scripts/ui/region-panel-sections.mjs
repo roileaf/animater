@@ -300,6 +300,15 @@ const heightField = (value, step, units, save, blank = '') => {
   less.setAttribute('aria-label', 'Lower'); more.setAttribute('aria-label', 'Higher');
   box.append(less, input, element('span', 'an-rp-unit', units), more); return box;
 };
+// The scene's cliff walls, Block or Open; shown changed at once (the scene's save does not redraw the panel).
+const WALL_CHOICES = [[true, 'Block'], [false, 'Open']];
+const wallsSeg = (walls) => {
+  const box = element('div', 'an-rp-seg'); box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'Cliff walls');
+  const kids = [], show = (now) => { for (const [b, value] of kids) { const on = value === now; b.className = on ? 'an-rp-on' : ''; b.setAttribute('aria-pressed', String(on)); } };
+  for (const [value, text] of WALL_CHOICES) { const b = button(text, '', () => { if (walls.get() === value) return; walls.set(value); show(value); }); kids.push([b, value]); box.append(b); }
+  show(walls.get() !== false); return box;
+};
+const crossingButtons = (c) => { const box = element('div', 'an-rp-seg'); box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'Add crossing'); for (const [kind, name] of CROSSING_KINDS) box.append(button(name, '', () => { c.close?.(); c.addCrossing(kind); })); return box; };
 function heightSection(c) {
   const { own, act, doc } = c, grid = doc?.parent?.grid ?? globalThis.canvas?.scene?.grid, units = grid?.units || 'ft', step = Number(grid?.distance) > 0 ? Number(grid.distance) : 5;
   const h = readHeight(own), r = readRamp(own);
@@ -307,7 +316,11 @@ function heightSection(c) {
     // (Renamed along with it while it keeps the name the brush gave it.)
     const rename = (n) => { if (/^Raised\b/.test(doc?.name ?? '')) void doc?.update?.({ name: heightName(n, units) }); };
     return [row('Height', heightField(h, step, units, (n) => { if (!(n > 0)) return; act({ height: n }); rename(n); }), 'How high its top stands over the level\'s floor. Walking tokens take this height when they step onto it.'),
-      row('Cliff look', seg(CLIFF_LOOKS, own.cliffLook ?? '', (v) => act({ cliffLook: v }), 'Cliff look'), 'Where the ground drops away from it: a rock face, a bank of earth, or nothing drawn (it stays raised).')];
+      row('Cliff look', seg(CLIFF_LOOKS, own.cliffLook ?? '', (v) => act({ cliffLook: v }), 'Cliff look'), 'Where the ground drops away from it: a rock face, a bank of earth, or nothing drawn (it stays raised).'),
+      // (Roi, of the panel: "why not add it there too? as well as adding a crossing for ease of use". The scene's setting, the same
+      // as the tick on Map painting's Heights tab: a scene off and one part on would only puzzle.)
+      ...(c.cliffWalls ? [row('Cliff walls', wallsSeg(c.cliffWalls), 'Stops tokens walking up or down its cliffs (not sight). The scene\'s setting: the same as the tick on Map painting\'s Heights tab.')] : []),
+      ...(c.addCrossing ? [row('Add crossing', crossingButtons(c), 'Opens Map painting on Heights with that crossing picked: drag from the low ground up across its edge.')] : [])];
   }
   if (r) {
     const ramp = { ...own.ramp }, save = (change) => act({ ramp: { ...ramp, ...change } });

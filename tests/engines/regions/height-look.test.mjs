@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cliffColours, faceDepth, layOut, drawCliffRun, footShade, topGlow, castOffset, drawSlope, depthHaze, drawStone } from '../../../scripts/engines/regions/height-look.mjs';
+import { cliffColours, faceDepth, layOut, drawCliffRun, footShade, topGlow, castOffset, drawSlope, depthHaze, drawStone, faceFeet } from '../../../scripts/engines/regions/height-look.mjs';
 import { cliffRuns, heightField } from '../../../scripts/engines/regions/heights.mjs';
 
 // Roi's friend, of rock boulders round the rim: "this doesnt look elevated at all"; the friend's "brighter in the middle and
@@ -85,4 +85,16 @@ test('a loose rock is an angular outline flat at its foot with a lit facet, not 
   assert.ok(corners >= 5 && corners <= 7);
   const outline = g.calls.filter(([k]) => k === 'drawPolygon').map(([, a]) => a[0]); assert.ok(outline.length >= 2, 'outline and a facet');
   const ys = outline[0].filter((_, i) => i % 2); assert.ok(Math.max(...ys) <= 4.5 + 1e-9, 'flat at its foot');
+});
+
+// Roi, of a token walking onto a cliff's painted face from below: "make sure the cliff is not passable on the cliff side".
+test('the rock face is walled at its foot, shut to the rim at its ends, none along a thin north lip, and not past the drawn foot', () => {
+  const run = mesa(), walls = faceFeet([run], { grid: 100, piece: 25 }), L = layOut(run, { grid: 100 });
+  assert.ok(walls.length > 8 && walls.every((w) => w.of === 'P'));
+  const ys = walls.flatMap((w) => [w.c[1], w.c[3]]); assert.ok(Math.max(...ys) > 300 + 40, 'below the south rim');
+  assert.ok(Math.max(...ys) < Math.max(...L.map((p) => p.fy)), 'inside the drawn foot');
+  assert.ok(!walls.some((w) => w.c[1] < 100 - 5 && w.c[3] < 100 - 5), 'none hanging off the north lip');
+  const at = run.points.findIndex((p) => p.ny > 0.9), O = { ...run, closed: false, points: run.points.slice(at, at + 30) }, open = faceFeet([O], { grid: 100 });
+  assert.ok(open.length >= 2); { const ends = [open[0].c.slice(0, 2), open.at(-1).c.slice(2)], rim = O.points.map((p) => [p.x, p.y]);
+    assert.ok(ends.every(([x, y]) => rim.some(([a, b]) => Math.hypot(a - x, b - y) < 6)), 'shut to the rim'); }
 });

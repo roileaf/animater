@@ -191,3 +191,11 @@ test('stretching a crossing\'s region stretches the crossing to fill it; a drag 
   assert.deepEqual(refitHeights(own, { x: 0, y: 0, w: 10, h: 10 }, { x: 5, y: 0, w: 10, h: 10 }).ramp.ax, 105);
   assert.deepEqual(refitHeights(own, { x: 0, y: 0, w: 10, h: 10 }, { x: 0, y: 0, w: 10, h: 10 }), {});
 });
+
+// Roi, of a ladder cut through a cliff: "why the hell ladder breaks the cliff?" A ladder or rope climbs the face; a ramp replaces it.
+test('drawn with climbs, a ladder or rope leaves the cliff whole; a ramp still cuts it; the walls open at all three', () => {
+  const sq = (x0, y0, x1, y1) => [x0, y0, x1, y0, x1, y1, x0, y1], part = { id: 'P', height: 20, areas: [sq(100, 100, 300, 300)] };
+  const runsWith = (kind, climbs) => cliffRuns({ field: heightField({ parts: [part], ramps: [{ id: 'L', a: { x: 200, y: 360 }, b: { x: 200, y: 260 }, w: 40, kind, lo: null, hi: null }] }), step: 5, climbs });
+  for (const kind of ['ladder', 'rope']) { const r = runsWith(kind, true); assert.equal(r.length, 1); assert.ok(r[0].closed, kind); assert.ok(!runsWith(kind, false)[0].closed, 'walls open'); }
+  assert.ok(!runsWith('ramp', true)[0].closed, 'a ramp still cuts it');
+});

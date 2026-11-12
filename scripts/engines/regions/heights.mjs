@@ -182,7 +182,12 @@ export function cliffEdges({ field, gap = 2.5, probe = 4, piece = 25, smooth = 0
  *  per stretch of cliff (`closed` when it goes the whole way round), each point owned by the part as cliffEdges's edges are.
  *  `want` 'slope': the stretches where the ground drops but the edge is open instead (painted open along the rim), the
  *  slopes a raised part runs down on those sides. */
-export function cliffRuns({ field, gap = 2.5, probe = 4, step = 4, bounds = null, want = 'cliff' }) {
+export function cliffRuns({ field, gap = 2.5, probe = 4, step = 4, bounds = null, want = 'cliff', climbs = false }) {
+  // (`climbs`: a ladder or a rope goes up the face, so the face is drawn whole behind it; only its walls open there. Roi, of
+  // a ladder cut through a cliff: "why the hell ladder breaks the cliff?")
+  const climb = (hit) => climbs && (hit?.ramp?.kind === 'ladder' || hit?.ramp?.kind === 'rope');
+  const crossing = (q) => { const hit = field.rampAt(q); return !!hit && !climb(hit); };
+  const heightAt = (q) => (climb(field.rampAt(q)) ? field.groundAt(q) : field.heightAt(q));
   const out = [];
   for (const part of field.parts) {
     const loops = []; for (const a of part.areas ?? []) { loops.push(a); for (const h of a.holes ?? []) loops.push(h); }
@@ -203,9 +208,9 @@ export function cliffRuns({ field, gap = 2.5, probe = 4, step = 4, bounds = null
         if (inAreas({ x: p.x + nx * 2, y: p.y + ny * 2 }, part.areas)) { nx = -nx; ny = -ny; }
         p.nx = nx; p.ny = ny;
         const qo = { x: p.x + nx * probe, y: p.y + ny * probe }, qi = { x: p.x - nx * probe, y: p.y - ny * probe };
-        const hi = field.heightAt(qi), ho = offMap(qo, bounds) ? hi : field.heightAt(qo);
+        const hi = heightAt(qi), ho = offMap(qo, bounds) ? hi : heightAt(qo);
         p.drop = hi - ho;
-        const drops = p.drop >= gap && hi === part.height && !field.rampAt(p) && !field.rampAt(qo);
+        const drops = p.drop >= gap && hi === part.height && !crossing(p) && !crossing(qo);
         p.cliff = drops && (want === 'slope' ? openAt(part, p) : !openAt(part, p));
       }
       if (samples.every((p) => p.cliff)) { out.push({ of: part.id, height: part.height, closed: true, points: samples.map(({ cliff, ...p }) => p) }); continue; }
