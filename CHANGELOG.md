@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 4.2.0
+
+Raised ground: cliffs, ramps, ladders, ropes and bridges you paint on the map, that tokens and animals respect.
+
+- **Raised ground and cliffs.** Map painting's Heights tab paints raised parts of the map at a height. Their edges become painted cliffs (ink rim, rock face, rubble) with a shadow away from the sun, and tokens walking onto them take their height.
+- **Cliff walls.** Optional walls along the clifftops and the foot of each rock face stop movement (not sight): nothing walks up a cliff or onto its face. Set them in the Heights tab or a raised part's panel (Cliff walls: Block / Open).
+- **Crossings.** Ramps, ladders, ropes and bridges cross the cliffs; a raised part's panel has Add crossing. Tokens climb them step by step, walk under bridges, and cast their shadow on the deck when on one. Each casts a shadow from its own planks, rails, rungs and rope.
+- **Animals know cliffs.** Wildlife on foot never steps up or down a cliff or onto its rock face, and wolves no longer force their way through walls.
+- **Weather.** Cliffs, bridges, ladders and ropes take the ground's lying snow and wetness: wet rock and wood darker with runs and a sheen; snow on the rim, ledges, stones, planks, rungs and coil.
+- **Wind.** Bridges and climbing ropes sway with the scene's wind, gentle in a breeze and livelier in a gale; ladders stay put.
+- **PF2e Visioner.** With Visioner active, clifftop walls are its ledges, at the top's height.
+- **Drag a region.** With a region's right-click panel open, drag inside it to move it (half-square snap, Shift for free).
+- **Player animations setting.** The GM chooses how much players may animate: Off, Submit for approval (as before), or No approval needed. Players get the whole library to copy from.
+- **Faster map drawing.** Floors, decorations and raised ground redraw only when something they show changes, not on every clock tick.
+- **Fixes.** The painted animal sheets ship with the module again (issue #23). Painted floors repaint when a hole is added or removed. Decorations painted on a raised floor tile are drawn on it.
+
 ## 4.1.4
 
 The smart model loads on graphics cards where it failed before.
