@@ -40,7 +40,10 @@ export function cliffColours(ground = null, top = null) {
  *  `grid` px a square: growing with the drop, compressed (about half a square for 5 ft, one for 20, a square and a half for 50,
  *  over two for 110), never past three squares. (Roi, of a 110 ft cliff drawn a square deep: "the scale seems weird"; he chose
  *  B of the scale mock, where 20, 50 and 110 ft read plainly apart.) */
-export const faceDepth = (drop, grid, step = 5) => Math.min(3 * grid, (0.15 + 0.4 * Math.pow(Math.max(0, drop) / (step || 5), 0.55)) * grid);
+// (At half its height, 2:1: a 40 ft cliff's face four squares down the map. Squashed harder, a 40 ft cliff read as a low bank.
+// Roi: "this is 40 ft... the issue is the height scale maybe we should do 2:1?" Never under a few pixels, never past FACE_MOST.)
+export const FACE_MOST = 12;
+export const faceDepth = (drop, grid, step = 5) => Math.min(FACE_MOST * grid, Math.max(0.15, Math.max(0, drop) / (2 * (step || 5))) * grid);
 
 /** The run's points laid out for drawing (pure): each with its rim (rx, ry: a little ragged), its foot (fx, fy) straight down
  *  the map below it, `w` the wall's depth there (deep facing south, a thin lip facing north, tapering away where an open run
@@ -110,7 +113,7 @@ export function cliffStops({ field, a, b, grid = 100, step = 5, gap = 2.5 }) {
 const BOXES = new WeakMap();
 function partBoxes(field, grid) {
   let got = BOXES.get(field); if (got && got.grid === grid) return got.boxes;
-  const pad = grid * 0.5, boxes = field.parts.map((part) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const ar of part.areas ?? []) for (let i = 0; i < ar.length; i += 2) { x0 = Math.min(x0, ar[i]); x1 = Math.max(x1, ar[i]); y0 = Math.min(y0, ar[i + 1]); y1 = Math.max(y1, ar[i + 1]); } return { x0: x0 - pad, y0: y0 - pad, x1: x1 + pad, y1: y1 + grid * 3 + pad }; });
+  const pad = grid * 0.5, boxes = field.parts.map((part) => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const ar of part.areas ?? []) for (let i = 0; i < ar.length; i += 2) { x0 = Math.min(x0, ar[i]); x1 = Math.max(x1, ar[i]); y0 = Math.min(y0, ar[i + 1]); y1 = Math.max(y1, ar[i + 1]); } return { x0: x0 - pad, y0: y0 - pad, x1: x1 + pad, y1: y1 + grid * FACE_MOST + pad }; });
   BOXES.set(field, { grid, boxes }); return boxes;
 }
 /** Whether `p` (the ground there at `h`) lies on a cliff's rock face (pure): a little way straight up the map from it the ground

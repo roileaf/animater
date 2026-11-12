@@ -17,11 +17,10 @@ test('the rock takes the ground\'s colour toward stone; a colour that is no numb
   assert.deepEqual(cliffColours(NaN, NaN), cliffColours());
 });
 
-test('a wall is deeper for a bigger drop, so 20, 50 and 110 ft read apart, compressed, never past three squares', () => {
-  assert.ok(faceDepth(30, 100) > faceDepth(5, 100)); assert.ok(faceDepth(5000, 100) <= 300 + 1e-9);
-  assert.ok(faceDepth(20, 100) > 80 && faceDepth(20, 100) < 120, 'about a square for 20 ft');
-  assert.ok(faceDepth(110, 100) > faceDepth(50, 100) * 1.4 && faceDepth(50, 100) > faceDepth(20, 100) * 1.4, 'apart');
-  assert.ok(faceDepth(110, 100) < faceDepth(5, 100) * 6, 'compressed');
+test('a wall hangs half its height down the map (2:1), deeper for a bigger drop', () => {
+  // Roi: "maybe we should do 2:1?": a face drawn half its height down the map.
+  assert.equal(faceDepth(40, 100), 400, 'a 40 ft cliff four squares'); assert.equal(faceDepth(20, 100), 200);
+  assert.ok(faceDepth(1, 100) >= 15, 'never a hair'); assert.ok(faceDepth(5000, 100) <= 1200 + 1e-9, 'never past twelve squares');
 });
 
 test('the ground far below grows hazier only under a tall cliff', () => {
