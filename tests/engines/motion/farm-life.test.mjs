@@ -85,3 +85,19 @@ test('the layer places them on the spots given and counts them; cleared, none', 
   layer.tick(0.05, { ok: () => true, blocked: () => false, near: [] });
   layer.clear(); assert.equal(layer.busy, false);
 });
+
+// Paulomat's report: sheep stuck on a region's edges (corners, round ones, straight ones), spinning on the spot.
+test('a farm animal at an edge goes along it or stops, never spinning on the spot', () => {
+  let seed = 3; const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const cases = {
+    'fleeing into a straight edge': { ok: (x, y) => y > 0, near: [{ x: 0, y: 120 }], start: { x: 0, y: 20 } },
+    'walking into a corner': { ok: (x, y) => x > 0 && y > 0, near: [], start: { x: 25, y: 25, a: -Math.PI * 0.75 } },
+    'just over the edge': { ok: (x, y) => y > 0, near: [], start: { x: 0, y: -5, a: Math.PI } },
+  };
+  for (const [name, { ok, near, start }] of Object.entries(cases)) {
+    let s = { kind: 'sheep', x: start.x, y: start.y, a: start.a ?? 0, mode: near.length ? 'graze' : 'walk', wait: 3, v: 50 };
+    let turned = 0, last = s.a;
+    for (let i = 0; i < 20 * 4; i++) { s = farmStep(s, { dt: 1 / 20, grid: 100, ok, blocked: (p, q) => ok(p.x, p.y) && !ok(q.x, q.y), near, random }); let d = Math.abs(s.a - last) % (2 * Math.PI); turned += Math.min(d, 2 * Math.PI - d); last = s.a; }
+    assert.ok(turned < Math.PI * 2, name + ': turned ' + (turned / Math.PI).toFixed(1) + ' half-turns in 4 s');
+  }
+});

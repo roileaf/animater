@@ -43,10 +43,19 @@ export function farmStep(animal, { dt = 1 / 20, grid = 100, near = [], ok = () =
   const want = a.mode === 'flee' ? k.run * grid : a.mode === 'walk' ? k.pace * grid : 0;
   a.v = (a.v ?? 0) + (want - (a.v ?? 0)) * Math.min(1, dt * 4);
   if (a.v > 0.5) {
-    const nx = a.x + Math.sin(a.a) * a.v * dt, ny = a.y - Math.cos(a.a) * a.v * dt;
-    // Never where it may not go: it turns aside instead.
-    if (!ok(nx, ny) || blocked({ x: a.x, y: a.y }, { x: nx, y: ny })) { a.a += Math.PI * (0.5 + random() * 0.5) * (random() < 0.5 ? 1 : -1); a.v *= 0.3; }
-    else { a.x = nx; a.y = ny; }
+    // Never where it may not go: the nearest way round that is open, a step and half a body ahead, turning no more than it must, so
+    // it goes along an edge; with none, it stands. (Turned a random way each time it met one, it spun on the spot, every frame when
+    // fleeing into an edge or standing just over one. Paulomat: "creatures often become stuck on edges ... and begin spinning".)
+    // On ground it may not be on, any way that is not blocked is open: it walks off it.
+    const here = ok(a.x, a.y), free = (h) => [Math.max(a.v * dt, grid * 0.05), body * 0.5].every((d) => { const nx = a.x + Math.sin(h) * d, ny = a.y - Math.cos(h) * d; return (ok(nx, ny) || !here) && !blocked({ x: a.x, y: a.y }, { x: nx, y: ny }); });
+    // (A way round, once taken, kept a moment: fleeing into a corner, the nearest open way flipped from one side to the other as it
+    // moved, and it shook back and forth.)
+    a.detourT = Math.max(0, (a.detourT ?? 0) - dt);
+    const aim = a.detourT > 0 ? a.detour : a.a;
+    let way = free(aim) ? aim : null;
+    for (let i = 1; i <= 8 && way === null; i++) for (const side of i < 8 ? [1, -1] : [1]) { const h = aim + (side * i * Math.PI) / 8; if (free(h)) { way = h; break; } }
+    if (way === null) { a.v = 0; a.detourT = 0; if (a.mode === 'walk') { a.mode = 'graze'; a.wait = k.graze * (0.5 + random()); } }
+    else { if (way !== aim || (a.detourT <= 0 && way !== a.a)) { a.detour = way; a.detourT = 1.2; } a.a = way; a.x += Math.sin(way) * a.v * dt; a.y -= Math.cos(way) * a.v * dt; }
   }
   a.gait = ((a.gait ?? 0) + (a.v * dt) / (body * 0.5)) % 1;
   return a;
