@@ -199,3 +199,15 @@ test('drawn with climbs, a ladder or rope leaves the cliff whole; a ramp still c
   for (const kind of ['ladder', 'rope']) { const r = runsWith(kind, true); assert.equal(r.length, 1); assert.ok(r[0].closed, kind); assert.ok(!runsWith(kind, false)[0].closed, 'walls open'); }
   assert.ok(!runsWith('ramp', true)[0].closed, 'a ramp still cuts it');
 });
+
+// Roi: "tokens should be able to walk UNDER bridges". Under a bridge's end the cliff and its wall stay, marked with the bridge's height.
+test('a bridge over a rim keeps its cliff drawn and its wall, marked with the bridge\'s height, so the ground under it does not lead up', () => {
+  const sq = (x0, y0, x1, y1) => [x0, y0, x1, y0, x1, y1, x0, y1];
+  const field = heightField({ parts: [{ id: 'N', height: 10, areas: [sq(0, 0, 400, 200)] }, { id: 'S', height: 10, areas: [sq(0, 400, 400, 600)] }], ramps: [{ id: 'B', a: { x: 200, y: 150 }, b: { x: 200, y: 450 }, w: 60, kind: 'bridge', lo: null, hi: null }] });
+  const edges = cliffEdges({ field, piece: 25 }), tagged = edges.filter((e) => e.bridge !== undefined);
+  assert.ok(tagged.length >= 2 && tagged.every((e) => e.bridge === 10), 'both ends, at the bridge\'s height');
+  assert.ok(tagged.every((e) => Math.min(e.c[0], e.c[2]) >= 160 && Math.max(e.c[0], e.c[2]) <= 240), 'only the stretch under it');
+  assert.ok(edges.some((e) => e.bridge === undefined && e.c[1] === 200), 'the rest plain');
+  const runs = cliffRuns({ field, step: 5 }).filter((r) => r.of === 'N');
+  assert.ok(runs.some((r) => r.points.some((p) => Math.abs(p.x - 200) < 5 && Math.abs(p.y - 200) < 3)), 'drawn on under the bridge');
+});

@@ -284,7 +284,7 @@ import { toRegionData as floorRegionData, floorColour as floorTint, fitSize as f
 import { nearbyClicks as smartNearbyClicks, cleanSelection } from "./engines/regions/smart-select.mjs";
 import { decorSettings, strokeShapes, circleArea as decorCircle, decorPlacements, trunkWalls, carryDecor, shapesBox } from "./engines/motion/decor-regions.mjs";
 import { openBrushBar, brushChoices, BRUSH_EDGE } from "./ui/decor-brush-bar.mjs";
-import { readHeight, readRamp, readOpenEdges, edgeTouches, openAt as heightOpenAt, OPEN_EDGES_MOST, heightField, walkerPath, nextHeight, rampFromDrag, rampOutline, heightRegionData, rampRegionData, cliffEdges, cliffRuns, heightsHoverLine, heightName, HEIGHT_STEP, refitHeights } from "./engines/regions/heights.mjs";
+import { readHeight, readRamp, readOpenEdges, edgeTouches, openAt as heightOpenAt, OPEN_EDGES_MOST, heightField, walkerPath, nextHeight, rampFromDrag, rampOutline, heightRegionData, rampRegionData, cliffEdges, cliffRuns, heightsHoverLine, heightName, HEIGHT_STEP, BRIDGE_REACH, refitHeights } from "./engines/regions/heights.mjs";
 import { drawCliffRun, drawSlope, footShade, topGlow, castOffset, depthHaze as heightDepthHaze, cliffColours, layOut as cliffLayOut, faceFeet as cliffFaceFeet } from "./engines/regions/height-look.mjs";
 import { drawLadder, drawRope, drawBridge } from "./engines/regions/height-crossings.mjs";
 import { DECOR_KINDS, stampDecor, paintDecor } from "./engines/motion/decor-paint.mjs";
@@ -3109,6 +3109,25 @@ Hooks.once("setup", () => {
     else { const proto = CONFIG.Token.documentClass.prototype, original = proto._preUpdate; proto._preUpdate = function (changed, options, user) { return wrap.call(this, (c, o, u) => original.call(this, c, o, u), changed, options, user); }; }
   } catch (err) { console.warn("Animater | heights: walking tokens keep their own elevation", err); }
 });
+// Under a bridge's end its cliff keeps its wall (flags.animater.bridgeAt: the bridge's height there): a token walking below is
+// stopped by it, one walking on the bridge at its height passes. Walls know no heights, so the movement test is told the
+// mover's feet (its movement origin, less half its depth) and leaves those walls out for one up at the bridge.
+let movingFeet = null;
+Hooks.once("setup", () => {
+  try {
+    const Sweep = foundry.canvas.geometry.ClockwiseSweepPolygon, testCollision = Sweep.testCollision, include = Sweep.prototype._testEdgeInclusion;
+    Sweep.testCollision = function (origin, destination, config = {}) {
+      const doc = config?.type === "move" ? config.source?.object?.document : null;
+      if (!doc || !Number.isFinite(Number(origin?.elevation))) return testCollision.call(this, origin, destination, config);
+      const was = movingFeet; movingFeet = Number(origin.elevation) - ((Number(doc.depth) || 1) * (Number(doc.parent?.grid?.distance) || HEIGHT_STEP)) / 2;
+      try { return testCollision.call(this, origin, destination, config); } finally { movingFeet = was; }
+    };
+    Sweep.prototype._testEdgeInclusion = function (edge, edgeTypes) {
+      if (movingFeet !== null && this.config?.type === "move") { const at = Number(edge?.object?.document?.flags?.[ID]?.bridgeAt); if (Number.isFinite(at) && movingFeet >= at - BRIDGE_REACH) return false; }
+      return include.call(this, edge, edgeTypes);
+    };
+  } catch (err) { console.warn("Animater | heights: bridge ends block everyone", err); }
+});
 // Cliff walls: made by the GM who changed the heights (or, on a scene shown afresh, the lead GM), each marked as its raised
 // part's (flags.animater.cliffOf), so no other wall is ever touched; kept in step as parts and ramps change, gone with them.
 let cliffWallsTimer = null;
@@ -3119,19 +3138,19 @@ const syncCliffWalls = async (mine = false) => {
   if (heightsSceneOn("walls", scene)) {
     const all = heightsOf(scene, null), levelIds = [...new Set([...all.parts, ...all.ramps].flatMap((p) => p.levels))];
     for (const levelId of levelIds.length ? levelIds : [null]) {
-      for (const e of cliffEdges({ field: heightsOf(scene, levelId).field, piece: (canvas.grid?.size ?? 100) / 4, smooth: (canvas.grid?.size ?? 100) / 12, bounds: canvas.dimensions?.sceneRect ?? null })) { if (!want.has(e.of)) want.set(e.of, []); want.get(e.of).push({ c: e.c, levels: levelId ? [levelId] : [] }); }
+      for (const e of cliffEdges({ field: heightsOf(scene, levelId).field, piece: (canvas.grid?.size ?? 100) / 4, smooth: (canvas.grid?.size ?? 100) / 12, bounds: canvas.dimensions?.sceneRect ?? null })) { if (!want.has(e.of)) want.set(e.of, []); want.get(e.of).push({ c: e.c, levels: levelId ? [levelId] : [], bridge: e.bridge ?? null }); }
       // (And along the painted face's foot, so a token below cannot walk onto the rock: Roi, "make sure the cliff is not passable on
       // the cliff side". Not under a part drawn with no cliff.)
       { const here = heightsOf(scene, levelId), grid = canvas.grid?.size ?? 100, plain = new Set(here.parts.filter((p) => p.look === "none").map((p) => p.id));
         const runs = cliffRuns({ field: here.field, step: Math.max(3, grid / 25), bounds: canvas.dimensions?.sceneRect ?? null }).filter((r) => !plain.has(r.of));
-        for (const e of cliffFaceFeet(runs, { grid, step: heightStep(scene), piece: grid / 4 })) { if (!want.has(e.of)) want.set(e.of, []); want.get(e.of).push({ c: e.c, levels: levelId ? [levelId] : [] }); } }
+        for (const e of cliffFaceFeet(runs, { grid, step: heightStep(scene), piece: grid / 4 })) { const mid = { x: (e.c[0] + e.c[2]) / 2, y: (e.c[1] + e.c[3]) / 2 }, over = here.field.rampAt(mid), bridge = over?.ramp?.kind === "bridge" ? Math.round(here.field.heightAt(mid) * 2) / 2 : null; if (!want.has(e.of)) want.set(e.of, []); want.get(e.of).push({ c: e.c, levels: levelId ? [levelId] : [], bridge }); } }
     }
   }
   for (const wall of scene.walls ?? []) { const of = wall.flags?.[ID]?.cliffOf; if (!of) continue; if (!have.has(of)) have.set(of, []); have.get(of).push(wall); }
-  const key = (list) => list.map((w) => `${Array.from(w.c).join(",")}@${[...(w.levels ?? [])].join(",")}`).sort().join("|");
+  const key = (list) => list.map((w) => `${Array.from(w.c).join(",")}@${[...(w.levels ?? [])].join(",")}#${w.bridge ?? w.flags?.[ID]?.bridgeAt ?? ""}`).sort().join("|");
   const gone = [], made = [], none = CONST.WALL_SENSE_TYPES?.NONE ?? 0;
   for (const [id, walls] of have) { const w = want.get(id); if (!w || key(walls) !== key(w)) gone.push(...walls.map((x) => x.id)); }
-  for (const [id, w] of want) { const had = have.get(id); if (had && key(had) === key(w)) continue; for (const { c, levels } of w) made.push({ c, move: CONST.WALL_MOVEMENT_TYPES.NORMAL, sight: none, light: none, sound: none, levels, flags: { [ID]: { cliffOf: id } } }); }
+  for (const [id, w] of want) { const had = have.get(id); if (had && key(had) === key(w)) continue; for (const { c, levels, bridge } of w) made.push({ c, move: CONST.WALL_MOVEMENT_TYPES.NORMAL, sight: none, light: none, sound: none, levels, flags: { [ID]: { cliffOf: id, ...(bridge !== null && bridge !== undefined ? { bridgeAt: bridge } : {}) } } }); }
   try { if (gone.length) await scene.deleteEmbeddedDocuments("Wall", gone); if (made.length) await scene.createEmbeddedDocuments("Wall", made); }
   catch (err) { console.warn("Animater | cliff walls", err); }
 };

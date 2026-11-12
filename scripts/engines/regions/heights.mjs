@@ -149,6 +149,10 @@ export function simplifyLoop(pts, eps) {
  *  cliff there. */
 const offMap = (p, bounds) => !!bounds && (p.x < bounds.x || p.y < bounds.y || p.x > bounds.x + bounds.width || p.y > bounds.y + bounds.height);
 export function cliffEdges({ field, gap = 2.5, probe = 4, piece = 25, smooth = 0, bounds = null }) {
+  // (A bridge spans over the rim: the cliff and its wall stay, marked `bridge` (its height there), so only those walking at its
+  // height pass. Roi: "tokens should be able to walk UNDER bridges"; opened, the low ground under it led up onto the top.)
+  const bridgeAt = (q) => { const hit = field.rampAt(q); return hit?.ramp?.kind === 'bridge' ? hit : null; };
+  const under = (q) => (bridgeAt(q) ? field.groundAt(q) : field.heightAt(q));
   const out = [];
   for (const part of field.parts) {
     const loops = []; for (const a of part.areas ?? []) { loops.push(simplifyLoop(a, smooth)); for (const h of a.holes ?? []) loops.push(simplifyLoop(h, smooth)); }
@@ -158,16 +162,18 @@ export function cliffEdges({ field, gap = 2.5, probe = 4, piece = 25, smooth = 0
         const x1 = pts[i * 2], y1 = pts[i * 2 + 1], x2 = pts[((i + 1) % n) * 2], y2 = pts[((i + 1) % n) * 2 + 1], len = Math.hypot(x2 - x1, y2 - y1);
         if (!(len > 0)) continue;
         const nx = -(y2 - y1) / len, ny = (x2 - x1) / len, k = Math.max(1, Math.ceil(len / piece));
-        let run = null;
-        const close = () => { if (run) { out.push({ of: part.id, c: run.map(Math.round) }); run = null; } };
+        let run = null, tag = null;
+        const close = () => { if (run) { out.push({ of: part.id, c: run.map(Math.round), ...(tag !== null ? { bridge: tag } : {}) }); run = null; tag = null; } };
         for (let s = 0; s < k; s++) {
           const ax = x1 + ((x2 - x1) * s) / k, ay = y1 + ((y2 - y1) * s) / k, bx = x1 + ((x2 - x1) * (s + 1)) / k, by = y1 + ((y2 - y1) * (s + 1)) / k, mx = (ax + bx) / 2, my = (ay + by) / 2;
           const q1 = { x: mx + nx * probe, y: my + ny * probe }, q2 = { x: mx - nx * probe, y: my - ny * probe };
           if (offMap(q1, bounds) || offMap(q2, bounds)) { close(); continue; }
-          const h1 = field.heightAt(q1), h2 = field.heightAt(q2);
-          const cliff = Math.abs(h1 - h2) >= gap && Math.max(h1, h2) === part.height && !field.rampAt({ x: mx, y: my }) && !openAt(part, { x: mx, y: my });
+          const h1 = under(q1), h2 = under(q2), mid = { x: mx, y: my }, over = bridgeAt(mid);
+          const cliff = Math.abs(h1 - h2) >= gap && Math.max(h1, h2) === part.height && (over || !field.rampAt(mid)) && !openAt(part, mid);
           if (!cliff) { close(); continue; }
-          if (run) { run[2] = bx; run[3] = by; } else run = [ax, ay, bx, by];
+          const here = over ? Math.round(field.heightAt(mid) * 2) / 2 : null;
+          if (run && here !== tag) close();
+          if (run) { run[2] = bx; run[3] = by; } else { run = [ax, ay, bx, by]; tag = here; }
         }
         close();
       }
@@ -185,7 +191,8 @@ export function cliffEdges({ field, gap = 2.5, probe = 4, piece = 25, smooth = 0
 export function cliffRuns({ field, gap = 2.5, probe = 4, step = 4, bounds = null, want = 'cliff', climbs = false }) {
   // (`climbs`: a ladder or a rope goes up the face, so the face is drawn whole behind it; only its walls open there. Roi, of
   // a ladder cut through a cliff: "why the hell ladder breaks the cliff?")
-  const climb = (hit) => climbs && (hit?.ramp?.kind === 'ladder' || hit?.ramp?.kind === 'rope');
+  // (A bridge spans over the cliff, so it never cuts it: Roi, "tokens should be able to walk UNDER bridges".)
+  const climb = (hit) => hit?.ramp?.kind === 'bridge' || (climbs && (hit?.ramp?.kind === 'ladder' || hit?.ramp?.kind === 'rope'));
   const crossing = (q) => { const hit = field.rampAt(q); return !!hit && !climb(hit); };
   const heightAt = (q) => (climb(field.rampAt(q)) ? field.groundAt(q) : field.heightAt(q));
   const out = [];
