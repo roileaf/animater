@@ -165,7 +165,7 @@ test('main: the Heights tab raises, lays ramps and steps heights on the wheel; w
   assert.match(main, /const target = "CONFIG\.Token\.documentClass\.prototype\._preUpdate";/, 'before Foundry fixes the move');
   assert.match(main, /if \(waypoints\) waypoints\.forEach\(\(w, i\) => \{ w\.elevation = heights\[i\]; \}\);/, 'each waypoint at the ground there');
   assert.match(main, /if \(byHand\(changed\.elevation\) \|\| waypoints\?\.some\(\(w\) => byHand\(w\.elevation\)\)\) return;/, 'an elevation set by hand wins');
-  assert.match(main, /made\.push\(\{ c, move: CONST\.WALL_MOVEMENT_TYPES\.NORMAL, sight: none, light: none, sound: none, levels, flags: \{ \[ID\]: \{ cliffOf: id, \.\.\.\(bridge !== null && bridge !== undefined \? \{ bridgeAt: bridge \} : \{\}\) \} \} \}\)/, 'cliff walls stop movement only, and are marked as theirs');
+  assert.match(main, /made\.push\(\{ c, move: CONST\.WALL_MOVEMENT_TYPES\.NORMAL, sight: none, light: none, sound: none, levels, flags: \{ \[ID\]: \{ cliffOf: id, \.\.\.\(bridge !== null && bridge !== undefined \? \{ bridgeAt: bridge \} : \{\}\) \}, \.\.\.\(ledge !== null && ledge !== undefined \? \{ \[VISIONER\]: \{ ledge: true, ledgeElevation: ledge \} \} : \{\}\) \} \}\)/, 'cliff walls stop movement only, and are marked as theirs');
   assert.match(main, /const of = wall\.flags\?\.\[ID\]\?\.cliffOf; if \(!of\) continue;/, 'no other wall is touched');
   // Roi: "my token cant cross the bridge now": in v14 an edge's object is the WallDocument itself.
   assert.match(main, /const wall = edge\?\.object\?\.document \?\? edge\?\.object, at = Number\(wall\?\.flags\?\.\[ID\]\?\.bridgeAt\);/, 'bridge walls read off the wall document');
@@ -177,9 +177,10 @@ test('main: the Heights tab raises, lays ramps and steps heights on the wheel; w
   assert.match(main, /const kind = brushChoices\(\)\.crossKind, w = kind === "ladder" \? grid\(\) \* 0\.45 : kind === "rope" \? grid\(\) \* 0\.3 : Math\.max\(grid\(\) \* 0\.5, sizeNow\(\) \* grid\(\)\);/, 'a ramp or bridge as wide as the brush, a ladder or rope its own width');
   // Roi: "can we also add option to put ladders/ropes/bridges?" Each drawn as mocked, a ramp hatched.
   assert.match(main, /if \(ramp\.kind === "ladder"\) drawLadder\(built, sh, top\.x, top\.y, foot\.x, foot\.y,/);
-  assert.match(main, /drawBridge\(deck, sh, ramp\.a\.x, ramp\.a\.y, ramp\.b\.x, ramp\.b\.y, look\);/);
+  assert.match(main, /swayPiece\(\{ a: ramp\.a, b: ramp\.b, half: ramp\.w \* 0\.56 \+ 6 \* k, pad: 8 \* k, sun, seed, root: box, weight: \(v\) => bridgeWeight\(v, rise, grid\),/, 'the raised deck sways in the wind');
   // Roi: "animals should not render below bridges on cliff edges": its ends on raised ground drawn on that ground, the raised copy cut there.
-  assert.match(main, /drawBridge\(built, none, ramp\.a\.x, ramp\.a\.y, ramp\.b\.x, ramp\.b\.y, look\); none\.destroy\(\); \} cutHigher\(box, low - 0\.5\);/);
+  assert.match(main, /const ends = new PIXI\.Container\(\), deckEnds = new PIXI\.Graphics\(\), mask = resting\(new PIXI\.Graphics\(\)\);/, 'the still copy only where it rests');
+  assert.match(main, /if \(rise\(\(t0 \+ t1\) \/ 2\) > grid \* 0\.04\) continue;/, 'resting: next to nothing over the ground under it');
   // Roi, of a token walking under a bridge drawn over it: each bridge at its own height, so the map sorts tokens under or over it.
   assert.match(main, /box\.sortLayer = 656; box\.elevation = \(Number\(canvas\.level\?\.elevation\?\.base\) \|\| 0\) \+ low;/);
   assert.match(main, /smooth: \(canvas\.grid\?\.size \?\? 100\) \/ 12, bounds: canvas\.dimensions\?\.sceneRect \?\? null \}\)\)/, 'no cliff walls along the map\'s edge');

@@ -285,6 +285,7 @@ import { nearbyClicks as smartNearbyClicks, cleanSelection } from "./engines/reg
 import { decorSettings, strokeShapes, circleArea as decorCircle, decorPlacements, trunkWalls, carryDecor, shapesBox } from "./engines/motion/decor-regions.mjs";
 import { openBrushBar, brushChoices, BRUSH_EDGE } from "./ui/decor-brush-bar.mjs";
 import { readHeight, readRamp, readOpenEdges, edgeTouches, openAt as heightOpenAt, OPEN_EDGES_MOST, heightField, walkerPath, nextHeight, rampFromDrag, rampOutline, heightRegionData, rampRegionData, cliffEdges, cliffRuns, heightsHoverLine, heightName, HEIGHT_STEP, BRIDGE_REACH, refitHeights, simplifyLoop } from "./engines/regions/heights.mjs";
+import { swayAt, bridgeWeight, ropeWeight, pieceFrame } from "./engines/regions/crossing-sway.mjs";
 import { drawCliffRun, drawSlope, footShade, topGlow, castOffset, depthHaze as heightDepthHaze, cliffColours, weatherColours, layOut as cliffLayOut, faceFeet as cliffFaceFeet, cliffStops, onCliffFace } from "./engines/regions/height-look.mjs";
 import { drawLadder, drawRope, drawBridge } from "./engines/regions/height-crossings.mjs";
 import { DECOR_KINDS, stampDecor, paintDecor } from "./engines/motion/decor-paint.mjs";
@@ -3191,13 +3192,18 @@ Hooks.once("setup", () => {
 // part's (flags.animater.cliffOf), so no other wall is ever touched; kept in step as parts and ramps change, gone with them.
 let cliffWallsTimer = null;
 const cliffWallsSoon = (mine = false) => { clearTimeout(cliffWallsTimer); cliffWallsTimer = setTimeout(() => { cliffWallsTimer = null; void syncCliffWalls(mine); }, 700); };
+const VISIONER = "pf2e-visioner";
 const syncCliffWalls = async (mine = false) => {
   if (!canvas?.ready || !game.user?.isGM || !(mine || leadGM())) return;
   const scene = canvas.scene, want = new Map(), have = new Map();
+  // (With PF2e Visioner on, each clifftop wall is also its ledge, at the top's height over the level's floor: creatures either side
+  // get its cover by how much the edge hides. Only the rims, not the face's foot. Roi: "if visioner is turned on we should mark
+  // the edge of the cliff as a ledge no? but just the top part of the cliff walls".)
+  const ledges = game.modules?.get?.(VISIONER)?.active === true, levelBase = (levelId) => Number(scene.levels?.get?.(levelId)?.elevation?.base ?? 0) || 0;
   if (heightsSceneOn("walls", scene)) {
     const all = heightsOf(scene, null), levelIds = [...new Set([...all.parts, ...all.ramps].flatMap((p) => p.levels))];
     for (const levelId of levelIds.length ? levelIds : [null]) {
-      for (const e of cliffEdges({ field: heightsOf(scene, levelId).field, piece: (canvas.grid?.size ?? 100) / 4, smooth: (canvas.grid?.size ?? 100) / 12, bounds: canvas.dimensions?.sceneRect ?? null })) { if (!want.has(e.of)) want.set(e.of, []); want.get(e.of).push({ c: e.c, levels: levelId ? [levelId] : [], bridge: e.bridge ?? null }); }
+      for (const e of cliffEdges({ field: heightsOf(scene, levelId).field, piece: (canvas.grid?.size ?? 100) / 4, smooth: (canvas.grid?.size ?? 100) / 12, bounds: canvas.dimensions?.sceneRect ?? null })) { if (!want.has(e.of)) want.set(e.of, []); const top = ledges ? heightsOf(scene, levelId).parts.find((p) => p.id === e.of)?.height : null; want.get(e.of).push({ c: e.c, levels: levelId ? [levelId] : [], bridge: e.bridge ?? null, ledge: Number.isFinite(top) ? levelBase(levelId) + top : null }); }
       // (And along the painted face's foot, so a token below cannot walk onto the rock: Roi, "make sure the cliff is not passable on
       // the cliff side". Not under a part drawn with no cliff.)
       { const here = heightsOf(scene, levelId), grid = canvas.grid?.size ?? 100, plain = new Set(here.parts.filter((p) => p.look === "none").map((p) => p.id));
@@ -3206,10 +3212,10 @@ const syncCliffWalls = async (mine = false) => {
     }
   }
   for (const wall of scene.walls ?? []) { const of = wall.flags?.[ID]?.cliffOf; if (!of) continue; if (!have.has(of)) have.set(of, []); have.get(of).push(wall); }
-  const key = (list) => list.map((w) => `${Array.from(w.c).join(",")}@${[...(w.levels ?? [])].join(",")}#${w.bridge ?? w.flags?.[ID]?.bridgeAt ?? ""}`).sort().join("|");
+  const key = (list) => list.map((w) => `${Array.from(w.c).join(",")}@${[...(w.levels ?? [])].join(",")}#${w.bridge ?? w.flags?.[ID]?.bridgeAt ?? ""}L${w.ledge ?? w.flags?.[VISIONER]?.ledgeElevation ?? ""}`).sort().join("|");
   const gone = [], made = [], none = CONST.WALL_SENSE_TYPES?.NONE ?? 0;
   for (const [id, walls] of have) { const w = want.get(id); if (!w || key(walls) !== key(w)) gone.push(...walls.map((x) => x.id)); }
-  for (const [id, w] of want) { const had = have.get(id); if (had && key(had) === key(w)) continue; for (const { c, levels, bridge } of w) made.push({ c, move: CONST.WALL_MOVEMENT_TYPES.NORMAL, sight: none, light: none, sound: none, levels, flags: { [ID]: { cliffOf: id, ...(bridge !== null && bridge !== undefined ? { bridgeAt: bridge } : {}) } } }); }
+  for (const [id, w] of want) { const had = have.get(id); if (had && key(had) === key(w)) continue; for (const { c, levels, bridge, ledge } of w) made.push({ c, move: CONST.WALL_MOVEMENT_TYPES.NORMAL, sight: none, light: none, sound: none, levels, flags: { [ID]: { cliffOf: id, ...(bridge !== null && bridge !== undefined ? { bridgeAt: bridge } : {}) }, ...(ledge !== null && ledge !== undefined ? { [VISIONER]: { ledge: true, ledgeElevation: ledge } } : {}) } }); }
   try { if (gone.length) await scene.deleteEmbeddedDocuments("Wall", gone); if (made.length) await scene.createEmbeddedDocuments("Wall", made); }
   catch (err) { console.warn("Animater | cliff walls", err); }
 };
@@ -3248,6 +3254,34 @@ let heightsDrawn = { key: "", value: null, root: null };
 // (Roi: "lets make heights support weather"; he chose the mock's wet and snowy looks.)
 const heightsWeather = () => { try { if (undergroundScene()) return { wet: 0, snow: 0 }; const g = groundOf().now, tenth = (v) => Math.round(Math.max(0, Math.min(1, Number(v) || 0)) * 10) / 10; return { wet: wetOn() ? tenth(g.wet) : 0, snow: snowCoverOn() ? tenth(g.snow) : 0 }; } catch { return { wet: 0, snow: 0 }; } };
 const heightsDrawKey = (scene, value) => { const round = (v, s) => Math.round((Number(v) || 0) / s) * s; const sunShadow = sunNow && !sunNow.moon && !shadowsOffHere() ? (Number.isFinite(Number(sunNow.strength)) ? Math.max(0, Math.min(1, Number(sunNow.strength))) : 1) * directSun(skyCoverNow) : 0; return [scene?.id, canvas.level?.id ?? "", heightsSceneOn("shadows", scene), value ? 1 : 0, sunNow ? round(sunNow.angle, 3) : "x", sunNow ? round(sunNow.height, 3) : "x", round(sunShadow, 0.05), !!sunNow?.moon, heightMapFor() ? 1 : 0, canvas.grid?.size ?? 100, heightsWeather().wet, heightsWeather().snow].join("|"); };
+// Bridges and climbing ropes in the wind (engines/regions/crossing-sway.mjs): each drawn once, straight down its own picture,
+// shown on a bending sheet laid along it; each frame only the sheet's points move sideways by the wind. (Roi: "we can also make
+// the bridge react to the wind", then "make it move based on the wind strength".) Dropped with the drawing they belong to.
+const swayPieces = [];
+const swayPiece = ({ a, b, half, pad, sun, seed = 0, root, weight, draw }) => {
+  try {
+    const f = pieceFrame(a, b, sun), W = Math.ceil(2 * (half + pad)), H = Math.ceil(f.len + 2 * pad), g = new PIXI.Graphics();
+    draw(g, { x: half + pad, y: pad }, { x: half + pad, y: pad + f.len }, f.sun ?? sun);
+    const texture = canvas.app.renderer.generateTexture(g, { region: new PIXI.Rectangle(0, 0, W, H), resolution: Math.min(2, canvas.app.renderer.resolution || 1) }); g.destroy();
+    const rows = Math.max(2, Math.min(48, Math.ceil(f.len / ((canvas.grid?.size ?? 100) * 0.12)) + 1)), plane = new PIXI.SimplePlane(texture, 2, rows);
+    plane.eventMode = "none"; plane.rotation = f.rotation; plane.position.set(a.x - f.across.x * (half + pad) - f.along.x * pad, a.y - f.across.y * (half + pad) - f.along.y * pad); root.addChild(plane);
+    const buf = plane.geometry.getBuffer("aVertexPosition");
+    swayPieces.push({ plane, texture, buf, rest: Float32Array.from(buf.data), rows, pad, len: f.len, weight, seed: (seed % 97) / 13 });
+    return plane;
+  } catch (err) { runtime?.trace?.("raised ground", `sway: ${err?.message ?? err}`); return null; }
+};
+const dropSwayPieces = () => { for (const p of swayPieces.splice(0)) { try { if (!p.plane.destroyed) p.plane.destroy(); p.texture.destroy(true); } catch { /* gone */ } } };
+const swayTick = () => {
+  if (!swayPieces.length) return;
+  const wind = undergroundScene() ? 0 : Number(skyWindNow) || 0, time = performance.now() / 1000, grid = canvas.grid?.size ?? 100;
+  for (let i = swayPieces.length - 1; i >= 0; i--) {
+    const p = swayPieces[i]; if (p.plane.destroyed) { try { p.texture.destroy(true); } catch { /* gone */ } swayPieces.splice(i, 1); continue; }
+    const d = p.buf.data; let moved = false;
+    for (let r = 0; r < p.rows; r++) { const v = Math.max(0, Math.min(1, (p.rest[r * 4 + 1] - p.pad) / p.len)), off = swayAt({ v, time, wind, grid, weight: p.weight(v), seed: p.seed }); for (let c = 0; c < 2; c++) { const k = (r * 2 + c) * 2, x = p.rest[k] + off; if (d[k] !== x) { d[k] = x; moved = true; } } }
+    if (moved) p.buf.update();
+  }
+};
+Hooks.on("canvasTearDown", () => dropSwayPieces());
 const drawHeightShadows = () => {
   if (!canvas?.ready) return;
   const roots = [heightShadowRoot(), heightFaceRoot()];
@@ -3255,6 +3289,7 @@ const drawHeightShadows = () => {
     if (key === heightsDrawn.key && value === heightsDrawn.value && roots[1] === heightsDrawn.root) return;
     heightsDrawn = { key, value, root: roots[1] }; }
   for (const root of roots) for (const c of root.removeChildren()) { try { c.destroy({ children: true }); } catch { /* gone */ } }
+  dropSwayPieces();
   for (const box of heightBridgeBoxes.splice(0)) { try { box.destroy({ children: true }); } catch { /* gone */ } }
   const scene = canvas.scene; if (!heightsSceneOn("shadows", scene)) return;
   const { parts, ramps, field } = heightsOf(scene, canvas.level?.id ?? null); if (!parts.length && !ramps.length) return;
@@ -3329,9 +3364,14 @@ const drawHeightShadows = () => {
     shade.eventMode = "none"; sh.filters = [new PIXI.BlurFilter(grid * 0.02)]; if (Alpha) shade.filters = [new Alpha(0.45)]; else shade.alpha = 0.45; shade.addChild(sh); // (As dark as a cliff's cast shadow: at 0.3 a bridge's planks did not read on dark ground.)
     for (const ramp of ramps) {
       const [lo, hi] = field.rampEnds(ramp), seed = [...String(ramp.id)].reduce((n, ch) => (n * 31 + ch.charCodeAt(0)) % 997, 3);
-      if (ramp.kind === "ladder" || ramp.kind === "rope") { const top = hi >= lo ? ramp.b : ramp.a, foot = hi >= lo ? ramp.a : ramp.b; if (ramp.kind === "ladder") drawLadder(built, sh, top.x, top.y, foot.x, foot.y, { w: Math.min(ramp.w, grid * 0.45), sun, k, seed, reach: Math.min(30, (Math.abs(hi - lo) * (grid / step) * 0.12) / k), wet, snow }); else drawRope(built, sh, top.x, top.y, foot.x, foot.y, { sun, k, seed, wet, snow }); continue; }
-      if (ramp.kind === "bridge") { const mid = { x: (ramp.a.x + ramp.b.x) / 2, y: (ramp.a.y + ramp.b.y) / 2 }, drop = Math.max(0, (lo + hi) / 2 - field.groundAt(mid)) * (grid / step) * 0.6; const box = new PIXI.Container(), deck = new PIXI.Graphics(), low = Math.min(lo, hi), rise = (t) => { const p = { x: ramp.a.x + (ramp.b.x - ramp.a.x) * t, y: ramp.a.y + (ramp.b.y - ramp.a.y) * t }; return Math.min(grid * 1.5, Math.max(0, lo + (hi - lo) * t - field.groundAt(p)) * (grid / step) * 0.6); }, look = { w: ramp.w, drop: Math.min(drop, grid * 1.5), rise, sun, k, seed, wet, snow }; box.eventMode = "none"; box.sortLayer = 656; box.elevation = (Number(canvas.level?.elevation?.base) || 0) + low; drawBridge(deck, sh, ramp.a.x, ramp.a.y, ramp.b.x, ramp.b.y, look); box.addChild(deck); // (Its ends where they rest on raised ground drawn on that ground, with the creatures there over them: only the span over lower ground stands up over what passes under it. Roi: "animals should not render below bridges on cliff edges".)
-      { const none = new PIXI.Graphics(); drawBridge(built, none, ramp.a.x, ramp.a.y, ramp.b.x, ramp.b.y, look); none.destroy(); } cutHigher(box, low - 0.5); canvas.primary.addChild(box); heightBridgeBoxes.push(box); continue; }
+      if (ramp.kind === "ladder" || ramp.kind === "rope") { const top = hi >= lo ? ramp.b : ramp.a, foot = hi >= lo ? ramp.a : ramp.b; if (ramp.kind === "ladder") drawLadder(built, sh, top.x, top.y, foot.x, foot.y, { w: Math.min(ramp.w, grid * 0.45), sun, k, seed, reach: Math.min(30, (Math.abs(hi - lo) * (grid / step) * 0.12) / k), wet, snow }); else { const none = new PIXI.Graphics(); drawRope(none, sh, top.x, top.y, foot.x, foot.y, { sun, k, seed, wet, snow }); none.destroy(); swayPiece({ a: top, b: foot, half: 26 * k, pad: 16 * k, sun, seed, root: faceRoot, weight: ropeWeight, draw: (g, la, lb, sunL) => drawRope(g, new PIXI.Graphics(), la.x, la.y, lb.x, lb.y, { sun: sunL, k, seed, wet, snow }) }); } continue; }
+      if (ramp.kind === "bridge") { const mid = { x: (ramp.a.x + ramp.b.x) / 2, y: (ramp.a.y + ramp.b.y) / 2 }, drop = Math.max(0, (lo + hi) / 2 - field.groundAt(mid)) * (grid / step) * 0.6; const box = new PIXI.Container(), deck = new PIXI.Graphics(), low = Math.min(lo, hi), rise = (t) => { const p = { x: ramp.a.x + (ramp.b.x - ramp.a.x) * t, y: ramp.a.y + (ramp.b.y - ramp.a.y) * t }; return Math.min(grid * 1.5, Math.max(0, lo + (hi - lo) * t - field.groundAt(p)) * (grid / step) * 0.6); }, look = { w: ramp.w, drop: Math.min(drop, grid * 1.5), rise, sun, k, seed, wet, snow }; box.eventMode = "none"; box.sortLayer = 656; box.elevation = (Number(canvas.level?.elevation?.base) || 0) + low; deck.destroy(); swayPiece({ a: ramp.a, b: ramp.b, half: ramp.w * 0.56 + 6 * k, pad: 8 * k, sun, seed, root: box, weight: (v) => bridgeWeight(v, rise, grid), draw: (g, la, lb, sunL) => drawBridge(g, new PIXI.Graphics(), la.x, la.y, lb.x, lb.y, { ...look, sun: sunL, rise: (t) => rise(t) }) }); // (Its ends where they rest on raised ground drawn on that ground, with the creatures there over them: only the span over lower ground stands up over what passes under it. Roi: "animals should not render below bridges on cliff edges".)
+      // (The still copy on the ground only where it rests on raised ground, masked to those tops: whole, it showed under the swaying
+      // span as a second bridge. Roi: "the bridge is... duplicated when swaying?")
+      // (Where it rests: its height over the ground under it next to nothing, found along the bridge itself, in strips across it.)
+      const resting = (g) => { const n = 40, vx = ramp.b.x - ramp.a.x, vy = ramp.b.y - ramp.a.y, len = Math.hypot(vx, vy) || 1, nx = (-vy / len) * ramp.w * 0.75, ny = (vx / len) * ramp.w * 0.75; g.beginFill(0xffffff, 1); for (let i = 0; i < n; i++) { const t0 = i / n, t1 = (i + 1) / n; if (rise((t0 + t1) / 2) > grid * 0.04) continue; const e0 = Math.max(0, t0 - 0.03), e1 = Math.min(1, t1 + 0.03), x0 = ramp.a.x + vx * e0, y0 = ramp.a.y + vy * e0, x1 = ramp.a.x + vx * e1, y1 = ramp.a.y + vy * e1; g.drawPolygon([x0 + nx, y0 + ny, x1 + nx, y1 + ny, x1 - nx, y1 - ny, x0 - nx, y0 - ny]); } g.endFill(); return g; };
+      { const ends = new PIXI.Container(), deckEnds = new PIXI.Graphics(), mask = resting(new PIXI.Graphics()); ends.eventMode = "none"; drawBridge(deckEnds, sh, ramp.a.x, ramp.a.y, ramp.b.x, ramp.b.y, look); ends.addChild(deckEnds, mask); ends.mask = mask; faceRoot.addChild(ends); }
+      { const Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter; if (Alpha) { const whole = new Alpha(1); whole.padding = grid; box.filters = [whole]; const cut = resting(new PIXI.Graphics()); cut.blendMode = PIXI.BLEND_MODES.ERASE; box.addChild(cut); } } canvas.primary.addChild(box); heightBridgeBoxes.push(box); continue; }
       if (lo === hi) continue;
       const vx = ramp.b.x - ramp.a.x, vy = ramp.b.y - ramp.a.y, len = Math.hypot(vx, vy) || 1, ux = vx / len, uy = vy / len, nx = -uy, ny = ux, lines = Math.max(2, Math.round(ramp.w / (grid * 0.16)));
       for (let i = 0; i < lines; i++) {
@@ -6598,6 +6638,7 @@ function skyTick() {
   // The decorations' crowns open over the creatures beneath them.
   // The raised ground, once a second, as its snow and wetness change: drawn again only if they moved (its own check: the
   // decorations' runs only where there are decorations).
+  swayTick();
   heightsWeatherAt += seconds; if (heightsWeatherAt >= 1) { heightsWeatherAt = 0; const hw = heightsWeather(), hk = `${hw.wet}|${hw.snow}`; if (hk !== heightsWeatherKey) { heightsWeatherKey = hk; heightShadowsSoon(); } }
   if (decorations.busy) {
     decorations.creatures(tokensOnFloor()); decorations.wind({ strength: undergroundScene() ? 0 : skyWindNow, angle: skyWindAngle }); decorations.tick(seconds);
