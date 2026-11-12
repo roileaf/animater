@@ -73,6 +73,7 @@ import { stateCatalogHTML } from "./state-catalog-ui.mjs";
 import { FlashEditor } from "./flash-editor.mjs";
 import { recipeConflicts, unlinked } from "../core/recipe-conflicts.mjs";
 import { handleStateCatalogAction } from "../catalogs/pf2e/state-catalog-actions.mjs";
+import { setPlayerLibrary } from '../catalogs/shared/catalog-terms.mjs';
 import {catalogListText,catalogNavigation,catalogPageAllowed,catalogPageTitle,worldCatalogSystem,BORROWED_PAGES,borrowedNavigation,borrowedSystem,pf2eCatalogPage,pf2eCatalogsLive} from '../catalogs/shared/catalog-system.mjs';
 import {DndCatalogWorkspace} from './dnd5e-catalog-ui.mjs';
 import {sfCatalogProfile} from '../catalogs/sf2e/sf2e-catalog.mjs';
@@ -144,6 +145,8 @@ export function editedVariantOnly(recipe, index) {
   return shown === recipe ? recipe : { ...shown, stages: shown.stages.map(({ variantGroup, ...s }) => s) };
 }
 // Sidebar names without their system prefix, capitalized: "PF2e spells" → "Spells".
+// A player's read-only list of the GM's recipes, to copy from.
+export const GM_RECIPES_PAGE = "gm-recipes";
 const shortNav = ([page, icon, name]) => [page, icon, String(name).replace(/^(PF2e|SF2e|D&D 5e) /, "").replace(/^./, (c) => c.toUpperCase())];
 // A PF2e catalog page's kind, for its reset's backup name.
 const PF2E_PAGE_KINDS = { spells: "spell", feats: "feat", actions: "action", features: "feature", weapons: "weapon", conditions: "condition", effects: "effect" };
@@ -232,6 +235,17 @@ export class Workspace {
     else if (page === "conditions" || page === "effects") { const kind = page === "conditions" ? "condition" : "effect"; this.stateFilters[kind] = fresh(this.stateFilters[kind]); this.selectedState[kind] = id; this.statePages[kind] = 0; }
     else return false;
     return true;
+  }
+  // A new action animation already bound to one item (a player's item-sheet button on an item no catalog covers).
+  newForItem({ name = "", uuid: itemUuid = "", systemId } = {}) {
+    const base = validateRecipe({ id: uuid(), name: name || "Untitled recipe", description: "", trigger: "use", match: name, itemUuid,...(systemId ? { systemId } : {}),
+      category: "Custom", color: "#9e8aff", stages: [{ kind: "cast", assets: ["jb2a.cast_generic"], delay: 0, duration: 1000, scale: 1 }] });
+    base.stages[0].assets = [];
+    this.drafts.set(base.id, base);
+    this.dirty.add(base.id);
+    Object.assign(this, { selected: base.id, page: "recipes", studio: true, studioTime: 0, builder: null, previewMode: "recipe", category: "All", search: "", stageIndex: 0, studioSettings: false });
+    this.message = `Bound to ${name}. Choose an asset or token motion, then add stages. Save when ready.`;
+    this.render();
   }
   constructor(root, host) {
     this.root = root;
@@ -766,6 +780,24 @@ export class Workspace {
     return message ? `<div class="an-warning" role="alert">${esc(message)} <button data-action="page" data-page="setup">Open setup →</button></div>` : "";
   }
   isStudio() { return ["recipes", "finishers"].includes(this.page) && !!this.studio && !!this.recipe(); }
+  // A player in their own Studio (not the GM reviewing one), who browses the library read-only.
+  playerLibrary() { return !!this.host.playerMode && !this.host.reviewing?.(); }
+  // The GM's recipes for a player to copy from: preview each, or copy it into their own animations.
+  gmRecipesHTML() {
+    const list = this.host.gmRecipes?.() ?? [];
+    const rows = list.map((r) => `<div class="an-review-row is-approved"><div><b>${esc(r.name)}</b><small>${esc(EVENTS[r.trigger] ?? r.trigger)}${r.match ? ` · ${esc(r.match)}` : ""} · ${r.stages.length} stage${r.stages.length === 1 ? "" : "s"}</small></div><span></span><div class="an-review-actions"><button class="an-quiet" data-action="gm-preview" data-id="${esc(r.id)}">▷ Preview</button><button class="an-primary" data-action="gm-copy" data-id="${esc(r.id)}">Copy to mine</button></div></div>`).join("");
+    return `<div class="an-library"><div class="an-info">Your GM's animations<p>Examples to start from. Preview one, then copy it into My animations to make it your own${this.host.playerAccess?.() === "free" ? "" : "; your copy plays once your GM approves it"}.</p></div>${rows ? `<div class="an-player-review">${rows}</div>` : `<div class="an-empty">Your GM has no animations of their own yet. The catalogs under Library have plenty to start from.</div>`}</div>`;
+  }
+  // A copy of one of the GM's recipes in this player's animations (a new id, so the two stay apart), open in the Studio.
+  async copyGmRecipe(id) {
+    const source = (this.host.gmRecipes?.() ?? []).find((r) => r.id === id);
+    if (!source) return;
+    const copy = validateRecipe({ ...structuredClone(source), id: uuid(), name: `${source.name} (mine)`, category: "Custom", enabled: true });
+    await this.host.save([...this.host.recipes(), copy]);
+    Object.assign(this, { selected: copy.id, page: "recipes", studio: true, studioTime: 0, stageIndex: 0, search: "", category: "All" });
+    this.message = `Copied "${source.name}" into My animations.`;
+    this.render();
+  }
   navItemsHTML(env) {
     const count = (n) => (n > 0 ? `<small>${n}</small>` : "");
     const flash = this.host.flashScreens;
@@ -776,9 +808,22 @@ export class Workspace {
       waiting: this.host.playerMode ? 0 : (this.host.playerSubmissions?.() ?? []).filter((row) => row.state === "pending").length,
       flash: typeof flash === "function" && Array.isArray(flash.call(this.host)) ? flash.call(this.host).length : 0,
       [FLAGGED_PAGE]: Object.keys(this.host.flaggedLooks?.() ?? {}).length,
+      [GM_RECIPES_PAGE]: this.playerLibrary() ? (this.host.gmRecipes?.() ?? []).length : 0,
     };
     const item = ([page, icon, name]) =>
       `<button class="an-nav-item ${this.page === page ? "is-active" : ""}" data-action="page" data-page="${page}"><span>${icon}</span><b>${name}</b>${count(counts[page] || 0)}${page === "recipes" && counts.waiting ? `<small class="an-nav-waiting" data-tooltip="Player animations waiting for your approval (bottom of Recipes)">${counts.waiting} waiting</small>` : ""}</button>`;
+    // A player's own Studio plus the whole library to start from (the GM's recipes and every catalog page,
+    // read-only); the GM reviewing a player sees only that player's animations.
+    if (this.playerLibrary()) {
+      const group = (caption, items) => `<div class="an-nav-caption">${caption}</div>${items.map(item).join("")}`;
+      const pages = catalogNavigation(env).filter(([page]) => page !== NPC_PAGE).map(shortNav), borrowed = borrowedNavigation(env).map(shortNav);
+      return [
+        group("CREATE", [["recipes", "✦", "My animations"], [GM_RECIPES_PAGE, "♛", "GM's animations"]]),
+        group(`LIBRARY${systemCaption(env)}`, [...pages, ["assets", "▦", "Assets"]]),
+        ...(borrowed.length ? [group(`BORROWED FROM ${borrowedSystem(env).toUpperCase()}`, borrowed)] : []),
+        group("TOOLS", [["activity", "◷", "Activity"]]),
+      ].join("");
+    }
     if (this.host.playerMode) {
       return [["recipes", "✦", this.host.reviewing?.() ? `${esc(this.host.reviewing().userName)}'s animations` : "My animations"], ["assets", "▦", "Assets"], ...(this.host.reviewing?.() ? [] : [["activity", "◷", "Activity"]])].map(item).join("");
     }
@@ -814,6 +859,9 @@ export class Workspace {
     if(this.page===DAMAGE_SHOWCASE_PAGE&&(!this.host.damageShowcase||this.host.playerMode))this.page='recipes';
     if(this.page!=='assets'||this.mediaLibrary?.fxScene)void this.mediaLibrary?.stopTokenPreview();
     if(!catalogPageAllowed(this.page,this.host.environment()))this.page='recipes';
+    if(this.page===GM_RECIPES_PAGE&&!this.playerLibrary())this.page='recipes';
+    // Catalog pages read-only for a player (catalog-terms.mjs words their entries for copying).
+    setPlayerLibrary(this.playerLibrary());
     if (abilityProfileForPage(this.pf2ePage())&&!this.dndCatalog?.isCatalogPage()) {
       const profile = abilityProfileForPage(this.pf2ePage()), matches = profile.catalog.filter(this[profile.filtersKey] ?? defaultAbilityFilters());
       if (!matches.some((feat) => feat.id === this[profile.selectedKey]))
@@ -862,7 +910,7 @@ export class Workspace {
     const env = this.host.environment();
     patchDOM(
       this.root,
-      `<div class="an-shell${this.isStudio() || (this.page === "flash" && this.flashEditor?.editing) ? " is-studio" : ""}">
+      `<div class="an-shell${this.isStudio() || (this.page === "flash" && this.flashEditor?.editing) ? " is-studio" : ""}${this.playerLibrary() ? " is-player-library" : ""}">
       <aside class="an-nav"><div class="an-brand"><span class="an-logo">A</span><div>Animater<small>MAKE EVERY MOMENT FELT</small></div></div>
         ${this.navItemsHTML(env)}
         <div class="an-nav-bottom"><div class="an-pack"><span class="an-dot ${env.ready && env.jb2aRegistered !== false ? "is-ready" : ""}" ${env.jb2aRegistered === false ? `data-tooltip="${esc(env.pack)} is active, but Sequencer has no JB2A animations. See Setup."` : ""}></span><div>${esc(env.pack)}<small>${this.host.catalog().length.toLocaleString()} asset variants</small></div></div><button data-action="stop" class="an-stop">■ Stop my effects</button><small class="an-version">${env.version ? `v${esc(env.version)} · ` : ""}${esc(env.system)}${env.demo ? " · PREVIEW" : ""}</small></div>
@@ -872,7 +920,7 @@ export class Workspace {
         ${this.reviewBannerHTML()}
         ${env.demo ? `<div class="an-demo">DESIGN PREVIEW <span>Real installed JB2A videos. Canvas playback and game triggers require Foundry.</span></div>` : ""}
         ${this.envBannerHTML(env)}
-        ${this.page === "flash" && this.host.flashScreens ? (this.flashEditor ??= new FlashEditor(this)).html() : this.dndCatalog?.isCatalogPage()?this.dndCatalog.html():this.page === SHOWCASE_PAGE ? (this.creatureShowcase ??= new CreatureShowcaseUI(this)).html() : this.page === DAMAGE_SHOWCASE_PAGE ? (this.damageShowcase ??= new DamageShowcaseUI(this)).html() :this.page === "builder" ? this.builderHTML() : this.page === NPC_PAGE ? npcAbilityCatalogHTML(this) : this.pf2ePage() === "spells" ? spellCatalogHTML(this) : abilityProfileForPage(this.pf2ePage()) ? featCatalogHTML(this, abilityProfileForPage(this.pf2ePage())) : this.pf2ePage() === "weapons" ? weaponCatalogHTML(this) : ["conditions", "effects"].includes(this.page) ? stateCatalogHTML(this) : this.page === "finishers" ? finishersPageHTML(this, recipe) : this.page === "recipes" ? this.recipesHTML(recipe) : this.page === "assets" ? this.assetsHTML(recipe) : this.page === "activity" ? this.activityHTML() : this.page === FLAGGED_PAGE ? flaggedPageHTML(this) : this.page === TOKENSHADE_PAGE ? (this.tokenshadeStudio ??= new TokenshadeStudio(this)).html() : this.setupHTML(env)}
+        ${this.page === "flash" && this.host.flashScreens ? (this.flashEditor ??= new FlashEditor(this)).html() : this.dndCatalog?.isCatalogPage()?this.dndCatalog.html():this.page === SHOWCASE_PAGE ? (this.creatureShowcase ??= new CreatureShowcaseUI(this)).html() : this.page === DAMAGE_SHOWCASE_PAGE ? (this.damageShowcase ??= new DamageShowcaseUI(this)).html() :this.page === "builder" ? this.builderHTML() : this.page === NPC_PAGE ? npcAbilityCatalogHTML(this) : this.pf2ePage() === "spells" ? spellCatalogHTML(this) : abilityProfileForPage(this.pf2ePage()) ? featCatalogHTML(this, abilityProfileForPage(this.pf2ePage())) : this.pf2ePage() === "weapons" ? weaponCatalogHTML(this) : ["conditions", "effects"].includes(this.page) ? stateCatalogHTML(this) : this.page === "finishers" ? finishersPageHTML(this, recipe) : this.page === "recipes" ? this.recipesHTML(recipe) : this.page === "assets" ? this.assetsHTML(recipe) : this.page === "activity" ? this.activityHTML() : this.page === GM_RECIPES_PAGE ? this.gmRecipesHTML() : this.page === FLAGGED_PAGE ? flaggedPageHTML(this) : this.page === TOKENSHADE_PAGE ? (this.tokenshadeStudio ??= new TokenshadeStudio(this)).html() : this.setupHTML(env)}
       </main>${this.pendingImport !== null ? this.importHTML() : ""}${this.newChooser ? this.newChooserHTML() : ""}</div>`,
     );
     this.root.querySelectorAll("details[data-options-group]").forEach((e) => {
@@ -1589,22 +1637,32 @@ export class Workspace {
   approvalBadgeHTML(r) {
     const state = this.host.approvalState?.(r);
     if (!state) return "";
-    const label = { pending: "Waiting for GM approval", approved: "Approved by the GM", declined: "Declined by the GM" }[state];
-    return `<div class="an-approval is-${state}">${esc(label)}</div>`;
+    const label = { pending: "Waiting for GM approval", approved: "Approved by the GM", declined: "Declined by the GM", playing: "Plays for your characters", blocked: "Turned off by the GM" }[state];
+    const look = { playing: "approved", blocked: "declined" }[state] ?? state;
+    return `<div class="an-approval is-${look}">${esc(label)}</div>`;
   }
   // The GM has a player's animations open: edits save to that player, and the saved version is approved here.
   reviewBannerHTML() {
     const review = this.host.reviewing?.();
     if (!review) return "";
     const saved = this.savedRecipe(), state = saved && this.host.approvalState?.(saved), unsaved = saved && this.dirty.has(saved.id);
+    // No approval needed: nothing to approve here; Turn off is in the list under Recipes.
+    if (state === "playing" || state === "blocked" || (!saved && this.host.playerAccess?.() === "free")) return `<div class="an-review-banner"><div><b>Viewing ${esc(review.userName)}'s animations</b><small>${saved ? `"${esc(saved.name)}" · ${state === "playing" ? "Playing" : "Turned off"}. ` : ""}Saved edits go back to ${esc(review.userName)}.</small></div><div class="an-review-actions"><button data-action="review-done">Done</button></div></div>`;
     const status = state === "approved" ? "Approved" : state === "declined" ? "Declined" : "Waiting";
     return `<div class="an-review-banner"><div><b>Reviewing ${esc(review.userName)}'s animations</b><small>${saved ? `“${esc(saved.name)}” · ${status}${unsaved ? " · save your edits before approving" : ""}. ` : ""}Saved edits go back to ${esc(review.userName)} and need approving again.</small></div><div class="an-review-actions">${saved && state !== "approved" ? `<button class="an-primary" data-action="review-approve" ${unsaved ? "disabled" : ""}>Approve</button>` : ""}${saved && state !== "declined" ? `<button class="an-quiet" data-action="review-decline" ${unsaved ? "disabled" : ""}>${state === "approved" ? "Revoke" : "Decline"}</button>` : ""}<button data-action="review-done">Done reviewing</button></div></div>`;
+  }
+  // No approval needed: the same list, each row Playing or Turned off, with Turn off / Turn on.
+  playerFreeListHTML(rows) {
+    const button = (action, label, primary, userId, id) => `<button class="${primary ? "an-primary" : "an-quiet"}" data-action="${action}" data-user="${esc(userId)}" data-id="${esc(id)}">${label}</button>`;
+    return `<div class="an-section-title"><span>Player animations</span><small>They play for each player's own characters without your approval</small></div>
+      <div class="an-player-review">${rows.map(({ userId, userName, recipe, state }) => `<div class="an-review-row is-${state === "blocked" ? "declined" : "approved"}"><div><b>${esc(recipe.name)}</b><small>${esc(userName)} · ${esc(EVENTS[recipe.trigger] ?? recipe.trigger)} · ${recipe.stages.length} stage${recipe.stages.length === 1 ? "" : "s"}</small></div><span class="an-approval is-${state === "blocked" ? "declined" : "approved"}">${state === "blocked" ? "Turned off" : "Playing"}</span><div class="an-review-actions">${button("player-open", "✎ Open in Studio", false, userId, recipe.id)}${button("player-preview", "▷ Preview", false, userId, recipe.id)}${state === "blocked" ? button("player-unblock", "Turn on", true, userId, recipe.id) : button("player-block", "Turn off", false, userId, recipe.id)}</div></div>`).join("")}</div>`;
   }
   // The GM's review of player-made recipes: each version is approved or declined once.
   playerReviewHTML() {
     if (this.host.reviewing?.()) return "";
     const rows = this.host.playerSubmissions?.() ?? [];
     if (!rows.length) return "";
+    if (this.host.playerAccess?.() === "free") return this.playerFreeListHTML(rows);
     const pending = rows.filter((r) => r.state === "pending").length;
     return `<div class="an-section-title"><span>Player animations${pending ? ` · ${pending} waiting` : ""}</span><small>Approved animations play for that player's own characters</small></div>
       <div class="an-player-review">${rows.map(({ userId, userName, recipe, state }) => `<div class="an-review-row is-${state}"><div><b>${esc(recipe.name)}</b><small>${esc(userName)} · ${esc(EVENTS[recipe.trigger] ?? recipe.trigger)} · ${recipe.stages.length} stage${recipe.stages.length === 1 ? "" : "s"}</small></div><span class="an-approval is-${state}">${state === "pending" ? "Waiting" : state === "approved" ? "Approved" : "Declined"}</span><div class="an-review-actions"><button class="an-quiet" data-action="player-open" data-user="${esc(userId)}" data-id="${esc(recipe.id)}">✎ Open in Studio</button><button class="an-quiet" data-action="player-preview" data-user="${esc(userId)}" data-id="${esc(recipe.id)}">▷ Preview</button>${state !== "approved" ? `<button class="an-primary" data-action="player-approve" data-user="${esc(userId)}" data-id="${esc(recipe.id)}">Approve</button>` : ""}${state !== "declined" ? `<button class="an-quiet" data-action="player-decline" data-user="${esc(userId)}" data-id="${esc(recipe.id)}">${state === "approved" ? "Revoke" : "Decline"}</button>` : ""}</div></div>`).join("")}</div>`;
@@ -3011,9 +3069,22 @@ export class Workspace {
         return;
       }
       // The GM's review of a player's recipe: preview it locally, then approve or decline that version.
-      if (["player-preview", "player-approve", "player-decline"].includes(action)) {
+      if (action === "gm-copy") { await this.copyGmRecipe(b.dataset.id); return; }
+      if (action === "gm-preview") {
+        const source = (this.host.gmRecipes?.() ?? []).find((r) => r.id === b.dataset.id);
+        if (source) { await this.host.play(validateRecipe(source), true); this.message = `Previewed "${source.name}".`; this.render(); }
+        return;
+      }
+      if (["player-preview", "player-approve", "player-decline", "player-block", "player-unblock"].includes(action)) {
         const row = (this.host.playerSubmissions?.() ?? []).find((r) => r.userId === b.dataset.user && r.recipe.id === b.dataset.id);
         if (!row) return;
+        // No approval needed: Turn off holds for the recipe whatever the player changes; Turn on lifts it.
+        if (action === "player-block" || action === "player-unblock") {
+          await this.host.decidePlayerRecipe(row.userId, row.recipe, action === "player-block" ? "blocked" : null);
+          this.message = `${row.userName}'s "${row.recipe.name}" ${action === "player-block" ? "turned off: it no longer plays, even if they edit it" : "turned back on"}.`;
+          this.render();
+          return;
+        }
         if (action === "player-preview") {
           await this.host.play(validateRecipe(row.recipe), true);
           this.message = `Previewed ${row.userName}'s “${row.recipe.name}”.`;
@@ -3314,7 +3385,7 @@ export class Workspace {
         );
         this.drafts.delete(r.id);
         this.dirty.delete(r.id);
-        this.message = this.host.playerMode && !this.host.reviewing?.() ? "Saved. It plays once your GM approves it (GMs online are told)." : "Recipe saved.";
+        this.message = !this.host.playerMode || this.host.reviewing?.() ? "Recipe saved." : this.host.playerAccess?.() === "free" ? "Saved. It plays for your characters now." : "Saved. It plays once your GM approves it (GMs online are told).";
       }
       if (action === "add-motion" && this.recipe()?.lifecycle !== "document") {
         const r = this.edit();

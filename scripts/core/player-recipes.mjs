@@ -15,9 +15,23 @@ export function recipeHash(recipe) {
   return (h >>> 0).toString(36);
 }
 
-export function approvalState(recipe, decisions = {}) {
+// How much players may do (the GM's "Player animations" world setting): nothing, make
+// animations the GM approves one by one, or make animations that play without approval.
+export const PLAYER_ACCESS_LEVELS = ['off', 'approval', 'free'];
+export const normalizePlayerAccess = (value) => PLAYER_ACCESS_LEVELS.includes(value) ? value : 'approval';
+// Players get the Studio and the whole library (catalogs and the GM's recipes) unless access is off.
+export const playerLibraryOpen = (access) => normalizePlayerAccess(access) !== 'off';
+export const isPlayable = (state) => state === 'approved' || state === 'playing';
+
+// With approval: 'pending' | 'approved' | 'declined', for one exact version.
+// With no approval needed: 'playing' | 'blocked'. The GM's Turn off ('blocked') holds for the
+// recipe whatever its version, so an edit cannot get round it; a version declined earlier stays off.
+export function approvalState(recipe, decisions = {}, access = 'approval') {
   const decision = decisions?.[recipe.id];
-  if (!decision || decision.hash !== recipeHash(recipe)) return 'pending';
+  const same = decision && decision.hash === recipeHash(recipe);
+  if (normalizePlayerAccess(access) === 'free') return decision?.status === 'blocked' || (same && decision.status === 'declined') ? 'blocked' : 'playing';
+  if (decision?.status === 'blocked') return 'declined';
+  if (!same) return 'pending';
   return decision.status === 'approved' ? 'approved' : 'declined';
 }
 
@@ -32,21 +46,21 @@ export function validatePlayerRecipes(data) {
 
 // The approved recipe of this player that matches the event, when the event is
 // one of their own characters' (the GM approves recipes, not other players' items).
-export function approvedPlayerRecipe(event, recipes = [], decisions = {}, { owns = () => false } = {}) {
-  if (!owns(event?.actor ?? event?.item?.actor)) return null;
-  const approved = recipes.filter(r => approvalState(r, decisions) === 'approved').map(validateRecipe);
+export function approvedPlayerRecipe(event, recipes = [], decisions = {}, { owns = () => false, access = 'approval' } = {}) {
+  if (!playerLibraryOpen(access) || !owns(event?.actor ?? event?.item?.actor)) return null;
+  const approved = recipes.filter(r => isPlayable(approvalState(r, decisions, access))).map(validateRecipe);
   return approved.length ? matchRecipe(approved, event) : null;
 }
 
 // The GM's review list: every player's recipes with their state, pending first.
-export function playerSubmissions(users = [], decisionsByUser = {}) {
+export function playerSubmissions(users = [], decisionsByUser = {}, access = 'approval') {
   const rows = [];
   for (const user of users) {
     if (user.isGM) continue;
     const recipes = user.getFlag?.('animater', 'playerRecipes')?.recipes ?? [];
-    for (const recipe of recipes) rows.push({ userId: user.id, userName: user.name, recipe, state: approvalState(recipe, decisionsByUser[user.id]) });
+    for (const recipe of recipes) rows.push({ userId: user.id, userName: user.name, recipe, state: approvalState(recipe, decisionsByUser[user.id], access) });
   }
-  const order = { pending: 0, declined: 1, approved: 2 };
+  const order = { pending: 0, declined: 1, approved: 2, blocked: 0, playing: 1 };
   return rows.sort((a, b) => order[a.state] - order[b.state] || a.userName.localeCompare(b.userName) || a.recipe.name.localeCompare(b.recipe.name));
 }
 

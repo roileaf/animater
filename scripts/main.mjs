@@ -301,7 +301,7 @@ import { createSustainThreads, sustainLinks, concentrationLinks } from "./engine
 import { DEFEATED_LOOK, registerDefeatedLook, installDefeatedLook, markDefeated, defeatedStates, defeatedStatusId, isDefeated } from "./engines/playback/defeated-look.mjs";
 import { DND_KINDS,DND5E_SOURCE,dndEntries,dndEntry,dndRecipe,normalizeDndCatalogState,resolveDndAutomaticRecipe, addDndBookEntries } from './catalogs/dnd5e/dnd5e-catalog.mjs';
 import { saveReaction, twoeSaveOutcome, dnd5eSaveOutcome } from './systems/outcome.mjs';
-import { approvalState, approvedPlayerRecipe, playerSubmissions, validatePlayerRecipes, decide } from './core/player-recipes.mjs';
+import { approvalState, approvedPlayerRecipe, playerSubmissions, validatePlayerRecipes, decide, normalizePlayerAccess, playerLibraryOpen, isPlayable } from './core/player-recipes.mjs';
 import { dndSettingKey,sfSettingKey,dhSettingKey,dsSettingKey, catalogListText } from './catalogs/shared/catalog-system.mjs';
 import { loadCatalogData, catalogDataLoaded, onCatalogData } from './catalogs/shared/catalog-data.mjs';
 import { dndStateHost } from './catalogs/dnd5e/dnd5e-states.mjs';
@@ -7780,6 +7780,10 @@ async function receiveMotion(data, { strict = false } = {}) {
 const recipes = () =>
   clone(hotSetting("recipes")?.recipes ?? starterRecipes());
 const playerDecisions = () => hotSetting("playerApprovals") ?? {};
+// The GM's "Player animations" level: "off", "approval" or "free" (core/player-recipes.mjs).
+const playerAccess = () => normalizePlayerAccess(hotSetting("playerAccess"));
+// A player's Animater window, buttons and item-sheet entry exist unless the GM turned player animations off.
+const playerMayOpen = () => game.user?.isGM === true || playerLibraryOpen(playerAccess());
 // Players' finisher picks: the item's flag names it; it holds while the GM still gives it to an owner.
 const ownerUsers = (actor) => [...(game.users?.values?.() ?? [])].filter((u) => !u.isGM && actor?.testUserPermission?.(u, "OWNER")).map((u) => u.id);
 // A synthetic strike (PF2e's basic unarmed or a rule-element strike, or a { actor, name, slug }
@@ -7839,8 +7843,8 @@ const reviewedUser = () => (game.user?.isGM && reviewing ? game.users?.get(revie
 const enabled = () => hotSetting("automatic");
 // Players' approved recipes play for their own characters even when the GM's
 // automatic playback is off.
-const ownApprovedRecipe = (event) => game.user?.isGM ? null : approvedPlayerRecipe(event, ownPlayerRecipes(), playerDecisions()[game.user.id], { owns: (actor) => Boolean(actor?.isOwner) });
-const hasOwnApproved = () => !game.user?.isGM && ownPlayerRecipes().some((r) => approvalState(r, playerDecisions()[game.user.id]) === "approved");
+const ownApprovedRecipe = (event) => game.user?.isGM ? null : approvedPlayerRecipe(event, ownPlayerRecipes(), playerDecisions()[game.user.id], { owns: (actor) => Boolean(actor?.isOwner), access: playerAccess() });
+const hasOwnApproved = () => !game.user?.isGM && playerLibraryOpen(playerAccess()) && ownPlayerRecipes().some((r) => isPlayable(approvalState(r, playerDecisions()[game.user.id], playerAccess())));
 const acceptsEvents = () =>
   enabled() ||
   (game.system.id === "sf2e" && SF_KINDS.some(kind=>{const state=hotSetting(sfSettingKey(kind));return state?.enabled&&state.independent;})) ||
@@ -8124,6 +8128,7 @@ export class AnimaterApp extends HandlebarsApplicationMixin(ApplicationV2) {
 }
 // Players open their own Studio (their recipes, pending GM approval); the GM gets everything.
 function open() {
+  if (!playerMayOpen()) return void ui.notifications?.info("Animater: your GM has turned off player animations.");
   app ??= new AnimaterApp();
   return app.render({ force: true });
 }
@@ -8244,13 +8249,17 @@ function receiveActivityStop(data, senderId) {
 }
 // Action sheets open the owner's catalog; other items keep their direct custom
 // recipe shortcut, or their normal spell/weapon/effect catalog.
+// A player gets their own animation for the item, else its catalog entry to Customize, else a new
+// animation already bound to the item.
 async function openForItem(item) {
-  if (!game.user.isGM || !item) return;
+  if (!item || !(game.user.isGM || (item.isOwner && playerMayOpen()))) return;
+  const gm = game.user.isGM;
   const action = ['pf2e','sf2e'].includes(game.system.id) && item.type === 'action';
   const npcAction = item.actor?.type === 'npc' && (action || game.system.id==='dnd5e' && item.type==='feat');
   let recipe = null;
   if (!action && !npcAction) try { recipe = resolveEvent({ type: "use", item, actor: item.actor, systemId: game.system.id }); } catch {}
-  const saved = recipe && recipes().find((r) => r.id === recipe.id);
+  const mine = gm ? recipes() : ownPlayerRecipes();
+  const saved = (recipe && mine.find((r) => r.id === recipe.id)) || (!gm && mine.find((r) => r.itemUuid === item.uuid)) || null;
   await open();
   const w = app?.workspace;
   if (!w) return;
@@ -8262,7 +8271,9 @@ async function openForItem(item) {
     if (!entry && game.system.id!=='dnd5e') { const shared = npcAbilities.findNpcAbility?.(event); if (shared) entry = {id:shared.id,name:shared.names[0]}; }
   }
   const page = npcAction ? 'npc-abilities' : itemPage(item);
-  if (!w.reveal(saved ? { recipeId: saved.id } : { page, name: entry?.name ?? item.name.replace(/\s*\([^)]*\)\s*$/, ""), id: entry?.id })) w.message = `No Animater catalog covers ${item.name}; make a recipe for it with + New recipe.`;
+  const found = w.reveal(saved ? { recipeId: saved.id } : { page, name: entry?.name ?? item.name.replace(/\s*\([^)]*\)\s*$/, ""), id: entry?.id });
+  if (!found && !gm) return w.newForItem({ name: item.name, uuid: item.uuid, systemId: game.system.id });
+  if (!found) w.message = `No Animater catalog covers ${item.name}; make a recipe for it with + New recipe.`;
   w.render();
 }
 // Teleport (recipes that ask for it): pick the spot on the canvas, then vanish and reappear.
@@ -10318,6 +10329,16 @@ function localParticles(stage, effect, template) {
   };
 }
 function workspaceHost() {
+  return playerLibraryHost(fullWorkspaceHost());
+}
+// A player browses the library read-only: Customize still copies into their own animations, but the catalog
+// bookkeeping it does for a GM (which entries are customized or picked) is the GM's world state, left alone.
+function playerLibraryHost(host) {
+  if (game.user?.isGM) return host;
+  for (const key of Object.keys(host)) if (/^set\w*(CatalogState|NpcAbilityState)$/.test(key)) host[key] = async () => {};
+  return host;
+}
+function fullWorkspaceHost() {
   return {
     // Tuck the window away while a canvas preview or table playback runs, then restore it.
     tuckWindow: async () => {
@@ -10444,10 +10465,14 @@ function workspaceHost() {
     },
     recipes: () => { const user = reviewedUser(); return user ? clone(user.getFlag(ID, "playerRecipes")?.recipes ?? []) : game.user.isGM ? recipes() : ownPlayerRecipes(); },
     get playerMode() { return !game.user.isGM || Boolean(reviewedUser()); },
-    approvalState: (recipe) => { const user = game.user.isGM ? reviewedUser() : game.user; return user ? approvalState(recipe, playerDecisions()[user.id]) : null; },
+    approvalState: (recipe) => { const user = game.user.isGM ? reviewedUser() : game.user; return user ? approvalState(recipe, playerDecisions()[user.id], playerAccess()) : null; },
+    // "off", "approval" or "free": what players may do (the GM's Player animations setting).
+    playerAccess: () => playerAccess(),
+    // The GM's own recipes, read-only, for a player to copy from (finishers and document layers stay the GM's).
+    gmRecipes: () => (game.user.isGM && !reviewedUser() ? [] : recipes().filter((r) => !r.finisher && r.lifecycle !== "document")),
     reviewing: () => { const user = reviewedUser(); return user ? { userId: user.id, userName: user.name } : null; },
     review: (userId) => { reviewing = game.user.isGM && userId && game.users?.get(userId) ? userId : null; },
-    playerSubmissions: () => (game.user.isGM ? playerSubmissions(Array.from(game.users?.contents ?? []), playerDecisions()) : []),
+    playerSubmissions: () => (game.user.isGM ? playerSubmissions(Array.from(game.users?.contents ?? []), playerDecisions(), playerAccess()) : []),
     decidePlayerRecipe: async (userId, recipe, status) => {
       if (!game.user.isGM) throw Error('Only a GM can approve player animations.');
       await game.settings.set(ID, 'playerApprovals', decide(playerDecisions(), userId, recipe, status));
@@ -10595,7 +10620,10 @@ function workspaceHost() {
     async save(data) {
       // A player saves their own recipes; each new version waits for the GM.
       if (!game.user.isGM) {
-        const decisions = playerDecisions()[game.user.id] ?? {}, waiting = (list) => new Set(list.filter((r) => approvalState(r, decisions) === "pending").map((r) => r.id));
+        if (!playerLibraryOpen(playerAccess())) throw Error("Your GM has turned off player animations.");
+        // With no approval needed nothing waits, so nobody is told.
+        const free = playerAccess() === "free";
+        const decisions = playerDecisions()[game.user.id] ?? {}, waiting = (list) => new Set(free ? [] : list.filter((r) => approvalState(r, decisions) === "pending").map((r) => r.id));
         const before = waiting(ownPlayerRecipes()), recipes = validatePlayerRecipes(data);
         await game.user.setFlag(ID, "playerRecipes", { schema: 1, recipes });
         // Tell the GMs when something new waits for them, so it is not found by chance.
@@ -10912,6 +10940,14 @@ Hooks.once("init", () => {
   });
   // The GM's decisions on player-made recipes (players cannot write world settings).
   registerSetting("playerApprovals", { scope: "world", config: false, type: Object, default: {}, onChange: () => app?.workspace?.render() });
+  registerSetting("playerAccess", { name: "Player animations", scope: "world", config: true, type: String, default: "approval",
+    hint: "What players may do in Animater. Off: no Animater window or buttons for players, and their saved animations don't play (they are kept). Submit for approval: players make their own animations, starting from the whole library (every catalog and your recipes); each one plays for their own characters after you approve it. No approval needed: the same, but their animations play as soon as they save them; you can still turn any one off under Recipes.",
+    choices: { off: "Off", approval: "Submit for approval", free: "No approval needed" },
+    onChange: () => {
+      ui.controls?.render({ reset: true });
+      if (!game.user.isGM && !playerMayOpen()) void app?.close();
+      else app?.workspace?.render();
+    } });
   registerSetting("recipes", {
     scope: "world",
     config: false,
@@ -12592,16 +12628,17 @@ Hooks.once("ready", () => {
   });
   void loadDndBooks();
   setTimeout(() => void welcome().catch((e) => console.warn("Animater welcome:", e.message)).then(offerImmersion).catch((e) => console.warn("Animater immersion:", e.message)), 1500);
-  // Item sheets (GM): a shortcut to the item's animation. AppV1 sheets get a header button;
-  // AppV2 sheets (D&D 5e) get an entry in the header's menu.
-  if (game.user.isGM) {
+  // Item sheets: a shortcut to the item's animation (the GM on any item; a player on their own items,
+  // unless player animations are off). AppV1 sheets get a header button; AppV2 sheets (D&D 5e) an entry in the header's menu.
+  {
+    const offered = (item) => item && (game.user.isGM || (item.isOwner && playerMayOpen()));
     Hooks.on("getItemSheetHeaderButtons", (sheet, buttons) => {
-      if (!sheet.item || buttons.some((b) => b.class === "animater-open")) return;
+      if (!offered(sheet.item) || buttons.some((b) => b.class === "animater-open")) return;
       buttons.unshift({ label: "Animation", class: "animater-open", icon: "fa-solid fa-wand-magic-sparkles", onclick: () => void openForItem(sheet.item) });
     });
     Hooks.on("getHeaderControlsApplicationV2", (sheet, controls) => {
       const item = sheet.document;
-      if (!(item instanceof Item) || controls.some((c) => c.action === "animaterOpen")) return;
+      if (!(item instanceof Item) || !offered(item) || controls.some((c) => c.action === "animaterOpen")) return;
       controls.push({ icon: "fa-solid fa-wand-magic-sparkles", label: "Animater animation", action: "animaterOpen", onClick: () => void openForItem(item) });
     });
   }
@@ -14400,7 +14437,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
       icon: "animater-a-icon",
       order: 2,
       button: true,
-      visible: hotSetting("showControlButton") !== false,
+      visible: hotSetting("showControlButton") !== false && playerMayOpen(),
       onChange: () => open(),
     };
 });

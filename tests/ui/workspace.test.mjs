@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Workspace } from "../../scripts/ui/workspace.mjs";
+import { Workspace, GM_RECIPES_PAGE } from "../../scripts/ui/workspace.mjs";
 import { studioHTML } from "../../scripts/ui/studio.mjs";
 import { PF2E_SPELLS, spellRecipe } from "../../scripts/catalogs/pf2e/spells/spell-catalog.mjs";
 import { PF2E_FEATS, featRecipe } from "../../scripts/catalogs/pf2e/feats/feat-catalog.mjs";
@@ -835,11 +835,43 @@ test("nav counts show for recipes, finishers and flash screens, and hide at zero
   assert.doesNotMatch(none, /<small>/);
 });
 
-test("the player nav has their animations, assets and their own Activity, with no captions", () => {
-  const html = navWorkspace({ playerMode: true }).navItemsHTML(navEnv);
-  assert.doesNotMatch(html, /an-nav-caption/);
-  assert.deepEqual([...html.matchAll(/data-page="([^"]+)"/g)].map((m) => m[1]), ["recipes", "assets", "activity"]);
+test("the player nav has their animations, the GM's, the whole library (no NPC abilities), assets and Activity", () => {
+  const html = navWorkspace({ playerMode: true, gmRecipes: () => [{ id: "g" }] }).navItemsHTML(navEnv);
+  const pages = [...html.matchAll(/data-page="([^"]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(pages.slice(0, 2), ["recipes", GM_RECIPES_PAGE]);
+  assert.ok(pages.includes("spells") && pages.includes("assets") && pages.at(-1) === "activity");
+  assert.ok(!pages.includes("npc-abilities") && !pages.includes("finishers") && !pages.includes("setup"));
   assert.match(html, /My animations/);
+  assert.match(html, /GM's animations<\/b><small>1<\/small>/);
+});
+
+test("the GM reviewing a player sees only that player's animations and assets", () => {
+  const html = navWorkspace({ playerMode: true, reviewing: () => ({ userId: "p", userName: "Mira" }) }).navItemsHTML(navEnv);
+  assert.deepEqual([...html.matchAll(/data-page="([^"]+)"/g)].map((m) => m[1]), ["recipes", "assets"]);
+});
+
+test("the GM's animations page lists their recipes for a player to preview and copy", async () => {
+  const saved = [];
+  const w = navWorkspace({ playerMode: true, playerAccess: () => "free", gmRecipes: () => [{ id: "g1", name: "Boss Breath", trigger: "use", match: "Breath", enabled: true, stages: [{ kind: "impact", assets: ["jb2a.impact.001.orange"] }] }],
+    recipes: () => [], save: async (list) => saved.push(list) });
+  const html = w.gmRecipesHTML();
+  assert.match(html, /Boss Breath[\s\S]*data-action="gm-preview" data-id="g1"[\s\S]*data-action="gm-copy" data-id="g1"/);
+  assert.doesNotMatch(html, /approves/, "no approval wording when none is needed");
+  w.render = () => {};
+  await w.copyGmRecipe("g1");
+  assert.equal(saved[0].length, 1);
+  assert.notEqual(saved[0][0].id, "g1", "the copy gets its own id");
+  assert.equal(saved[0][0].name, "Boss Breath (mine)");
+  assert.equal(w.page, "recipes");
+  assert.equal(w.selected, saved[0][0].id);
+});
+
+test("with no approval needed the GM's list says Playing / Turned off with Turn off / Turn on", () => {
+  const rows = [{ userId: "p", userName: "Mira", recipe: { id: "a", name: "A", trigger: "use", stages: [] }, state: "playing" }, { userId: "p", userName: "Mira", recipe: { id: "b", name: "B", trigger: "use", stages: [] }, state: "blocked" }];
+  const html = navWorkspace({ playerAccess: () => "free", playerSubmissions: () => rows }).playerReviewHTML();
+  assert.match(html, /Playing[\s\S]*data-action="player-block" data-user="p" data-id="a"/);
+  assert.match(html, /Turned off[\s\S]*data-action="player-unblock" data-user="p" data-id="b"/);
+  assert.doesNotMatch(html, /player-approve|Waiting/);
 });
 
 test("the active nav page keeps is-active", () => {

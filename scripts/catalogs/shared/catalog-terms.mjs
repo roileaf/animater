@@ -24,6 +24,7 @@ export const PLUG = Object.freeze({
 // The chip above a catalog grid: whether the whole catalog plays, or only picked entries.
 // With the whole catalog on, "N left out" is a button that shows only those entries (leftOutOnly).
 export function plugModeHTML(state, total, showingLeftOut = false) {
+  if (playerLibrary) return "";
   const all = state?.enabled && state.scope === "all";
   const picked = state?.enabled && !all ? [...new Set([...(state.selected ?? []), ...(state.customized ?? [])])].length : 0;
   const out = all ? state.excluded?.length ?? 0 : 0;
@@ -41,7 +42,20 @@ export const leftOutOnly = (w, state, list) => (showingLeftOut(w, state) ? list.
 // One status line saying whether this entry plays, then the buttons that change that.
 // tone: "on" (plays from the catalog), "custom" (your version plays), "off", "manual".
 // buttons: [{ label, action, primary?, disabled?, attrs? }].
-export function catalogStatusHTML({ tone = "off", title, text = "", buttons = [] }) {
+// A player browsing the library (set by the workspace around each render): read-only, so an entry offers only
+// Customize, which copies it into their own animations; the GM's switches are not theirs.
+let playerLibrary = false;
+export const setPlayerLibrary = (on) => { playerLibrary = on === true; };
+export const inPlayerLibrary = () => playerLibrary;
+export function catalogStatusHTML(options) {
+  if (!playerLibrary) return entryStatusHTML(options);
+  const copy = (options.buttons ?? []).find((b) => b && /copy/.test(b.action));
+  if (!copy) return entryStatusHTML({ ...options, buttons: [] });
+  const own = copy.label !== "Customize";
+  return entryStatusHTML({ tone: own ? "custom" : "off", title: own ? "You have your own version" : "Not in your animations yet", text: own ? "Open it to change it." : "Make your own copy to change it.",
+    buttons: [{ ...copy, label: own ? "Open my version" : "Customize → My animations", primary: true }] });
+}
+function entryStatusHTML({ tone = "off", title, text = "", buttons = [] }) {
   const dot = { on: "●", custom: "✎", off: "○", manual: "▷" }[tone] ?? "○";
   const button = (b) => `<button type="button" data-action="${esc(b.action)}" class="${b.primary ? "an-primary" : "an-quiet"}" ${b.attrs ?? ""} ${b.disabled ? "disabled" : ""}>${esc(b.label)}</button>`;
   return `<div class="an-entry-status is-${esc(tone)}" role="status"><div><b><span aria-hidden="true">${dot}</span> ${esc(title)}</b>${text ? `<small>${esc(text)}</small>` : ""}</div><div class="an-entry-actions">${buttons.filter(Boolean).map(button).join("")}</div></div>`;

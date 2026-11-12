@@ -4193,3 +4193,10 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
   font: 700 1.2em/1 Georgia, serif;
   transform: rotate(-5deg);
 }
+
+/* A player's library: catalog pages read-only (the GM's switches and hints are not theirs). */
+.animater .an-shell.is-player-library .an-catalog-controls,
+.animater .an-shell.is-player-library .an-catalog-automation,
+.animater .an-shell.is-player-library .an-sync-notice {
+  display: none;
+}

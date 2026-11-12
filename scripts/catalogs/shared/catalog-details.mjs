@@ -1,3 +1,4 @@
+import { inPlayerLibrary } from "./catalog-terms.mjs";
 import { catalogSpell } from "../pf2e/spells/spell-catalog.mjs";
 import { catalogFeat } from "../pf2e/feats/feat-catalog.mjs";
 import { catalogWeapon } from "../pf2e/weapons/weapon-catalog.mjs";
@@ -28,10 +29,12 @@ export function cardIncludeHTML(action, item, included) {
 }
 // Whole catalog running: cards exclude. Otherwise: cards include specific entries.
 export function cardToggleHTML(state, excludeAction, includeAction, item) {
+  if (inPlayerLibrary()) return "";
   const all = state.enabled && state.scope === "all";
   return all ? cardExcludeHTML(excludeAction, item, state.excluded.includes(item.id)) : cardIncludeHTML(includeAction, item, !!state.enabled && state.selected.includes(item.id));
 }
 export function cardSlotClass(state, id) {
+  if (inPlayerLibrary()) return "";
   const all = state.enabled && state.scope === "all";
   return all ? (state.excluded.includes(id) ? " is-excluded" : "") : (state.enabled && state.selected.includes(id) ? " is-included" : "");
 }

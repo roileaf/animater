@@ -40,3 +40,25 @@ test("an entry panel shows one status line with its buttons, and both previews i
   assert.equal(entryDetailsHTML(["", null]), "", "nothing to fold: no Details");
   assert.match(stageListHTML([{ label: "Burst", delay: 540, duration: 1600 }]), /from 0\.54 s · 1\.60 s/);
 });
+
+
+test("a player's library view keeps only Customize, worded for their own copy, and drops the GM's switches", async () => {
+  const { catalogStatusHTML, setPlayerLibrary } = await import("../../../scripts/catalogs/shared/catalog-terms.mjs");
+  const { cardToggleHTML, cardSlotClass } = await import("../../../scripts/catalogs/shared/catalog-details.mjs");
+  const state = { enabled: true, scope: "all", excluded: ["x"], selected: [] };
+  const status = (label) => catalogStatusHTML({ tone: "on", title: "Plays automatically", text: "On: cast", buttons: [{ label, action: "copy-spell" }, { label: "Leave out of Plug & play", action: "catalog-exclude" }] });
+  try {
+    setPlayerLibrary(true);
+    const fresh = status("Customize");
+    assert.match(fresh, /Not in your animations yet/);
+    assert.match(fresh, /data-action="copy-spell"[^>]*class="an-primary"[^>]*>Customize → My animations/);
+    assert.doesNotMatch(fresh, /catalog-exclude|Plays automatically/);
+    assert.match(status("Edit customization"), /You have your own version[\s\S]*Open my version/);
+    assert.equal(plugModeHTML(state, 10, false), "");
+    assert.equal(cardToggleHTML(state, "ex", "in", { id: "x", name: "X" }), "");
+    assert.equal(cardSlotClass(state, "x"), "");
+    // No Customize (an entry set elsewhere): its status stays, without buttons.
+    assert.doesNotMatch(catalogStatusHTML({ title: "Set by a module setting", buttons: [{ label: "Use animation", action: "use-spell" }] }), /use-spell/);
+  } finally { setPlayerLibrary(false); }
+  assert.match(status("Customize"), /catalog-exclude/, "the GM's view is unchanged");
+});
