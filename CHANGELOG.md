@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 4.3.2
+
+Players see conditions on NPCs again.
+
+- **Condition looks on NPCs show to players.** With PF2e's "Hide Condition Update Message" on, players saw a PC's condition look (Prone) but not an NPC's. That setting only hides the chat and floating messages; the condition icons stay on the token, so the look now shows too, to anyone who can see the token. A token the GM hid, or one a player can't see, still shows nothing.
+
 ## 4.3.1
 
 Players can look at the GM's animations without copying them, and translated D&D 5e names can show their English original.
