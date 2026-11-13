@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 4.3.0
+
+Torchlight and moonlight glint on the water as they really would, a clearer river current, creature moves you can edit, and libWrapper for every wrap.
+
+- **Real glints instead of pale blotches.** A torch or lamp by the water drew a long column of soft, stamped-on bars, and the moon a path of round flecks. Seen from straight above, as a map is, water shows neither. It now shows glints worked out from its ripples: a flame's gather in a small twinkling cluster close round it, and the moon twinkles only when it is high. A torch held over the bank gives few; one at the water's edge or over it, more.
+- **Glints on any water, and only where the light reaches.** Swift water, the sea and falls glint too, wider and thinner. Each light's glints stop at walls and doors, never show on docks or bridges, and none show on water set to no reflections. They sit over the lighting, so a torch's own light cannot wash them out.
+- **A carried torch glints at once.** Lighting a torch at the water, or walking it there, shows its glints straight away, whether or not embers and motes are on.
+- **Current here.** On a water region's steps, "Speed" is now "Current here", "As the river" until you give the step its own. Current and Current here use the same words, and the Water section notes when the step showing overrides the river's Current, with a one-click way back.
+- **Edit a creature's moves.** Creature showcase steps get an Edit button: copy the built-in move (or start blank) into a recipe for this creature only, or for every creature with that ability. Edited steps show Edited and reopen your recipe. Movement opens the token's movement sounds. The NPC ability catalog gets Customize and Edit customization. A recipe bound to an actor's item now also matches that item on the actor's unlinked tokens.
+- **libWrapper for every wrap.** With libWrapper on, Animater no longer triggers its warnings about wrapping Foundry methods without it, or conflicting with itself: every method Animater wraps goes through libWrapper.
+
 ## 4.2.3
 
 Farm animals turn smoothly in tight places.
