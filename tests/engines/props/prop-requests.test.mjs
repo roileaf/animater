@@ -426,6 +426,26 @@ test("M1: Repair's wall batch names each wall once, its door note's restore over
   assert.deepEqual(mergeWallFixes([{ move: 1 }], [{ _id: "c", move: 2 }]), [{ _id: "c", move: 2 }]); // an update without an id is dropped
 });
 
+test("with Fire spreads on a fire area lights a prop instead of breaking it", () => {
+  const lit = validBreakRequest(areaReq(), ctx({ scene: scene({ fireSpreads: true }) }));
+  assert.equal(lit.catches, true);
+  assert.deepEqual(lit.fire, { heat: 100, burning: true, roundsLeft: 3 });
+  assert.deepEqual(lit.wallUpdates, []); // nothing is broken: no wall opened, no light put out
+  assert.deepEqual(lit.lightUpdates, []);
+  // The same request with the switch off breaks it exactly as it always has.
+  const broke = validBreakRequest(areaReq(), ctx());
+  assert.equal(broke.catches, undefined);
+  assert.equal(broke.ok, true);
+  assert.ok(broke.wallUpdates.length);
+  // It is still checked as a break is: a forged area and a tile already broken are refused, switch on or not.
+  assert.deepEqual(validBreakRequest(areaReq(), ctx({ scene: scene({ fireSpreads: true }), area: covering({ testPoint: () => false }) })), { ok: false, why: "area" });
+  const note = noteFor();
+  assert.deepEqual(validBreakRequest(areaReq(note), ctx({ scene: scene({ fireSpreads: true }), tile: barrel({ flags: { animater: { prop: { broken: note } } } }) })), { ok: false, why: "broken" });
+  // One already alight breaks as before (the area cannot light it twice).
+  const burning = barrel({ flags: { animater: { prop: { fire: { heat: 100, burning: true, roundsLeft: 2 } } } } });
+  assert.equal(validBreakRequest(areaReq(), ctx({ scene: scene({ fireSpreads: true }), tile: burning })).catches, undefined);
+});
+
 test("a fire that burnt out breaks the prop it was burning, on the GM's word alone", () => {
   // The round ticker's own cause: an ignite that names no area and no powder, which the GM makes on any of its scenes.
   const cause = { kind: "ignite", damageType: "fire", burnedOut: true, at: { x: 250, y: 250 } };

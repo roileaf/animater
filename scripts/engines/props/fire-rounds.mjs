@@ -1,5 +1,21 @@
-// When a fire's round comes round, which scenes it burns on, which walls stand between its sources and what they heat,
-// and the grass squares a region holds. Pure: no Foundry, no globals, no clocks of its own.
+// When a fire's round comes round, which scenes it burns on, what a fire area sets alight, which walls stand between
+// its sources and what they heat, and the grass squares a region holds. Pure: no Foundry, no globals, no clocks.
+import { fireRate, HEAT_CATCH, BURN_ROUNDS } from "./fire-spread.mjs";
+
+// What a fire area does to one thing it covers, with Fire spreads on: it sets alight whatever will take fire
+// instead of breaking it outright (it then burns its rounds and chars, which is the whole feature), and leaves
+// everything else to break exactly as it always has. The fire to write, or null for "break it as before":
+//   - Fire spreads off, or the cause is not a fire area: null, so nothing anywhere changes while the switch is off.
+//   - Black powder: null. A keg set off by fire goes off; it does not sit and smoulder.
+//   - Nothing that takes fire (fireRate 0: stone, metal, water in it): null, it breaks as before.
+//   - Already alight: null, and the break rules refuse it as they always did.
+// A thing that takes fire only by what it holds (a stone chest of books) catches too, though its own material would
+// never break: that is the point of the feature, and the round ticker rules what is left of it when the fire is out.
+export function areaCatch({ fireSpreads = false, kind = "", damageType = "", traits = null, fire = null } = {}) {
+  if (fireSpreads !== true || kind !== "area" || damageType !== "fire") return null;
+  if (traits?.contents === "powder" || !(fireRate(traits) > 0) || fire?.burning === true) return null;
+  return { heat: HEAT_CATCH, burning: true, roundsLeft: BURN_ROUNDS };
+}
 
 // How long a round lasts out of combat (a round of play), in ms. In combat the tracker's round is what counts.
 export const FIRE_PERIOD = 6000;

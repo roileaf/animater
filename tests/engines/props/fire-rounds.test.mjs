@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, wallBetween, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "../../../scripts/engines/props/fire-rounds.mjs";
+import { areaCatch, fireRoundDue, fireNextLast, fireReseed, fireScenesOf, wallBetween, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "../../../scripts/engines/props/fire-rounds.mjs";
 
 test("in combat a round comes from the tracker, out of combat from the clock", () => {
   assert.equal(fireRoundDue({ combat: { started: true, round: 3 }, last: { round: 2 } }), true);
@@ -25,6 +25,23 @@ test("a fire that never ticked is due, a combat not started goes by the clock", 
   // the round going back (a GM rewound the tracker) is not a new round
   assert.equal(fireRoundDue({ combat: { started: true, round: 2 }, last: { round: 5 } }), false);
   assert.equal(FIRE_PERIOD, 6000);
+});
+
+test("a fire area sets flammable things alight, and only with Fire spreads on", () => {
+  const wood = { material: "wood", contents: "none" }, fire = { kind: "area", damageType: "fire" };
+  assert.deepEqual(areaCatch({ fireSpreads: true, ...fire, traits: wood }), { heat: 100, burning: true, roundsLeft: 3 });
+  // Off: nothing at all changes, the area breaks it as it always has.
+  assert.equal(areaCatch({ fireSpreads: false, ...fire, traits: wood }), null);
+  // Only a fire area: cold, acid, a missed swing, a slam and a keg's blast all break as before.
+  assert.equal(areaCatch({ fireSpreads: true, kind: "area", damageType: "cold", traits: wood }), null);
+  assert.equal(areaCatch({ fireSpreads: true, kind: "miss", damageType: "fire", traits: wood }), null);
+  assert.equal(areaCatch({ fireSpreads: true, kind: "blast", damageType: "fire", traits: wood }), null);
+  // Nothing that takes fire, and nothing already alight.
+  assert.equal(areaCatch({ fireSpreads: true, ...fire, traits: { material: "stone", contents: "none" } }), null);
+  assert.equal(areaCatch({ fireSpreads: true, ...fire, traits: wood, fire: { burning: true, heat: 100 } }), null);
+  // A keg goes off instead of smouldering, and a thing flammable only by what it holds still catches.
+  assert.equal(areaCatch({ fireSpreads: true, ...fire, traits: { material: "wood", contents: "powder" } }), null);
+  assert.deepEqual(areaCatch({ fireSpreads: true, ...fire, traits: { material: "stone", contents: "books" } }), { heat: 100, burning: true, roundsLeft: 3 });
 });
 
 test("a reload or a handover costs a fire nothing: it is seeded, not run", () => {

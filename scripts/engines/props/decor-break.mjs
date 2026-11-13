@@ -6,7 +6,7 @@ import { CAVERN_KINDS, decorPlacements, DECOR_MOST } from "../motion/decor-regio
 import { DECOR_KINDS, hashText, paintedMaterial, paintSeedOf } from "../motion/decor-paint.mjs";
 import { webCorners } from "../motion/webs.mjs";
 import { readNote } from "./prop-break.mjs";
-import { validBreakRequest, burntOutCause } from "./prop-requests.mjs";
+import { validBreakRequest, gmFireCause } from "./prop-requests.mjs";
 import { resolveDecorProp, decorPropFlags, decorPropDefaults } from "./decor-options.mjs";
 
 // Each kind that breaks: its material and style as the prop rules read them, and where the rules need more than the kind's
@@ -242,15 +242,20 @@ export function validDecorBreakRequest({ key, cause, note } = {}, { region, scen
   const no = (why) => ({ ok: false, why });
   if (scene?.flags?.animater?.breakableProps !== true) return no("off");
   if (region?.settings?.canBreak !== true) return no("off");
-  // Spilled powder set off by a fire area; a decoration whose own fire burnt out (burntOutCause) breaks as any other does.
-  if (cause?.kind === "ignite" && !burntOutCause(cause)) return decorIgniteCheck({ key, cause, note }, { region, scene, grid, sender, area, now, index });
+  // Spilled powder set off by a fire area; a decoration the spreading fire caught or burnt out (gmFireCause) breaks as any other does.
+  if (cause?.kind === "ignite" && !gmFireCause(cause)) return decorIgniteCheck({ key, cause, note }, { region, scene, grid, sender, area, now, index });
   const { keys, views } = index(region, grid), view = views.find((v) => v.decor.key === key);
   if (!view) return no("missing");
   if (drawn && !drawn(view)) return no("undrawn");
   if (liveBroken(readDecorBroken(region.broken), keys).some((e) => e.key === key) || (queued ?? []).includes(key)) return no("broken");
-  const out = validBreakRequest({ cause, note }, { tile: view, walls: [], scene, grid, sender, target, mover, roll, lights, source, levels, area, now });
+  // The fire this decoration already carries (its region's decorFire, read through the accessor by the caller), so a
+  // fire area knows not to light one that is burning.
+  const alight = region?.fire && typeof region.fire === "object" ? region.fire[key] ?? null : null;
+  const out = validBreakRequest({ cause, note }, { tile: alight ? { ...view, fire: alight } : view, walls: [], scene, grid, sender, target, mover, roll, lights, source, levels, area, now });
   if (!out.ok) return out;
   const { d } = view.decor;
+  // Caught rather than broken (Fire spreads): the fire to save under this key, and nothing broken at all.
+  if (out.catches) return { ok: true, catches: true, fire: out.fire, entry: { key, kind: d.kind, x: Math.round(d.x), y: Math.round(d.y), note: out.note } };
   return { ok: true, entry: { key, kind: d.kind, x: Math.round(d.x), y: Math.round(d.y), note: out.note }, rubble: out.rubble, fall: out.fall,
     explode: out.explode === true, fire: out.fire === true, lightUpdates: out.lightUpdates ?? [] };
 }
