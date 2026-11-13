@@ -66,9 +66,9 @@ test('a swimmer\'s path walks from where it leaves the water, not once it stops'
   const centred = swimOutWaypoints({ x: 0, y: 0, action: 'swim' }, [{ x: 600, y: 0 }], shore, { step: 25, centre: (p) => ({ x: p.x + 50, y: p.y + 50 }) });
   assert.equal(centred[0].x, 250, 'its middle reaches the bank when its corner is 50 px short of it');
   const main = read('scripts/main.mjs');
-  assert.match(main, /proto\._preUpdate = walkOut;/, 'every move (a drag, the keys, the API) is walked out where it leaves the water');
+  assert.match(main, /const wrap = function \(wrapped, changed, options, user\) \{ swimOutHere\(this, changed, options\);/, 'every move (a drag, the keys, the API) is walked out where it leaves the water, inside the one libWrapper wrapper');
   assert.match(main, /const move = options\?\.movement\?\.\[doc\?\.id\];/, 'from the waypoints Foundry is handed, before it reads them');
-  assert.match(main, /Hooks\.once\("setup", installSwimOut\);/);
+  assert.doesNotMatch(main, /proto\._preUpdate = walkOut/, 'no wrapping behind libWrapper');
 });
 
 // Roi: "it changes it but the floor still considers the swim footprint for some reason". The marks read the token's
@@ -86,5 +86,5 @@ test('marks and sounds go by the waypoint being animated, not the token\'s chose
 test('a move rewritten to end walking also sets the token\'s mode to walk, in the same update', () => {
   const main = read('scripts/main.mjs');
   assert.match(main, /if \(changed && out\.at\(-1\)\?\.action === walk\) changed\.movementAction = walk;/);
-  assert.match(main, /swimOutMove\(this, options, changed\);/);
+  assert.match(main, /swimOutMove\(doc, options, changed\);/);
 });

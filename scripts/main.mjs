@@ -3180,12 +3180,19 @@ const groundTheMove = (doc, changed, options) => {
   if (waypoints) waypoints.forEach((w, i) => { w.elevation = heights[i]; });
   if ("x" in changed || "y" in changed || "elevation" in changed) changed.elevation = heights.at(-1);
 };
+// Foundry methods are wrapped through libWrapper when it is on (it then sees every module wrapping them, and warns of none of ours),
+// else in place: wrap(wrapped, ...args) with the method it wraps as `wrapped`. "MIXED" for a wrap that may answer without it.
+const wrapMethod = (target, wrap, type = "WRAPPER") => {
+  if (globalThis.libWrapper) { libWrapper.register(ID, target, wrap, type); return; }
+  const path = target.split("."), name = path.pop(), owner = path.reduce((o, k) => o?.[k], globalThis), own = owner?.[name];
+  if (typeof own !== "function") throw new Error(`no ${target}`);
+  owner[name] = function (...args) { return wrap.call(this, (...a) => own.apply(this, a), ...args); };
+};
 Hooks.once("setup", () => {
   try {
     const target = "CONFIG.Token.documentClass.prototype._preUpdate";
-    const wrap = function (wrapped, changed, options, user) { try { groundTheMove(this, changed, options); } catch (err) { console.warn("Animater | heights", err); } return wrapped(changed, options, user); };
-    if (globalThis.libWrapper) libWrapper.register(ID, target, wrap, "WRAPPER");
-    else { const proto = CONFIG.Token.documentClass.prototype, original = proto._preUpdate; proto._preUpdate = function (changed, options, user) { return wrap.call(this, (c, o, u) => original.call(this, c, o, u), changed, options, user); }; }
+    const wrap = function (wrapped, changed, options, user) { swimOutHere(this, changed, options); try { groundTheMove(this, changed, options); } catch (err) { console.warn("Animater | heights", err); } return wrapped(changed, options, user); };
+    wrapMethod(target, wrap);
   } catch (err) { console.warn("Animater | heights: walking tokens keep their own elevation", err); }
 });
 // Under a bridge's end its cliff keeps its wall (flags.animater.bridgeAt: the bridge's height there): a token walking below is
@@ -3196,22 +3203,21 @@ Hooks.once("setup", () => {
 let movingFeet = null;
 Hooks.once("setup", () => {
   try {
-    const Sweep = foundry.canvas.geometry.ClockwiseSweepPolygon, testCollision = Sweep.testCollision, include = Sweep.prototype._testEdgeInclusion;
-    Sweep.testCollision = function (origin, destination, config = {}) {
+    wrapMethod("foundry.canvas.geometry.ClockwiseSweepPolygon.testCollision", function (testCollision, origin, destination, config = {}) {
       const doc = config?.type === "move" ? config.source?.object?.document : null;
-      if (!doc || !Number.isFinite(Number(origin?.elevation))) return testCollision.call(this, origin, destination, config);
+      if (!doc || !Number.isFinite(Number(origin?.elevation))) return testCollision(origin, destination, config);
       const was = movingFeet; movingFeet = Number(origin.elevation) - ((Number(doc.depth) || 1) * (Number(doc.parent?.grid?.distance) || HEIGHT_STEP)) / 2;
-      try { return testCollision.call(this, origin, destination, config); } finally { movingFeet = was; }
-    };
-    Sweep.prototype._testEdgeInclusion = function (edge, edgeTypes) {
+      try { return testCollision(origin, destination, config); } finally { movingFeet = was; }
+    });
+    wrapMethod("foundry.canvas.geometry.ClockwiseSweepPolygon.prototype._testEdgeInclusion", function (include, edge, edgeTypes) {
       // (A sweep asked to leave some walls out: the light reaching raised ground over walls no taller than it, below.)
       if (typeof this.config?.animaterIgnore === "function" && this.config.animaterIgnore(edge)) return false;
       // (A clifftop's or hilltop's rim hides what lies past it (flags.animater.seenOver: the top's elevation) from eyes below it, not
       // from those up at it or higher. Roi: "if theres 40 ft between celdar and ezren they should NOT be able to see each other".)
       if (this.config?.type === "sight") { const wall = edge?.object?.document ?? edge?.object, over = Number(wall?.flags?.[ID]?.seenOver); if (Number.isFinite(over)) { const eye = Number(this.origin?.elevation ?? this.config?.source?.elevation ?? this.config?.source?.data?.elevation); if (Number.isFinite(eye) && eye >= over - 0.5) return false; } }
       if (movingFeet !== null && this.config?.type === "move") { const wall = edge?.object?.document ?? edge?.object, at = Number(wall?.flags?.[ID]?.bridgeAt); if (Number.isFinite(at) && movingFeet >= at - BRIDGE_REACH) return false; }
-      return include.call(this, edge, edgeTypes);
-    };
+      return include(edge, edgeTypes);
+    }, "MIXED");
   } catch (err) { console.warn("Animater | heights: bridge ends block everyone", err); }
 });
 // Light over short walls onto raised ground (engines/regions/light-spill.mjs): each light's own shape, as Foundry works it out,
@@ -3250,9 +3256,8 @@ Hooks.on("lightingRefresh", () => { for (const id of [...lightIslands.keys()]) i
 Hooks.on("canvasTearDown", () => { for (const id of [...lightIslands.keys()]) lightIslandsOf(id); });
 Hooks.once("setup", () => {
   try {
-    const proto = CONFIG.Canvas.lightSourceClass?.prototype, createShapes = proto?._createShapes; if (!createShapes || createShapes.animaterGrown) return;
-    const wrapped = function (...args) { const out = createShapes.apply(this, args); try { growLightShape(this); } catch (err) { runtime?.trace?.("raised ground", `light: ${err?.message ?? err}`); } return out; };
-    wrapped.animaterGrown = true; proto._createShapes = wrapped;
+    if (typeof CONFIG.Canvas.lightSourceClass?.prototype?._createShapes !== "function") return;
+    wrapMethod("CONFIG.Canvas.lightSourceClass.prototype._createShapes", function (createShapes, ...args) { const out = createShapes(...args); try { growLightShape(this); } catch (err) { runtime?.trace?.("raised ground", `light: ${err?.message ?? err}`); } return out; });
   } catch (err) { console.warn("Animater | light over walls onto raised ground", err); }
 });
 let lightsReshapeTimer = null;
@@ -4250,7 +4255,7 @@ const windowEdgeOf = (doc) => canvas?.edges?.get?.(doc.id) ?? doc.object?.edge ?
 const shapeWindowEdge = (doc) => applyWindowEdge(windowEdgeOf(doc), doc?.flags?.[ID]?.window, doc?.flags?.[ID]?.windowOpen === true, doc?.flags?.[ID]?.windowSlats === true, doc?.flags?.[ID]?.windowWalk === true);
 const lookAgainThroughWindows = () => { try { canvas.perception.update({ initializeLightSources: true, initializeVision: true, initializeSounds: true, refreshLighting: true, refreshVision: true }); } catch { /* not drawn */ } };
 // Foundry makes a wall's edge anew when it changes: each time, a window's state goes back on it.
-Hooks.once("setup", () => { try { const proto = CONFIG.Wall.documentClass.prototype, make = proto.initializeEdge; if (typeof make === "function") proto.initializeEdge = function (...args) { const out = make.apply(this, args); if (!args[0]?.deleted) shapeWindowEdge(this); return out; }; } catch { /* the canvas hook below still sees to it */ } });
+Hooks.once("setup", () => { try { if (typeof CONFIG.Wall.documentClass.prototype.initializeEdge === "function") wrapMethod("CONFIG.Wall.documentClass.prototype.initializeEdge", function (make, ...args) { const out = make(...args); if (!args[0]?.deleted) shapeWindowEdge(this); return out; }); } catch { /* the canvas hook below still sees to it */ } });
 Hooks.on("canvasReady", () => { let any = false; for (const wall of canvas.walls?.placeables ?? []) if (shapeWindowEdge(wall.document)) any = true; if (any) lookAgainThroughWindows(); });
 // Whose creatures are near it: asked here for a player, and asked again by the GM's screen, which has the last word.
 const windowReachedBy = (user, doc) => {
@@ -4945,17 +4950,14 @@ const clearRubbleAsk = async () => {
 // Foundry builds it; the light itself unchanged).
 const installFoulAir = () => {
   const proto = globalThis.CONFIG?.AmbientLight?.objectClass?.prototype;
-  if (typeof proto?._getLightSourceData !== "function" || proto._getLightSourceData.animaterFoul) return;
-  const own = Object.hasOwn(proto, "_getLightSourceData") ? proto._getLightSourceData : null;
-  const starved = function (...args) {
-    const data = (own ?? Object.getPrototypeOf(proto)._getLightSourceData).apply(this, args);
+  if (typeof proto?._getLightSourceData !== "function") return;
+  wrapMethod("CONFIG.AmbientLight.objectClass.prototype._getLightSourceData", function (wrapped, ...args) {
+    const data = wrapped(...args);
     try {
       if (data && foulPolygons.length && foulAt(data.x, data.y) && isFireLight(data)) { data.dim = (Number(data.dim) || 0) * 0.55; data.bright = (Number(data.bright) || 0) * 0.45; }
     } catch { /* Foundry's own */ }
     return data;
-  };
-  starved.animaterFoul = true;
-  proto._getLightSourceData = starved;
+  });
 };
 Hooks.once("ready", installFoulAir);
 // A world made before the heroic starter recipes gets them once, beside what the GM has (the active GM writes it).
@@ -7290,19 +7292,11 @@ const swimOutMove = (doc, options, changed) => {
   // chosen mode is this field, in the same update).
   if (changed && out.at(-1)?.action === walk) changed.movementAction = walk;
 };
-const installSwimOut = () => {
-  const proto = globalThis.CONFIG?.Token?.documentClass?.prototype;
-  if (typeof proto?._preUpdate !== "function" || proto._preUpdate.animaterSwimOut) return;
-  // The method passed on to is looked up at each call (a system or module may wrap Foundry's after this is installed).
-  const own = Object.hasOwn(proto, "_preUpdate") ? proto._preUpdate : null;
-  const walkOut = function (changed, options, user) {
-    try { if (this.parent === canvas?.scene && hotSetting("swimOutOnLand") !== false) swimOutMove(this, options, changed); } catch { /* the move as asked */ }
-    return (own ?? Object.getPrototypeOf(proto)._preUpdate).call(this, changed, options, user);
-  };
-  walkOut.animaterSwimOut = true;
-  proto._preUpdate = walkOut;
+// Run first inside the one _preUpdate wrapper (heights, above: through libWrapper when it is on, so it sees no foreign
+// wrapping), before the move is grounded.
+const swimOutHere = (doc, changed, options) => {
+  try { if (doc.parent === canvas?.scene && hotSetting("swimOutOnLand") !== false) swimOutMove(doc, options, changed); } catch { /* the move as asked */ }
 };
-Hooks.once("setup", installSwimOut);
 // The way a token moves right now (its marks, sounds and shadow go by it): the waypoint being animated, while a move
 // plays, else its chosen movement action. In Foundry the document's movementAction is the mode chosen for the token,
 // and each waypoint carries its own: a swimmer walked out of the water walks from the edge, its mode still Swim till it
@@ -7311,14 +7305,11 @@ const movingAction = new WeakMap();
 const actionNow = (t) => (t.movementAnimationPromise && movingAction.get(t)) || t.document?.movementAction;
 const installMoveAction = () => {
   const proto = globalThis.CONFIG?.Token?.objectClass?.prototype;
-  if (typeof proto?._prepareAnimation !== "function" || proto._prepareAnimation.animaterAction) return;
-  const own = Object.hasOwn(proto, "_prepareAnimation") ? proto._prepareAnimation : null;
-  const record = function (from, changes, context, options) {
+  if (typeof proto?._prepareAnimation !== "function") return;
+  wrapMethod("CONFIG.Token.objectClass.prototype._prepareAnimation", function (wrapped, from, changes, context, options) {
     try { if (context?.name === this.movementAnimationName && typeof options?.action === "string") movingAction.set(this, options.action); } catch { /* its chosen action, then */ }
-    return (own ?? Object.getPrototypeOf(proto)._prepareAnimation).call(this, from, changes, context, options);
-  };
-  record.animaterAction = true;
-  proto._prepareAnimation = record;
+    return wrapped(from, changes, context, options);
+  });
 };
 Hooks.once("setup", installMoveAction);
 // A move made some other way (a plain position update) that ends off the water: walked again, and up, once it stops.
@@ -7694,13 +7685,12 @@ const torchLean = new Map();
 // since Foundry builds the lights while the canvas draws.
 const holdsTorches = () => { try { return bothOn("heldTorches") && qualityRank(localQuality()) >= 2; } catch { return false; } };
 const orbsOn = () => { try { return bothOn("lightOrbs") && qualityRank(localQuality()) >= 2; } catch { return false; } };
+let torchLightIn = false;
 const installTorchLight = () => {
-  const proto = globalThis.CONFIG?.Token?.objectClass?.prototype;
-  if (typeof proto?._getLightSourceData !== "function" || proto._getLightSourceData.animaterTorch) return false;
-  // The method passed on to is looked up at each call (another module may wrap Foundry's after this is installed).
-  const own = Object.hasOwn(proto, "_getLightSourceData") ? proto._getLightSourceData : null;
-  const fromTheFlame = function (...args) {
-    const data = (own ?? Object.getPrototypeOf(proto)._getLightSourceData).apply(this, args);
+  if (torchLightIn || typeof globalThis.CONFIG?.Token?.objectClass?.prototype?._getLightSourceData !== "function") return false;
+  torchLightIn = true;
+  wrapMethod("CONFIG.Token.objectClass.prototype._getLightSourceData", function (wrapped, ...args) {
+    const data = wrapped(...args);
     try {
       const side = torchSide(this.document?.flags?.[ID]?.torchHand), kind = data && !data.disabled ? lightKindOf(this, data) : null;
       const grid = canvas?.grid?.size ?? 100, place = { x: data?.x, y: data?.y, width: this.w ?? grid, side, key: this.document?.id };
@@ -7709,9 +7699,7 @@ const installTorchLight = () => {
       if (at) { data.x = at.x; data.y = at.y; }
     } catch { /* Foundry's own origin */ }
     return data;
-  };
-  fromTheFlame.animaterTorch = true;
-  proto._getLightSourceData = fromTheFlame;
+  });
   return true;
 };
 // "Hide light icons on tokens": a token drawn holding its torch or lantern, or with a Light orb at its shoulder, leaves
@@ -7726,18 +7714,15 @@ const lightIconsOf = (token) => {
     .concat([...(actor.effects ?? [])].map((e) => ({ name: e.name, type: "effect", img: e.img, rules: [] })));
   return drawnLightIcons({ kind, items, torches: holdsTorches(), orbs: orbsOn() });
 };
-// Other modules wrap the same method (PF2e Effects Halo, through libWrapper, on Foundry's Token): the method we pass
-// on to is looked up at each call, never kept from when this was installed, so their wrapping always runs.
+// Other modules wrap the same method (PF2e Effects Halo, through libWrapper, on Foundry's Token): wrapped through libWrapper too.
+let lightIconsIn = false;
 const installLightIcons = () => {
-  const proto = globalThis.CONFIG?.Token?.objectClass?.prototype;
-  if (typeof proto?._drawEffect !== "function" || proto._drawEffect.animaterIcons) return false;
-  const own = Object.hasOwn(proto, "_drawEffect") ? proto._drawEffect : null;
-  const unlessDrawn = async function (src, tint) {
+  if (lightIconsIn || typeof globalThis.CONFIG?.Token?.objectClass?.prototype?._drawEffect !== "function") return false;
+  lightIconsIn = true;
+  wrapMethod("CONFIG.Token.objectClass.prototype._drawEffect", async function (wrapped, src, tint) {
     try { if (src && lightIconsOf(this)?.has(src)) return undefined; } catch { /* Foundry's own icons */ }
-    return (own ?? Object.getPrototypeOf(proto)._drawEffect).call(this, src, tint);
-  };
-  unlessDrawn.animaterIcons = true;
-  proto._drawEffect = unlessDrawn;
+    return wrapped(src, tint);
+  }, "MIXED");
   return true;
 };
 const redrawTokenIcons = () => { for (const t of canvas?.tokens?.placeables ?? []) { try { t.renderFlags.set({ redrawEffects: true }); } catch { /* gone */ } } };
@@ -10058,13 +10043,12 @@ function smashDoor(wall) {
 }
 Hooks.once("setup", () => {
   try {
-    const proto = foundry.canvas?.containers?.DoorControl?.prototype, own = proto?._onRightDown;
-    if (typeof own !== "function") return;
-    proto._onRightDown = function (event, ...rest) {
+    if (typeof foundry.canvas?.containers?.DoorControl?.prototype?._onRightDown !== "function") return;
+    wrapMethod("foundry.canvas.containers.DoorControl.prototype._onRightDown", function (own, event, ...rest) {
       if (game.user?.isGM && event?.shiftKey && propSafe("smash", () => smashDoor(this.wall)) === true) { event.stopPropagation?.(); return; }
       if (!event?.shiftKey && propSafe("force open", () => forceOpenFromDoor(this.wall, event)) === true) { event.stopPropagation?.(); return; }
-      return own.call(this, event, ...rest);
-    };
+      return own(event, ...rest);
+    }, "MIXED");
   } catch (e) { runtime?.trace("props", `door control: ${e?.message ?? e}`); }
 });
 // The first wall on a line ("sight" or "move"), and whether it is a door, on the shooter's level (Foundry otherwise
@@ -12998,7 +12982,7 @@ Hooks.once("ready", () => {
     view: { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y },
   });
   // Surface hits ask for a slight pitch shift so repeated blows vary; each player's own mix applies here.
-  installSoundPitch({ silent: () => !soundsOn(),
+  installSoundPitch({ libWrapper: globalThis.libWrapper, target: "foundry.audio.Sound.prototype._createNodes", silent: () => !soundsOn(),
     enabled: () => hotSetting("hitSounds") !== false,
     mix: () => ({ volume: hotSetting("surfaceVolume"), gore: hotSetting("surfaceGore"), echo: hotSetting("surfaceEcho") }),
     // Where this player hears from: their token, else the middle of their view.
@@ -14864,6 +14848,6 @@ Hooks.on("updateUser", (user, changes) => {
 // Foundry's movement ruler: fade (or hide) the squares a token has already walked, so its dust, prints and splashes show
 // (integrations/walked-path.mjs; client setting "Walked path highlight").
 Hooks.once("ready", () => {
-  try { wrapRulerHighlight(CONFIG.Token?.rulerClass, () => { try { return hotSetting("walkedPathHighlight"); } catch { return "fade"; } }); }
+  try { wrapRulerHighlight(CONFIG.Token?.rulerClass, () => { try { return hotSetting("walkedPathHighlight"); } catch { return "fade"; } }, { libWrapper: globalThis.libWrapper, target: "CONFIG.Token.rulerClass.prototype._getGridHighlightStyle" }); }
   catch (error) { console.warn("Animater walked path:", error?.message ?? error); }
 });

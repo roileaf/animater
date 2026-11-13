@@ -97,8 +97,9 @@ export function createSoundShapeQueue({now = () => Date.now(), max = 1024} = {})
   };
 }
 
-export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis.foundry?.audio?.Sound, now = () => Date.now(), mix = () => null, listener = () => null, acoustics = () => null, enabled = () => true, room = () => null, muffle = () => false, silent = () => false } = {}) {
-  if (!hooks || !Sound?.prototype?._createNodes || Sound.prototype._createNodes.animaterPitch) return () => {};
+const pitched = new WeakSet();
+export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis.foundry?.audio?.Sound, now = () => Date.now(), mix = () => null, listener = () => null, acoustics = () => null, enabled = () => true, room = () => null, muffle = () => false, silent = () => false, libWrapper: lw = null, target = null, moduleId = "animater" } = {}) {
+  if (!hooks || !Sound?.prototype?._createNodes || Sound.prototype._createNodes.animaterPitch || pitched.has(Sound)) return () => {};
   // Waiting shaping by file: Sequencer announces a sound just before Foundry loads and starts it.
   const pending = createSoundShapeQueue({now});
   const teardown = hooks.on('canvasTearDown', () => pending.clear());
@@ -151,8 +152,8 @@ export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis
     return pending.take(src);
   };
   const create = Sound.prototype._createNodes;
-  function createNodes(...args) {
-    const result = create.apply(this, args), shape = pending.size ? take(this.src) : null;
+  function shaped(wrapped, ...args) {
+    const result = wrapped(...args), shape = pending.size ? take(this.src) : null;
     if (shape) {
       const source = this.sourceNode;
       if (shape.rate !== 1) {
@@ -205,7 +206,10 @@ export function installSoundPitch({ hooks = globalThis.Hooks, Sound = globalThis
     }
     return result;
   }
-  createNodes.animaterPitch = true;
-  Sound.prototype._createNodes = createNodes;
-  return () => { pending.clear(); hooks.off('canvasTearDown', teardown); hooks.off("createSequencerSound", id); hooks.off("animater.shapeSound", direct); if (Sound.prototype._createNodes === createNodes) Sound.prototype._createNodes = create; };
+  // Through libWrapper when given it and the method's path (it then warns of no foreign wrapping), else in place.
+  const viaLib = !!(lw && target);
+  let createNodes = null;
+  if (viaLib) { lw.register(moduleId, target, shaped, "WRAPPER"); pitched.add(Sound); }
+  else { createNodes = function (...args) { return shaped.call(this, (...a) => create.apply(this, a), ...args); }; createNodes.animaterPitch = true; Sound.prototype._createNodes = createNodes; }
+  return () => { pending.clear(); hooks.off('canvasTearDown', teardown); hooks.off("createSequencerSound", id); hooks.off("animater.shapeSound", direct); if (viaLib) { try { lw.unregister(moduleId, target); } catch { /* gone */ } pitched.delete(Sound); } else if (Sound.prototype._createNodes === createNodes) Sound.prototype._createNodes = create; };
 }

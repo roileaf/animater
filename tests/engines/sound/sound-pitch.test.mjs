@@ -293,3 +293,12 @@ test('a footstep is dulled and panned by distance but never made quieter (Foundr
  assert.equal(s.effects.length,3,'dull, pan and the hall\'s echo');
  uninstall();
 });
+
+test('installSoundPitch wraps through libWrapper when given it, once, and undoes it there', () => {
+ const {hooks,Sound}=fakes(),own=Sound.prototype._createNodes,made=[],gone=[];
+ const lw={register:(...a)=>made.push(a),unregister:(...a)=>gone.push(a)},target='foundry.audio.Sound.prototype._createNodes';
+ const undo=installSoundPitch({hooks,Sound,libWrapper:lw,target});installSoundPitch({hooks,Sound,libWrapper:lw,target});
+ assert.equal(made.length,1);assert.deepEqual([made[0][0],made[0][1],made[0][3]],['animater',target,'WRAPPER']);
+ assert.equal(Sound.prototype._createNodes,own,'the class itself untouched');
+ undo();assert.deepEqual(gone,[['animater',target]]);
+});
