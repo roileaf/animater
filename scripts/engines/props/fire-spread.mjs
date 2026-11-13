@@ -192,7 +192,8 @@ export function readFire(doc) {
   return { heat: hasHeat ? f.heat : 0, burning: f.burning === true, roundsLeft: Number.isFinite(f.roundsLeft) ? f.roundsLeft : 0 };
 }
 
-// The burning decorations a region has saved, keyed as decorBroken is; an empty object when it has none.
+// The burning decorations a region has saved, keyed as decorBroken is. Returns {} for an empty or missing flag (a region
+// keeps an empty object once every key is deleted), so read through this, never by testing the raw flag for truthiness.
 export function decorFireOf(region) {
   const raw = region?.flags?.animater?.decorFire;
   return raw && typeof raw === "object" && !Array.isArray(raw) ? { ...raw } : {};
@@ -204,7 +205,9 @@ export function dropLostDecorFire(stored, liveKeys) {
   return Object.fromEntries(Object.entries(stored ?? {}).filter(([key]) => live.has(key)));
 }
 
-// The saved fire of a region's grass squares, keyed by square index: { heat, burning, roundsLeft, charred? }; empty when none.
+// The saved fire of a region's grass squares, keyed by square index: { heat, burning, roundsLeft, charred? }.
+// Returns {} for an empty or missing flag (it is left empty once every key is deleted), so read through this, never by
+// testing the raw flag for truthiness.
 export function fireCellsOf(region) {
   const raw = region?.flags?.animater?.fireCells;
   return raw && typeof raw === "object" && !Array.isArray(raw) ? { ...raw } : {};
@@ -222,10 +225,12 @@ function entryChange(key, { heat, caught, out, burning }, rounds, saved, outEntr
 }
 
 // Foundry merges an object-valued flag, so a removed key must be deleted by name: `<flag>.-=<key>` with a null value.
-// Returns the update fields for one keyed flag: the changed entries together, and a per-key delete for each removed key.
+// Returns the update fields for one keyed flag: each changed entry at its own path (`<flag>.<key>`) and a per-key delete for
+// each removed key. The whole flag is never written next to a delete under it, so no field depends on key order.
+// (A key is never dotted: decoration keys are kind:x:y:tag and grass keys are indices.)
 function keyedFlagFields(flag, changed, removed) {
   const fields = {};
-  if (Object.keys(changed).length) fields[flag] = changed;
+  for (const [key, value] of Object.entries(changed)) fields[`${flag}.${key}`] = value;
   for (const key of removed) fields[`${flag}.-=${key}`] = null;
   return fields;
 }
@@ -233,14 +238,15 @@ function keyedFlagFields(flag, changed, removed) {
 // A round's result as document updates for updateEmbeddedDocuments (plain objects, nothing applied).
 // `step` is a spreadStep result (heat, caught, out, burning), for tiles and decorations by id. `tiles` lists the tiles in play
 // ({ id }). `regions` lists the regions holding fire, each shaped { id, keys, cells, flags }: `keys` are the region's live
-// decoration keys, `cells` the indices of its live grass squares, `flags` its saved flags. `cellStep` is a cellStep result
-// (heat, caught, out, burning, keyed by index) for the regions' grass squares.
+// decoration keys, `cells` the indices of its live grass squares, `flags` its saved flags. `cellSteps` maps a region's id
+// to that region's own cellStep result (heat, caught, out, burning, keyed by index): grass indices are per region, so a
+// region only ever reads the step filed under its own id, and one with no entry gets no grass changes.
 // Order everywhere: out beats caught beats still-burning (one round fewer left) beats heated. A thing that catches starts at
 // BURN_ROUNDS (CELL_ROUNDS for grass) and is not counted down that same round. A tile that goes out has its fire flag removed
 // (`-=` with null, as repair does). A decoration that goes out, or whose key is no longer painted, is deleted from decorFire
 // by key; a grass square that goes out is kept as charred (never relights) and one that is no longer there is deleted by key.
 // A region gets one update holding both flags' changes.
-export function fireUpdatesFor(step, { tiles = [], regions = [], cellStep: cs = null } = {}) {
+export function fireUpdatesFor(step, { tiles = [], regions = [], cellSteps = {} } = {}) {
   const lists = (s, idOf) => ({
     heat: new Map((s?.heat ?? []).map((h) => [idOf(h), h.heat])),
     caught: new Set((s?.caught ?? []).map((c) => idOf(c))),
@@ -248,7 +254,7 @@ export function fireUpdatesFor(step, { tiles = [], regions = [], cellStep: cs = 
     burning: new Map((s?.burning ?? []).map((b) => [idOf(b), b])),
   });
   const things = lists(step, (x) => (typeof x === "object" ? x.id : x));
-  const squares = lists(cs, (x) => String(typeof x === "object" ? x.i : x));
+  const squaresOf = (regionId) => lists(cellSteps instanceof Map ? cellSteps.get(regionId) : cellSteps?.[regionId], (x) => String(typeof x === "object" ? x.i : x));
   const tileUpdates = [];
   for (const t of tiles ?? []) {
     const path = writeFirePath(t?.id);
@@ -268,6 +274,7 @@ export function fireUpdatesFor(step, { tiles = [], regions = [], cellStep: cs = 
       const next = entryChange(key, things, BURN_ROUNDS, stored[key], null);
       if (next) changed[key] = next;
     }
+    const squares = squaresOf(r.id);
     const savedCells = fireCellsOf(r);
     const liveCells = new Set((r.cells ?? []).map(String));
     const cellChanged = {};
