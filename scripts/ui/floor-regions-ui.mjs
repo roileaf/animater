@@ -1,7 +1,7 @@
 // Experimental water proposals. The form, the create plan and the image read are pure and exported.
 // The window takes what it needs as options. Nothing here runs until a GM clicks the Regions tool.
 
-import { detectWater, selectColourAt, areaPixels, mergeAreaProposals, fitSize, toRegionData, editableFloorRegionIds, areaProposalFromLoops, traceProposals, WATER_TUNING, AREA_FLOORS, floorName, floorColour, isAreaFloor, GENERATED_MARK } from "../engines/regions/floor-detect.mjs";
+import { detectWater, selectColourAt, areaPixels, mergeAreaProposals, fitSize, toRegionData, editableFloorRegionIds, areaProposalFromLoops, traceProposals, WATER_TUNING, AREA_FLOORS, floorName, floorColour, isAreaFloor, GENERATED_MARK, caveRegionsOn, caveWordOf } from "../engines/regions/floor-detect.mjs";
 import { planesFrom, solidMask, project, bindingFromProposal, levelList, tileFrameIsPlain } from "../engines/regions/image-plane.mjs";
 import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindOf, caveKindFlags, TEXTURE_STYLES, STEP_EDGE, stepEdge, stepListOf, stepIndexOf, changeStep } from "../engines/motion/region-steps.mjs";
 import { outlinePoint, hitOutline, changeVertex, validateOutline, smoothOutline, unionOutlines, subtractOutlines } from "../engines/regions/area-outline.mjs";
@@ -605,29 +605,42 @@ function coverDocument(proposal, plane, { imageWidth, imageHeight, levelId }) {
   };
 }
 
+// A saved region's outline in map image pixels: its traced loops on a tile, else Foundry's geometry, else its polygons.
+function regionImageLoops(region, { sceneRect, width, height, plane = null }) {
+  const binding = region.flags?.animater?.imageRegion;
+  const loops = [];
+  const add = (points, hole) => loops.push({ hole, points: Array.from(points, (value, i) => {
+    const limit = i % 2 ? height : width;
+    const at = (value - (i % 2 ? sceneRect.y : sceneRect.x)) * limit / (i % 2 ? sceneRect.height : sceneRect.width);
+    return Math.abs(at) < 1e-8 ? 0 : Math.abs(at - limit) < 1e-8 ? limit : at;
+  }) });
+  if (plane?.id?.kind === "tile" && binding?.loops?.length) {
+    loops.push(...loopsFromBinding(binding, width, height));
+  } else if (region.polygonTree?.children) {
+    const visit = (node) => { for (const child of node.children ?? []) { add(child.points, child.isHole); visit(child); } };
+    visit(region.polygonTree);
+  } else {
+    for (const shape of region.shapes ?? []) {
+      if (shape.type !== "polygon") throw new Error("This saved region needs Foundry's region geometry to open.");
+      add(shape.points, shape.hole === true);
+    }
+  }
+  return loops;
+}
+
+/** The level's cave growth regions the Map painting brush made, as the brush sees floor regions: { regionId, floor (its
+ *  `cavern` word), loops, pixels }. */
+export function savedCaveAreas(regions, { levelId, sceneRect, width, height } = {}) {
+  return caveRegionsOn(regions, levelId).map((region) => ({ ...areaProposalFromLoops(regionImageLoops(region, { sceneRect, width, height }), width, height), regionId: region.id, floor: caveWordOf(region.flags.animater), cave: true }))
+    .filter((area) => area.loops.length);
+}
+
 export function savedAreaProposals(regions, { levelId, sceneRect, width, height, plane = null } = {}) {
   const editable = new Set(editableFloorRegionIds(regions, levelId));
   const list = Array.isArray(regions) ? regions : regions?.contents ?? [];
   const overhead = plane?.role === "overhead";
   return list.filter((region) => onPicture(region, plane, levelId, editable)).map((region, index) => {
-    const binding = region.flags?.animater?.imageRegion;
-    const loops = [];
-    const add = (points, hole) => loops.push({ hole, points: Array.from(points, (value, i) => {
-      const limit = i % 2 ? height : width;
-      const at = (value - (i % 2 ? sceneRect.y : sceneRect.x)) * limit / (i % 2 ? sceneRect.height : sceneRect.width);
-      return Math.abs(at) < 1e-8 ? 0 : Math.abs(at - limit) < 1e-8 ? limit : at;
-    }) });
-    if (plane?.id?.kind === "tile" && binding?.loops?.length) {
-      loops.push(...loopsFromBinding(binding, width, height));
-    } else if (region.polygonTree?.children) {
-      const visit = (node) => { for (const child of node.children ?? []) { add(child.points, child.isHole); visit(child); } };
-      visit(region.polygonTree);
-    } else {
-      for (const shape of region.shapes ?? []) {
-        if (shape.type !== "polygon") throw new Error("This saved region needs Foundry's region geometry to open.");
-        add(shape.points, shape.hole === true);
-      }
-    }
+    const loops = regionImageLoops(region, { sceneRect, width, height, plane });
     const own = region.flags?.animater ?? {};
     const kind = waterKindOf(own);
     const floor = overhead ? NO_FLOOR : (isAreaFloor(own.floor) ? own.floor : "water");

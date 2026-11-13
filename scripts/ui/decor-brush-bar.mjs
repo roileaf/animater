@@ -5,7 +5,8 @@
 import { DECOR_IDS, DECOR_KINDS } from '../engines/motion/decor-paint.mjs';
 import { DECOR_DEFAULT_KINDS } from '../engines/motion/decor-regions.mjs';
 import { decorPropRows } from './decor-prop-options.mjs';
-import { AREA_FLOORS, floorColour, floorName } from '../engines/regions/floor-detect.mjs';
+import { AREA_FLOORS, floorColour, floorName, caveColour } from '../engines/regions/floor-detect.mjs';
+import { CAVE_AMOUNT, CAVE_CHOICES, caveMenu, WATER_KINDS, TEXTURE_STYLES } from '../engines/motion/region-steps.mjs';
 import { CROSSING_KINDS } from '../engines/regions/heights.mjs';
 
 export const BRUSH_SIZE = Object.freeze({ min: 0.5, max: 6, usual: 1.5 });
@@ -20,6 +21,14 @@ export const BRUSH_TOL = Object.freeze({ min: 5, max: 80, usual: 32 });
 export const BRUSH_EDGE = Object.freeze({ min: 0, max: 3, usual: 1 });
 // Whether a floor can stand over water (a deck, a jetty, a bridge): never water or lava itself.
 export const canStandOverWater = (floor) => !!floor && !['water', 'lava', 'cavern'].includes(floor);
+// The Floors tab's tiles: every floor, then Cave, which paints cave growth (glowing fungus, crystals, mist...) over whatever
+// floor is there, as the region panel's Cave kind: its own regions, kept apart from the floors'.
+export const BRUSH_FLOORS = Object.freeze([...AREA_FLOORS, 'cavern']);
+// What Cave holds, as the region panel's Cavern section offers it (lava is a floor of its own), and every growth under More.
+export const BRUSH_CAVE_KINDS = Object.freeze(CAVE_CHOICES.filter(([key]) => key !== 'lava'));
+export const BRUSH_CAVE_MORE = Object.freeze([['fungus', 'Glowing fungus'], ['crystals', 'Crystals'], ['mist', 'Mist on the floor'], ['webs', 'Cobwebs'], ['wet', 'Wet walls'], ['steam', 'Steam vents'], ['foul', 'Bad air']]);
+const tileName = (id) => (id === 'cavern' ? 'Cave' : floorName(id));
+const tileColour = (id, cave) => (id === 'cavern' ? caveColour(cave) : floorColour(id));
 const TEXTURE_CHOICES = [['', 'As the scene says'], ['on', 'Paint it'], ['off', "Don't paint it"]];
 export const EDGE_CHOICES = Object.freeze([
   ['off', 'Off', 'Fill the whole ring.'],
@@ -36,7 +45,7 @@ const INDOOR = ["bed","rug","bookshelf","strongbox","hearth","desk","throne","al
 const WATER = ["lilyPads","cattails","streamRock","steppingStones","rowboat","dock","mooringPost","waterDebris","reeds","puddle","log","rock","boulder","pebbles","moss"];
 export const BRUSH_PLACES = Object.freeze([['surface', 'Outdoors'], ['town', 'Town'], ['indoor', 'Indoors'], ['water', 'Waterside'], ['cave', 'Underground']]);
 const placeWhere = (place) => (place === 'cave' ? 'cave' : 'surface');
-const remembered = { where: 'surface', kinds: { surface: [DECOR_DEFAULT_KINDS.surface[0]], town: ['well'], indoor: ['bed'], water: ['lilyPads'], cave: [DECOR_DEFAULT_KINDS.cave[0]] }, size: BRUSH_SIZE.usual, thick: BRUSH_THICK.usual, scale: BRUSH_SCALE.usual, tall: BRUSH_TALL.usual, turn: null, lock: null, props: {}, tab: 'floors', floor: 'grass', edges: 'colour', edgesChosen: false, tol: BRUSH_TOL.usual, edge: BRUSH_EDGE.usual, texture: '', overWater: false, more: false, heightMode: 'raise', crossKind: 'ramp' };
+const remembered = { where: 'surface', kinds: { surface: [DECOR_DEFAULT_KINDS.surface[0]], town: ['well'], indoor: ['bed'], water: ['lilyPads'], cave: [DECOR_DEFAULT_KINDS.cave[0]] }, size: BRUSH_SIZE.usual, thick: BRUSH_THICK.usual, scale: BRUSH_SCALE.usual, tall: BRUSH_TALL.usual, turn: null, lock: null, props: {}, tab: 'floors', floor: 'grass', edges: 'colour', edgesChosen: false, tol: BRUSH_TOL.usual, edge: BRUSH_EDGE.usual, texture: '', overWater: false, more: false, cave: 'fungus-green', caveTones: { fungus: 'green', crystals: 'amethyst' }, caveStep: null, caveSize: 1, caveAmount: 1, waterKind: 'still', styles: {}, heightMode: 'raise', crossKind: 'ramp' };
 /** How what the brush lays of a kind breaks (pure): the choices picked for that kind, only those offered for it and not Automatic,
  *  as saved on each brushed entry (`prop`); Burst only with Black powder. Remembered per kind. */
 export const brushPropFor = (kind) => Object.fromEntries(decorPropRows(kind, remembered.props[kind] ?? {}).filter((r) => r.value !== '' && (r.key !== 'burst' || remembered.props[kind]?.burst !== undefined)).map((r) => [r.key, r.value]));
@@ -47,7 +56,20 @@ export const BRUSH_TURN_STEP = Math.PI / 12;
 
 /** The brush's choices now (pure copy): where, the one kind picked there (as a list of one), size in squares, thickness, decoration scale.
  *  While a region's own brush is out, where is the region's and the kind one of its own. */
-export const brushChoices = () => { const kinds = remembered.lock ? [remembered.lock.pick] : [...remembered.kinds[remembered.where]]; return { where: remembered.lock?.where ?? placeWhere(remembered.where), place: remembered.lock ? null : remembered.where, kinds, size: remembered.size, thick: remembered.thick, scale: remembered.scale, tall: remembered.tall, turn: remembered.turn, prop: brushPropFor(kinds[0]), tab: remembered.lock ? 'decor' : remembered.tab, floor: remembered.floor, smart: remembered.edges !== 'off', edges: remembered.edges, edgesChosen: remembered.edgesChosen, tol: remembered.tol, edge: remembered.edge, texture: remembered.texture, overWater: remembered.overWater && canStandOverWater(remembered.floor), heightMode: remembered.heightMode, crossKind: remembered.crossKind }; };
+export const brushChoices = () => { const kinds = remembered.lock ? [remembered.lock.pick] : [...remembered.kinds[remembered.where]]; return { where: remembered.lock?.where ?? placeWhere(remembered.where), place: remembered.lock ? null : remembered.where, kinds, size: remembered.size, thick: remembered.thick, scale: remembered.scale, tall: remembered.tall, turn: remembered.turn, prop: brushPropFor(kinds[0]), tab: remembered.lock ? 'decor' : remembered.tab, floor: remembered.floor, smart: remembered.edges !== 'off', edges: remembered.edges, edgesChosen: remembered.edgesChosen, tol: remembered.tol, edge: remembered.edge, texture: remembered.texture, overWater: remembered.overWater && canStandOverWater(remembered.floor), heightMode: remembered.heightMode, crossKind: remembered.crossKind, cave: remembered.floor === 'cavern' ? caveChoice() : null, waterKind: remembered.waterKind, pattern: remembered.styles[remembered.floor] ?? '' }; };
+// What Cave lays (pure copy): the growth as its `cavern` word, and its stage, size and how many as the region panel saves
+// them (null while at their usual: the last stage, 100%).
+const caveMenuNow = () => caveMenu({ cavern: remembered.cave, caveStep: remembered.caveStep, caveSize: remembered.caveSize, caveAmount: remembered.caveAmount }, 'cavern');
+const caveChoice = () => { const menu = caveMenuNow();
+  return { cavern: remembered.cave, caveStep: menu?.steps && remembered.caveStep !== null ? menu.step : null, caveSize: menu?.steps && remembered.caveSize !== 1 ? menu.size : null, caveAmount: menu?.steps && remembered.caveAmount !== 1 ? menu.amount : null }; };
+/** Picks what Cave holds: a kind (fungus, crystals: in the colour last picked for it) or a whole word ("webs", "fungus-blue"). */
+export const setBrushCave = (value) => {
+  const [kind, tone] = String(value ?? '').split('-'); if (!kind || kind === 'lava') return;
+  const tones = caveMenu({ cavern: kind }, 'cavern')?.tones, was = remembered.cave.split('-')[0];
+  if (tone && tones?.some(([t]) => t === tone)) remembered.caveTones[kind] = tone;
+  remembered.cave = tones ? `${kind}-${remembered.caveTones[kind] ?? tones[0][0]}` : kind;
+  if (kind !== was) { remembered.caveStep = null; const range = caveMenu({ cavern: remembered.cave }, 'cavern')?.sizeRange; if (range) remembered.caveSize = Math.min(range.max, remembered.caveSize); }
+};
 /** The kinds a place offers in the bar (pure): 'town' its built things and street litter; 'surface' (outdoors) and 'cave' their
  *  own and those found in both, outdoors leaving built things to the town and the dungeon. */
 export const brushKindsFor = (where) => (where === 'town' ? TOWN.filter((id) => DECOR_KINDS[id]) : where === 'indoor' ? INDOOR.filter((id) => DECOR_KINDS[id]) : where === 'water' ? WATER.filter((id) => DECOR_KINDS[id]) : DECOR_IDS.filter((id) => (DECOR_KINDS[id].set === 'both' || DECOR_KINDS[id].set === where) && !(where === 'surface' && BUILT.has(id))));
@@ -95,12 +117,15 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
     head.append(iconBtn('fa-solid fa-rotate-left', 'Undo (Ctrl+Z)', status.undo, () => onUndo()), iconBtn('fa-solid fa-rotate-right', 'Redo (Ctrl+Shift+Z)', status.redo, () => onRedo()));
     const close = el('button', 'an-db-close an-mp-icon'); close.type = 'button'; close.setAttribute('aria-label', 'Close'); close.title = 'Close (Esc)'; close.innerHTML = '<i class="fa-solid fa-xmark"></i>'; close.addEventListener('click', () => { api.close(); onClose(); }); head.append(close);
     const body = el('div', 'an-mp-body');
-    const slider = (label, bounds, key, step, unit = '') => { const box = el('label', 'an-db-range'), s = el('input'), shown = el('b', '', `${remembered[key]}${unit}`); s.type = 'range'; s.min = String(bounds.min); s.max = String(bounds.max); s.step = String(step); s.value = String(remembered[key]); s.addEventListener('input', () => { remembered[key] = Number(s.value); shown.textContent = `${s.value}${unit}`; onChange(); });
+    const slider = (label, bounds, key, step, unit = '', fmt = (v) => `${v}${unit}`) => { const box = el('label', 'an-db-range'), s = el('input'), shown = el('b', '', fmt(remembered[key])); s.type = 'range'; s.min = String(bounds.min); s.max = String(bounds.max); s.step = String(step); s.value = String(remembered[key]); s.addEventListener('input', () => { remembered[key] = Number(s.value); shown.textContent = fmt(Number(s.value)); onChange(); });
       // The wheel over a slider moves it a step.
       s.addEventListener('wheel', (e) => { e.preventDefault(); const v = Math.min(bounds.max, Math.max(bounds.min, Number(s.value) + (e.deltaY < 0 ? step : -step))); s.value = String(Math.round(v * 100) / 100); s.dispatchEvent(new Event('input')); }, { passive: false });
       box.append(el('span', '', label), s, shown); return box; };
     const choice = (label, options, value, save) => { const box = el('label', 'an-db-prop'), input = el('select'); for (const [v, l] of options) { const o = el('option', '', l); o.value = v; o.selected = v === value; input.append(o); } input.addEventListener('change', () => { save(input.value); draw(); onChange(); }); box.append(el('span', '', label), input); return box; };
     const tick = (label, key, tip) => { const box = el('label', 'an-mp-tick'), input = el('input'); input.type = 'checkbox'; input.checked = remembered[key] === true; input.addEventListener('change', () => { remembered[key] = input.checked; onChange(); }); box.title = tip; box.append(input, el('span', '', label)); return box; };
+    const seg = (label, options, value, save, data) => { const box = el('div', 'an-db-seg'); if (label) box.append(el('span', '', label));
+      for (const [key, text] of options) { const b = el('button', key === value ? 'an-db-on' : '', text); b.type = 'button'; b.dataset[data] = String(key); b.setAttribute('aria-pressed', String(key === value)); b.addEventListener('click', () => { save(key); draw(); onChange(); }); box.append(b); }
+      return box; };
     const grid = el('div', 'an-db-chips an-mp-grid');
     const row = el('div', 'an-db-row an-mp-row'), extra = el('div', 'an-db-row an-db-props an-mp-extra');
     const edgeButtons = () => { const edges = el('div', 'an-db-seg an-mp-edges'); edges.append(el('span', '', 'Edges'));
@@ -128,17 +153,35 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
       }
     } else if (floors) {
       // Floors: a swatch each; the brush and Smart edges; the rest under More.
-      for (const id of AREA_FLOORS) {
+      for (const id of BRUSH_FLOORS) {
         const on = remembered.floor === id, t = el('button', on ? 'an-mp-tile an-db-on' : 'an-mp-tile'); t.type = 'button'; t.setAttribute('aria-pressed', String(on)); t.dataset.floor = id;
-        const sw = el('span', 'an-mp-swatch'); sw.style.background = floorColour(id); t.append(sw, el('span', '', floorName(id)));
+        if (id === 'cavern') t.title = 'Cave growth: glowing fungus, crystals, mist, cobwebs... painted over whatever floor is there.';
+        const sw = el('span', 'an-mp-swatch'); sw.style.background = tileColour(id, remembered.cave); t.append(sw, el('span', '', tileName(id)));
         t.addEventListener('click', () => { remembered.floor = id; if (!canStandOverWater(id)) remembered.overWater = false; draw(); onChange(); }); grid.append(t);
       }
       // Edges: where a dab stops. Colour: what matches the colour where the stroke began. Model: the outline the segmentation
       // model sees under the pointer (a bridge is not the pool under it). Off: the whole ring.
       row.append(slider('Brush', BRUSH_SIZE, 'size', 0.5, ' sq'), edgeButtons());
-      extra.append(slider('How alike', BRUSH_TOL, 'tol', 1), choice('Texture', TEXTURE_CHOICES, remembered.texture, (v) => { remembered.texture = v; }));
-      const soft = slider('Soft edge', BRUSH_EDGE, 'edge', 0.1, ' sq'); soft.title = "How far a new region's painted texture fades out past its line, in squares. 0 is a hard edge."; extra.append(soft);
-      if (canStandOverWater(remembered.floor)) extra.append(tick('Over water', 'overWater', 'A deck, a jetty or a bridge: standing over the water below.'));
+      if (remembered.floor === 'cavern') {
+        // Cave: what it holds, its colour and stage, as the region panel's Cavern section; size, how many and the rarer growth under More.
+        const menu = caveMenuNow(), kind = remembered.cave.split('-')[0];
+        const caveRow = el('div', 'an-db-row an-mp-row an-mp-cave');
+        caveRow.append(seg('Holds', BRUSH_CAVE_KINDS, menu ? kind : '', (v) => setBrushCave(v), 'caveKind'));
+        if (menu?.tones) caveRow.append(seg(menu.toneLabel, menu.tones, menu.tone, (tone) => setBrushCave(`${kind}-${tone}`), 'caveTone'));
+        if (menu?.steps) caveRow.append(seg('Stage', menu.steps.map((name, i) => [i, name]), menu.step, (i) => { remembered.caveStep = i; }, 'caveStep'));
+        body.append(caveRow);
+        const pct = (v) => `${Math.round(v * 100)}%`;
+        if (menu?.steps) extra.append(slider('Size', menu.sizeRange, 'caveSize', 0.05, '', pct), slider('How many', CAVE_AMOUNT, 'caveAmount', 0.1, '', pct));
+        const other = choice('Any growth', BRUSH_CAVE_MORE, kind, (v) => setBrushCave(v));
+        other.title = 'Every cave growth: cobwebs in its corners, water down its walls, steam from its floor, or bad air that starves the fires.'; extra.append(other, slider('How alike', BRUSH_TOL, 'tol', 1));
+      } else {
+        if (remembered.floor === 'water') { const kind = choice('Water', WATER_KINDS, remembered.waterKind, (v) => { remembered.waterKind = v; }); kind.title = 'What new water regions are: a still pool, a river, rapids, a waterfall or the sea (which way it flows is set in the region panel).'; row.append(kind); }
+        extra.append(slider('How alike', BRUSH_TOL, 'tol', 1), choice('Texture', TEXTURE_CHOICES, remembered.texture, (v) => { remembered.texture = v; }));
+        const styles = TEXTURE_STYLES[remembered.floor];
+        if (styles && remembered.texture !== 'off') { const style = choice('Style', styles, remembered.styles[remembered.floor] || styles[0][0], (v) => { remembered.styles[remembered.floor] = v; }); style.title = 'How new regions paint this floor, when they paint it.'; extra.append(style); }
+        const soft = slider('Soft edge', BRUSH_EDGE, 'edge', 0.1, ' sq'); soft.title = "How far a new region's painted texture fades out past its line, in squares. 0 is a hard edge."; extra.append(soft);
+        if (canStandOverWater(remembered.floor)) extra.append(tick('Over water', 'overWater', 'A deck, a jetty or a bridge: standing over the water below.'));
+      }
       if (onReadMap) { const read = el('button', 'an-mp-link', 'Read the whole map…'); read.type = 'button'; read.title = 'Open Floor regions to read the whole map at once'; read.addEventListener('click', () => onReadMap()); extra.append(read); }
     } else {
       // Decorations: the place and a search over its kinds, a picture each; the brush and density; the rest under More.
@@ -187,7 +230,7 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
     more.addEventListener('click', () => { remembered.more = !remembered.more; draw(); });
     row.append(more); extra.hidden = !remembered.more;
     body.append(grid, row, extra);
-    const keys = el('div', 'an-db-hint an-mp-keys', heights ? (remembered.heightMode === 'ramp' ? (remembered.crossKind === 'bridge' ? 'Drag from one raised part to another: a bridge as wide as the brush' : `Drag up across a raised edge: a ${remembered.crossKind}${remembered.crossKind === 'ramp' ? ' as wide as the brush' : ''}`) + ' · Shift-click removes one · 1 / 2 / 3: tabs · Saved as you go' : 'Drag: raise the ground · Wheel over it: higher or lower · Shift-drag rubs out · Alt-drag along an edge: open it (Alt+Shift closes) · 1 / 2 / 3: tabs') : `Drag to paint · Shift-drag rubs out${floors ? ' the picked floor' : ''} · Ctrl+wheel: brush size · 1 / 2 / 3: tabs · Saved as you paint`);
+    const keys = el('div', 'an-db-hint an-mp-keys', heights ? (remembered.heightMode === 'ramp' ? (remembered.crossKind === 'bridge' ? 'Drag from one raised part to another: a bridge as wide as the brush' : `Drag up across a raised edge: a ${remembered.crossKind}${remembered.crossKind === 'ramp' ? ' as wide as the brush' : ''}`) + ' · Shift-click removes one · 1 / 2 / 3: tabs · Saved as you go' : 'Drag: raise the ground · Wheel over it: higher or lower · Shift-drag rubs out · Alt-drag along an edge: open it (Alt+Shift closes) · 1 / 2 / 3: tabs') : `Drag to paint · Shift-drag rubs out${floors ? (remembered.floor === 'cavern' ? ' the picked growth' : ' the picked floor') : ''} · Ctrl+wheel: brush size · 1 / 2 / 3: tabs · Saved as you paint`);
     keys.title = heights ? 'Ctrl+Z undo · Ctrl+Shift+Z redo · Esc stops' : floors ? 'Ctrl+wheel: size · Alt+wheel: how alike · Ctrl+Z undo · Ctrl+Shift+Z redo · Esc stops' : 'Ctrl+wheel: size · Shift+wheel: rotate · Ctrl+Shift+wheel: density · Alt+wheel: decoration size · Ctrl+Z undo · Esc stops';
     bar.append(head, body, keys);
     if (typing) { const s = bar.querySelector('.an-db-search'); s?.focus(); s?.setSelectionRange(s.value.length, s.value.length); }

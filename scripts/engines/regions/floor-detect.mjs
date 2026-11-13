@@ -4,7 +4,7 @@
 // Both grow four-connected components, preserve contrasting enclosed objects, and simplify every loop.
 // These colour heuristics need GM review: similar roofs or vegetation can also match.
 
-import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindFlags, caveKindFlags } from "../motion/region-steps.mjs";
+import { WATER_KINDS, WATER_TOWARD, flowChoices, waterFlows, waterKindFlags, caveKindFlags, STEP_EFFECTS } from "../motion/region-steps.mjs";
 
 // Every threshold the detector uses. Tuned against map corpora that are no longer in this
 // repository, so the values cannot be re-measured here.
@@ -868,6 +868,28 @@ export function toRegionData(proposal, { sceneRect, imageWidth, imageHeight, lev
     flags: { animater },
   };
 }
+
+// Cave growth the Map painting brush lays (glowing fungus, crystals, mist, cobwebs...): a region with no floor of its own, as
+// the region panel's Cave kind makes, over whatever floor is there. Its own mark keeps it out of Floor regions, which reads
+// every region it made as a floor.
+export const CAVE_MARK = "cave-brush";
+// What a cave region holds, as its `cavern` word ("fungus-green", "mist"), or "" for none: lava is a floor, not growth.
+export const caveWordOf = (own) => { const word = String(own?.cavern ?? ""); return word && word !== "lava" && !word.startsWith("lava-") ? word : ""; };
+const CAVE_TINT = Object.freeze({ "fungus-green": "#7fd88a", "fungus-blue": "#6fc0f0", "fungus-violet": "#b48cf0", "crystals-amethyst": "#a46fd8", "crystals-quartz": "#d8e4ee", "crystals-rose": "#eea0c0", mist: "#c4c9d2", webs: "#d9d4c8", wet: "#5f9fd0", steam: "#eef0f2", drips: "#7fb4dc", foul: "#a3ae55" });
+export const caveName = (word) => STEP_EFFECTS.find(([key]) => key && key === word)?.[1] ?? "Cave";
+export const caveColour = (word) => CAVE_TINT[word] ?? "#a46fd8";
+/** A cave growth region's document data (pure), from loops in map image pixels as toRegionData takes them: no floor, the
+ *  growth (`cavern`) and, when given, its stage, size and how many, as the region panel's Cavern section saves them. */
+export function toCaveRegionData(proposal, { sceneRect, imageWidth, imageHeight, levelId, name, cavern = "fungus-green", caveStep = null, caveSize = null, caveAmount = null } = {}) {
+  const base = toRegionData(proposal, { sceneRect, imageWidth, imageHeight, levelId, floor: "stone" });
+  const word = caveWordOf({ cavern }) || "fungus-green", animater = { floor: "", cavern: word, generated: CAVE_MARK };
+  if (Number.isInteger(caveStep) && caveStep >= 0) animater.caveStep = caveStep;
+  if (Number.isFinite(caveSize)) animater.caveSize = caveSize;
+  if (Number.isFinite(caveAmount)) animater.caveAmount = caveAmount;
+  return { ...base, name: name || caveName(word), color: caveColour(word), flags: { animater } };
+}
+/** The level's cave growth regions the brush made, on that one level only (pure): those it may grow and rub out. */
+export const caveRegionsOn = (regions, levelId) => (Array.isArray(regions) ? regions : regions?.contents ?? []).filter((r) => r?.flags?.animater?.generated === CAVE_MARK && r.id != null && caveWordOf(r.flags.animater) && Array.from(r.levels ?? []).length === 1 && Array.from(r.levels)[0] === levelId);
 
 // Only single-level generator regions are editable here. Other regions remain outside the save plan.
 // A region drawn by hand has no generated flag. A region on several levels, on all levels, or on another level stays.

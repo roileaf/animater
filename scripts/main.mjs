@@ -280,7 +280,7 @@ import { createWebs, webCorners } from "./engines/motion/webs.mjs";
 import { createDecorations, decorWreckTile } from "./engines/motion/decorations.mjs";
 import { createDecorLights } from "./engines/motion/decor-lights.mjs";
 import { colourAt as floorColourAt, dabCells as floorDabCells, planFloorStroke, floorRegionName, modelMaskFor, hoverLine as floorHoverLine } from "./engines/regions/floor-brush.mjs";
-import { toRegionData as floorRegionData, floorColour as floorTint, fitSize as floorFitSize, areaPixels as floorAreaPixels } from "./engines/regions/floor-detect.mjs";
+import { toRegionData as floorRegionData, floorColour as floorTint, fitSize as floorFitSize, areaPixels as floorAreaPixels, toCaveRegionData, caveName, caveColour } from "./engines/regions/floor-detect.mjs";
 import { nearbyClicks as smartNearbyClicks, cleanSelection } from "./engines/regions/smart-select.mjs";
 import { decorSettings, strokeShapes, circleArea as decorCircle, decorPlacements, trunkWalls, carryDecor, shapesBox } from "./engines/motion/decor-regions.mjs";
 import { openBrushBar, brushChoices, BRUSH_EDGE } from "./ui/decor-brush-bar.mjs";
@@ -2606,10 +2606,13 @@ const startDecorBrush = (doc = null) => {
     const m = fl.map; fl.overlay.clear(); if (!m) return;
     try { fl.saved = m.ui.savedAreaProposals(canvas.scene?.regions, { levelId: m.levelId, sceneRect: m.rect, width: m.width, height: m.height }).filter((s) => s.floor && !s.overhead); }
     catch (err) { console.warn("Animater | map painting floors", err); fl.saved = []; }
+    // (Cave growth the brush laid: its own regions over the floors, drawn fainter in its growth's colour.)
+    try { fl.caves = m.ui.savedCaveAreas(canvas.scene?.regions, { levelId: m.levelId, sceneRect: m.rect, width: m.width, height: m.height }); }
+    catch (err) { console.warn("Animater | map painting cave growth", err); fl.caves = []; }
     const sx = m.rect.width / m.width, sy = m.rect.height / m.height, toScene = (pts) => Array.from(pts, (v, i) => (i % 2 ? m.rect.y + v * sy : m.rect.x + v * sx));
-    for (const s of fl.saved) {
-      const tint = Number.parseInt(String(floorTint(s.floor)).slice(1), 16) || 0x2c7da0;
-      fl.overlay.lineStyle(2, tint, 0.9); fl.overlay.beginFill(tint, 0.22);
+    for (const s of [...fl.saved, ...fl.caves]) {
+      const tint = Number.parseInt(String(s.cave ? caveColour(s.floor) : floorTint(s.floor)).slice(1), 16) || 0x2c7da0;
+      fl.overlay.lineStyle(2, tint, s.cave ? 0.7 : 0.9); fl.overlay.beginFill(tint, s.cave ? 0.14 : 0.22);
       for (const loop of s.loops ?? []) { if (loop.hole) { fl.overlay.beginHole(); fl.overlay.drawPolygon(toScene(loop.points)); fl.overlay.endHole(); } else fl.overlay.drawPolygon(toScene(loop.points)); }
       fl.overlay.endFill();
     }
@@ -2620,6 +2623,7 @@ const startDecorBrush = (doc = null) => {
     if (decorBrushing !== state) return;
     const counts = new Map(); for (const s of fl.saved) counts.set(s.floor, (counts.get(s.floor) ?? 0) + 1);
     const floorsText = [...counts].map(([f, n]) => `${floorRegionName(f, []).replace(/ 1$/, "")}${n > 1 ? ` ×${n}` : ""}`);
+    if (fl.caves?.length) floorsText.push(`Cave growth${fl.caves.length > 1 ? ` ×${fl.caves.length}` : ""}`);
     let painted = 0; for (const r of regionsHere()) painted += decorSettings(r.flags?.[ID]?.decor)?.brushed?.length ?? 0;
     const parts = [...floorsText, ...(painted ? [`${painted} decorations`] : [])];
     // (Hovering the map on Floors: what is under the pointer, and what a dab there would do.)
@@ -2631,7 +2635,7 @@ const startDecorBrush = (doc = null) => {
   const showStroke = (cells) => {
     const m = fl.map;
     if (!fl.preview) { const c = document.createElement("canvas"); c.width = m.width; c.height = m.height; fl.pixels = c.getContext("2d").createImageData(m.width, m.height); fl.preview = new PIXI.Sprite(PIXI.Texture.from(c)); fl.preview.canvas = c; fl.preview.eventMode = "none"; fl.preview.position.set(m.rect.x, m.rect.y); fl.preview.scale.set(m.rect.width / m.width, m.rect.height / m.height); top.addChildAt(fl.preview, 1); }
-    const d = fl.pixels.data, hex = fl.erasing ? "#ff6a5a" : fl.heights ? "#d9b46a" : floorTint(brushChoices().floor), r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    const d = fl.pixels.data, hex = fl.erasing ? "#ff6a5a" : fl.heights ? "#d9b46a" : brushTint(brushChoices()), r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
     const look = fl.erasing || fl.heights ? null : textureLook();
     if (!cells.length) return;
     // Only the box the dab touched is copied in (the picture is the whole map: copying all of it every dab made the brush lag),
@@ -2650,9 +2654,9 @@ const startDecorBrush = (doc = null) => {
   // What the floor will look like when it is painted (Texture: Paint it, or As the scene says on a scene that paints floors):
   // the scene's own tile of it, at its size on the map (four squares a tile), for the previews; null to show the floor's tint.
   const textureLook = () => {
-    const c = brushChoices(), m = fl.map; if (!m) return null;
+    const c = brushChoices(), m = fl.map; if (!m || c.cave) return null;
     if (!m.ui.paintsTexture(c.floor, c.texture, canvas.scene?.flags?.[ID]?.floorTextures ?? "")) return null;
-    const style = m.ui.patternOptions(c.floor)[0]?.[0] ?? "", key = `${c.floor}/${style}`;
+    const styles = m.ui.patternOptions(c.floor), style = styles.find(([k]) => k && k === c.pattern)?.[0] ?? styles[0]?.[0] ?? "", key = `${c.floor}/${style}`;
     fl.tiles ??= new Map();
     if (!fl.tiles.get(key)) { let tile = null; try { tile = floorTextures.tileImage(c.floor, style) ?? null; } catch { /* not drawn yet */ } if (tile) fl.tiles.set(key, tile); else return null; }
     return { tile: fl.tiles.get(key), size: grid() * 4 * (m.width / m.rect.width) };
@@ -2665,29 +2669,35 @@ const startDecorBrush = (doc = null) => {
   };
   // The pixels other floors' regions hold, which painting `floor` keeps off (made again when the regions or the floor change).
   // (Decorations stand on the floor: the brush paints under them, and they show above it.)
-  const claimedBy = (floor) => {
-    if (claimedKey?.saved === fl.saved && claimedKey.floor === floor) return claimedMask;
-    claimedMask = new Uint8Array(fl.map.width * fl.map.height); for (const s of fl.saved) if (s.floor !== floor) for (const px of s.pixels) claimedMask[px] = 1;
-    claimedKey = { saved: fl.saved, floor }; return claimedMask;
+  // Cave growth (the Cave tile) paints its own regions, over the floors: it keeps off other growth, not off floors, and floors off
+  // neither. What the brush paints and the regions it keeps to: the floor, or the growth's word with the brush's cave regions.
+  const brushKey = (c) => (c.cave ? c.cave.cavern : c.floor);
+  const brushPool = (c) => (c.cave ? fl.caves ?? [] : fl.saved);
+  const brushName = (c) => (c.cave ? caveName : undefined);
+  const brushTint = (c) => (c.cave ? caveColour(c.cave.cavern) : floorTint(c.floor));
+  const claimedBy = (floor, pool = fl.saved) => {
+    if (claimedKey?.saved === pool && claimedKey.floor === floor) return claimedMask;
+    claimedMask = new Uint8Array(fl.map.width * fl.map.height); for (const s of pool) if (s.floor !== floor) for (const px of s.pixels) claimedMask[px] = 1;
+    claimedKey = { saved: pool, floor }; return claimedMask;
   };
   // Which floor region holds each pixel of the map image (the saved region's floor, or none), made again when the regions change.
   let ownerKey = null, ownerMap = null;
-  const floorUnder = (i) => {
-    if (ownerKey !== fl.saved) { ownerMap = new Uint16Array(fl.map.width * fl.map.height); fl.saved.forEach((s, n) => { for (const px of s.pixels) ownerMap[px] = n + 1; }); ownerKey = fl.saved; }
-    return fl.saved[ownerMap[i] - 1]?.floor ?? null;
+  const floorUnder = (i, pool = fl.saved) => {
+    if (ownerKey !== pool) { ownerMap = new Uint16Array(fl.map.width * fl.map.height); pool.forEach((s, n) => { for (const px of s.pixels) ownerMap[px] = n + 1; }); ownerKey = pool; }
+    return pool[ownerMap[i] - 1]?.floor ?? null;
   };
   const setHoverText = (text) => { if ((fl.hoverText ?? "") === (text ?? "")) return; fl.hoverText = text ?? ""; refreshStatus(); };
   // What rubbing out `floor` may not touch: every pixel outside that floor's regions.
-  const notFloor = (floor) => { const out = new Uint8Array(fl.map.width * fl.map.height).fill(1); for (const s of fl.saved) if (s.floor === floor) for (const px of s.pixels) out[px] = 0; return out; };
+  const notFloor = (floor, pool = fl.saved) => { const out = new Uint8Array(fl.map.width * fl.map.height).fill(1); for (const s of pool) if (s.floor === floor) for (const px of s.pixels) out[px] = 0; return out; };
   const hideHover = () => { hoverAt = null; if (fl.hover) fl.hover.visible = false; setHoverText(""); };
   const drawHover = () => {
     hoverTimer = null; const p = hoverAt, m = fl.map; if (!p || !m || state.down || !floorsOn() || decorBrushing !== state) return hideHover();
     const c = brushChoices(), q = toImage(p);
     if (q.x < 0 || q.y < 0 || q.x >= m.width || q.y >= m.height) return hideHover();
-    setHoverText(floorHoverLine(floorUnder(Math.floor(q.y) * m.width + Math.floor(q.x)), c.floor));
+    setHoverText(floorHoverLine(floorUnder(Math.floor(q.y) * m.width + Math.floor(q.x), brushPool(c)), brushKey(c), brushName(c)));
     const radius = ((sizeNow() * grid()) / 2) * (m.width / m.rect.width), R = Math.ceil(radius) + 1;
     const x0 = Math.max(0, Math.floor(q.x) - R), y0 = Math.max(0, Math.floor(q.y) - R), w = Math.max(1, Math.min(m.width, Math.floor(q.x) + R + 1) - x0), h = Math.max(1, Math.min(m.height, Math.floor(q.y) + R + 1) - y0);
-    const claimed = claimedBy(c.floor);
+    const claimed = claimedBy(brushKey(c), brushPool(c));
     // With the model: the outline under the pointer, asked once the pointer rests a moment (and kept while it stays inside).
     let within = null;
     if (modelOn()) {
@@ -2704,7 +2714,7 @@ const startDecorBrush = (doc = null) => {
     const cells = floorDabCells({ rgba: m.rgba, width: m.width, height: m.height, x: q.x, y: q.y, radius, seed: floorColourAt(m.rgba, m.width, m.height, q.x, q.y), tolerance: c.tol, smart: c.smart, allowed: (i) => !claimed[i], within });
     if (!fl.hover) { const cv = document.createElement("canvas"); fl.hover = new PIXI.Sprite(PIXI.Texture.from(cv)); fl.hover.canvas = cv; fl.hover.eventMode = "none"; top.addChildAt(fl.hover, 1); }
     const cv = fl.hover.canvas; if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
-    const g = cv.getContext("2d"), img = g.createImageData(w, h), d = img.data, hex = floorTint(c.floor), r = parseInt(hex.slice(1, 3), 16), gr = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+    const g = cv.getContext("2d"), img = g.createImageData(w, h), d = img.data, hex = brushTint(c), r = parseInt(hex.slice(1, 3), 16), gr = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
     const look = textureLook(), alpha = look ? 225 : 105;
     for (const i of cells) { const x = (i % m.width) - x0, y = ((i / m.width) | 0) - y0; if (x < 0 || y < 0 || x >= w || y >= h) continue; const k = (y * w + x) * 4; d[k] = r; d[k + 1] = gr; d[k + 2] = b; d[k + 3] = alpha; }
     g.putImageData(img, 0, 0); if (look) texturise(g, w, h, x0, y0, look); fl.hover.texture.baseTexture?.setSize?.(w, h); fl.hover.texture.update?.(); fl.hover.texture.baseTexture?.update?.();
@@ -2859,7 +2869,7 @@ const startDecorBrush = (doc = null) => {
     const m = fl.map, c = brushChoices(), q = toImage(p);
     fl.stroke = new Uint8Array(m.width * m.height); fl.erasing = erase; fl.seed = floorColourAt(m.rgba, m.width, m.height, q.x, q.y); fl.heights = null;
     // Painting keeps off the other floors' regions; rubbing out takes only from the picked floor's.
-    fl.claimed = erase ? notFloor(c.floor) : claimedBy(c.floor);
+    fl.claimed = erase ? notFloor(brushKey(c), brushPool(c)) : claimedBy(brushKey(c), brushPool(c));
     // With the model, the stroke paints inside the outlines it has asked for, starting from the one hovering already found.
     fl.model = model; fl.dabs = []; fl.asking = null; fl.within = model ? new Uint8Array(m.width * m.height) : null;
     if (model && fl.hoverWithin?.[Math.round(q.y) * m.width + Math.round(q.x)]) fl.within.set(fl.hoverWithin);
@@ -2897,16 +2907,17 @@ const startDecorBrush = (doc = null) => {
     fl.finishing = true;
     while (fl.asking) await fl.asking;
     if (fl.heights) { await heightFinish(); fl.heights = null; fl.finishing = false; if (decorBrushing === state) { clearStroke(); refreshHeights(); refreshStatus(); } return; }
-    const c = brushChoices(), saved = fl.saved, m = fl.map;
+    const c = brushChoices(), saved = brushPool(c), m = fl.map;
     try {
-      const plan = planFloorStroke({ saved, floor: c.floor, stroke: fl.stroke, erase: fl.erasing, width: fl.map.width, height: fl.map.height });
+      const plan = planFloorStroke({ saved, floor: brushKey(c), stroke: fl.stroke, erase: fl.erasing, width: fl.map.width, height: fl.map.height });
       const scene = canvas.scene, opts = { sceneRect: m.rect, imageWidth: m.width, imageHeight: m.height, levelId: m.levelId }, shapesOf = (loops) => floorRegionData({ loops }, opts).shapes;
       const updates = [], creates = [], removes = [];
       for (const u of plan.updates) { const doc = scene.regions.get(u.regionId); if (!doc) continue; const before = doc.toObject().shapes, after = shapesOf(u.loops); await doc.update({ shapes: after }); updates.push({ id: doc.id, before, after }); }
       for (const id of plan.removes) { const doc = scene.regions.get(id); if (!doc) continue; const data = doc.toObject(); delete data._id; await doc.delete(); removes.push({ id, data }); }
       const names = scene.regions.map((r) => r.name);
       for (const made of plan.creates) {
-        const data = floorRegionData({ loops: made.loops }, { ...opts, name: floorRegionName(c.floor, names), floor: c.floor, texture: c.texture, overWater: c.overWater, edge: c.edge === BRUSH_EDGE.usual ? "" : c.edge });
+        const data = c.cave ? toCaveRegionData({ loops: made.loops }, { ...opts, ...c.cave, name: floorRegionName(c.cave.cavern, names, caveName) })
+          : floorRegionData({ loops: made.loops }, { ...opts, name: floorRegionName(c.floor, names), floor: c.floor, texture: c.texture, pattern: c.pattern, waterKind: c.waterKind, overWater: c.overWater, edge: c.edge === BRUSH_EDGE.usual ? "" : c.edge });
         const [doc] = await scene.createEmbeddedDocuments("Region", [data]); if (doc) { creates.push({ id: doc.id, data }); names.push(data.name); }
       }
       if (updates.length || creates.length || removes.length) rememberDecorStep({ kind: "floor", updates, creates, removes });
