@@ -37,7 +37,8 @@ import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt
 import { DOOR_ATTACK_SYSTEMS, doorStats, doorCracked, doorHpLine, strikeReaches, strikeIdentifier, doorAttackOf, doorAttackCheck, doorAttackRoller, doorHitUpdate, strikeHasAmmo, pickDoorStamp } from "./engines/props/door-attack.mjs";
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
-import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsOf, dropLostDecorFire, regionBurns } from "./engines/props/fire-spread.mjs";
+import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsOf, dropLostDecorFire, regionBurns, quenchedBy, quenchUpdates, repairFireUpdates } from "./engines/props/fire-spread.mjs";
+import { areaRefusal } from "./engines/props/prop-areas.mjs";
 import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
 import { DECOR_BREAK_MESSAGE, DECOR_NAMES, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
@@ -9345,6 +9346,69 @@ Hooks.on("deleteCombat", fireReseedRounds);
 // A region repainted or reshaped: its grass grid is laid out again next round (its squares' indices may have moved).
 Hooks.on("updateRegion", (doc, changes) => { if ("shapes" in (changes ?? {}) || "levels" in (changes ?? {})) fireGrass.delete(doc.id); });
 Hooks.on("deleteRegion", (doc) => { fireGrass.delete(doc.id); });
+// Water and cold putting fires out (engines/props/fire-spread.mjs quenchUpdates). An area whose spell deals a quenching
+// damage type puts out every fire inside it: a prop's, a decoration's and a grass square's flags are cleared and their fire
+// lights deleted. The screen that sees the area asks the active GM (one ask per area, claimed), who checks the area as its
+// own copy holds it (who placed it, its spell's damage types, its age, its scene) exactly as for a break, then writes.
+// Nothing is broken and no creature is touched. A charred square stays charred.
+const QUENCH_MESSAGE = "prop-quench";
+async function applyQuench(scene, cause, user) {
+  if (!game.users.activeGM?.isSelf || !scene || !propsOn(scene) || !quenchedBy(cause?.damageType)) return false;
+  const full = { kind: "area", damageType: cause.damageType, areaUuid: cause.areaUuid }, { area, now } = areaPlace(full, user);
+  // The shape is asked thing by thing below; every other check (placer, spell types, age, scene) is the break's own.
+  const refused = areaRefusal(area ? { ...area, testPoint: () => true } : area, { cause: full, sceneId: scene.id, sender: user, point: { x: 0, y: 0 }, levels: area?.levels, now });
+  if (refused) { runtime?.trace("props", `not quenched: ${refused}`); return false; }
+  // A fire round still writing would put back what is cleared here: let it finish first.
+  for (let i = 0; i < 100 && fireRunning.has(scene.id); i++) await new Promise((done) => setTimeout(done, 50));
+  const grid = propGrid(scene), things = [], mid = (view) => fireMid(fireRect(view));
+  for (const doc of scene.tiles?.contents ?? []) {
+    const fire = readFire(doc);
+    if (fire) things.push({ kind: "tile", id: doc.id, levels: [...(doc.levels ?? [])], point: mid(propTileView(doc)), fire, lightId: doc.id, warned: doc.id });
+  }
+  for (const view of propSafe("quench decorations", () => decorViews(scene, null)) ?? []) {
+    const regionId = view.decor?.regionId, key = view.decor?.key, fire = readFire(decorFireOf(scene.regions?.get(regionId))[key]);
+    if (fire && typeof key === "string") things.push({ kind: "decor", regionId, key, levels: [...(view.levels ?? [])], point: mid(view), fire, lightId: view.id, warned: key });
+  }
+  for (const doc of scene.regions?.contents ?? []) {
+    const saved = fireCellsOf(doc), keys = Object.keys(saved).filter((k) => readFire(saved[k]) && saved[k]?.charred !== true);
+    const grass = keys.length ? fireGrassOf(doc, grid) : null;
+    if (!grass) continue;
+    for (const key of keys) {
+      const i = Number(key);
+      if (Number.isInteger(i)) things.push({ kind: "cell", regionId: doc.id, key, levels: [...(doc.levels ?? [])], fire: saved[key],
+        point: { x: grass.origin.x + (i % grass.cols) * grid + grid / 2, y: grass.origin.y + Math.floor(i / grass.cols) * grid + grid / 2 } });
+    }
+  }
+  const out = quenchUpdates(tilesOnLevel(things, area.levels), area.testPoint);
+  if (!out.put.length) return false;
+  const del = propDel();
+  if (out.tiles.length) await scene.updateEmbeddedDocuments("Tile", out.tiles.map((u) => withDeletes(u, del)), { animater: { propFire: true } })
+    .catch((e) => runtime?.trace("props", `quench not written: ${e?.message ?? e}`));
+  if (out.regions.length) await scene.updateEmbeddedDocuments("Region", out.regions.map((u) => withDeletes(u, del)), { animater: { propFire: true } })
+    .catch((e) => runtime?.trace("props", `region quench not written: ${e?.message ?? e}`));
+  // Their fire lights go and their timers are forgotten; they may be warned about again.
+  for (const t of out.put) {
+    if (t.warned) fireWarned.delete(`${scene.id}:${t.warned}`);
+    if (!t.lightId) continue;
+    forgetPropFire(t.lightId);
+    const lit = firesOf(t.lightId, sceneLights(scene));
+    if (lit.length) await deletePropFires(scene, lit);
+  }
+  return true;
+}
+function askQuench(area, damageType) {
+  const scene = area?.scene, gm = game.users.activeGM;
+  if (!scene || !gm) return;
+  const cause = { areaUuid: area.templateId, damageType };
+  if (gm.isSelf) { void applyQuench(scene, cause, game.user).catch((e) => runtime?.trace("props", `quench: ${e?.message ?? e}`)); return; }
+  game.socket.emit(`module.${ID}`, { type: QUENCH_MESSAGE, sender: clientId, sceneId: scene.id, cause });
+}
+async function receiveQuench(data, senderId) {
+  if (data?.type !== QUENCH_MESSAGE || !game.users.activeGM?.isSelf) return;
+  const user = senderId ? game.users.get(senderId) : null, scene = game.scenes.get(String(data.sceneId ?? ""));
+  if (!user || !scene || typeof data.cause?.areaUuid !== "string" || typeof data.cause?.damageType !== "string") return;
+  await applyQuench(scene, { areaUuid: data.cause.areaUuid, damageType: data.cause.damageType }, user);
+}
 async function receivePropBreak(data, senderId) {
   if (data?.type !== PROP_BREAK_MESSAGE || !game.users.activeGM?.isSelf) return;
   const user = senderId ? game.users.get(senderId) : null, scene = game.scenes.get(String(data.sceneId ?? ""));
@@ -9802,6 +9866,8 @@ async function repairAllProps(scene = canvas?.scene) {
   // Every region's broken decorations too, in one region batch (their rubble goes with every prop's, below).
   await holdDecorWrites(async () => {
     const decorFixes = decorRepairUpdates(sceneRegions(scene));
+    // Each region's fire (decorations' and grass squares', whole flags) goes in the same update as its breaks.
+    for (const u of repairFireUpdates(sceneRegions(scene))) { const own = decorFixes.find((d) => d._id === u._id); if (own) Object.assign(own, u); else decorFixes.push(u); }
     await relightDecor(scene, (scene.regions?.contents ?? []).filter((r) => decorFixes.some((u) => u._id === r.id)));
     if (decorFixes.length) await scene.updateEmbeddedDocuments("Region", decorFixes.map((u) => withDeletes(u, del)), { animater: { decorRepair: true } });
   });
@@ -9809,7 +9875,8 @@ async function repairAllProps(scene = canvas?.scene) {
   if (breaches.deletes.length) await scene.deleteEmbeddedDocuments("Wall", breaches.deletes, { animater: { wallRepair: true } });
   if (wallFixes.length) await scene.updateEmbeddedDocuments("Wall", wallFixes.map((w) => withDeletes(w, del)), { animater: { wallRepair: true }, sound: false });
   if (r.lights.length) await scene.updateEmbeddedDocuments("AmbientLight", r.lights).catch((e) => runtime?.trace("props", `lights not relit: ${e?.message ?? e}`));
-  for (const t of r.tiles) forgetPropFire(t._id);
+  for (const t of r.tiles) { forgetPropFire(t._id); fireWarned.delete(`${scene.id}:${t._id}`); }
+  for (const mark of [...fireWarned]) if (mark.startsWith(`${scene.id}:`)) fireWarned.delete(mark);
   if (r.deleteLights?.length) await deletePropFires(scene, r.deleteLights);
   if (r.deleteRegions?.length) await deletePropRegions(scene, r.deleteRegions);
   return r.tiles.length;
@@ -9941,6 +10008,9 @@ const CLAIM_SETTLE_MS = PROP_REFUSED_MS + 1500;
 function breakAreaThings(area, types, { messageId } = {}) {
   const scene = area?.scene;
   if (!area || !types?.length || !propsOn(scene) || !game.scenes.get(scene.id)) return false;
+  // Water or cold puts out the fires inside the area (asked of the GM once per area), besides anything it breaks.
+  const quench = types.find(quenchedBy), quenching = !!quench && propAreas.claim(area.templateId, "quench");
+  if (quenching) askQuench(area, quench);
   const grid = propGrid(scene), tiles = tilesOnLevel(scene.tiles.contents.map(propTileView), area.levels), walls = (scene.walls?.contents ?? []).map(wallView);
   const decor = propSafe("area decorations", () => decorViews(scene, area.levels)) ?? [], id = (t) => t.id;
   const hits = typesBreaking(types, (type) => propsInArea(tiles, area.testPoint, grid, type), id).filter(({ thing }) => propAreas.claim(area.templateId, thing.id));
@@ -9950,7 +10020,7 @@ function breakAreaThings(area, types, { messageId } = {}) {
   const decorHits = typesBreaking(types, (type) => propsInArea(decor, area.testPoint, grid, type), id).filter(({ thing }) => propAreas.claim(area.templateId, thing.id));
   // Decorations whose powder spilled earlier: a fire area sets them off, once, as it does a keg tile's.
   const decorSpills = !types.includes("fire") ? [] : (propSafe("area decoration powder", () => ignitableInArea(tilesOnLevel(decorSpilled(decorRegionsOf(scene, { breaking: true }), grid, decorIndex), area.levels), area.testPoint)) ?? []).filter((v) => propAreas.claim(area.templateId, `ignite:${v.id}`));
-  if (!hits.length && !doors.length && !spills.length && !decorHits.length && !decorSpills.length) return false;
+  if (!hits.length && !doors.length && !spills.length && !decorHits.length && !decorSpills.length) return quenching;
   const areaUuid = area.templateId, roll = typeof messageId === "string" ? { messageId } : {};
   const cause = (damageType) => ({ kind: "area", damageType, at: area.at, areaUuid, ...roll });
   const held = (claimId, ask, written) => void askClaimed({ ask, written, release: () => propAreas.release(areaUuid, claimId), wait: CLAIM_SETTLE_MS });
@@ -13429,6 +13499,7 @@ Hooks.once("ready", () => {
   game.socket?.on(`module.${ID}`, (data, senderId) => {
     if (data?.type === WINDOW_MESSAGE) { const asked = game.users.get(senderId); const wall = canvas?.scene?.walls?.get(data.wallId); if (game.users.activeGM?.isSelf && data.sceneId === canvas?.scene?.id && wall && asked && mayUseWindow({ canDoors: asked.can("WALL_DOORS"), paused: game.paused, inReach: windowReachedBy(asked, wall) }) && windowClick({ locked: wall.flags?.[ID]?.windowLocked === true }) === "toggle") void toggleWindow(wall); return; }
     if (data?.type === PROP_BREAK_MESSAGE) { void receivePropBreak(data, senderId).catch((e) => console.warn("Animater props:", e?.message ?? e)); return; }
+    if (data?.type === QUENCH_MESSAGE) { void receiveQuench(data, senderId).catch((e) => console.warn("Animater props (quench):", e?.message ?? e)); return; }
     if (data?.type === DECOR_BREAK_MESSAGE) { void receiveDecorBreak(data, senderId).catch((e) => console.warn("Animater props (decoration):", e?.message ?? e)); return; }
     if (data?.type === WALL_BREAK_MESSAGE) { void receiveWallBreak(data, senderId).catch((e) => console.warn("Animater props (door):", e?.message ?? e)); return; }
     if (data?.type === BLAST_MESSAGE) { if (data.blast?.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) playBlast(data.blast); return; }

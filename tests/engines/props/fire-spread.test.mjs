@@ -461,3 +461,47 @@ test("an update never writes a whole flag object beside a key delete under the s
   assert.equal(r.regions[0]["flags.animater.decorFire.-=gone:9:9:0"], null);
   assert.equal(r.regions[0]["flags.animater.fireCells.-=7"], null);
 });
+
+import { quenchedBy, quenchUpdates } from "../../../scripts/engines/props/fire-spread.mjs";
+
+test("water and cold put fires out; fire and force do not", () => {
+  for (const t of ["water", "cold"]) assert.equal(quenchedBy(t), true, t);
+  for (const t of ["fire", "force", "bludgeoning", undefined]) assert.equal(quenchedBy(t), false, String(t));
+});
+
+test("quenchUpdates clears only the fires inside the area, by key, one update per region", () => {
+  const burning = { heat: 100, burning: true, roundsLeft: 2 };
+  const things = [
+    { kind: "tile", id: "in", point: { x: 1, y: 1 }, fire: burning },
+    { kind: "tile", id: "away", point: { x: 9, y: 9 }, fire: burning },
+    { kind: "tile", id: "none", point: { x: 1, y: 1 }, fire: undefined },
+    { kind: "decor", regionId: "r1", key: "crate:1:1:a", point: { x: 1, y: 1 }, fire: burning },
+    { kind: "cell", regionId: "r1", key: "4", point: { x: 1, y: 1 }, fire: burning },
+    { kind: "cell", regionId: "r1", key: "5", point: { x: 1, y: 1 }, fire: { heat: 0, burning: false, roundsLeft: 0, charred: true } },
+    { kind: "decor", regionId: "r2", key: "d", point: { x: 9, y: 9 }, fire: burning },
+  ];
+  const r = quenchUpdates(things, (p) => p.x < 5);
+  assert.deepEqual(r.tiles, [{ _id: "in", "flags.animater.prop.-=fire": null }]);
+  assert.deepEqual(r.regions, [{ _id: "r1", "flags.animater.decorFire.-=crate:1:1:a": null, "flags.animater.fireCells.-=4": null }]);
+  assert.equal(r.put.length, 3);
+});
+
+test("quenchUpdates with nothing burning writes nothing", () => {
+  assert.deepEqual(quenchUpdates([{ kind: "tile", id: "t", point: { x: 0, y: 0 }, fire: null }], () => true), { tiles: [], regions: [], put: [] });
+  assert.deepEqual(quenchUpdates(undefined, () => true), { tiles: [], regions: [], put: [] });
+});
+
+import { repairFireUpdates } from "../../../scripts/engines/props/fire-spread.mjs";
+
+test("repairFireUpdates removes the whole fire flags of the regions that keep any, even an empty one", () => {
+  const r = repairFireUpdates([
+    { id: "a", flags: { animater: { decorFire: { k: { burning: true } }, fireCells: { 3: { charred: true } } } } },
+    { id: "b", flags: { animater: { decorFire: {} } } },
+    { id: "c", flags: { animater: { decorBroken: [] } } },
+    { id: "d", flags: {} },
+  ]);
+  assert.deepEqual(r, [
+    { _id: "a", "flags.animater.-=decorFire": null, "flags.animater.-=fireCells": null },
+    { _id: "b", "flags.animater.-=decorFire": null },
+  ]);
+});

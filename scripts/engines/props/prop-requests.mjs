@@ -180,12 +180,15 @@ export function undoUpdates(tile, walls, { tiles = [], grid = 100, lights = [], 
     deleteLights: firesOf(tile.id, lights), deleteRegions: ownRegion(tile, regions) };
 }
 
-// Every broken tile unhidden and cleared in one batch. No broken tile is left, so every opened wall comes back,
+// Every broken tile unhidden and cleared in one batch (and every tile with a fire put out, burning or not). No broken tile is left, so every opened wall comes back,
 // including any a deleted or copied tile left open. Every burning-oil light goes too, whoever's tile it was,
 // and every rubble region (orphans too).
 export function repairUpdates(tiles, walls, { lights = [], regions = [], grid = 100 } = {}) {
   const broken = (tiles ?? []).filter((t) => propOf(t).broken);
-  return { tiles: broken.map((t) => ({ _id: t.id, hidden: false, "flags.animater.prop.-=broken": null })), walls: restoreUpdates(walls ?? []), lights: unhideLights(broken.flatMap((t) => ownNamedLights(t, lights, grid)), lights),
+  // A fire is cleared whether or not the prop is broken: one burning right now (whole, smouldering or alight) is made whole too.
+  const burnt = (t) => propOf(t).fire !== undefined;
+  const fixed = (tiles ?? []).filter((t) => propOf(t).broken || burnt(t));
+  return { tiles: fixed.map((t) => ({ _id: t.id, ...(propOf(t).broken ? { hidden: false, "flags.animater.prop.-=broken": null } : {}), ...(burnt(t) ? { "flags.animater.prop.-=fire": null } : {}) })), walls: restoreUpdates(walls ?? []), lights: unhideLights(broken.flatMap((t) => ownNamedLights(t, lights, grid)), lights),
     deleteLights: allFires(lights), deleteRegions: (regions ?? []).filter((r) => r?.flags?.animater?.propRubble).map((r) => r.id) };
 }
 

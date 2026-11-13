@@ -289,3 +289,48 @@ export function fireUpdatesFor(step, { tiles = [], regions = [], cellSteps = {} 
   }
   return { tiles: tileUpdates, regions: regionUpdates };
 }
+
+// Damage types that put a fire out.
+const QUENCHING = ["water", "cold"];
+export const quenchedBy = (damageType) => QUENCHING.includes(damageType);
+
+// What an area that quenches puts out. `things` lists what could be burning, each { kind, point, fire, ... }:
+//   { kind: "tile", id }                          a prop tile (its fire is flags.animater.prop.fire),
+//   { kind: "decor", regionId, key }              a painted decoration (a key of its region's decorFire),
+//   { kind: "cell", regionId, key }               a grass square (a key of its region's fireCells).
+// `point` is where the area is asked about; `inArea(point)` says whether the area covers it. Only something holding a fire
+// (burning or warm: cold water cools it too) and inside the area is touched. A charred square stays charred. Foundry merges
+// object flags, so a region's entries go by name (`-=<key>` with null), all in one update per region.
+// Returns { tiles, regions } as updates, plus `put`: the things it put out, so the caller can take their lights.
+export function quenchUpdates(things, inArea) {
+  const tiles = [], regions = new Map(), put = [];
+  for (const t of things ?? []) {
+    if (!t || typeof inArea !== "function" || !readFire(t.fire) || t.fire?.charred === true) continue;
+    let inside = false;
+    try { inside = inArea(t.point) === true; } catch { inside = false; }
+    if (!inside) continue;
+    if (t.kind === "tile" && typeof t.id === "string") { tiles.push({ _id: t.id, "flags.animater.prop.-=fire": null }); put.push(t); continue; }
+    const flag = t.kind === "decor" ? "decorFire" : t.kind === "cell" ? "fireCells" : null;
+    if (!flag || typeof t.regionId !== "string" || typeof t.key !== "string") continue;
+    const update = regions.get(t.regionId) ?? { _id: t.regionId };
+    update[`flags.animater.${flag}.-=${t.key}`] = null;
+    regions.set(t.regionId, update);
+    put.push(t);
+  }
+  return { tiles, regions: [...regions.values()], put };
+}
+
+// Repair's part for regions: one update per region that keeps any decoration fire or grass fire (burning, warm, charred,
+// or an empty object left behind), removing each whole flag (`-=<flag>` with null; Foundry merges object flags, so
+// nothing else removes a whole one). `regions` is [{ id, flags }]. A flag is tested for being there, not for being truthy.
+export function repairFireUpdates(regions) {
+  const updates = [];
+  for (const r of regions ?? []) {
+    const a = r?.flags?.animater, fields = {};
+    if (typeof r?.id !== "string") continue;
+    if (a?.decorFire !== undefined) fields["flags.animater.-=decorFire"] = null;
+    if (a?.fireCells !== undefined) fields["flags.animater.-=fireCells"] = null;
+    if (Object.keys(fields).length) updates.push({ _id: r.id, ...fields });
+  }
+  return updates;
+}

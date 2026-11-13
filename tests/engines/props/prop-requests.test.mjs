@@ -450,3 +450,18 @@ test("an area cause keeps the damage roll it names (a spell whose damage type is
   assert.equal(cleanCause({ kind: "area", areaUuid: "Scene.s.Region.r", messageId: "m1" }).messageId, "m1");
   assert.equal(cleanCause({ kind: "area", messageId: 5 }).messageId, undefined);
 });
+
+test("Repair clears a prop's fire as well as its break", () => {
+  const r = repairUpdates([{ id: "t1", flags: { animater: { prop: { broken: {}, fire: { burning: true } } } } }], [], {});
+  const u = r.tiles.find((x) => x._id === "t1");
+  assert.equal(u["flags.animater.prop.-=broken"], null);
+  assert.equal(u["flags.animater.prop.-=fire"], null);
+});
+
+test("Repair makes a prop that is burning right now whole: only its fire cleared, a plain prop left alone", () => {
+  const r = repairUpdates([
+    { id: "live", flags: { animater: { prop: { fire: { heat: 100, burning: true, roundsLeft: 2 } } } } },
+    { id: "plain", flags: { animater: { prop: {} } } },
+  ], [], {});
+  assert.deepEqual(r.tiles, [{ _id: "live", "flags.animater.prop.-=fire": null }]);
+});
