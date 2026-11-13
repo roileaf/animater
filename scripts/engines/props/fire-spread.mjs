@@ -53,6 +53,9 @@ function windBoost(wind, from, to) {
   return dx * Math.cos(wind.angle) + dy * Math.sin(wind.angle) > 0 ? 1 + 0.5 * wind.strength : 1;
 }
 
+// A grass square's id as a fire source, for a prop's `blocked` list to name (a square may carry its own `id` instead).
+export const cellId = (i) => `cell:${i}`;
+
 // A grass square's rectangle, from its index in a grid of `cols` squares whose top-left corner is `origin`.
 function cellRect(i, { cols, origin, cell }) {
   return { x: origin.x + (i % cols) * cell, y: origin.y + Math.floor(i / cols) * cell, w: cell, h: cell };
@@ -70,24 +73,27 @@ function burningCells(cells) {
 // Burning grass squares (`cells` with `cols`, `origin`, `cell`) heat props the same way, in this one pass.
 export function spreadStep({ things = [], wind = null, grid = 100, cap = 12, cells = [], cols = 1, origin = { x: 0, y: 0 }, cell = grid } = {}) {
   const sources = things.filter((t) => t.fire?.burning);
-  const fires = burningCells(cells).map((c) => cellRect(c.i, { cols, origin, cell }));
+  const fires = burningCells(cells).map((c) => ({ id: c.id ?? cellId(c.i), levels: c.levels, rect: cellRect(c.i, { cols, origin, cell }) }));
   const gain = new Map();
   for (const target of things) {
     if (target.fire?.burning) continue;
     const rate = fireRate(target.traits);
     if (rate <= 0) continue;
-    const reach = (rect) => {
+    const reach = (rect, most) => {
       const gap = edgeGap(rect, target.rect);
-      return gap > grid ? 0 : (gap === 0 ? 55 : 30) * rate * windBoost(wind, rect, target.rect);
+      return gap > most ? 0 : (gap === 0 ? 55 : 30) * rate * windBoost(wind, rect, target.rect);
     };
     for (const src of sources) {
       if (target.blocked?.includes(src.id)) continue;
       if (!sharesLevel(src.levels, target.levels)) continue;
-      const add = reach(src.rect);
+      const add = reach(src.rect, grid);
       if (add > 0) gain.set(target.id, (gain.get(target.id) ?? 0) + add);
     }
-    for (const rect of fires) {
-      const add = reach(rect);
+    // Burning grass reaches one grass square (`cell`), and a wall or another level stops it just as it stops a prop.
+    for (const src of fires) {
+      if (target.blocked?.includes(src.id)) continue;
+      if (!sharesLevel(src.levels, target.levels)) continue;
+      const add = reach(src.rect, cell);
       if (add > 0) gain.set(target.id, (gain.get(target.id) ?? 0) + add);
     }
   }
@@ -137,6 +143,8 @@ export function cellStep({ cells = [], things = [], cols = 1, rows = 1, origin =
       if (target.burning || target.charred) continue;
       const rect = cellRect(target.i, geo);
       for (const src of fires) {
+        if (!sharesLevel(src.levels, target.levels)) continue;
+        if (target.blocked?.includes(src.id)) continue;
         const gap = edgeGap(src.rect, rect);
         if (gap > cell) continue;
         add(target.i, (gap === 0 ? 55 : 30) * GRASS_RATE * windBoost(wind, src.rect, rect));

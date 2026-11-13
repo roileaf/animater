@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fireRate, spreadStep, cellStep, GRASS_RATE, CELL_ROUNDS, regionBurns } from "../../../scripts/engines/props/fire-spread.mjs";
+import { fireRate, spreadStep, cellStep, GRASS_RATE, CELL_ROUNDS, regionBurns, cellId } from "../../../scripts/engines/props/fire-spread.mjs";
 
 test("the rate is the higher of the material's and the contents'", () => {
   assert.equal(fireRate({ material: "plant", contents: "none" }), 2);
@@ -128,9 +128,63 @@ test("a burnt cell stays burnt and never relights", () => {
   assert.deepEqual(r.heat.filter((h) => h.i === 1), []);
 });
 
-test("the cap holds a huge field to a few cells a round", () => {
-  const cells = [{ i: 0, burning: true, roundsLeft: 2 }, ...Array.from({ length: 30 }, (_, k) => ({ i: k + 1, heat: 99 }))];
-  assert.ok(cellStep({ cells, cols: 40, rows: 1, cell: 100, origin: { x: 0, y: 0 }, cap: 8 }).caught.length <= 8);
+test("the cap holds a huge field to a few cells a round, and the hottest are the ones that catch", () => {
+  // Ten squares burn along the top; the ten under them are each heated past catching, the later ones hotter.
+  const burning = Array.from({ length: 10 }, (_, i) => ({ i, burning: true, roundsLeft: 2 }));
+  const below = Array.from({ length: 10 }, (_, k) => ({ i: 10 + k, heat: 60 + k }));
+  const args = { cells: [...burning, ...below], cols: 10, rows: 2, cell: 100, origin: { x: 0, y: 0 } };
+  assert.equal(cellStep({ ...args, cap: 100 }).caught.length, 10, "all ten are about to catch");
+  const capped = cellStep({ ...args, cap: 3 }).caught;
+  assert.equal(capped.length, 3);
+  assert.deepEqual(capped, [19, 18, 17], "hottest first");
+});
+
+test("the cap holds the props too, hottest first, with grass fire beside them", () => {
+  const cells = Array.from({ length: 6 }, (_, i) => ({ i, burning: true, roundsLeft: 2 }));
+  const things = Array.from({ length: 6 }, (_, k) => ({ id: `p${k}`, rect: { x: k * 100, y: 100, w: 100, h: 100 }, traits: { material: "wood" }, fire: { heat: 40 + k * 2 } }));
+  const args = { things, cells, cols: 6, cell: 100, origin: { x: 0, y: 0 }, grid: 100 };
+  assert.equal(spreadStep({ ...args, cap: 100 }).caught.length, 6);
+  const hottest = spreadStep({ ...args, cap: 100 }).heat.sort((a, b) => b.heat - a.heat).slice(0, 2).map((h) => h.id);
+  assert.deepEqual(spreadStep({ ...args, cap: 2 }).caught, hottest);
+});
+
+test("a wall between burning grass and a prop stops it, as it stops a burning prop", () => {
+  const cells = [{ i: 0, burning: true, roundsLeft: 2 }];
+  const crate = { id: "c", rect: { x: 100, y: 0, w: 100, h: 100 }, traits: { material: "wood" }, fire: null };
+  const args = { cells, cols: 4, rows: 1, cell: 100, origin: { x: 0, y: 0 }, grid: 100 };
+  assert.equal(spreadStep({ ...args, things: [crate] }).heat.length, 1);
+  assert.deepEqual(spreadStep({ ...args, things: [{ ...crate, blocked: [cellId(0)] }] }).heat, []);
+  assert.deepEqual(spreadStep({ ...args, things: [{ ...crate, blocked: ["other"] }] }).heat.length, 1, "only the walled source is stopped");
+  const own = [{ i: 0, id: "g0", burning: true, roundsLeft: 2 }];
+  assert.deepEqual(spreadStep({ ...args, cells: own, things: [{ ...crate, blocked: ["g0"] }] }).heat, [], "a square's own id counts");
+});
+
+test("grass on another level does not reach a prop, and a prop on another level does not reach grass", () => {
+  const crate = (levels) => ({ id: "c", rect: { x: 100, y: 0, w: 100, h: 100 }, traits: { material: "wood" }, fire: null, levels });
+  const args = { cols: 4, rows: 1, cell: 100, origin: { x: 0, y: 0 }, grid: 100 };
+  const grass = (levels) => [{ i: 0, burning: true, roundsLeft: 2, levels }];
+  assert.equal(spreadStep({ ...args, cells: grass(["a"]), things: [crate(["a"])] }).heat.length, 1, "same level");
+  assert.deepEqual(spreadStep({ ...args, cells: grass(["a"]), things: [crate(["b"])] }).heat, [], "other level");
+  assert.equal(spreadStep({ ...args, cells: grass(undefined), things: [crate(["b"])] }).heat.length, 1, "no list means every level");
+  const fire = (levels) => ({ id: "f", rect: { x: 0, y: 0, w: 100, h: 100 }, traits: { material: "wood" }, fire: { burning: true, roundsLeft: 3 }, levels });
+  assert.equal(cellStep({ ...args, cells: [{ i: 1, heat: 0, levels: ["a"] }], things: [fire(["a"])] }).heat.length, 1);
+  assert.deepEqual(cellStep({ ...args, cells: [{ i: 1, heat: 0, levels: ["b"] }], things: [fire(["a"])] }).heat, []);
+});
+
+
+test("the reach is one grass square both ways, whatever the prop grid", () => {
+  const geo = { cols: 5, rows: 1, cell: 100, origin: { x: 0, y: 0 } };
+  const box = (x) => ({ id: "p", rect: { x, y: 0, w: 100, h: 100 }, traits: { material: "wood" }, fire: null });
+  const grass = [{ i: 0, burning: true, roundsLeft: 2 }];
+  for (const grid of [50, 100, 400]) {
+    // Grass at 0..100 to a prop at 200..300 (a gap of one square) reaches; at 300..400 (two squares) it does not.
+    assert.equal(spreadStep({ ...geo, grid, cells: grass, things: [box(200)] }).heat.length, 1, `grass to prop a square off, grid ${grid}`);
+    assert.deepEqual(spreadStep({ ...geo, grid, cells: grass, things: [box(300)] }).heat, [], `grass to prop two squares off, grid ${grid}`);
+  }
+  // The same distances, the other way round: a burning prop at 0..100, grass in square 2 (200..300) and square 3.
+  const burning = { ...box(0), fire: { burning: true, roundsLeft: 3 } };
+  assert.equal(cellStep({ ...geo, cells: [{ i: 2, heat: 0 }], things: [burning] }).heat.length, 1, "prop to grass a square off");
+  assert.deepEqual(cellStep({ ...geo, cells: [{ i: 3, heat: 0 }], things: [burning] }).heat, [], "prop to grass two squares off");
 });
 
 test("cells heat only their four neighbours: no diagonals, no wrapping onto the next row", () => {
