@@ -782,13 +782,22 @@ void main() {
       for (let i = 0; i * EVERY < WARM_MS; i++) list.push({ x: o.x + (rand() - 0.5) * 6 * s, y: o.y, vx: (rand() - 0.5) * 18 * gk, vy: -70 * gk, r0: 4 * s, r1: 12 * s, a: 0.2 * (1 - (i * EVERY) / WARM_MS), at: i * EVERY, life: 2600, seed: wp.seed + i });
     });
     const smoke = list.length ? fx.puffs(air, list, WISP_TONES) : null;
-    const end = WARM_MS + 2600, t0 = performance.now(); let raf = 0;
-    const done = () => { entry.stop = null; glow(EMBER_MS); quiet(() => smoke?.destroy()); quiet(() => air.destroy({ children: true })); };
-    entry.stop = () => { cancelAnimationFrame(raf); done(); };
+    // Smoke runs per frame to `end`; the seams then keep dying down to EMBER_MS from a slow timer (they change too slowly to
+    // need a frame loop), so the glow fades out smoothly and nothing snaps cold.
+    const end = WARM_MS + 2600, SLOW_MS = 500, t0 = performance.now(); let raf = 0, timer = 0;
+    const stopAll = () => { cancelAnimationFrame(raf); clearInterval(timer); entry.stop = null; quiet(() => smoke?.destroy()); quiet(() => air.destroy({ children: true })); };
+    entry.stop = () => { stopAll(); glow(EMBER_MS); };
+    const slow = () => {
+      const ms = performance.now() - t0;
+      glow(Math.min(ms, EMBER_MS));
+      if (ms >= EMBER_MS) { clearInterval(timer); entry.stop = null; }
+    };
     const tick = () => {
       const ms = performance.now() - t0;
       glow(ms); smoke?.update(Math.min(ms, end));
-      if (ms < end) raf = requestAnimationFrame(tick); else done();
+      if (ms < end) { raf = requestAnimationFrame(tick); return; }
+      quiet(() => smoke?.destroy()); quiet(() => air.destroy({ children: true }));
+      timer = setInterval(slow, SLOW_MS);
     };
     glow(0); raf = requestAnimationFrame(tick);
   }

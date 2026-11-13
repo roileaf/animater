@@ -115,3 +115,7 @@ test("burning out chars a solid prop and burns a plant away", () => {
   assert.ok(STYLES.includes("char"));
   assert.ok(!STYLE_CHOICES.includes("char"), "not offered as a Breaks as choice");
 });
+test("burning out wins over a decoration's rule, which still splits from a slash", () => {
+  assert.equal(breakStyle({ material: "cloth", rule: "torn" }, { burnedOut: true }), "char");
+  assert.equal(breakStyle({ material: "cloth", rule: "torn" }, { damageType: "slashing" }), "split", "the rule itself is intact");
+});

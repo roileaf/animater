@@ -61,9 +61,9 @@ export function propTraits(tile, grid, scene = {}) {
 // set (or guessed) to it; otherwise it shatters.
 export function breakStyle(traits, cause) {
   if (traits?.tips && cause?.slam) return "tip";
+  if (cause?.burnedOut) return traits?.material === "plant" || traits?.style === "burn" ? "burn" : "char"; // a fire that ran its rounds (wins over a decoration's rule): ash, or a charred wreck
   const ruled = traits?.rule ? decorRuleStyle(traits.rule, cause) : null; // a decoration's own (a torn sack splits)
   if (ruled) return ruled;
-  if (cause?.burnedOut) return traits?.material === "plant" || traits?.style === "burn" ? "burn" : "char"; // a fire that ran its rounds: ash, or a charred wreck
   const fire = cause?.damageType === "fire" || cause?.blast === true;
   if (traits?.material === "plant") return fire ? "burn" : cause?.damageType === "slashing" ? "split" : "shatter";
   if (traits?.style === "burn") return fire ? "burn" : "shatter";
