@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mirrorOf, mirrorsOf, tileMirrors, mirrorWobble, nearestFirst, lampColumn, moonPath, colorOf, MAX_MIRRORS, MAX_COLUMNS, createWaterMirror, WATER_MIRROR_SHADER, tokenTurn, createRingPictures } from '../../scripts/engines/motion/water-mirror.mjs';
+import { mirrorOf, mirrorsOf, tileMirrors, mirrorWobble, nearestFirst, lampGlints, moonGlints, GLINT_REACH, colorOf, MAX_MIRRORS, MAX_COLUMNS, createWaterMirror, WATER_MIRROR_SHADER, tokenTurn, createRingPictures } from '../../scripts/engines/motion/water-mirror.mjs';
 import { readFileSync } from 'node:fs';
 
 // The same player: "Can you add a dynamic ring reflection feature?" Roi: "whole token but as a setting defaulted to off".
@@ -75,9 +75,9 @@ test('nothing asks about walls when no water would show', () => {
 
 test('a lamp behind a wall throws no light on the water', () => {
   const lamp = { x: 1300, y: 900, color: 0xff0000, radius: 200 };
-  assert.ok(lampColumn(lamp, [pond], { grid: 100 }).wet > 0);
-  assert.equal(lampColumn(lamp, [pond], { grid: 100, blocked: () => true }).wet, 0);
-  assert.ok(lampColumn(lamp, [pond], { grid: 100, blocked: () => false }).wet > 0);
+  assert.ok(lampGlints(lamp, [pond], { grid: 100 }).wet > 0);
+  assert.equal(lampGlints(lamp, [pond], { grid: 100, blocked: () => true }).wet, 0);
+  assert.ok(lampGlints(lamp, [pond], { grid: 100, blocked: () => false }).wet > 0);
 });
 
 test('a door opening shows again what it hid, without anything moving', () => {
@@ -238,17 +238,22 @@ test('nearest the middle of the view first, up to the limit', () => {
   assert.equal(MAX_MIRRORS, 12);
 });
 
-test('a lamp within 4 squares throws its colour down the map', () => {
-  const c = lampColumn({ x: 1300, y: 950, color: 0xff8800, radius: 300 }, [pond], { grid: 100 });
-  assert.equal(c.x, 1300); assert.equal(c.y, 950);
-  assert.ok(c.len >= 400); assert.ok(c.wet > 0.5);
-  assert.deepEqual(c.color, [1, 136 / 255, 0]);
-  assert.equal(lampColumn({ x: 1300, y: 1000 - 410, radius: 300 }, [pond], { grid: 100 }), null, 'too far');
-  assert.ok(lampColumn({ x: 1300, y: 1000 - 390, radius: 300 }, [pond], { grid: 100 }));
-  assert.equal(lampColumn({ x: 1300, y: 1650 }, [pond], { grid: 100 }).wet, 0, 'below the water it throws nowhere');
-  const night = lampColumn({ x: 1300, y: 950 }, [pond], { grid: 100 }), day = lampColumn({ x: 1300, y: 950 }, [pond], { grid: 100, sunny: true });
+// Roi: "what are those lines in the water engine". The old column was what you see looking across water from its level; a map
+// is seen from straight above, where a flame's glints gather close around it and no column forms.
+test('a lamp glints only on the water close around it, with no column down the map', () => {
+  const g = lampGlints({ x: 1300, y: 950, color: 0xff8800, radius: 300 }, [pond], { grid: 100 });
+  assert.equal(g.x, 1300); assert.equal(g.y, 950);
+  assert.equal(g.half, GLINT_REACH * 100, 'a square around the flame, as far as any ripple can send its light up');
+  assert.equal(g.len, undefined, 'no column');
+  assert.ok(g.wet > 0);
+  assert.deepEqual(g.color, [1, 136 / 255, 0]);
+  assert.ok(GLINT_REACH >= 1 && GLINT_REACH <= 2.5, 'a flame held at a person\'s height reaches a square or two, no more');
+  assert.equal(lampGlints({ x: 1300, y: 1000 - GLINT_REACH * 100 - 10 }, [pond], { grid: 100 }), null, 'too far');
+  assert.ok(lampGlints({ x: 1300, y: 1000 - GLINT_REACH * 100 + 10 }, [pond], { grid: 100 }));
+  assert.ok(lampGlints({ x: 1300, y: 1650 }, [pond], { grid: 100 }).wet > 0, 'beside the water on any side, not only above it');
+  assert.ok(lampGlints({ x: 1300, y: 1300 }, [pond], { grid: 100 }).wet > lampGlints({ x: 1300, y: 950 }, [pond], { grid: 100 }).wet, 'out on the water, water all round it');
+  const night = lampGlints({ x: 1300, y: 950 }, [pond], { grid: 100 }), day = lampGlints({ x: 1300, y: 950 }, [pond], { grid: 100, sunny: true });
   assert.ok(day.strength < night.strength, 'lost in daylight');
-  assert.ok(lampColumn({ x: 1300, y: 950 }, [pond], { grid: 100 }).strength > lampColumn({ x: 1300, y: 650 }, [pond], { grid: 100 }).strength, 'stronger close by');
 });
 
 test('colours as they come', () => {
@@ -258,15 +263,80 @@ test('colours as they come', () => {
   assert.equal(colorOf(null).length, 3, 'firelight if none');
 });
 
-test('the moon comes down the water to the bottom of the view', () => {
+// Seen from straight above, every bit of water needs the same tilt to send the moon up: a rare twinkle anywhere, none with it low.
+// Roi: "the glints will not show on shadowed areas where the light doesnt reach right?" A glint is the flame seen in the water, so only water the flame lights can show one.
+test('a lamp glints only where its light reaches: its lit shape, walls cut out', () => {
+  const lamp = { x: 1300, y: 950, color: 0xffaa66 };
+  const open = lampGlints(lamp, [pond], { grid: 100 });
+  // A wall straight down from it: its light reaches only the water on its left.
+  const halfLit = lampGlints({ ...lamp, shape: [1100, 750, 1300, 750, 1300, 1150, 1100, 1150] }, [pond], { grid: 100 });
+  assert.ok(halfLit.wet > 0 && halfLit.wet < open.wet, 'only the lit side of the water counts');
+  assert.deepEqual(halfLit.shape, [1100, 750, 1300, 750, 1300, 1150, 1100, 1150], 'its shape goes with it, to cut the glints to');
+  assert.equal(lampGlints({ ...lamp, shape: [1100, 700, 1500, 700, 1500, 900, 1100, 900] }, [pond], { grid: 100 }).wet, 0, 'lighting none of the water, none');
+  assert.ok(lampGlints({ ...lamp, shape: [1, 2, 3, 4] }, [pond], { grid: 100 }).wet > 0, 'a broken shape is no shape');
+  assert.equal(lampGlints({ ...lamp, shape: [1, 2, 3, 4] }, [pond], { grid: 100 }).shape, null);
+});
+
+// Roi: "like real life". Rough water still sends a flame up to the eye: its steeper ripples only spread the glints wider. A token's copy needs calm water; a glint does not.
+test('a lamp glints on swift water too, marked rough so its ripples run steeper; never on a dock', () => {
+  const lamp = { x: 1300, y: 950, color: 0xffaa66 };
+  const swift = lampGlints(lamp, [], { grid: 100, rough: [pond] });
+  assert.ok(swift && swift.wet > 0, 'glints on rough water');
+  assert.equal(swift.rough, 1, 'all of it rough');
+  assert.equal(lampGlints(lamp, [pond], { grid: 100 }).rough, 0, 'calm water, none rough');
+  assert.equal(lampGlints(lamp, [pond], { grid: 100, decks: [square(900, 800, 900)] }).wet, 0, 'a dock over all of it: nothing shows');
+});
+
+test('the layer: glints on rough water as on calm, the moon steeper there', () => {
+  const PIXI = fakePIXI(), root = new PIXI.Container(), layer = createWaterMirror({ PIXI, root: () => root, grid: () => 100 }), view = { x: 1000, y: 800, w: 600, h: 800 };
+  layer.water([], { rough: [pond] });
+  layer.look({ tokens: [token({ y: 950 })], lamps: [{ x: 1300, y: 950, color: 0xffaa66 }], moon: { angle: 45, height: 70, strength: 0.8 }, sunny: false });
+  layer.tick(0.05, { view });
+  const holder = root.children[0], shine = holder.children[2], [calmMoon, roughMoon, ...lamps] = shine.children.filter((c) => c.shader);
+  assert.equal(shine.mask, holder.children[3], 'glints cut to all the water');
+  assert.ok(holder.children[3].polys >= 1, 'rough water in it');
+  const on = lamps.filter((m) => m.visible);
+  assert.equal(on.length, 1, 'the lamp glints on swift water');
+  assert.ok(Math.abs(on[0].geometry.getBuffer('aBand').data[3] - 0.45) < 1e-6, 'marked rough');
+  assert.equal(calmMoon.visible, false, 'no calm water for the calm moon');
+  assert.equal(roughMoon.visible, true); assert.equal(roughMoon.geometry.getBuffer('aBand').data[3], 1.5, 'the moon on rough water, marked rough');
+  assert.equal(holder.children[0].children.filter((c) => c.texture && c.visible).length, 0, 'but no copy of anyone: rough water mirrors nothing');
+  layer.water([], { rough: [pond], dull: [pond] });
+  layer.tick(0.05, { view });
+  assert.equal(lamps.filter((m) => m.visible).length, 0, 'water with reflections off shows no glints either');
+  layer.clear();
+});
+
+// Roi: "where are the glints?" Under the lighting, a torch's glints were added to water its light had already made bright, and
+// vanished in it. A glint is the flame itself seen in the water, far brighter than the lit water: drawn over the lighting, as the embers are.
+test('the layer: glints go over the lighting when given somewhere to, the copies stay on the floor', () => {
+  const PIXI = fakePIXI(), root = new PIXI.Container(), glow = new PIXI.Container(), view = { x: 1000, y: 800, w: 600, h: 800 };
+  const layer = createWaterMirror({ PIXI, root: () => root, glowRoot: () => glow, grid: () => 100 });
+  layer.water([pond]);
+  layer.look({ tokens: [token({ y: 950 })], lamps: [{ x: 1300, y: 950, color: 0xffaa66 }], moon: null, sunny: false });
+  layer.tick(0.05, { view });
+  const shine = glow.children[0]?.children.find((c) => c.mask && c.children.some((m) => m.shader));
+  assert.ok(shine, 'the glints over the lighting');
+  assert.ok(shine.children.some((m) => m.shader && m.visible), 'the lamp\'s glints there');
+  assert.ok(!root.children[0].children.some((c) => c === shine), 'not on the floor');
+  assert.ok(root.children[0].children[0].children.some((c) => c.texture && c.visible), 'the copies still on the floor');
+  layer.tick(0.05, { view: { x: 9000, y: 9000, w: 100, h: 100 } });
+  assert.equal(glow.children[0].visible, false, 'out of view, hidden too');
+  layer.clear();
+  assert.equal(glow.children.length, 0, 'and gone with the rest');
+});
+
+test('the moon twinkles anywhere on the water when it is high, and not at all when it is low', () => {
   const view = { x: 0, y: 500, w: 1000, h: 1000 };
-  assert.equal(moonPath(null, view), null);
-  assert.equal(moonPath({ x: 1, y: 1, strength: 0 }, view), null);
-  const p = moonPath({ x: 400, y: 800, strength: 0.7 }, view, { grid: 100 });
-  assert.equal(p.y, 800); assert.equal(p.y + p.len, 1600); assert.equal(p.strength, 0.7);
-  assert.equal(moonPath({ x: 400, y: 0, strength: 1 }, view, { grid: 100 }).y, 400, 'from just above the view');
-  assert.equal(moonPath({ x: 400, y: 5000, strength: 1 }, view, { grid: 100 }), null, 'below it');
-  assert.ok(moonPath({ x: 1, y: 1, strength: 1 }, null, { grid: 100 }).len > 0);
+  assert.equal(moonGlints(null, view), null);
+  assert.equal(moonGlints({ angle: 90, height: 70, strength: 0 }, view), null);
+  assert.equal(moonGlints({ angle: 90, height: 25, strength: 1 }, view), null, 'too low for any ripple to send it up');
+  const m = moonGlints({ angle: 90, height: 70, strength: 0.6 }, view, { grid: 100 });
+  assert.ok(m.x <= view.x && m.y <= view.y && m.x + m.w >= view.x + view.w && m.y + m.h >= view.y + view.h, 'all the water in view');
+  assert.equal(m.strength, 0.6);
+  assert.ok(Math.abs(m.tilt[0]) < 1e-9 && Math.abs(m.tilt[1] - Math.tan((10 * Math.PI) / 180)) < 1e-9, 'half its angle from overhead, leaning toward it');
+  assert.ok(Math.hypot(...moonGlints({ angle: 0, height: 85, strength: 1 }, view).tilt) < Math.hypot(...m.tilt), 'higher, gentler tilt, more twinkles');
+  assert.equal(moonGlints({ angle: 0, height: 70, strength: 1 }, null), null, 'no view, nothing to cover');
 });
 
 function fakePIXI() {
@@ -280,7 +350,7 @@ function fakePIXI() {
   }
   class Sprite extends Thing { constructor(texture) { super(); this.texture = texture; made++; } }
   class Mesh extends Thing { constructor(geometry, shader) { super(); this.geometry = geometry; this.shader = shader; } }
-  class Graphics extends Thing { constructor() { super(); this.polys = 0; this.cuts = 0; this.inHole = false; } clear() { this.polys = this.cuts = 0; } beginFill() {} endFill() {} drawPolygon() { if (this.inHole) this.cuts++; else this.polys++; } beginHole() { this.inHole = true; } endHole() { this.inHole = false; } }
+  class Graphics extends Thing { constructor() { super(); this.polys = 0; this.cuts = 0; this.inHole = false; } clear() { this.polys = this.cuts = 0; } beginFill() {} endFill() {} drawPolygon(points) { if (this.inHole) this.cuts++; else { this.polys++; this.drawn = points; } } beginHole() { this.inHole = true; } endHole() { this.inHole = false; } }
   class Geometry { constructor() { this.buffers = {}; } addAttribute(name, buffer) { this.buffers[name] = buffer; return this; } addIndex() { return this; } getBuffer(name) { return this.buffers[name]; } }
   class Buffer { constructor(data) { this.data = data; this.updates = 0; } update() { this.updates++; } }
   return { Container: Thing, Sprite, Mesh, Graphics, Geometry, Buffer, Shader: { from: (v, f, uniforms) => ({ uniforms }) }, get made() { return made; } };
@@ -325,26 +395,31 @@ test('the layer: at most 12 copies, nearest first, the sprites used over', () =>
   layer.tick(0.05, { view });
 });
 
-test('the layer: lamps and the moon go in one mesh, the moon not by day', () => {
+test('the layer: each lamp its own glints cut to its light, the moon over all, the moon not by day', () => {
   const PIXI = fakePIXI(), root = new PIXI.Container(), layer = createWaterMirror({ PIXI, root: () => root, grid: () => 100 }), view = { x: 1000, y: 800, w: 600, h: 800 };
   layer.water([pond]);
-  const lamps = Array.from({ length: MAX_COLUMNS + 4 }, (_, i) => ({ x: 1020 + i * 40, y: 950, color: 0xffaa66, radius: 300 }));
-  layer.look({ tokens: [], lamps, moon: { x: 1200, y: 1000, strength: 0.8 }, sunny: false });
+  const lamps = Array.from({ length: MAX_COLUMNS + 4 }, (_, i) => ({ x: 1020 + i * 40, y: 950, color: 0xffaa66, radius: 300, shape: i === 7 ? [1200, 800, 1400, 800, 1400, 1200, 1200, 1200] : null }));
+  layer.look({ tokens: [], lamps, moon: { angle: 45, height: 70, strength: 0.8 }, sunny: false });
   layer.tick(0.05, { view });
-  const inner = root.children[0].children[0], mesh = inner.children.find((c) => c.shader), band = mesh.geometry.getBuffer('aBand').data, pos = mesh.geometry.getBuffer('aVertexPosition').data;
-  assert.equal(mesh.visible, true);
-  const kinds = []; for (let i = 0; i < MAX_COLUMNS + 1; i++) if (pos[i * 8 + 5] !== 0) kinds.push(band[i * 16 + 3]);
-  assert.equal(kinds.filter((k) => k === 0).length, MAX_COLUMNS, 'only as many columns as it can hold');
-  assert.equal(kinds.filter((k) => k === 1).length, 1, 'and the moon');
+  const shine = root.children[0].children[2], [moon, , ...lampMeshes] = shine.children.filter((c) => c.shader);
+  assert.equal(lampMeshes.filter((m) => m.visible).length, MAX_COLUMNS, 'only as many lamps as it can hold');
+  assert.ok(lampMeshes.every((m) => m.geometry.getBuffer('aBand').data[3] === 0), 'lamps');
+  assert.ok(lampMeshes.filter((m) => m.visible).every((m) => m.mask.polys === 1), 'each cut to its own light');
+  assert.ok(lampMeshes.some((m) => m.visible && m.mask.drawn?.[0] === 1200), 'a lamp with a lit shape is cut to that shape');
+  assert.equal(moon.visible, true); assert.equal(moon.geometry.getBuffer('aBand').data[3], 1, 'and the moon');
 
-  const updates = mesh.geometry.getBuffer('aBand').updates;
-  layer.look({ tokens: [], lamps, moon: { x: 1200, y: 1000, strength: 0.8 }, sunny: false });
+  const updates = moon.geometry.getBuffer('aBand').updates;
+  layer.look({ tokens: [], lamps, moon: { angle: 45, height: 70, strength: 0.8 }, sunny: false });
   layer.tick(0.05, { view });
-  assert.equal(mesh.geometry.getBuffer('aBand').updates, updates, 'nothing changed: nothing worked out again');
+  assert.equal(moon.geometry.getBuffer('aBand').updates, updates, 'nothing changed: nothing worked out again');
+  layer.look({ tokens: [], lamps: lamps.map((l, i) => (i === 7 ? { ...l, shape: [1200, 800, 1450, 800, 1450, 1200, 1200, 1200] } : l)), moon: { angle: 45, height: 70, strength: 0.8 }, sunny: false });
+  layer.tick(0.05, { view });
+  assert.ok(moon.geometry.getBuffer('aBand').updates > updates, 'a door opening changes a light\'s shape: worked out again');
 
-  layer.look({ tokens: [], lamps: [], moon: { x: 1200, y: 1000, strength: 0.8 }, sunny: true });
+  layer.look({ tokens: [], lamps: [], moon: { angle: 45, height: 70, strength: 0.8 }, sunny: true });
   layer.tick(0.05, { view });
-  assert.equal(mesh.visible, false, 'no moon by day');
+  assert.equal(moon.visible, false, 'no moon by day');
+  assert.ok(lampMeshes.every((m) => !m.visible), 'and no lamps left');
   layer.clear();
 });
 

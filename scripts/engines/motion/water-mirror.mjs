@@ -1,6 +1,8 @@
 // What still water shows from above. Someone on the bank or wading: a flipped, dimmed, slightly stretched copy of them running out across the water from the nearest bank, trembling with the water.
-// Fires and lamps near it: a soft, broken column of their colour across the surface. The moon: a broken path of glitter. All of it cut to the water; rough water shows none of it.
-// A dozen copies at most, nearest the middle of the view, the sprites used over; one mesh for all the light. Every screen has its own: nothing here is saved or shared.
+// Fires and lamps near it, and the moon: glints, as the water's ripples really send them up to an eye looking straight down. A flame's gather in a small twinkling cluster close
+// around it; the moon's are a rare twinkle anywhere on the water, and none when it is low. No column or path: those are what you see looking across water from near its level, never from above.
+// The copies only on calm water: rough water breaks them up. The glints on any water, rough too, as in life: steeper ripples there only spread them wider.
+// A dozen copies at most, nearest the middle of the view, the sprites used over; a mesh for each lamp's glints, cut to where its light reaches, and one for the moon's. Every screen has its own: nothing here is saved or shared.
 
 import { nearestOfArea } from './river-sound.mjs';
 
@@ -8,20 +10,18 @@ export const MAX_MIRRORS = 12;
 export const MAX_COLUMNS = 8;
 // Tiles have their own allowance, so a wood by the pond never crowds out the creatures. One bigger than this many squares is a map's overlay, not a thing standing by the water.
 export const MAX_TILES = 16, BIGGEST_TILE = 12;
-const QUADS = MAX_COLUMNS + 1;
 // How near the water something must be to show in it (squares).
 export const LAMP_REACH = 4;
+// How far from a flame its glints can lie (squares). Water there flashes only where a ripple tilts at half the angle from overhead to the flame; held at a person's height
+// (about 1.6 m) over ripples a breeze tilts by up to about 0.2, none can past a square and a half or so. The shader works out the rest.
+export const GLINT_REACH = 2;
+// The moon lower than this (degrees) needs a steeper tilt than ripples give: no glints at all.
+const MOON_LOWEST = 35;
 
 const inPoly = (p, area) => nearestOfArea(p, area).d === 0;
 const inAny = (p, areas) => areas.some((a) => inPoly(p, a));
 const calmAt = (p, areas, rough) => areas.some((a) => inPoly(p, a) && !(a.holes ?? []).some((h) => inPoly(p, h))) && !inAny(p, rough);
 const nearestWater = (p, areas) => { let best = Infinity; for (const a of areas) best = Math.min(best, nearestOfArea(p, a).d); return best; };
-// How much of a line down the map lies on calm water, 0-1.
-const wetDown = (x, y, len, areas, rough, samples = 6) => {
-  let hit = 0;
-  for (let i = 0; i < samples; i++) if (calmAt({ x, y: y + (len * (i + 0.5)) / samples }, areas, rough)) hit++;
-  return hit / samples;
-};
 
 // What a region's water is to a mirror (pure): `own` its Animater flags, `isWater` whether its floor is water. 'calm' mirrors and 'rough' does not; null is no water at all. A dripping region's pool is still water whatever the floor around it. A region can ask for no reflections.
 export function waterStillness(own = {}, isWater = false) {
@@ -149,24 +149,37 @@ export function colorOf(color) {
   return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 }
 
-// The column a fire or lamp throws (pure). null: more than 4 squares from water. Else { x, y, len, width, color, strength 0-1, wet (0-1 how much of it lands on calm water) }. A lamp below the water throws nowhere, nor one with a wall (`blocked(from, to)`) between it and the water: wet 0.
-export function lampColumn(lamp, areas = [], { grid = 100, rough = [], sunny = false, blocked = null } = {}) {
-  if (!lamp || !areas.length) return null;
-  const distance = nearestWater(lamp, areas);
-  if (distance > LAMP_REACH * grid) return null;
-  const radius = Number(lamp.radius) || grid * 2, len = Math.min(grid * 9, Math.max(grid * 4, distance + radius * 1.1));
-  let wet = wetDown(lamp.x, lamp.y, len, areas, rough);
-  if (wet > 0 && blocked) { let along = 0; for (let i = 0; i < 6; i++) { along = (len * (i + 0.5)) / 6; if (calmAt({ x: lamp.x, y: lamp.y + along }, areas, rough)) break; } if (blocked({ x: lamp.x, y: lamp.y }, { x: lamp.x, y: lamp.y + along })) wet = 0; }
-  return { x: lamp.x, y: lamp.y, len, width: Math.min(grid * 1.1, grid * 0.4 + radius * 0.08), color: colorOf(lamp.color), strength: (0.4 + 0.6 * (1 - distance / (LAMP_REACH * grid))) * (sunny ? 0.2 : 1), wet };
+// Where a fire or lamp can glint on the water (pure): a square GLINT_REACH squares each way from it. null: no water that near. Else { x, y, half (px), color, strength 0-1,
+// wet (0-1 how much of that square is water its light reaches, calm or `rough`, never under a `deck`), rough (0-1 how much of that water is rough), shape (its lit shape, flat points, or null) }. A glint is the flame seen in the water, so only water it lights
+// can show one: `lamp.shape` is where its light reaches, walls cut out (Foundry's own). Without one, a wall (`blocked(from, to)`) between it and the nearest water hides it all.
+export function lampGlints(lamp, areas = [], { grid = 100, rough = [], decks = [], sunny = false, blocked = null } = {}) {
+  if (!lamp || (!areas.length && !rough.length)) return null;
+  const half = GLINT_REACH * grid, shape = lamp.shape?.length >= 6 ? Array.from(lamp.shape) : null;
+  if (nearestWater(lamp, [...areas, ...rough]) > half) return null;
+  let hit = 0, all = 0, harsh = 0, nearest = null, best = Infinity;
+  for (let i = -4; i <= 4; i++) for (let j = -4; j <= 4; j++) {
+    const d = Math.hypot(i, j) * half / 4;
+    if (d > half) continue;
+    all++;
+    const p = { x: lamp.x + (i * half) / 4, y: lamp.y + (j * half) / 4 };
+    if ((shape && !inPoly(p, shape)) || inAny(p, decks)) continue;
+    const calm = calmAt(p, areas, rough);
+    if (!calm && !inAny(p, rough)) continue;
+    hit++; if (!calm) harsh++;
+    if (d < best) { best = d; nearest = p; }
+  }
+  let wet = hit / all;
+  if (wet > 0 && !shape && blocked?.({ x: lamp.x, y: lamp.y }, nearest)) wet = 0;
+  return { x: lamp.x, y: lamp.y, half, color: colorOf(lamp.color), strength: sunny ? 0.25 : 1, wet, rough: hit ? harsh / hit : 0, shape };
 }
 
-// The moon's path on the water (pure), from where it comes down on it to the bottom of the view. null: no moon, or none to see. Else { x, y, len, width, strength 0-1 }.
-export function moonPath(moon, view, { grid = 100 } = {}) {
-  const strength = Math.min(1, Number(moon?.strength) || 0);
-  if (!moon || strength <= 0) return null;
-  const y = view ? Math.max(moon.y, view.y - grid) : moon.y, end = view ? view.y + view.h + grid : moon.y + grid * 12;
-  if (end <= y) return null;
-  return { x: moon.x, y, len: end - y, width: grid * 2, strength };
+// The moon's glints over the water in view (pure): `moon` { angle (screen degrees toward it), height (degrees), strength }. null: no moon, none in view, or too low for any.
+// Else { x, y, w, h (the view and a square round it), strength, tilt [x, y]: the ripple tilt that sends it straight up, leaning toward it, half its angle from overhead }.
+export function moonGlints(moon, view, { grid = 100 } = {}) {
+  const strength = Math.min(1, Number(moon?.strength) || 0), height = Number(moon?.height);
+  if (!moon || !view || strength <= 0 || !(height >= MOON_LOWEST)) return null;
+  const lean = Math.tan(((90 - Math.min(90, height)) * Math.PI) / 360), toward = ((Number(moon.angle) || 0) * Math.PI) / 180;
+  return { x: view.x - grid, y: view.y - grid, w: view.w + grid * 2, h: view.h + grid * 2, strength, tilt: [Math.cos(toward) * lean, Math.sin(toward) * lean] };
 }
 
 const VERT = `
@@ -179,42 +192,67 @@ void main(){ vPos = aVertexPosition; vBand = aBand; vTint = aTint; gl_Position =
 const FRAG = `
 precision highp float;
 varying vec2 vPos;
-varying vec4 vBand;                          // -1..1 across, 0-1 along, how strong, 0 a lamp's column and 1 the moon's path
+varying vec4 vBand;                          // -1..1 across, -1..1 down, how strong, what: a lamp's glints 0-0.45 (how rough its water), the moon's 1 on calm water and 1.5 on rough
 varying vec3 vTint;
-uniform float uTime, uGrid, uWind;
+uniform float uTime, uGrid, uWind, uReach;   // uReach: px from a lamp to its square's edge
+uniform vec2 uMoonTilt;                      // the tilt that sends the moon straight up, leaning toward it
+const float SQUARE_M = 1.5;                  // a square, in metres
+const float FLAME_UP = 1.6;                  // a flame's height over the water, held or hung, in metres
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p){
   vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
 }
-void main(){
-  vec2 p = vPos / uGrid;
-  float u = vBand.x, v = vBand.y, a;
-  if (vBand.w < 0.5) {
-    // A column: wandering a little from side to side, in bars across that come and go, thinning away from the lamp.
-    float side = u + (noise(vec2(p.y * 1.6, uTime * 0.5)) - 0.5) * (0.5 + uWind * 0.7);
-    float bars = smoothstep(0.34, 0.66, noise(vec2(p.x * 2.0, p.y * 5.5 - uTime * 0.5)));
-    a = (1.0 - smoothstep(0.0, 1.0, abs(side))) * smoothstep(0.0, 0.06, v) * pow(1.0 - v, 1.2) * (0.25 + 0.75 * bars);
-  } else {
-    // The moon's path: small bright flecks, thick down the middle and thin to the sides, none in places.
-    float fleck = noise(vec2(p.x * 9.0, p.y * 15.0 + uTime * 0.4)) * 0.6 + noise(vec2(p.x * 4.0, p.y * 9.0 - uTime * 0.9)) * 0.5;
-    float patches = smoothstep(0.3, 0.55, noise(vec2(p.x * 0.8, p.y * 1.3 - uTime * 0.1)));
-    a = (1.0 - smoothstep(0.1, 1.0, abs(u))) * smoothstep(0.62, 0.78, fleck) * patches * smoothstep(0.0, 0.04, v) * (1.0 - smoothstep(0.96, 1.0, v));
+// The water's slope at m (metres): small ripples of every heading, 5 to 30 cm long, each running at its own true speed, their tilts spread by rms (a breeze widens it).
+vec2 slopes(vec2 m, float rms){
+  m += (vec2(noise(m * 2.3), noise(m * 2.3 + 17.0)) - 0.5) * 0.12;
+  vec2 s = vec2(0.0); float sum = 0.0;
+  for (int i = 0; i < 12; i++) {
+    float fi = float(i);
+    float ang = hash(vec2(fi, 1.3)) * 6.2832, h2 = hash(vec2(fi, 7.1)), phase = hash(vec2(fi, 3.7)) * 6.2832;
+    float lambda = mix(0.05, 0.3, h2 * h2), k = 6.2832 / lambda, w = sqrt(9.81 * k + 0.000074 * k * k * k);
+    vec2 d = vec2(cos(ang), sin(ang));
+    float a = pow(lambda, 0.3);
+    s += a * d * cos(k * dot(d, m) - w * uTime + phase);
+    sum += a * a;
   }
-  a = clamp(a * vBand.z, 0.0, 1.0);
-  // Light added to the water far more than covering it.
-  gl_FragColor = vec4(vTint * a, a * 0.35);
+  return s * rms / sqrt(sum * 0.5);
+}
+void main(){
+  // Rough water (swift, falling, the sea's) tilts its ripples far more: its glints scatter wider and thinner.
+  float roughness = vBand.w < 0.5 ? vBand.w / 0.45 : (vBand.w > 1.25 ? 1.0 : 0.0);
+  float rms = 0.09 + 0.12 * clamp(uWind, 0.0, 1.0) + 0.15 * roughness;
+  vec2 s = slopes(vPos / uGrid * SQUARE_M, rms);
+  vec3 col;
+  if (vBand.w < 0.5) {
+    // A flame: a point flashes when its ripple tilts half the angle from overhead to the flame, toward it, so the glints gather close round it and thin out.
+    // Each is a tiny image of the flame, white at its heart; a faint glow round the near ones, the glare a bright speck spreads in the eye.
+    vec2 to = -vBand.xy * uReach / uGrid * SQUARE_M;
+    float r = length(to), out_ = length(vBand.xy);
+    float miss = length(s + normalize(to + 1e-5) * tan(0.5 * atan(r, FLAME_UP)));
+    float flash = 1.0 - smoothstep(0.012, 0.042, miss), core = 1.0 - smoothstep(0.0, 0.016, miss);
+    float halo = exp(-miss * miss / 0.014) * 0.35 * (1.0 - smoothstep(0.2, 0.9, out_));
+    col = (vTint * (flash * 2.2 + halo) + vec3(1.0, 0.95, 0.8) * core * 1.3) * (1.0 - smoothstep(0.8, 1.0, out_));
+  } else {
+    // The moon: the same tilt sends it up anywhere, so a rare cool twinkle wherever a ripple has it.
+    col = vTint * (1.0 - smoothstep(0.004, 0.016, length(s + uMoonTilt))) * 0.7;
+  }
+  col *= vBand.z;
+  // Light added to the water, hardly covering it.
+  gl_FragColor = vec4(col, min(1.0, max(col.r, max(col.g, col.b))) * 0.1);
 }`;
 export const WATER_MIRROR_SHADER = Object.freeze({ vert: VERT, frag: FRAG });
 
 /**
- * The layer: water(areas (flat points, each with its `holes`), { rough: [flat points] }) where it shows, and where it does not; look({ tokens: [{ id, texture, x, y (its middle), w, h, rotation (radians), alpha }],
- * lamps: [{ x, y, color, radius }], moon: { x, y, strength } | null, sunny }); tick(seconds, { view { x, y, w, h }, wind 0-1 }); walls() when a wall or door has changed; clear(). `root()` the container it goes in, `grid()` px a square (the scene's if left out), `blocked(from, to)` whether a wall stands between two places.
+ * The layer: water(areas (flat points, each with its `holes`), { rough, decks, dull: [flat points] }) calm water, where only glints show, where nothing does, and water with reflections off; look({ tokens: [{ id, texture, x, y (its middle), w, h, rotation (radians), alpha }],
+ * lamps: [{ x, y, color, radius, shape (where its light reaches, flat points) }], moon: { angle (screen degrees toward it), height (degrees), strength } | null, sunny }); tick(seconds, { view { x, y, w, h }, wind 0-1 }); walls() when a wall or door has changed; clear(). `root()` the container it goes in, `grid()` px a square (the scene's if left out), `blocked(from, to)` whether a wall stands between two places.
  * Rough water inside calm water is cut out of the mask only when all its corners lie in it; rough water beside it needs nothing.
+ * `glowRoot()`: where the glints go, over the lighting (a glint is the flame itself, far brighter than the water its light falls on); with none, beside the copies.
  */
-export function createWaterMirror({ PIXI, root, grid: gridOf = () => globalThis.canvas?.grid?.size ?? 100, blocked = null }) {
-  let holder = null, layer = null, mask = null, mesh = null, uniforms = null, pos = null, band = null, tint = null;
-  let areas = [], rough = [], decks = [], grid = 100, box = null, tokens = [], lampsNow = [], moonNow = null, sunny = false, time = 0, refresh = 0, viewKey = '', lightKey = '', lightDirty = true;
+export function createWaterMirror({ PIXI, root, glowRoot = null, grid: gridOf = () => globalThis.canvas?.grid?.size ?? 100, blocked = null }) {
+  // `layer` the copies, cut to calm water by `mask`; `shine` the glints, cut to all the water by `wet`: `moon` and `roughMoon` the moon's, on calm and on rough water, `lit` one mesh a lamp, each cut by its own light's shape.
+  let holder = null, glowHolder = null, layer = null, mask = null, shine = null, wet = null, moon = null, roughMoon = null, lit = [], uniforms = null;
+  let areas = [], rough = [], decks = [], dull = [], grid = 100, box = null, tokens = [], lampsNow = [], moonNow = null, sunny = false, time = 0, refresh = 0, viewKey = '', lightKey = '', lightDirty = true;
   // Each copy drawn, by token and way (`id:dir`): its sprite, what it shows, and how far it has faded in, so a copy never pops in or out.
   const live = new Map(), spare = [], cache = new Map();
   let copies = [], tilesNow = [], tileCopies = [];
@@ -225,26 +263,40 @@ export function createWaterMirror({ PIXI, root, grid: gridOf = () => globalThis.
     layer = new PIXI.Container(); layer.eventMode = 'none';
     mask = new PIXI.Graphics();
     holder.addChild(layer); holder.addChild(mask); layer.mask = mask;
-    pos = new Float32Array(QUADS * 8); band = new Float32Array(QUADS * 16); tint = new Float32Array(QUADS * 12);
-    const index = new Uint16Array(QUADS * 6); for (let i = 0; i < QUADS; i++) index.set([i * 4, i * 4 + 1, i * 4 + 2, i * 4, i * 4 + 2, i * 4 + 3], i * 6);
-    uniforms = { uTime: time, uGrid: grid, uWind: 0 };
-    const geometry = new PIXI.Geometry().addAttribute('aVertexPosition', new PIXI.Buffer(pos, false), 2).addAttribute('aBand', new PIXI.Buffer(band, false), 4).addAttribute('aTint', new PIXI.Buffer(tint, false), 3).addIndex(index);
-    mesh = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, FRAG, uniforms));
-    mesh.eventMode = 'none'; mesh.visible = false;
-    layer.addChild(mesh);
+    shine = new PIXI.Container(); shine.eventMode = 'none'; wet = new PIXI.Graphics();
+    const glints = glowRoot ? (glowHolder = new PIXI.Container()) : holder;
+    if (glowHolder) glowHolder.eventMode = 'none';
+    glints.addChild(shine); glints.addChild(wet); shine.mask = wet;
+    uniforms = { uTime: time, uGrid: grid, uWind: 0, uReach: GLINT_REACH * grid, uMoonTilt: [0, 0] };
+    const shader = PIXI.Shader.from(VERT, FRAG, uniforms);
+    const quadMesh = () => {
+      const geometry = new PIXI.Geometry().addAttribute('aVertexPosition', new PIXI.Buffer(new Float32Array(8), false), 2).addAttribute('aBand', new PIXI.Buffer(new Float32Array(16), false), 4).addAttribute('aTint', new PIXI.Buffer(new Float32Array(12), false), 3).addIndex(new Uint16Array([0, 1, 2, 0, 2, 3]));
+      const m = new PIXI.Mesh(geometry, shader), clip = new PIXI.Graphics(); m.eventMode = 'none'; m.visible = false; shine.addChild(m); shine.addChild(clip); m.mask = clip; return m;
+    };
+    moon = quadMesh(); roughMoon = quadMesh();
+    lit = Array.from({ length: MAX_COLUMNS }, () => quadMesh());
     root().addChild(holder);
+    if (glowHolder) glowRoot().addChild(glowHolder);
     drawMask();
   };
-  const ready = () => { if (!holder || holder.destroyed) { dropAll(); make(); } };
+  const ready = () => { if (!holder || holder.destroyed || glowHolder?.destroyed) { dropAll(); make(); } };
+  const showing = (on) => { if (holder) holder.visible = on; if (glowHolder) glowHolder.visible = on; };
+  // Water into a mask: each area with its holes, and what lies wholly inside it from `cut` cut out.
+  const drawWater = (g, list, cut) => {
+    g.clear(); g.beginFill(0xffffff);
+    for (const area of list) {
+      g.drawPolygon(area);
+      const cuts = [...(area.holes ?? []), ...cut.filter((r) => { for (let i = 0; i < r.length; i += 2) if (!inPoly({ x: r[i], y: r[i + 1] }, area)) return false; return true; })];
+      for (const hole of cuts) { g.beginHole(); g.drawPolygon(hole); g.endHole(); }
+    }
+    g.endFill();
+  };
   const drawMask = () => {
     if (!mask) return;
-    mask.clear(); mask.beginFill(0xffffff);
-    for (const area of areas) {
-      mask.drawPolygon(area);
-      const cuts = [...(area.holes ?? []), ...[...rough, ...decks].filter((r) => { for (let i = 0; i < r.length; i += 2) if (!inPoly({ x: r[i], y: r[i + 1] }, area)) return false; return true; })];
-      for (const hole of cuts) { mask.beginHole(); mask.drawPolygon(hole); mask.endHole(); }
-    }
-    mask.endFill();
+    drawWater(mask, areas, [...rough, ...decks]);
+    drawWater(wet, [...areas, ...rough], [...decks, ...dull]);
+    drawWater(moon.mask, areas, [...rough, ...decks]);
+    drawWater(roughMoon.mask, rough, [...decks, ...dull]);
   };
   // What the tokens now show, working out again only those that have moved.
   const place = () => {
@@ -260,21 +312,35 @@ export function createWaterMirror({ PIXI, root, grid: gridOf = () => globalThis.
     for (const id of cache.keys()) if (!seen.has(id)) cache.delete(id);
     refresh = 0;
   };
+  // A light's shape in short: enough that a door opening or a wall moving shows as a change.
+  const shapeKey = (shape) => { if (!shape?.length) return ''; let h = shape.length; for (let i = 0; i < shape.length; i++) h = (h * 31 + Math.round(shape[i])) | 0; return h; };
   const hashPhase = (id) => { let h = 0; for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return (h % 628) / 100; };
-  const quad = (i, { x, y, len, width }, color, strength, kind) => {
-    pos.set([x - width, y, x + width, y, x + width, y + len, x - width, y + len], i * 8);
-    band.set([-1, 0, strength, kind, 1, 0, strength, kind, 1, 1, strength, kind, -1, 1, strength, kind], i * 16);
-    for (let k = 0; k < 4; k++) tint.set(color, (i * 4 + k) * 3);
+  const quad = (m, x0, y0, x1, y1, color, strength, kind) => {
+    const g = m.geometry;
+    g.getBuffer('aVertexPosition').data.set([x0, y0, x1, y0, x1, y1, x0, y1]);
+    g.getBuffer('aBand').data.set([-1, -1, strength, kind, 1, -1, strength, kind, 1, 1, strength, kind, -1, 1, strength, kind]);
+    for (let k = 0; k < 4; k++) g.getBuffer('aTint').data.set(color, k * 3);
+    for (const name of ['aVertexPosition', 'aBand', 'aTint']) g.getBuffer(name).update();
+    m.visible = true;
   };
   const paintLight = (view) => {
-    const g = gridOf(), columns = nearestFirst(lampsNow.map((l) => lampColumn(l, areas, { grid: g, rough, sunny, blocked })).filter((c) => c && c.wet > 0), view, MAX_COLUMNS);
-    let i = 0;
-    for (const c of columns) quad(i++, c, c.color, c.strength, 0);
-    const path = sunny ? null : moonPath(moonNow, view, { grid: g });
-    if (path) quad(i++, path, [0.82, 0.87, 0.98], path.strength * 0.9, 1);
-    pos.fill(0, i * 8);
-    for (const name of ['aVertexPosition', 'aBand', 'aTint']) mesh.geometry.getBuffer(name).update();
-    mesh.visible = i > 0;
+    const g = gridOf(), lamps = nearestFirst(lampsNow.map((l) => lampGlints(l, areas, { grid: g, rough, decks: [...decks, ...dull], sunny, blocked })).filter((c) => c && c.wet > 0), view, MAX_COLUMNS);
+    lit.forEach((m, i) => {
+      const c = lamps[i];
+      m.visible = false; m.mask.clear();
+      if (!c) return;
+      const x0 = c.x - c.half, y0 = c.y - c.half, x1 = c.x + c.half, y1 = c.y + c.half;
+      // Cut to where its light reaches; with no shape known, its whole square.
+      m.mask.beginFill(0xffffff); m.mask.drawPolygon(c.shape ?? [x0, y0, x1, y0, x1, y1, x0, y1]); m.mask.endFill();
+      quad(m, x0, y0, x1, y1, c.color, c.strength, 0.45 * c.rough);
+    });
+    const glints = sunny ? null : moonGlints(moonNow, view, { grid: g });
+    moon.visible = false; roughMoon.visible = false;
+    if (glints) {
+      uniforms.uMoonTilt = glints.tilt;
+      if (areas.length) quad(moon, glints.x, glints.y, glints.x + glints.w, glints.y + glints.h, [0.82, 0.87, 0.98], glints.strength, 1);
+      if (rough.length) quad(roughMoon, glints.x, glints.y, glints.x + glints.w, glints.y + glints.h, [0.82, 0.87, 0.98], glints.strength, 1.5);
+    }
     lightDirty = false;
   };
   const dressSprites = (view) => {
@@ -294,14 +360,17 @@ export function createWaterMirror({ PIXI, root, grid: gridOf = () => globalThis.
   };
   const dropAll = () => {
     try { if (layer) layer.mask = null; holder?.parent?.removeChild(holder); holder?.destroy({ children: true }); } catch { /* gone */ }
-    holder = layer = mask = mesh = uniforms = pos = band = tint = null; live.clear(); spare.length = 0;
+    try { glowHolder?.parent?.removeChild(glowHolder); glowHolder?.destroy({ children: true }); } catch { /* gone */ }
+    glowHolder = null;
+    holder = layer = mask = shine = wet = moon = roughMoon = uniforms = null; lit = []; live.clear(); spare.length = 0;
   };
   return {
-    water(list = [], { rough: bad = [], decks: over = [] } = {}) {
-      areas = list; rough = bad; decks = over; cache.clear(); box = null; lightDirty = true;
-      if (list.length) {
+    // `dull`: water set to show no reflections at all (one of `rough`), so no glints either.
+    water(list = [], { rough: bad = [], decks: over = [], dull: off = [] } = {}) {
+      areas = list; rough = bad; decks = over; dull = off; cache.clear(); box = null; lightDirty = true;
+      if (list.length || bad.length) {
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-        for (const a of list) for (let i = 0; i < a.length; i += 2) { x0 = Math.min(x0, a[i]); x1 = Math.max(x1, a[i]); y0 = Math.min(y0, a[i + 1]); y1 = Math.max(y1, a[i + 1]); }
+        for (const a of [...list, ...bad]) for (let i = 0; i < a.length; i += 2) { x0 = Math.min(x0, a[i]); x1 = Math.max(x1, a[i]); y0 = Math.min(y0, a[i + 1]); y1 = Math.max(y1, a[i + 1]); }
         box = { x: x0, y: y0, r: x1, b: y1 };
       }
       if (mask) drawMask();
@@ -314,20 +383,21 @@ export function createWaterMirror({ PIXI, root, grid: gridOf = () => globalThis.
     look({ tokens: list = [], lamps = [], moon = null, sunny: day = false } = {}) {
       tokens = list; lampsNow = lamps; moonNow = moon; sunny = !!day;
       // Called as often as the tokens move: the lamps are only worked out again when they have changed.
-      const key = `${sunny}|${moon ? `${moon.x},${moon.y},${moon.strength}` : ''}|${lamps.map((l) => `${l.x},${l.y},${Number(l.color) || l.color},${l.radius}`).join(';')}`;
+      const key = `${sunny}|${moon ? `${moon.angle},${moon.height},${moon.strength}` : ''}|${lamps.map((l) => `${l.x},${l.y},${Number(l.color) || l.color},${l.radius},${shapeKey(l.shape)}`).join(';')}`;
       if (key !== lightKey) { lightKey = key; lightDirty = true; }
       place();
     },
     tick(seconds, { view = null, wind = 0 } = {}) {
-      if (!areas.length || (!copies.length && !tileCopies.length && !live.size && !lampsNow.length && !moonNow)) { if (holder) holder.visible = false; return; }
+      if ((!areas.length && !rough.length) || (!copies.length && !tileCopies.length && !live.size && !lampsNow.length && !moonNow)) { showing(false); return; }
       ready();
       const shows = !view || !box || (box.x < view.x + view.w && box.r > view.x && box.y < view.y + view.h && box.b > view.y);
-      holder.visible = shows;
+      showing(shows);
       if (!shows) return;
       const dt = Math.min(0.1, seconds); time += dt; grid = gridOf();
-      uniforms.uTime = time; uniforms.uGrid = grid; uniforms.uWind = wind;
-      // The moon's path runs to the bottom of the view, so it follows the view about.
-      const key = view && moonNow && !sunny ? `${Math.round(view.y / grid)}|${Math.round((view.y + view.h) / grid)}` : '';
+      // (The ripples' clock goes round every ten minutes, or the GPU's numbers grow too coarse to hold them; the glints are random enough that the turn never shows.)
+      uniforms.uTime = time % 600; uniforms.uGrid = grid; uniforms.uWind = wind; uniforms.uReach = GLINT_REACH * grid;
+      // The moon's glints cover the view, so they follow it about.
+      const key = view && moonNow && !sunny ? `${Math.round(view.x / grid)}|${Math.round(view.y / grid)}|${Math.round(view.w / grid)}|${Math.round(view.h / grid)}` : '';
       if (lightDirty || key !== viewKey) { viewKey = key; paintLight(view); }
       refresh -= dt;
       if (refresh <= 0) dressSprites(view);

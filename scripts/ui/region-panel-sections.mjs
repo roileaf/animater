@@ -70,7 +70,8 @@ const flip = (key, act) => (on) => act({ [key]: on });
 const soundOn = (own) => own.regionSound !== 'off';
 
 const WATER_SHORT = [['still', 'Pond'], ['river', 'River'], ['rapids', 'Rapids'], ['falls', 'Falls'], ['sea', 'Sea']];
-const CURRENTS = [['slower', 'Crawl'], ['slow', 'Slow'], ['', 'Gentle'], ['swift', 'Swift']];
+// The same words as a step's own current (STEP_SPEEDS), so the two never read as different things.
+const CURRENTS = [['slower', 'Very slow'], ['slow', 'Slow'], ['', 'Gentle'], ['swift', 'Swift']];
 const DRIP_PACE = [['slow', 'Slow'], ['', 'Steady'], ['fast', 'Fast'], ['faster', 'Trickle']];
 const DRIP_POOL = [['', 'Puddle'], ['pool', 'Pool'], ['deep', 'Deep']];
 const CLIMATES = [['', 'Scene'], ['cold', 'Cold'], ['warm', 'Warm']];
@@ -139,6 +140,15 @@ const decorSection = (c) => {
   return parts;
 };
 
+// When the step showing has a current of its own, it wins over the river's: said under Current, with a way back to the river's.
+const overriddenCurrent = ({ own, floor, act }) => {
+  const menu = stepMenu(own, floor);
+  if (!menu.ownSpeed) return [];
+  const label = STEP_SPEEDS.find(([v]) => v === menu.ownSpeed)?.[1] ?? menu.ownSpeed, note = element('div', 'an-rp-note', `The “${menu.steps[menu.current]}” step overrides it: ${label}. `);
+  note.append(button('Use the river\'s', 'an-rp-link', () => act(setStepSpeed(own, floor, ''))));
+  return [note];
+};
+
 export const SECTIONS = {
   decor: decorSection,
   height: heightSection,
@@ -146,7 +156,7 @@ export const SECTIONS = {
     const { own, act } = c, kind = waterKindOf(own);
     const parts = [row('Kind', seg(WATER_SHORT, kind, (v) => act(waterKindFlags(own, v)), 'Kind of water'), 'How the water engine moves it, and what it sounds like.', true)];
     if (waterFlows(kind)) parts.push(row('Flows toward', compass('Flows toward', own.flowTo || 's', (v) => act({ flowTo: v }), ['wind', 'With the wind']), 'The way the water runs (north is up the map): its ripples, glints and foam are carried downstream.'),
-      row('Current', seg(CURRENTS, own.current ?? '', (v) => act({ current: v }), 'Current')));
+      row('Current', seg(CURRENTS, own.current ?? '', (v) => act({ current: v }), 'Current')), ...overriddenCurrent(c));
     if (kind === 'sea') parts.push(row('Waves toward', compass('Waves toward', own.waveTo ?? '', (v) => act({ waveTo: v }), ['', 'With the wind'])),
       toggle('Beach along the shore', own.seaBeach !== 'off', (on) => act({ seaBeach: on ? '' : 'off' })));
     if (kind !== 'falls') parts.push(row('Depth', choice(WATER_DEPTHS, own.waterDepth ?? '', 'How deep the water is', (v) => act({ waterDepth: v }))));
@@ -229,7 +239,8 @@ export const SECTIONS = {
     const { own, floor, act } = c, menu = stepMenu(own, floor), chips = element('div', 'an-rp-steps');
     menu.steps.forEach((name, i) => chips.append(button(name, i === menu.current ? 'an-rp-on' : '', () => act(changeStep(own, floor, i, c.at)))));
     const parts = [tip(chips, menu.walks ? `This step walks as ${menu.walks}: its footsteps, sounds and prints.` : '')];
-    if (menu.speed) parts.push(row('Speed', seg(STEP_SPEEDS, menu.speed, (v) => act(setStepSpeed(own, floor, v)), 'Speed, this step')));
+    // The water's current while this step shows (not how fast the steps change): the river's, or its own.
+    if (menu.ownSpeed !== null) parts.push(row('Current here', seg(STEP_SPEEDS, menu.ownSpeed, (v) => act(setStepSpeed(own, floor, v)), 'Current here'), 'How fast the water runs while this step shows. As the river: the Current set under Water.', true));
     if (menu.strength !== null) parts.push(range('Strength', STEP_STRENGTH, menu.strength, percent, (v) => act(setStepStrength(own, floor, v)), 0.1, 'How much of its look this step puts down.', 'Look strength'));
     if (activeStep(own) || own.stepHidden) parts.push(toggle('Hide this step', menu.hidden, (on) => act({ stepHidden: on })));
     parts.push(button('Edit steps…', 'an-rp-more an-rp-link', () => { c.close(); c.edit(c.doc); }));

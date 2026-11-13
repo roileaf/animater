@@ -248,7 +248,7 @@ import { weatherShelter, crossesWall, takeCover, createWildlife, wildSound, WILD
 import { appendWallSection } from "./ui/wall-config-sections.mjs";
 import { createPondLife, gullsOver, freshWaterFor } from "./engines/motion/pond-life.mjs";
 import { createFieldLife, batLamps } from "./engines/motion/field-life.mjs";
-import { riverHeard, riverFile, RIVER_VOLUME, nightLevel, nightFile, nearestOfArea } from "./engines/motion/river-sound.mjs";
+import { riverHeard, riverFile, RIVER_VOLUME, nightLevel, nightFile } from "./engines/motion/river-sound.mjs";
 import { FIRE_VOLUME, FIRE_CROSSFADE, firesHeard, fireStart, fireNextIn, fireVoiceFor, soundsLight } from "./engines/sound/fire-sound.mjs";
 import { THUNDER, weatherLevels, weatherIsOurs, thunderOnTopOf, thunderShape, thunderReaches, thunderPan, weatherFile, weatherLoudness, louder, WEATHER_LOOPS } from "./engines/motion/weather-sound.mjs";
 import { createDoorBursts, doorSends, doorPlace, burstTarget, flockPaths, flockSize } from "./engines/motion/door-burst.mjs";
@@ -5704,12 +5704,12 @@ const waterfalls = createWaterfalls({ PIXI: globalThis.PIXI, floor: floorLayer("
 // Over the dripping regions' pools (646), which would hide it, and under the creatures.
 // Reflections stop at what stops sight: a window shows through, a shut door does not, an open one does.
 const sightBlocks = (a, b) => { try { const level = canvas.level; return CONFIG.Canvas.polygonBackends.sight.testCollision(a, b, { type: "sight", mode: "any", ...(level ? { level } : {}) }) === true; } catch { return false; } };
-const waterMirror = createWaterMirror({ PIXI: globalThis.PIXI, root: floorLayer("waterMirror", 647), grid: () => canvas.grid.size, blocked: sightBlocks });
+const waterMirror = createWaterMirror({ PIXI: globalThis.PIXI, root: floorLayer("waterMirror", 647), glowRoot: glowRootOf, grid: () => canvas.grid.size, blocked: sightBlocks });
 const mirrorRings = createRingPictures({ PIXI: globalThis.PIXI, renderer: () => canvas?.app?.renderer ?? null });
 Hooks.on("canvasTearDown", () => mirrorRings.clear());
 for (const hook of ["createWall", "updateWall", "deleteWall"]) Hooks.on(hook, (wall) => { if (wall?.parent?.id === canvas?.scene?.id) { try { waterMirror.walls(); } catch { /* the canvas mid-change */ } } });
 const beachLife = createCoast({ PIXI: globalThis.PIXI, floor: floorLayer("beachLife", 649) });
-let waterKey = null, calmWater = [], waterLookAt = 0, mirrorLookAt = 0, mirrorTilesAt = 0, mirrorTilesKey = "";
+let waterKey = null, calmWater = [], glintWater = [], waterLookAt = 0, mirrorLookAt = 0, mirrorTilesAt = 0, mirrorTilesKey = "";
 // The sound of a place (engines/motion/place-sounds.mjs): a loop for each kind, quieter through a wall, so a tavern's noise comes out through its open door and a shut one holds it in.
 const placeAreas = { surf: [], waterfall: [], waterfallLouds: [], tavern: [] }, placeVoices = { surf: { sound: null, starting: false }, calmSea: { sound: null, starting: false }, waterfall: { sound: null, starting: false }, flies: { sound: null, starting: false }, tavern: { sound: null, starting: false } };
 let placeLookAt = 0;
@@ -5746,7 +5746,7 @@ const tickPlaces = () => {
 };
 Hooks.on("canvasTearDown", () => { for (const voice of Object.values(placeVoices)) stopVoice(voice); placeAreas.surf = []; placeAreas.waterfall = []; placeAreas.waterfallLouds = []; placeAreas.tavern = []; });
 const rebuildWater = () => {
-  const seas = [], falls = [], calm = [], rough = [], fallSounds = [], fallLouds = [], seaSounds = [], beaches = [], seasHeard = [], fallsHeard = [];
+  const seas = [], falls = [], calm = [], rough = [], dull = [], fallSounds = [], fallLouds = [], seaSounds = [], beaches = [], seasHeard = [], fallsHeard = [];
   placeAreas.tavern = [];
   if (canvas?.ready) for (const region of regionsHere()) {
     try {
@@ -5764,6 +5764,8 @@ const rebuildWater = () => {
       // The crabs on the beach moving water draws.
       if (isWater && engineSea && movingWaterOn() && own.seaBeach !== "off") beaches.push(...areas);
       (still === "rough" ? rough : calm).push(...areas.map((a) => Array.from(a)));
+      // Reflections off: no glints on it either.
+      if (own.reflections === "off") dull.push(...areas.map((a) => Array.from(a)));
     } catch { /* a broken region never breaks the rest */ }
   }
   const useSea = bothSettingsOn("coast") && !undergroundScene(), useFalls = bothSettingsOn("waterfalls"), useMirror = bothSettingsOn("waterMirror") && canvas?.scene?.flags?.[ID]?.reflections !== "off";
@@ -5771,15 +5773,28 @@ const rebuildWater = () => {
   const useBeaches = bothSettingsOn("coast") && !undergroundScene();
   // What stands over the water (a dock, a bridge): nothing reflects on it, and a creature on it is not wading.
   const decks = canvas?.ready ? drawnRegions().filter((r) => r.flags?.[ID]?.overWater === true).flatMap((r) => regionAreas(r).map((a) => Array.from(a))) : [];
-  const key = JSON.stringify([canvas?.scene?.id, canvas?.level?.id, useSea && seas, useFalls && falls, useMirror && calm, useMirror && decks, useBeaches && beaches]);
+  const key = JSON.stringify([canvas?.scene?.id, canvas?.level?.id, useSea && seas, useFalls && falls, useMirror && calm, useMirror && rough, useMirror && dull, useMirror && decks, useBeaches && beaches]);
   if (key === waterKey) return; waterKey = key;
-  coast.clear(); beachLife.clear(); waterfalls.clear(); waterMirror.clear(); calmWater = useMirror ? calm : []; waterLookAt = 0; mirrorTilesAt = 0; mirrorTilesKey = "";
+  coast.clear(); beachLife.clear(); waterfalls.clear(); waterMirror.clear(); calmWater = useMirror ? calm : []; glintWater = useMirror ? rough : []; waterLookAt = 0; mirrorTilesAt = 0; mirrorTilesKey = "";
   if (!canvas?.ready) return;
   const grid = canvas.grid.size;
   if (useSea && seas.length) coast.build({ seas, grid, bounds: canvas.dimensions.sceneRect });
   if (useBeaches && beaches.length) beachLife.build({ seas: beaches, grid, bounds: canvas.dimensions.sceneRect, creaturesOnly: true });
   if (useFalls && falls.length) waterfalls.build({ falls, grid });
-  if (calmWater.length) waterMirror.water(calmWater, { rough, decks });
+  // Glints show on rough water too, though nothing mirrors there: the mirror is wanted wherever there is water.
+  if (calmWater.length || glintWater.length) waterMirror.water(calmWater, { rough: glintWater, decks, dull });
+};
+// The lights glinting on the water, as they stand this moment: a torch carried to the water, or lit there, counts at once (the embers' list waits for an ambient light or a wall to change).
+const mirrorLamps = () => {
+  const out = [];
+  for (const source of canvas.effects?.lightSources ?? []) {
+    try {
+      if (!source?.active || source.constructor?.name === "GlobalLightSource") continue;
+      const d = source.data ?? {};
+      if (Number(d.radius) > 0) out.push({ x: d.x, y: d.y, color: d.color === null || d.color === undefined ? null : Number(d.color), radius: d.radius, shape: source.shape?.points ?? null });
+    } catch { /* a broken light never breaks the rest */ }
+  }
+  return out;
 };
 const tickWater = (seconds) => {
   const now = performance.now(), view = viewNow(), frozen = frozenWaterOn() && groundOf().now.ice > 0.5;
@@ -5802,7 +5817,7 @@ const tickWater = (seconds) => {
     const key = `${calmWater.length}|${tiles.map((t) => `${t.id},${t.x},${t.y},${t.w},${t.h},${t.rotation},${t.alpha},${t.texture.baseTexture?.uid}`).join(";")}`;
     if (key !== mirrorTilesKey) { mirrorTilesKey = key; waterMirror.tiles(tiles); }
   }
-  if (calmWater.length && now - mirrorLookAt > 50) {
+  if ((calmWater.length || glintWater.length) && now - mirrorLookAt > 50) {
     mirrorLookAt = now;
     // (Reflect token rings on: a ringed token mirrors whole, from its picture as drawn (water-mirror.mjs createRingPictures).)
     let rings = false; try { rings = hotSetting("waterMirrorRings") === true; } catch { /* not registered yet */ }
@@ -5812,16 +5827,15 @@ const tickWater = (seconds) => {
       return { id: t.id, texture: pic?.texture ?? t.mesh.texture, x: pic?.x ?? t.mesh.position.x, y: pic?.y ?? t.mesh.position.y, liveX: t.mesh.position.x, liveY: t.mesh.position.y, live: t.mesh.position, dry: (() => { try { return movementFeelFloor(t.center, t.document) !== "water"; } catch { return false; } })(), w: pic?.w ?? t.w, h: pic?.h ?? t.h, rotation: mirrorTokenTurn(t.document), alpha: t.mesh.alpha };
     });
     mirrorRings.keep(ringed);
-    const moonOut = sunNow?.moon && Number(sunNow.strength) > 0.05, middle = { x: view.x + view.w / 2, y: view.y + view.h / 2 };
-    const near = moonOut ? calmWater.map((area) => nearestOfArea(middle, area)).sort((a, b) => a.d - b.d)[0] : null;
-    waterMirror.look({ tokens, lamps: lampLights.map((l) => ({ x: l.x, y: l.y, color: l.color, radius: l.radius })), moon: near ? { x: near.x, y: near.y, strength: Number(sunNow.strength) } : null, sunny: !!sunNow && !sunNow.moon && Number(sunNow.strength) > 0.3 });
+    const moonOut = sunNow?.moon && Number(sunNow.strength) > 0.05;
+    waterMirror.look({ tokens, lamps: mirrorLamps(), moon: moonOut ? { angle: Number(sunNow.angle), height: Number(sunNow.height), strength: Number(sunNow.strength) } : null, sunny: !!sunNow && !sunNow.moon && Number(sunNow.strength) > 0.3 });
   }
   if (coast.busy) coast.tick(seconds, { near: creaturesNow(), view, seen: wildSeen, cast: wildCast, sound: (kind, at, urgent) => { if (WILD_SOUND[kind]) wildVoice(kind, at, urgent); } });
   if (beachLife.busy) beachLife.tick(seconds, { near: creaturesNow(), view, seen: wildSeen, cast: wildCast, sound: (kind, at, urgent) => { if (WILD_SOUND[kind]) wildVoice(kind, at, urgent); } });
   if (waterfalls.busy) waterfalls.tick(seconds, { view });
   if (waterMirror.busy) waterMirror.tick(seconds, { view, wind: skyWindNow });
 };
-Hooks.on("canvasTearDown", () => { coast.clear(); beachLife.clear(); waterfalls.clear(); waterMirror.clear(); waterKey = null; calmWater = []; });
+Hooks.on("canvasTearDown", () => { coast.clear(); beachLife.clear(); waterfalls.clear(); waterMirror.clear(); waterKey = null; calmWater = []; glintWater = []; });
 // Town life (engines/motion/town-life.mjs): only the town's animals the GM asks for in a scene's Animals panel (Town). Its streets are any open ground, stone too, not water and not in a room.
 const townLife = createTownLife({ PIXI: animalPIXI, restyle: animalLook, floor: floorLayer("townLife", 659), sky: lowFlierRoot, high: highSkyOf });
 let townKey = null, townOpen = null, townPreview = null;
@@ -5984,7 +5998,7 @@ const rebuildLife = () => {
   try { rebuildTown(); } catch (e) { console.warn("Animater town life:", e); townLife.clear(); townKey = null; townOpen = null; }
   try { rebuildSceneFarm(); } catch (e) { console.warn("Animater farm animals:", e); sceneFarm.clear(); sceneFarmKey = null; }
   try { rebuildRegionAnimals(); } catch (e) { console.warn("Animater region animals:", e); }
-  try { rebuildWater(); } catch (e) { console.warn("Animater water:", e); coast.clear(); beachLife.clear(); waterfalls.clear(); waterMirror.clear(); waterKey = null; calmWater = []; }
+  try { rebuildWater(); } catch (e) { console.warn("Animater water:", e); coast.clear(); beachLife.clear(); waterfalls.clear(); waterMirror.clear(); waterKey = null; calmWater = []; glintWater = []; }
   try { rebuildCavern(); } catch { cavern.clear(); webs.clear(); }
 };
 for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged", "createWall", "deleteWall"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) lifeSoon(); });
@@ -6789,7 +6803,7 @@ function skyTick() {
   if (townLife.busy) tickTown(seconds);
   tickSceneFarm(Math.min(seconds, 0.1));
   if (regionLife.size) regionTick(seconds);
-  if (coast.busy || beachLife.busy || waterfalls.busy || calmWater.length) tickWater(seconds);
+  if (coast.busy || beachLife.busy || waterfalls.busy || calmWater.length || glintWater.length) tickWater(seconds);
   tickPlaces();
   tickWeatherSound();
   { const now = performance.now(); if (now - lightFlamesAt > (now - gustAt < 8000 ? 100 : 500)) { lightFlamesAt = now; syncLightFlames(); } if (lightFlames.count) lightFlames.tick(now / 1000); }

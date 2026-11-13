@@ -17,7 +17,8 @@ export const STEP_LOOKS = Object.freeze(Object.fromEntries(LOOKS.map(([key, id])
 export const STEP_LOOK_NAMES = Object.freeze(LOOKS.map(([key, , name, group]) => [key, name, group]));
 // The effects a step can switch on: the region's Cavern choices, and its dripping water.
 export const STEP_EFFECTS = Object.freeze([['', 'None'], ['mist', 'Mist on the floor'], ['drips', 'Dripping water'], ['steam', 'Steam vents'], ['lava', 'Lava'], ['lava-cracking', 'Lava (cracking)'], ['lava-crust', 'Lava (crust)'], ['wet', 'Wet walls'], ['webs', 'Cobwebs'], ['fungus-green', 'Glowing fungus (green)'], ['fungus-blue', 'Glowing fungus (blue)'], ['fungus-violet', 'Glowing fungus (violet)'], ['crystals-amethyst', 'Crystals (amethyst)'], ['crystals-quartz', 'Crystals (clear quartz)'], ['crystals-rose', 'Crystals (rose)'], ['foul', 'Bad air']]);
-export const STEP_SPEEDS = Object.freeze([['slower', 'Very slow'], ['slow', 'Slow'], ['gentle', 'Gentle'], ['swift', 'Swift']]);
+// A step's own current, over the river's: '' follows the river's (none of its own saved).
+export const STEP_SPEEDS = Object.freeze([['', 'As the river'], ['slower', 'Very slow'], ['slow', 'Slow'], ['gentle', 'Gentle'], ['swift', 'Swift']]);
 export const STEP_SECONDS = 6;
 // How far a region's edge fades, in about squares: `stepEdge` in its flags.
 export const STEP_EDGE = Object.freeze({ min: 0.1, max: 3, usual: 1 });
@@ -155,7 +156,7 @@ export function changeStep(own, floor, index, at = null) {
 // The flags to save for this step's river speed.
 export function setStepSpeed(own, floor, speed) {
   const steps = stepListOf(own, floor).map((s) => ({ ...s })), i = stepIndexOf(own, floor);
-  if (steps[i]) steps[i].speed = speed;
+  if (steps[i]) { if (speed) steps[i].speed = speed; else delete steps[i].speed; }
   return { steps, stepsFloor: floor, step: i };
 }
 
@@ -166,7 +167,7 @@ export function setStepStrength(own, floor, strength) {
   return { steps, stepsFloor: floor, step: i };
 }
 
-// What the right-click menu shows. `speed` only for running water, `reflections` only for water, `strength` only for a step with a look; null where it has none.
+// What the right-click menu shows. `speed` only for running water (how fast it runs now), `ownSpeed` the step's own over the river's ('' none), `reflections` only for water, `strength` only for a step with a look; null where it has none.
 export function stepMenu(own, floor) {
   const list = stepListOf(own, floor), current = stepIndexOf(own, floor), shown = stepFlags({ floor, ...own });
   const wet = (shown?.floor ?? floor) === 'water';
@@ -180,6 +181,7 @@ export function stepMenu(own, floor) {
     scale: stepScale(own),
     strength: list[current]?.look && list[current].look !== 'none' ? stepStrength(list[current]) : null,
     speed: wet && own?.flowTo ? (shown.current || 'gentle') : null,
+    ownSpeed: wet && own?.flowTo ? (list[current]?.speed ?? '') : null,
     reflections: wet ? own?.reflections !== 'off' : null,
   };
 }

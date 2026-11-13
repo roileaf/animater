@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FLOORS } from '../../../scripts/engines/motion/movement-feel.mjs';
-import { STEP_EFFECTS, STEP_LOOKS, TEXTURE_STYLES, textureStyleOf, activeStep, changeStep, defaultSteps, STEP_SCALE, stepScale, fallWindAngle, flowChoices, noLifeOnWater, WATER_KINDS, waterFlows, waterKindFlags, waterKindOf, floodedByStep, unfitForLife, paintsOverWater, setStepSpeed, setStepStrength, stepStrength, STEP_STRENGTH, showsTexture, spreadFrom, stepEdge, stepFlags, takesSeason, stepLook, stepMenu, textureFloor } from '../../../scripts/engines/motion/region-steps.mjs';
+import { STEP_EFFECTS, STEP_LOOKS, TEXTURE_STYLES, textureStyleOf, activeStep, changeStep, defaultSteps, STEP_SCALE, stepScale, fallWindAngle, flowChoices, noLifeOnWater, WATER_KINDS, waterFlows, waterKindFlags, waterKindOf, floodedByStep, unfitForLife, paintsOverWater, setStepSpeed, STEP_SPEEDS, setStepStrength, stepStrength, STEP_STRENGTH, showsTexture, spreadFrom, stepEdge, stepFlags, takesSeason, stepLook, stepMenu, textureFloor } from '../../../scripts/engines/motion/region-steps.mjs';
 
 test('a step\'s look strength is kept to its range, as painted when unset or nonsense', () => {
   assert.equal(stepStrength({}), STEP_STRENGTH.usual);
@@ -167,6 +167,24 @@ test('the menu offers a floor its own steps, and water its speed and reflections
   assert.equal(stepMenu({ floor: 'water', reflections: 'off' }, 'water').reflections, false);
   const frozen = defaultSteps('water').findIndex((s) => s.walks === 'ice');
   assert.equal(stepMenu({ floor: 'water', flowTo: 's', steps: defaultSteps('water'), step: frozen }, 'water').speed, null, 'frozen, it has no speed');
+});
+
+// Roi, on Current and Speed both reading Swift: "if it means the time it takes a step to change then the wording is bad". A step's own current is an override, "As the river" until set.
+test('a step follows the river\'s current until it is given its own, and can be put back', () => {
+  assert.deepEqual(STEP_SPEEDS[0], ['', 'As the river']);
+  assert.deepEqual(STEP_SPEEDS.slice(1).map(([, l]) => l), ['Very slow', 'Slow', 'Gentle', 'Swift']);
+  const steps = defaultSteps('water'), river = { floor: 'water', flowTo: 's', current: 'slow', steps, step: 0 };
+  assert.equal(stepMenu(river, 'water').ownSpeed, '', 'as the river');
+  assert.equal(stepMenu(river, 'water').speed, 'slow', 'and so flowing as the river does');
+  const set = { ...river, ...setStepSpeed(river, 'water', 'swift') };
+  assert.equal(stepMenu(set, 'water').ownSpeed, 'swift');
+  assert.equal(stepMenu(set, 'water').speed, 'swift', 'its own wins');
+  const back = setStepSpeed(set, 'water', '');
+  assert.equal('speed' in back.steps[0], false, 'put back: none of its own');
+  assert.equal(stepMenu({ ...set, ...back }, 'water').speed, 'slow');
+  assert.equal(stepMenu({ floor: 'grass' }, 'grass').ownSpeed, null, 'nothing to follow on grass');
+  const frozen = steps.findIndex((s) => s.walks === 'ice');
+  assert.equal(stepMenu({ ...river, step: frozen }, 'water').ownSpeed, null, 'nor frozen');
 });
 
 test('a step\'s speed is saved on that step alone', () => {

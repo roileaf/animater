@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { kindFlags } from '../../scripts/ui/region-panel-model.mjs';
-import { waterKindFlags, changeStep, caveKindFlags } from '../../scripts/engines/motion/region-steps.mjs';
+import { waterKindFlags, changeStep, caveKindFlags, defaultSteps } from '../../scripts/engines/motion/region-steps.mjs';
 
 // A small DOM, just enough to build the panel and click through it: elements with children, attributes and listeners.
 function installDom() {
@@ -275,6 +275,32 @@ test('water: its kind, way, depth, reflections, freezing and sound', async () =>
   await t.click(t.byLabel('Water sound'));
   assert.deepEqual(t.saves.at(-1), { regionSound: 'off' });
   t.done();
+});
+
+// Roi read the step's "Speed" as how long a step takes to change. It is the step's own current: an override of the river's, said as one.
+test('water: a step\'s own current shows as overriding the river\'s, and goes back with one click', async () => {
+  const steps = defaultSteps('water').map((s, i) => (i === 0 ? { ...s, speed: 'swift' } : s));
+  const t = await setup({ floor: 'water', waterKind: 'river', flowTo: 's', current: 'slow', steps, step: 0 }, 'water');
+  assert.ok(t.button('Very slow', t.byLabel('Current')), 'the same words as the step\'s');
+  assert.equal(t.button('Crawl', t.byLabel('Current')), null);
+  const note = t.find((n) => n.className === 'an-rp-note' && /overrides/.test(textOf(n)));
+  assert.ok(note, 'says the step overrides it');
+  assert.match(textOf(note), /Clear/); assert.match(textOf(note), /Swift/);
+  await t.click(t.button('Use the river\'s', note));
+  assert.equal('speed' in t.saves.at(-1).steps[0], false, 'the step goes back to the river\'s');
+  t.done();
+
+  const u = await setup({ floor: 'water', waterKind: 'river', flowTo: 's', current: 'slow', steps: defaultSteps('water'), step: 0 }, 'water');
+  assert.equal(u.find((n) => n.className === 'an-rp-note' && /overrides/.test(textOf(n))), null, 'no note when the step follows the river');
+  u.openSection('steps');
+  const own = u.byLabel('Current here');
+  assert.ok(own, 'the step\'s row says what it is');
+  assert.match(own.parent.className, /an-rp-wide/, 'five choices: under its name, so none is cut short');
+  assert.equal(u.byLabel('Speed, this step'), null);
+  assert.equal(own.children.find((b) => b.attrs['aria-pressed'] === 'true')?.textContent, 'As the river');
+  await u.click(u.button('Gentle', own));
+  assert.equal(u.saves.at(-1).steps[0].speed, 'gentle');
+  u.done();
 });
 
 test('water: the sea has its waves and beach, and drips, coast and waterfall fold under More', async () => {
