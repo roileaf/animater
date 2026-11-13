@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fireRate, spreadStep, cellStep, GRASS_RATE, CELL_ROUNDS, regionBurns, cellId, fireUpdatesFor, dropLostDecorFire } from "../../../scripts/engines/props/fire-spread.mjs";
+import { fireRate, spreadStep, cellStep, GRASS_RATE, CELL_ROUNDS, BURN_ROUNDS, regionBurns, cellId, fireUpdatesFor, dropLostDecorFire, readFire, writeFirePath, decorFireOf, fireCellsOf } from "../../../scripts/engines/props/fire-spread.mjs";
 
 test("the rate is the higher of the material's and the contents'", () => {
   assert.equal(fireRate({ material: "plant", contents: "none" }), 2);
@@ -290,7 +290,7 @@ function crateLife(rounds, region = false) {
       : fireUpdatesFor(step, { tiles: [{ id: "crate" }] });
     const u = region ? r.regions[0] : r.tiles[0];
     const flag = region ? "flags.animater.decorFire" : "flags.animater.prop.fire";
-    const cleared = region ? "flags.animater.-=decorFire" : "flags.animater.prop.-=fire";
+    const cleared = region ? `flags.animater.decorFire.-=${key}` :"flags.animater.prop.-=fire";
     if (u && flag in u) {
       crate.fire = region ? u[flag][key] : u[flag];
       stored = region ? u[flag] : stored;
@@ -326,4 +326,106 @@ test("a grass square's whole fire: catches at CELL_ROUNDS, then one fewer, then 
     else if (s.burning.some((b) => b.i === 1)) { c1.roundsLeft = s.burning.find((b) => b.i === 1).roundsLeft; log.push(c1.roundsLeft); }
   }
   assert.deepEqual(log, [CELL_ROUNDS, 1, "out"]);
+});
+
+const none = { heat: [], caught: [], out: [], warn: [], burning: [] };
+const dflag = (stored) => ({ animater: { decorFire: stored } });
+
+test("a decoration going out is deleted from decorFire by key, the others untouched", () => {
+  const stored = { "a:1:1:0": { heat: 100, burning: true, roundsLeft: 1 }, "b:2:2:0": { heat: 100, burning: true, roundsLeft: 2 } };
+  const r = fireUpdatesFor({ ...none, out: ["a:1:1:0"], burning: [{ id: "b:2:2:0", heat: 100, roundsLeft: 1 }] },
+    { regions: [{ id: "r1", keys: ["a:1:1:0", "b:2:2:0"], flags: dflag(stored) }] });
+  assert.equal(r.regions.length, 1);
+  assert.ok("flags.animater.decorFire.-=a:1:1:0" in r.regions[0]);
+  assert.equal(r.regions[0]["flags.animater.decorFire.-=a:1:1:0"], null);
+  assert.deepEqual(Object.keys(r.regions[0]["flags.animater.decorFire"]), ["b:2:2:0"]);
+  assert.equal("flags.animater.-=decorFire" in r.regions[0], false);
+});
+
+test("a decoration key no longer painted is deleted by key, not left to merge back", () => {
+  const stored = { "crate:3:4:0": { heat: 0, burning: true, roundsLeft: 2 }, "gone:1:1:0": { heat: 0, burning: true, roundsLeft: 1 } };
+  const r = fireUpdatesFor(none, { regions: [{ id: "r1", keys: ["crate:3:4:0"], flags: dflag(stored) }] });
+  assert.deepEqual(r.regions, [{ _id: "r1", "flags.animater.decorFire.-=gone:1:1:0": null }]);
+});
+
+test("a region with nothing to change makes no update", () => {
+  const stored = { "a:1:1:0": { heat: 100, burning: true, roundsLeft: 2 } };
+  assert.deepEqual(fireUpdatesFor(none, { regions: [{ id: "r1", keys: ["a:1:1:0"], flags: dflag(stored) }] }).regions, []);
+});
+
+test("readFire returns a burning fire even with no heat, and nothing for no fire", () => {
+  assert.deepEqual(readFire({ burning: true, roundsLeft: 2 }), { heat: 0, burning: true, roundsLeft: 2 });
+  assert.deepEqual(readFire({ flags: { animater: { prop: { fire: { heat: 60, burning: false, roundsLeft: 0 } } } } }), { heat: 60, burning: false, roundsLeft: 0 });
+  assert.deepEqual(readFire({ fire: { heat: 10 } }), { heat: 10, burning: false, roundsLeft: 0 });
+  assert.equal(readFire({ burning: false }), null);
+  assert.equal(readFire({}), null);
+  assert.equal(readFire(null), null);
+});
+
+test("writeFirePath names the tile flag, and is empty for an empty id", () => {
+  assert.equal(writeFirePath("t1"), "flags.animater.prop.fire");
+  assert.equal(writeFirePath(""), "");
+  assert.equal(writeFirePath(undefined), "");
+  assert.deepEqual(fireUpdatesFor({ ...none, caught: [""] }, { tiles: [{ id: "" }] }).tiles, []);
+});
+
+test("decorFireOf and fireCellsOf copy what the region saved, or give an empty object", () => {
+  const saved = { "a:1:1:0": { burning: true, roundsLeft: 2 } };
+  const got = decorFireOf({ flags: dflag(saved) });
+  assert.deepEqual(got, saved);
+  assert.notEqual(got, saved);
+  assert.deepEqual(decorFireOf({}), {});
+  assert.deepEqual(decorFireOf({ flags: dflag([1]) }), {});
+  assert.deepEqual(fireCellsOf({ flags: { animater: { fireCells: { 4: { charred: true } } } } }), { 4: { charred: true } });
+  assert.deepEqual(fireCellsOf(null), {});
+});
+
+test("precedence: out beats caught, caught beats burning, burning beats heated", () => {
+  const tile = (step) => fireUpdatesFor({ ...none, ...step }, { tiles: [{ id: "a" }] }).tiles[0];
+  assert.equal(tile({ out: ["a"], caught: ["a"] })["flags.animater.prop.-=fire"], null);
+  assert.equal(tile({ caught: ["a"], burning: [{ id: "a", heat: 100, roundsLeft: 1 }] })["flags.animater.prop.fire"].roundsLeft, BURN_ROUNDS);
+  assert.equal(tile({ burning: [{ id: "a", heat: 100, roundsLeft: 1 }], heat: [{ id: "a", heat: 70 }] })["flags.animater.prop.fire"].roundsLeft, 1);
+  assert.equal(tile({ burning: [{ id: "a", heat: 100, roundsLeft: 1 }], heat: [{ id: "a", heat: 70 }] })["flags.animater.prop.fire"].burning, true);
+  const key = "a:1:1:0";
+  const reg = (step) => fireUpdatesFor({ ...none, ...step }, { regions: [{ id: "r", keys: [key], flags: dflag({ [key]: { heat: 100, burning: true, roundsLeft: 2 } }) }] }).regions[0];
+  assert.equal(reg({ out: [key], caught: [key] })[`flags.animater.decorFire.-=${key}`], null);
+  assert.equal(reg({ caught: [key], burning: [{ id: key, heat: 100, roundsLeft: 1 }] })["flags.animater.decorFire"][key].roundsLeft, BURN_ROUNDS);
+  assert.equal(reg({ burning: [{ id: key, heat: 100, roundsLeft: 1 }], heat: [{ id: key, heat: 70 }] })["flags.animater.decorFire"][key].burning, true);
+});
+
+const fireCellsReg = (saved = {}) => ({ id: "r", cells: [3, 4, 5], flags: { animater: { fireCells: saved } } });
+const cnone = { heat: [], caught: [], out: [], burning: [] };
+
+test("grass squares are saved in fireCells: heated, caught, still burning", () => {
+  const r = fireUpdatesFor(none, {
+    regions: [fireCellsReg({ 5: { heat: 100, burning: true, roundsLeft: 2 } })],
+    cellStep: { ...cnone, heat: [{ i: 3, heat: 42 }], caught: [4], burning: [{ i: 5, roundsLeft: 1 }] },
+  });
+  assert.deepEqual(r.regions[0]["flags.animater.fireCells"], {
+    3: { heat: 42, burning: false, roundsLeft: 0 },
+    4: { heat: 100, burning: true, roundsLeft: CELL_ROUNDS },
+    5: { heat: 100, burning: true, roundsLeft: 1 },
+  });
+});
+
+test("a grass square going out is kept as charred so it never relights, and is not re-charred", () => {
+  const r = fireUpdatesFor(none, { regions: [fireCellsReg({ 3: { heat: 100, burning: true, roundsLeft: 1 } })], cellStep: { ...cnone, out: [3] } });
+  assert.deepEqual(r.regions[0]["flags.animater.fireCells"], { 3: { heat: 0, burning: false, roundsLeft: 0, charred: true } });
+  const again = fireUpdatesFor(none, {
+    regions: [fireCellsReg({ 3: { heat: 0, burning: false, roundsLeft: 0, charred: true } })],
+    cellStep: { ...cnone, heat: [{ i: 3, heat: 90 }], caught: [3] },
+  });
+  assert.deepEqual(again.regions, []);
+});
+
+test("a saved grass square the region no longer has is deleted by key", () => {
+  const r = fireUpdatesFor(none, { regions: [fireCellsReg({ 9: { heat: 5, burning: false, roundsLeft: 0 } })], cellStep: cnone });
+  assert.deepEqual(r.regions, [{ _id: "r", "flags.animater.fireCells.-=9": null }]);
+});
+
+test("grass precedence: out beats caught, caught beats burning, burning beats heated", () => {
+  const cell = (step) => fireUpdatesFor(none, { regions: [fireCellsReg()], cellStep: { ...cnone, ...step } }).regions[0]["flags.animater.fireCells"][3];
+  assert.equal(cell({ out: [3], caught: [3] }).charred, true);
+  assert.equal(cell({ caught: [3], burning: [{ i: 3, roundsLeft: 1 }] }).roundsLeft, CELL_ROUNDS);
+  assert.equal(cell({ burning: [{ i: 3, roundsLeft: 1 }], heat: [{ i: 3, heat: 40 }] }).burning, true);
 });
