@@ -12,14 +12,14 @@ const FLOOR_ICONS = Object.freeze({ cavern: 'fa-gem', lava: 'fa-fire', water: 'f
  * The panel. open({ doc, floor, at, client: { x, y }, regions, first }) shows it by the pointer: `regions` [{ doc, floor }]
  * all those at that spot (tabs when more than one), `first` the one to show, `at` where on the map (a step spreads from
  * there); close(). `flagsOf(doc)` the region's Animater flags, `save(doc, flags)` saves some (a promise), `edit(doc)` opens
- * its steps list, `texture(flags)` whether its floor is painted now, `season(flags)` whether the season colours it,
+ * its steps list, `texture(flags)` whether its floor is painted now, `season(flags)` whether the season colours it, `fireSpreads()` whether the scene has Fire spreads on,
  * `presets()` the Tokenshade look names, `weathers()` [[id, label]], `confirm(text)` a yes or no (a promise) before None
  * takes a region's settings away, `configure(doc)` Foundry's own configuration of the region (a cog by the close button),
  * `remove(doc)` deletes it (a trash can by the cog; Foundry's own question first).
  * `shows(doc | null)` hears which region it shows now (null once closed), to outline it on the map.
  * Its heading drags it about the screen; it stays where it is put until it closes.
  */
-export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, set: setRoof }, texture = () => false, season = () => false, presets = () => [], weathers = () => [], confirm = async () => true, configure = null, remove = null, shows = () => {}, brush = null, repairDecor = null, cliffWalls = null, addCrossing = null, cliffView = null }) {
+export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, set: setRoof }, texture = () => false, season = () => false, fireSpreads = () => false, presets = () => [], weathers = () => [], confirm = async () => true, configure = null, remove = null, shows = () => {}, brush = null, repairDecor = null, cliffWalls = null, addCrossing = null, cliffView = null }) {
   let shown = null;
   const tell = (doc) => { if (doc === shown) return; shown = doc; try { shows(doc); } catch { /* an outline never breaks the panel */ } };
   let box = null, open_ = null, saving = 0, drag = null;
@@ -80,7 +80,7 @@ export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, 
       line.setAttribute('aria-expanded', String(on)); line.append(icon(on ? 'fa-caret-down' : 'fa-caret-right'), element('span', '', label));
       return on ? [line, ...build()] : [line];
     };
-    const c = { doc, own, floor, kind, at: open_.at ?? null, act, toFloor, roofed: !!roof.has(doc), setRoof: setRoofNow, more, texture, season, presets, weathers, close, edit, saving: () => saving > 0, brush, repairDecor, cliffWalls, addCrossing, cliffView };
+    const c = { doc, own, floor, kind, at: open_.at ?? null, act, toFloor, roofed: !!roof.has(doc), setRoof: setRoofNow, more, texture, season, fireSpreads, presets, weathers, close, edit, saving: () => saving > 0, brush, repairDecor, cliffWalls, addCrossing, cliffView };
 
     const head = element('div', 'an-rp-head'), shut = button('', 'an-rp-close', close);
     shut.setAttribute('aria-label', 'Close'); shut.append(icon('fa-xmark'));
