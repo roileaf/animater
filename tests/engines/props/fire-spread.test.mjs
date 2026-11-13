@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fireRate, spreadStep, cellStep, GRASS_RATE, CELL_ROUNDS, regionBurns, cellId } from "../../../scripts/engines/props/fire-spread.mjs";
+import { fireRate, spreadStep, cellStep, GRASS_RATE, CELL_ROUNDS, regionBurns, cellId, fireUpdatesFor, dropLostDecorFire } from "../../../scripts/engines/props/fire-spread.mjs";
 
 test("the rate is the higher of the material's and the contents'", () => {
   assert.equal(fireRate({ material: "plant", contents: "none" }), 2);
@@ -256,4 +256,22 @@ test("a wall stops a burning prop reaching grass, and grass on another level is 
   assert.equal(cellStep({ ...geo, cells: [fire(["a"]), { i: 1, heat: 0, levels: ["a"] }] }).heat.length, 1, "same level");
   assert.deepEqual(cellStep({ ...geo, cells: [fire(["a"]), { i: 1, heat: 0, levels: ["b"] }] }).heat, [], "other level");
   assert.equal(cellStep({ ...geo, cells: [fire(["a"]), { i: 1, heat: 0 }] }).heat.length, 1, "no list means every level");
+});
+
+test("heat and catching become tile updates, and going out clears the flag", () => {
+  const step = { heat: [{ id: "t1", heat: 60 }], caught: ["t2"], out: ["t3"], warn: [] };
+  const r = fireUpdatesFor(step, { tiles: [{ id: "t1" }, { id: "t2" }, { id: "t3" }] });
+  assert.deepEqual(r.tiles.find((u) => u._id === "t1")["flags.animater.prop.fire"], { heat: 60, burning: false, roundsLeft: 0 });
+  assert.equal(r.tiles.find((u) => u._id === "t2")["flags.animater.prop.fire"].burning, true);
+  assert.equal(r.tiles.find((u) => u._id === "t2")["flags.animater.prop.fire"].roundsLeft, 3);
+  assert.equal(r.tiles.find((u) => u._id === "t3")["flags.animater.prop.-=fire"], null);
+});
+
+test("a decoration key that no longer exists is dropped", () => {
+  const stored = { "crate:3:4:0": { burning: true, roundsLeft: 2 }, "gone:1:1:0": { burning: true, roundsLeft: 1 } };
+  assert.deepEqual(Object.keys(dropLostDecorFire(stored, ["crate:3:4:0"])), ["crate:3:4:0"]);
+});
+
+test("nothing to say makes no update at all", () => {
+  assert.deepEqual(fireUpdatesFor({ heat: [], caught: [], out: [], warn: [] }, { tiles: [] }), { tiles: [], regions: [] });
 });

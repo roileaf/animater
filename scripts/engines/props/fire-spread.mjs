@@ -173,3 +173,56 @@ export function cellStep({ cells = [], things = [], cols = 1, rows = 1, origin =
   const out = sources.filter((c) => (c.roundsLeft ?? 0) <= 1).map((c) => c.i);
   return { heat, caught, out };
 }
+
+// The flag path a tile's fire is written to (empty for no id); a decoration's fire lives in its region's decorFire flag instead.
+export const writeFirePath = (id) => (id ? "flags.animater.prop.fire" : "");
+
+// A thing's fire as saved on a tile or region entry: { heat, burning, roundsLeft }, or null when it has none.
+export function readFire(doc) {
+  const f = doc?.flags?.animater?.prop?.fire ?? doc?.fire ?? null;
+  if (!f || typeof f !== "object" || !Number.isFinite(f.heat)) return null;
+  return { heat: f.heat, burning: f.burning === true, roundsLeft: Number.isFinite(f.roundsLeft) ? f.roundsLeft : 0 };
+}
+
+// The burning decorations a region has saved, keyed as decorBroken is; an empty object when it has none.
+export function decorFireOf(region) {
+  const raw = region?.flags?.animater?.decorFire;
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? { ...raw } : {};
+}
+
+// The saved decoration fires whose key still names a painted decoration; a repainted region drops the rest, never reassigns them.
+export function dropLostDecorFire(stored, liveKeys) {
+  const live = new Set(liveKeys ?? []);
+  return Object.fromEntries(Object.entries(stored ?? {}).filter(([key]) => live.has(key)));
+}
+
+// A round's result as document updates for updateEmbeddedDocuments. `tiles` lists the tiles in play ({ id }); `regions` the
+// regions holding decorations ({ id, keys: live decoration keys, flags }). A tile that heats keeps its heat, one that
+// catches burns BURN_ROUNDS, one that is out has its fire flag removed (`-=` with null, as repair does). A decoration key
+// is written into its region's decorFire flag the same way; a key no longer painted is dropped, and an empty flag is removed.
+export function fireUpdatesFor(step, { tiles = [], regions = [] } = {}) {
+  const heat = new Map((step?.heat ?? []).map((h) => [h.id, h.heat]));
+  const caught = new Set(step?.caught ?? []);
+  const out = new Set(step?.out ?? []);
+  const path = writeFirePath(true);
+  const tileUpdates = [];
+  for (const t of tiles ?? []) {
+    if (out.has(t.id)) tileUpdates.push({ _id: t.id, "flags.animater.prop.-=fire": null });
+    else if (caught.has(t.id)) tileUpdates.push({ _id: t.id, [path]: { heat: heat.get(t.id) ?? HEAT_CATCH, burning: true, roundsLeft: BURN_ROUNDS } });
+    else if (heat.has(t.id)) tileUpdates.push({ _id: t.id, [path]: { heat: heat.get(t.id), burning: false, roundsLeft: 0 } });
+  }
+  const regionUpdates = [];
+  for (const r of regions ?? []) {
+    const stored = dropLostDecorFire(decorFireOf(r), r.keys ?? []);
+    const next = { ...stored };
+    let touched = Object.keys(stored).length !== Object.keys(decorFireOf(r)).length;
+    for (const key of r.keys ?? []) {
+      if (out.has(key)) { if (key in next) { delete next[key]; touched = true; } }
+      else if (caught.has(key)) { next[key] = { heat: heat.get(key) ?? HEAT_CATCH, burning: true, roundsLeft: BURN_ROUNDS }; touched = true; }
+      else if (heat.has(key)) { next[key] = { heat: heat.get(key), burning: false, roundsLeft: 0 }; touched = true; }
+    }
+    if (!touched) continue;
+    regionUpdates.push(Object.keys(next).length ? { _id: r.id, "flags.animater.decorFire": next } : { _id: r.id, "flags.animater.-=decorFire": null });
+  }
+  return { tiles: tileUpdates, regions: regionUpdates };
+}
