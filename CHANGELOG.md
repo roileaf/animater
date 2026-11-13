@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 4.3.1
+
+Players can look at the GM's animations without copying them, and translated D&D 5e names can show their English original.
+
+- **View the GM's animations.** On GM's animations, a player opens one beside the list, read-only: its preview plays on stand-in tokens, so no token needs selecting and nothing needs targeting, and its stages are listed. Nothing is copied until they press Copy to mine.
+- **Original names in brackets.** A new per-user setting for D&D 5e (Automation & catalogs, off by default) shows each translated name in the library with its English original after it: "Тьма [Darkness]". Search finds either name, on or off.
+
 ## 4.3.0
 
 Torchlight and moonlight glint on the water as they really would, a clearer river current, creature moves you can edit, and libWrapper for every wrap.
