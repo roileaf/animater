@@ -19,6 +19,16 @@ export function fireRoundDue({ combat = null, now = 0, last = null, period = FIR
   return Number(now) - at >= gap;
 }
 
+// What a scene remembers after a tick, and what it is seeded with when this screen first takes the fires over (a
+// reload, a handover, a scene just switched on): the round the tracker stands on now, or only the time when no
+// combat is running. The old combat's round is never carried past its end, so the next combat's round 1 is a new
+// round and not one already run; and a seeded scene is not due again until its next round really comes, so a reload
+// or a handover never costs a fire a round of its life.
+export function fireNextLast({ combat = null, now = 0 } = {}) {
+  const at = Number(now) || 0;
+  return combat?.started === true && Number.isFinite(Number(combat.round)) ? { round: Number(combat.round), at } : { at };
+}
+
 // The scenes a fire round runs on: only for the active GM (nobody else writes), and only scenes with both switches on
 // (Breakable props and Fire spreads).
 export function fireScenesOf(scenes, { activeGM = false } = {}) {
@@ -90,5 +100,9 @@ export function grassCells({ bounds, cell = 100, inside = () => true, cap = 4000
   return { cols, rows, origin, indices };
 }
 
+const named = (name) => String(name || "prop").trim().toLowerCase();
 // What the GM is whispered when something starts to smoulder. The name is the prop's own, as the GM reads it.
-export const fireWarning = (name) => `The fire is spreading toward the ${String(name || "prop").trim().toLowerCase()}.`;
+export const fireWarning = (name) => `The fire is spreading toward the ${named(name)}.`;
+// What the GM is whispered when a fire runs out on something its flames cannot break (a stone chest whose books
+// burned): the ground is scorched, the thing itself still stands.
+export const fireBurnedOut = (name) => `The fire burns out: the ${named(name)} is scorched but still stands.`;

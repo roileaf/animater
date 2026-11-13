@@ -38,7 +38,7 @@ import { DOOR_ATTACK_SYSTEMS, doorStats, doorCracked, doorHpLine, strikeReaches,
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsOf, dropLostDecorFire, regionBurns } from "./engines/props/fire-spread.mjs";
-import { fireRoundDue, fireScenesOf, blockedLists, grassCells, fireWarning, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
+import { fireRoundDue, fireNextLast, fireScenesOf, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
 import { DECOR_BREAK_MESSAGE, DECOR_NAMES, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
@@ -9159,6 +9159,19 @@ function fireWindOf(scene, at) {
 }
 const fireRect = (v) => ({ x: v.x, y: v.y, w: v.width, h: v.height });
 const fireMid = (rect) => ({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 });
+// A word to the GMs alone; never a change to any creature.
+const whisperGMs = (line) => ChatMessage.create({ whisper: game.users.filter((u) => u.isGM).map((u) => u.id), speaker: { alias: "Animater" }, content: `<p>${line}</p>` })
+  .catch((e) => runtime?.trace("props", `fire whisper: ${e?.message ?? e}`));
+// Burnt ground where a fire ended on something it could not break: the same mark a fire area leaves (areaMark),
+// landed here and sent to every screen, as a placed area's mark is.
+function fireScorch(scene, at, size) {
+  const viewed = scene?.id === canvas?.scene?.id;
+  const tag = areaMark({ type: "circle", center: at, diameter: Math.max(Number(size) || 0, propGrid(scene)) },
+    { element: "fire", sceneId: scene?.id, level: viewed ? canvas?.level?.id : undefined, seed: Math.floor(Math.random() * 2 ** 32) });
+  if (!tag) return;
+  if (viewed) propSafe("fire scorch", () => markLayer.land(tag));
+  game.socket?.emit(`module.${ID}`, { type: AREA_MARK_MESSAGE, tag, sender: clientId });
+}
 // A region as the fire reads it: its live decoration keys with the fire they carry (stale keys dropped), and whether
 // fire runs through its grass (its own Burns toggle, else its floor).
 function fireRegionsOf(scene, grid) {
@@ -9215,7 +9228,6 @@ async function fireRound(scene) {
   const grassLit = regions.some((r) => Object.values(fireCellsOf(r.doc)).some((c) => c?.burning === true && c?.charred !== true));
   if (!alight.length && !grassLit) return;
   const walls = blockingWalls((scene.walls?.contents ?? []).map(wallView));
-  const wind = fireWindOf(scene, fireMid((alight[0] ?? things[0]).rect));
   // The grass of every region that burns, each on its own grid, with the fire it has saved.
   for (const r of regions) {
     r.grass = r.burns ? fireGrassOf(r.doc, grid) : null;
@@ -9230,6 +9242,9 @@ async function fireRound(scene) {
   const litSquares = regions.flatMap((r) => (r.grass ? r.squares.filter((c) => c.burning && !c.charred).map((c) => ({ ...c, rect: squareRect(r, c.i) })) : []));
   const sceneCols = Math.max(1, ...litSquares.map((c) => Math.floor(c.rect.x / grid) + 1));
   const sceneCells = litSquares.map((c) => ({ i: Math.floor(c.rect.y / grid) * sceneCols + Math.floor(c.rect.x / grid), id: c.id, levels: c.levels, burning: true }));
+  // The wind where the fire is: at a burning prop, else at a burning grass square (a field with no props on it at
+  // all is a fire all the same), else nowhere, which is no wind.
+  const wind = fireWindOf(scene, (alight[0]?.rect ?? litSquares[0]?.rect) ? fireMid(alight[0]?.rect ?? litSquares[0].rect) : null);
   // Which sources a wall cuts each thing off from (prop to prop, grass to prop, prop to grass and grass to grass).
   const sources = [...alight.map((t) => ({ id: t.id, rect: t.rect })), ...litSquares.map((c) => ({ id: c.id, rect: c.rect }))];
   const propBlocked = blockedLists({ targets: things.map((t) => ({ key: t.id, rect: t.rect })), sources, walls, reach: grid });
@@ -9273,16 +9288,21 @@ async function fireRound(scene) {
     const out = firesOf(lightOf, lights);
     if (out.length) await deletePropFires(scene, out);
     fireWarned.delete(`${scene.id}:${id}`);
-    if (thing.kind === "tile") await askProp(scene, id, cause, at, { burnedAt });
-    else if (decor.get(id)) await askDecor(scene, decor.get(id), cause, at, { burnedAt });
+    const broke = thing.kind === "tile" ? await askProp(scene, id, cause, at, { burnedAt })
+      : decor.get(id) ? await askDecor(scene, decor.get(id), cause, at, { burnedAt }) : false;
+    // Nothing the flames could break (a stone chest whose books burned): the fire still ends where every screen can
+    // see it, with the burnt ground a fire area leaves and a word to the GMs, instead of just going out in silence.
+    if (broke !== true) {
+      fireScorch(scene, at, Math.max(thing.rect.w, thing.rect.h));
+      await whisperGMs(fireBurnedOut(thing.name));
+    }
   }
   // The GMs are told once about each thing that starts to smoulder; nothing is ever done to a creature.
   for (const id of step.warn) {
     const mark = `${scene.id}:${id}`;
     if (fireWarned.has(mark)) continue;
     fireWarned.add(mark);
-    await ChatMessage.create({ whisper: game.users.filter((u) => u.isGM).map((u) => u.id), speaker: { alias: "Animater" }, content: `<p>${fireWarning(byId.get(id)?.name)}</p>` })
-      .catch((e) => runtime?.trace("props", `fire whisper: ${e?.message ?? e}`));
+    await whisperGMs(fireWarning(byId.get(id)?.name));
   }
   // Cooled right down or gone: it may be warned about again.
   for (const t of things) if (!t.fire && !step.heat.some((h) => h.id === t.id)) fireWarned.delete(`${scene.id}:${t.id}`);
@@ -9294,8 +9314,13 @@ async function fireRoundsNow() {
   for (const scene of fireScenesOf(game.scenes?.contents ?? [], { activeGM: true })) {
     if (fireRunning.has(scene.id)) continue;
     const combat = fireCombatOf(scene), last = fireLast.get(scene.id) ?? null;
+    // Not followed yet (this screen just loaded, or just became the active GM, or the scene was only now switched
+    // on): the count is seeded where it stands and nothing is run, so a reload or a handover never costs a round.
+    if (!last) { fireLast.set(scene.id, fireNextLast({ combat, now })); continue; }
     if (!fireRoundDue({ combat, now, last, period: FIRE_PERIOD })) continue;
-    fireLast.set(scene.id, { round: combat ? Number(combat.round) : last?.round, at: now });
+    // The round is remembered only while that combat runs; out of combat it is forgotten, so the next combat's
+    // round 1 is a round of its own and not one already run.
+    fireLast.set(scene.id, fireNextLast({ combat, now }));
     fireRunning.add(scene.id);
     try { await fireRound(scene); } catch (e) { runtime?.trace("props", `fire round: ${e?.message ?? e}`); }
     finally { fireRunning.delete(scene.id); }
@@ -9306,6 +9331,11 @@ const fireTick = () => { void fireRoundsNow().catch((e) => runtime?.trace("props
 // never late by more than that.
 Hooks.on("updateCombat", (combat, changes) => { if ("round" in (changes ?? {})) fireTick(); });
 Hooks.once("ready", () => { clearInterval(fireTimer); fireTimer = setInterval(fireTick, Math.max(500, FIRE_PERIOD / 6)); });
+// A combat beginning or ending: every scene forgets the round it remembers (that count belonged to that combat), so
+// the next combat starts counting from its own round 1 and the clock takes over between combats.
+const fireForgetRounds = () => { for (const [id, last] of fireLast) fireLast.set(id, { at: last?.at ?? fireNow() }); };
+Hooks.on("combatStart", fireForgetRounds);
+Hooks.on("deleteCombat", fireForgetRounds);
 // A region repainted or reshaped: its grass grid is laid out again next round (its squares' indices may have moved).
 Hooks.on("updateRegion", (doc, changes) => { if ("shapes" in (changes ?? {}) || "levels" in (changes ?? {})) fireGrass.delete(doc.id); });
 Hooks.on("deleteRegion", (doc) => { fireGrass.delete(doc.id); });

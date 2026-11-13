@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fireRoundDue, fireScenesOf, wallBetween, blockedLists, grassCells, fireWarning, FIRE_PERIOD } from "../../../scripts/engines/props/fire-rounds.mjs";
+import { fireRoundDue, fireNextLast, fireScenesOf, wallBetween, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "../../../scripts/engines/props/fire-rounds.mjs";
 
 test("in combat a round comes from the tracker, out of combat from the clock", () => {
   assert.equal(fireRoundDue({ combat: { started: true, round: 3 }, last: { round: 2 } }), true);
@@ -25,6 +25,30 @@ test("a fire that never ticked is due, a combat not started goes by the clock", 
   // the round going back (a GM rewound the tracker) is not a new round
   assert.equal(fireRoundDue({ combat: { started: true, round: 2 }, last: { round: 5 } }), false);
   assert.equal(FIRE_PERIOD, 6000);
+});
+
+test("a reload or a handover costs a fire nothing: it is seeded, not run", () => {
+  // In combat: seeded on the round the tracker stands on, so that round is not run again.
+  const combat = { started: true, round: 4 };
+  const seeded = fireNextLast({ combat, now: 7000 });
+  assert.deepEqual(seeded, { round: 4, at: 7000 });
+  assert.equal(fireRoundDue({ combat, now: 7000, last: seeded }), false);
+  assert.equal(fireRoundDue({ combat: { started: true, round: 5 }, now: 7000, last: seeded }), true);
+  // Out of combat: seeded on the clock, so the next round comes a full period later, not at once.
+  const clock = fireNextLast({ combat: null, now: 7000 });
+  assert.deepEqual(clock, { at: 7000 });
+  assert.equal(fireRoundDue({ combat: null, now: 12000, last: clock }), false);
+  assert.equal(fireRoundDue({ combat: null, now: 13000, last: clock }), true);
+});
+
+test("a new combat starts a new count: the old combat's last round never holds it back", () => {
+  // An old combat ran to round 7 and ended; the ticks out of combat forget its round.
+  const ended = fireNextLast({ combat: { started: false, round: 7 }, now: 20000 });
+  assert.deepEqual(ended, { at: 20000 });
+  // A new combat opens at round 1: its first round is due, though 1 is well behind 7.
+  assert.equal(fireRoundDue({ combat: { started: true, round: 1 }, now: 20100, last: ended }), true);
+  // And without that forgetting it would have stalled: the round carried over holds every round up to 7 back.
+  assert.equal(fireRoundDue({ combat: { started: true, round: 1 }, now: 20100, last: { round: 7, at: 20000 } }), false);
 });
 
 test("a wall between two points stops fire, one beside them does not", () => {
@@ -76,4 +100,5 @@ test("only the squares whose middle is in the shape, and nothing past the cap", 
 test("the GM's warning names the thing the fire is heading for", () => {
   assert.equal(fireWarning("Bookshelf"), "The fire is spreading toward the bookshelf.");
   assert.equal(fireWarning(""), "The fire is spreading toward the prop.");
+  assert.equal(fireBurnedOut("Stone chest"), "The fire burns out: the stone chest is scorched but still stands.");
 });
