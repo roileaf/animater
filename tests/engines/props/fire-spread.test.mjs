@@ -171,7 +171,6 @@ test("grass on another level does not reach a prop, and a prop on another level 
   assert.deepEqual(cellStep({ ...args, cells: [{ i: 1, heat: 0, levels: ["b"] }], things: [fire(["a"])] }).heat, []);
 });
 
-
 test("the reach is one grass square both ways, whatever the prop grid", () => {
   const geo = { cols: 5, rows: 1, cell: 100, origin: { x: 0, y: 0 } };
   const box = (x) => ({ id: "p", rect: { x, y: 0, w: 100, h: 100 }, traits: { material: "wood" }, fire: null });
@@ -236,4 +235,25 @@ test("grass burns by default, and a region's own say wins", () => {
   assert.equal(regionBurns({}, "stone"), false);
   assert.equal(regionBurns({ burns: false }, "grass"), false);
   assert.equal(regionBurns({ burns: true }, "stone"), true);
+});
+
+test("a wall between two grass squares stops the spread, and only from the square it names", () => {
+  const geo = { cols: 3, rows: 1, cell: 100, origin: { x: 0, y: 0 } };
+  const fire = { i: 0, burning: true, roundsLeft: 2 };
+  assert.equal(cellStep({ ...geo, cells: [fire, { i: 1, heat: 0 }] }).heat.length, 1, "open ground");
+  assert.deepEqual(cellStep({ ...geo, cells: [fire, { i: 1, heat: 0, blocked: [cellId(0)] }] }).heat, [], "walled off");
+  assert.equal(cellStep({ ...geo, cells: [fire, { i: 1, heat: 0, blocked: [cellId(2)] }] }).heat.length, 1, "a wall from another side does not stop it");
+  assert.deepEqual(cellStep({ ...geo, cells: [{ ...fire, id: "g0" }, { i: 1, heat: 0, blocked: ["g0"] }] }).heat, [], "a square's own id counts");
+  assert.equal(cellStep({ ...geo, cells: [{ ...fire, id: "g0" }, { i: 1, heat: 0, blocked: [cellId(0)] }] }).heat.length, 1, "and is no longer cell:<i>");
+});
+
+test("a wall stops a burning prop reaching grass, and grass on another level is not reached by the spread", () => {
+  const geo = { cols: 3, rows: 1, cell: 100, origin: { x: 0, y: 0 } };
+  const prop = { id: "torch", rect: { x: 0, y: 0, w: 100, h: 100 }, traits: { material: "wood" }, fire: { burning: true, roundsLeft: 3 } };
+  assert.equal(cellStep({ ...geo, cells: [{ i: 1, heat: 0 }], things: [prop] }).heat.length, 1);
+  assert.deepEqual(cellStep({ ...geo, cells: [{ i: 1, heat: 0, blocked: ["torch"] }], things: [prop] }).heat, []);
+  const fire = (levels) => ({ i: 0, burning: true, roundsLeft: 2, levels });
+  assert.equal(cellStep({ ...geo, cells: [fire(["a"]), { i: 1, heat: 0, levels: ["a"] }] }).heat.length, 1, "same level");
+  assert.deepEqual(cellStep({ ...geo, cells: [fire(["a"]), { i: 1, heat: 0, levels: ["b"] }] }).heat, [], "other level");
+  assert.equal(cellStep({ ...geo, cells: [fire(["a"]), { i: 1, heat: 0 }] }).heat.length, 1, "no list means every level");
 });

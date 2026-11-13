@@ -53,7 +53,9 @@ function windBoost(wind, from, to) {
   return dx * Math.cos(wind.angle) + dy * Math.sin(wind.angle) > 0 ? 1 + 0.5 * wind.strength : 1;
 }
 
-// A grass square's id as a fire source, for a prop's `blocked` list to name (a square may carry its own `id` instead).
+// A grass square's id as a fire source, for a `blocked` list (a prop's or another square's) to name.
+// The index depends on the current grid and origin, so a `blocked` list built against one grass grid must be rebuilt if
+// that grid changes. A square carrying its own `id` is named by that, and is no longer addressable as `cell:<i>`.
 export const cellId = (i) => `cell:${i}`;
 
 // A grass square's rectangle, from its index in a grid of `cols` squares whose top-left corner is `origin`.
@@ -116,9 +118,14 @@ export function spreadStep({ things = [], wind = null, grid = 100, cap = 12, cel
 
 // One round of fire through grass: each burning square heats the four squares beside it (not the diagonals) at
 // GRASS_RATE, half again more downwind out of doors, and a burning prop heats the squares under and beside it.
-// `cells` are { i, heat?, burning?, roundsLeft?, charred? }; a charred square takes no heat and never relights. Returns each
-// heated square's new total heat, which catch (hottest first, up to the cap; each then burns CELL_ROUNDS), and which burning
-// squares have run out of rounds (to be charred).
+// `cells` are { i, heat?, burning?, roundsLeft?, charred?, id?, levels?, blocked? }; a charred square takes no heat and never
+// relights. Walls and levels work as they do for props, on every path (square to square, prop to square):
+//   `blocked` on a square lists the source ids a wall cuts it off from: a neighbouring square's id (its own `id`, else
+//   cellId(i)) or a burning prop's id. Fire from a listed source never reaches it.
+//   `levels` lists the levels a square or prop is on; fire passes only between things sharing one, and an empty or
+//   missing list means every level.
+// Returns each heated square's new total heat, which catch (hottest first, up to the cap; each then burns CELL_ROUNDS), and
+// which burning squares have run out of rounds (to be charred).
 export function cellStep({ cells = [], things = [], cols = 1, rows = 1, origin = { x: 0, y: 0 }, cell = 100, wind = null, cap = 12 } = {}) {
   const geo = { cols, origin, cell };
   const byIndex = new Map(cells.map((c) => [c.i, c]));
@@ -134,6 +141,8 @@ export function cellStep({ cells = [], things = [], cols = 1, rows = 1, origin =
       const i = r * cols + c;
       const target = byIndex.get(i);
       if (!target || target.burning || target.charred) continue;
+      if (target.blocked?.includes(src.id ?? cellId(src.i))) continue;
+      if (!sharesLevel(src.levels, target.levels)) continue;
       add(i, 30 * GRASS_RATE * windBoost(wind, from, cellRect(i, geo)));
     }
   }
