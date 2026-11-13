@@ -29,6 +29,15 @@ export function fireNextLast({ combat = null, now = 0 } = {}) {
   return combat?.started === true && Number.isFinite(Number(combat.round)) ? { round: Number(combat.round), at } : { at };
 }
 
+// The remembered counts after a combat begins or ends anywhere: every scene re-seeded from its OWN combat
+// (`combatOf(sceneId)`), keeping the time it last ran on. A combat on one scene never drops another scene's round,
+// which would hand that scene a free round in the middle of its own combat.
+export function fireReseed(lasts, { combatOf = () => null, now = 0 } = {}) {
+  const out = new Map();
+  for (const [id, last] of lasts ?? []) out.set(id, { ...fireNextLast({ combat: combatOf(id), now }), at: Number(last?.at) || Number(now) || 0 });
+  return out;
+}
+
 // The scenes a fire round runs on: only for the active GM (nobody else writes), and only scenes with both switches on
 // (Breakable props and Fire spreads).
 export function fireScenesOf(scenes, { activeGM = false } = {}) {

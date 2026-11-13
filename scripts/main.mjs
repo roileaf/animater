@@ -22,7 +22,7 @@ import { createPropWreckage, WALL_GAP } from "./engines/props/prop-wreck.mjs";
 import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
 import { BURN_MS, burnLightData, fireTimers, unhideLights, firesOf } from "./engines/props/prop-lights.mjs";
-import { propMaterial } from "./engines/props/prop-material.mjs";
+import { propMaterial, canBreak } from "./engines/props/prop-material.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls, blockingWalls, wallStop } from "./engines/props/prop-walls.mjs";
@@ -38,7 +38,7 @@ import { DOOR_ATTACK_SYSTEMS, doorStats, doorCracked, doorHpLine, strikeReaches,
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsOf, dropLostDecorFire, regionBurns } from "./engines/props/fire-spread.mjs";
-import { fireRoundDue, fireNextLast, fireScenesOf, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
+import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
 import { DECOR_BREAK_MESSAGE, DECOR_NAMES, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
@@ -9292,7 +9292,9 @@ async function fireRound(scene) {
       : decor.get(id) ? await askDecor(scene, decor.get(id), cause, at, { burnedAt }) : false;
     // Nothing the flames could break (a stone chest whose books burned): the fire still ends where every screen can
     // see it, with the burnt ground a fire area leaves and a word to the GMs, instead of just going out in silence.
-    if (broke !== true) {
+    // Only that case: any other refusal (one already wrecked, one gone) is none of the fire's business and is silent.
+    const canChar = canBreak(thing.traits?.material, { damageType: "fire", burnedOut: true }, { cuttable: thing.traits?.cuttable, rule: thing.traits?.rule });
+    if (broke !== true && !canChar) {
       fireScorch(scene, at, Math.max(thing.rect.w, thing.rect.h));
       await whisperGMs(fireBurnedOut(thing.name));
     }
@@ -9331,11 +9333,15 @@ const fireTick = () => { void fireRoundsNow().catch((e) => runtime?.trace("props
 // never late by more than that.
 Hooks.on("updateCombat", (combat, changes) => { if ("round" in (changes ?? {})) fireTick(); });
 Hooks.once("ready", () => { clearInterval(fireTimer); fireTimer = setInterval(fireTick, Math.max(500, FIRE_PERIOD / 6)); });
-// A combat beginning or ending: every scene forgets the round it remembers (that count belonged to that combat), so
-// the next combat starts counting from its own round 1 and the clock takes over between combats.
-const fireForgetRounds = () => { for (const [id, last] of fireLast) fireLast.set(id, { at: last?.at ?? fireNow() }); };
-Hooks.on("combatStart", fireForgetRounds);
-Hooks.on("deleteCombat", fireForgetRounds);
+// A combat beginning or ending anywhere: every scene is re-seeded from its OWN combat (fireReseed), so the scene
+// whose combat ended forgets that count and the clock takes over, while a scene in the middle of its own combat
+// keeps the round it stands on and is given no free round.
+const fireReseedRounds = () => {
+  const next = fireReseed(fireLast, { combatOf: (id) => { const scene = game.scenes?.get(id); return scene ? fireCombatOf(scene) : null; }, now: fireNow() });
+  for (const [id, last] of next) fireLast.set(id, last);
+};
+Hooks.on("combatStart", fireReseedRounds);
+Hooks.on("deleteCombat", fireReseedRounds);
 // A region repainted or reshaped: its grass grid is laid out again next round (its squares' indices may have moved).
 Hooks.on("updateRegion", (doc, changes) => { if ("shapes" in (changes ?? {}) || "levels" in (changes ?? {})) fireGrass.delete(doc.id); });
 Hooks.on("deleteRegion", (doc) => { fireGrass.delete(doc.id); });

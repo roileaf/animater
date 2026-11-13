@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fireRoundDue, fireNextLast, fireScenesOf, wallBetween, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "../../../scripts/engines/props/fire-rounds.mjs";
+import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, wallBetween, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "../../../scripts/engines/props/fire-rounds.mjs";
 
 test("in combat a round comes from the tracker, out of combat from the clock", () => {
   assert.equal(fireRoundDue({ combat: { started: true, round: 3 }, last: { round: 2 } }), true);
@@ -49,6 +49,21 @@ test("a new combat starts a new count: the old combat's last round never holds i
   assert.equal(fireRoundDue({ combat: { started: true, round: 1 }, now: 20100, last: ended }), true);
   // And without that forgetting it would have stalled: the round carried over holds every round up to 7 back.
   assert.equal(fireRoundDue({ combat: { started: true, round: 1 }, now: 20100, last: { round: 7, at: 20000 } }), false);
+});
+
+test("a combat on one scene never gives another scene's fire a free round", () => {
+  // A is in the middle of its own combat at round 5; B's combat is just starting, so every scene is re-seeded.
+  const aCombat = { started: true, round: 5 };
+  const lasts = new Map([["A", { round: 5, at: 1000 }], ["B", { at: 1000 }]]);
+  const after = fireReseed(lasts, { combatOf: (id) => (id === "A" ? aCombat : null), now: 4000 });
+  assert.deepEqual(after.get("A"), { round: 5, at: 1000 }); // A keeps its own count and the time it last ran
+  assert.equal(fireRoundDue({ combat: aCombat, now: 4000, last: after.get("A") }), false);
+  // ... and A's own next round still comes when the tracker moves on.
+  assert.equal(fireRoundDue({ combat: { started: true, round: 6 }, now: 4000, last: after.get("A") }), true);
+  // B, out of combat until its own combat is read, keeps the clock it was on: no round granted by the re-seed.
+  assert.deepEqual(after.get("B"), { at: 1000 });
+  assert.equal(fireRoundDue({ combat: null, now: 4000, last: after.get("B") }), false);
+  assert.equal(fireReseed(null, {}).size, 0);
 });
 
 test("a wall between two points stops fire, one beside them does not", () => {
