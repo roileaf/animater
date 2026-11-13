@@ -505,3 +505,14 @@ test("repairFireUpdates removes the whole fire flags of the regions that keep an
     { _id: "b", "flags.animater.-=decorFire": null },
   ]);
 });
+
+test("quenchUpdates also cools what is warm but not yet alight, in every kind", () => {
+  const warm = { heat: 60, burning: false, roundsLeft: 0 };
+  const r = quenchUpdates([
+    { kind: "tile", id: "w", point: { x: 0, y: 0 }, fire: warm },
+    { kind: "decor", regionId: "r", key: "k", point: { x: 0, y: 0 }, fire: warm },
+    { kind: "cell", regionId: "r", key: "2", point: { x: 0, y: 0 }, fire: warm },
+  ], () => true);
+  assert.deepEqual(r.tiles, [{ _id: "w", "flags.animater.prop.-=fire": null }]);
+  assert.deepEqual(r.regions, [{ _id: "r", "flags.animater.decorFire.-=k": null, "flags.animater.fireCells.-=2": null }]);
+});

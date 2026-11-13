@@ -176,7 +176,7 @@ const regionOf = (tile) => readNote(propOf(tile).broken)?.region;
 const ownRegion = (tile, regions) => { const id = regionOf(tile); return id && (regions ?? []).some((r) => r?.id === id && r.flags?.animater?.propRubble === tile.id) ? [id] : []; };
 const ownNamedLights = (tile, lights, grid) => { const reach = new Set(lightsInReach(tile, lights, grid, tile.levels).map((l) => l.id)); return namedLights(tile).filter((id) => reach.has(id)); };
 export function undoUpdates(tile, walls, { tiles = [], grid = 100, lights = [], regions = [] } = {}) {
-  return { tile: { _id: tile.id, "flags.animater.prop.-=broken": null }, walls: restoreUpdates(wallsToRestore(tile, tiles, walls, grid)), lights: unhideLights(ownNamedLights(tile, lights, grid), lights),
+  return { tile: { _id: tile.id, "flags.animater.prop.-=broken": null, ...(propOf(tile).fire !== undefined ? { "flags.animater.prop.-=fire": null } : {}) }, walls: restoreUpdates(wallsToRestore(tile, tiles, walls, grid)), lights: unhideLights(ownNamedLights(tile, lights, grid), lights),
     deleteLights: firesOf(tile.id, lights), deleteRegions: ownRegion(tile, regions) };
 }
 

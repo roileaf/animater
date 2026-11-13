@@ -465,3 +465,11 @@ test("Repair makes a prop that is burning right now whole: only its fire cleared
   ], [], {});
   assert.deepEqual(r.tiles, [{ _id: "live", "flags.animater.prop.-=fire": null }]);
 });
+
+test("undoing one prop's break clears its fire too, as Repair does; with no fire it writes none", () => {
+  const withFire = undoUpdates({ id: "t", x: 0, y: 0, width: 100, height: 100, flags: { animater: { prop: { broken: {}, fire: { heat: 0, burning: true, roundsLeft: 1 } } } } }, []);
+  assert.equal(withFire.tile["flags.animater.prop.-=fire"], null);
+  assert.equal(withFire.tile["flags.animater.prop.-=broken"], null);
+  const none = undoUpdates({ id: "t", x: 0, y: 0, width: 100, height: 100, flags: { animater: { prop: { broken: {} } } } }, []);
+  assert.equal("flags.animater.prop.-=fire" in none.tile, false);
+});

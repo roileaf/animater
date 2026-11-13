@@ -9352,14 +9352,10 @@ Hooks.on("deleteRegion", (doc) => { fireGrass.delete(doc.id); });
 // own copy holds it (who placed it, its spell's damage types, its age, its scene) exactly as for a break, then writes.
 // Nothing is broken and no creature is touched. A charred square stays charred.
 const QUENCH_MESSAGE = "prop-quench";
-async function applyQuench(scene, cause, user) {
-  if (!game.users.activeGM?.isSelf || !scene || !propsOn(scene) || !quenchedBy(cause?.damageType)) return false;
-  const full = { kind: "area", damageType: cause.damageType, areaUuid: cause.areaUuid }, { area, now } = areaPlace(full, user);
-  // The shape is asked thing by thing below; every other check (placer, spell types, age, scene) is the break's own.
-  const refused = areaRefusal(area ? { ...area, testPoint: () => true } : area, { cause: full, sceneId: scene.id, sender: user, point: { x: 0, y: 0 }, levels: area?.levels, now });
-  if (refused) { runtime?.trace("props", `not quenched: ${refused}`); return false; }
-  // A fire round still writing would put back what is cleared here: let it finish first.
-  for (let i = 0; i < 100 && fireRunning.has(scene.id); i++) await new Promise((done) => setTimeout(done, 50));
+// A scene's quench in flight: a second ask for the scene is dropped, so a flood of them cannot make the GM scan it over and over.
+const quenchRunning = new Set();
+// What the area's quenching would put out on this screen's documents (quenchUpdates): the fires inside it, as they stand.
+function quenchPutOf(scene, area) {
   const grid = propGrid(scene), things = [], mid = (view) => fireMid(fireRect(view));
   for (const doc of scene.tiles?.contents ?? []) {
     const fire = readFire(doc);
@@ -9379,7 +9375,22 @@ async function applyQuench(scene, cause, user) {
         point: { x: grass.origin.x + (i % grass.cols) * grid + grid / 2, y: grass.origin.y + Math.floor(i / grass.cols) * grid + grid / 2 } });
     }
   }
-  const out = quenchUpdates(tilesOnLevel(things, area.levels), area.testPoint);
+  return quenchUpdates(tilesOnLevel(things, area.levels), area.testPoint);
+}
+async function applyQuench(scene, cause, user) {
+  if (!game.users.activeGM?.isSelf || !scene || !propsOn(scene) || !quenchedBy(cause?.damageType) || quenchRunning.has(scene.id)) return false;
+  quenchRunning.add(scene.id);
+  try { return await runQuench(scene, cause, user); } finally { quenchRunning.delete(scene.id); }
+}
+async function runQuench(scene, cause, user) {
+  // messageId: the damage roll, for a spell whose item names no damage type (the GM reads it from that message, as for a break).
+  const full = { kind: "area", damageType: cause.damageType, areaUuid: cause.areaUuid, ...(typeof cause.messageId === "string" ? { messageId: cause.messageId } : {}) }, { area, now } = areaPlace(full, user);
+  // The shape is asked thing by thing (quenchPutOf); every other check (placer, spell types, age, scene) is the break's own.
+  const refused = areaRefusal(area ? { ...area, testPoint: () => true } : area, { cause: full, sceneId: scene.id, sender: user, point: { x: 0, y: 0 }, levels: area?.levels, now });
+  if (refused) { runtime?.trace("props", `not quenched: ${refused}`); return false; }
+  // A fire round still writing would put back what is cleared here: let it finish first.
+  for (let i = 0; i < 100 && fireRunning.has(scene.id); i++) await new Promise((done) => setTimeout(done, 50));
+  const out = quenchPutOf(scene, area);
   if (!out.put.length) return false;
   const del = propDel();
   if (out.tiles.length) await scene.updateEmbeddedDocuments("Tile", out.tiles.map((u) => withDeletes(u, del)), { animater: { propFire: true } })
@@ -9396,18 +9407,20 @@ async function applyQuench(scene, cause, user) {
   }
   return true;
 }
-function askQuench(area, damageType) {
+// True once asked of (or started by) the GM; false with none connected.
+function askQuench(area, damageType, messageId) {
   const scene = area?.scene, gm = game.users.activeGM;
-  if (!scene || !gm) return;
-  const cause = { areaUuid: area.templateId, damageType };
-  if (gm.isSelf) { void applyQuench(scene, cause, game.user).catch((e) => runtime?.trace("props", `quench: ${e?.message ?? e}`)); return; }
+  if (!scene || !gm) return false;
+  const cause = { areaUuid: area.templateId, damageType, ...(typeof messageId === "string" ? { messageId } : {}) };
+  if (gm.isSelf) { void applyQuench(scene, cause, game.user).catch((e) => runtime?.trace("props", `quench: ${e?.message ?? e}`)); return true; }
   game.socket.emit(`module.${ID}`, { type: QUENCH_MESSAGE, sender: clientId, sceneId: scene.id, cause });
+  return true;
 }
 async function receiveQuench(data, senderId) {
   if (data?.type !== QUENCH_MESSAGE || !game.users.activeGM?.isSelf) return;
   const user = senderId ? game.users.get(senderId) : null, scene = game.scenes.get(String(data.sceneId ?? ""));
   if (!user || !scene || typeof data.cause?.areaUuid !== "string" || typeof data.cause?.damageType !== "string") return;
-  await applyQuench(scene, { areaUuid: data.cause.areaUuid, damageType: data.cause.damageType }, user);
+  await applyQuench(scene, { areaUuid: data.cause.areaUuid, damageType: data.cause.damageType, messageId: typeof data.cause.messageId === "string" ? data.cause.messageId : undefined }, user);
 }
 async function receivePropBreak(data, senderId) {
   if (data?.type !== PROP_BREAK_MESSAGE || !game.users.activeGM?.isSelf) return;
@@ -10010,7 +10023,10 @@ function breakAreaThings(area, types, { messageId } = {}) {
   if (!area || !types?.length || !propsOn(scene) || !game.scenes.get(scene.id)) return false;
   // Water or cold puts out the fires inside the area (asked of the GM once per area), besides anything it breaks.
   const quench = types.find(quenchedBy), quenching = !!quench && propAreas.claim(area.templateId, "quench");
-  if (quenching) askQuench(area, quench);
+  // A refusal is the GM's silence, so the claim is given back unless the fires inside the area are gone after a wait; a later
+  // ask (the damage roll's, which names its message) can then still put them out.
+  if (quenching) void askClaimed({ ask: () => askQuench(area, quench, messageId), release: () => propAreas.release(area.templateId, "quench"), wait: CLAIM_SETTLE_MS,
+    written: () => !propSafe("quench check", () => quenchPutOf(scene, area).put.length) });
   const grid = propGrid(scene), tiles = tilesOnLevel(scene.tiles.contents.map(propTileView), area.levels), walls = (scene.walls?.contents ?? []).map(wallView);
   const decor = propSafe("area decorations", () => decorViews(scene, area.levels)) ?? [], id = (t) => t.id;
   const hits = typesBreaking(types, (type) => propsInArea(tiles, area.testPoint, grid, type), id).filter(({ thing }) => propAreas.claim(area.templateId, thing.id));
