@@ -225,6 +225,7 @@ test("every screen plays the ignite over the spilled wreck it drew; a fire area 
   assert.match(area, /const decorSpills = !types\.includes\("fire"\) \? \[\] : \(propSafe\("area decoration powder", \(\) => ignitableInArea\(tilesOnLevel\(decorSpilled\(decorRegionsOf\(scene, \{ breaking: true \}\), grid, decorIndex\), area\.levels\), area\.testPoint\)\) \?\? \[\]\)\.filter\(\(v\) => propAreas\.claim\(area\.templateId, `ignite:\$\{v\.id\}`\)\);/);
   assert.match(area, /askDecor\(scene, v, \{ kind: "ignite", damageType: "fire", at: area\.at, areaUuid, \.\.\.roll \}, area\.at\)/);
   const apply = main.slice(main.indexOf("async function applyDecorBreak"), main.indexOf("async function receiveDecorBreak"));
-  assert.match(apply, /if \(view && check\.explode\) void runBlastAt\(/);
+  // (The blast goes off where the decoration stands, asked for through decorPlaceOf; one that stands nowhere sets off nothing.)
+  assert.match(apply, /if \(view && check\.explode && decorPlaceOf\(view\)\) void runBlastAt\(scene, \{ centre: decorPlaceOf\(view\),/);
   assert.match(main, /for \(const id of decorIgnites\(wanted, decorWrecksShown, decorWreckPowder\)\)/);
 });

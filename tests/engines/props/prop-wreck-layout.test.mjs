@@ -315,6 +315,17 @@ test("firePatchAt: the fire light goes on the burning patch (stopped by the wall
   assert.deepEqual(firePatchAt({ ...n, fire: undefined }, { ...at, contents: "lampoil" }), firePatchAt(n, { ...at, contents: "lampoil" }));
   assert.deepEqual(firePatchAt(n, { ...at, contents: "none" }), { x: 500, y: 300 });
 });
+test("firePatchAt: no note at all (a fire that spread to it) still names a place, never NaN", () => {
+  // Nothing broke it, so there is no seed and no cut angle to lay a spill out from: a liquid's patch worked out from
+  // those came back as not-a-number, and the fire light asked for at it was refused every round (live run, v14).
+  for (const contents of ["none", "water", "lampoil", "grain", "goods", "books", "potions", "powder"]) {
+    for (const note of [null, undefined, {}]) {
+      const place = firePatchAt(note, { ...at, contents });
+      assert.ok(Number.isFinite(place.x) && Number.isFinite(place.y), `${contents} with ${JSON.stringify(note)}`);
+      assert.deepEqual(place, at.centre, `${contents}: the centre answers`);
+    }
+  }
+});
 
 import { readFileSync } from "node:fs";
 import { tonesOfPixels } from "../../../scripts/engines/props/prop-wreck-layout.mjs";

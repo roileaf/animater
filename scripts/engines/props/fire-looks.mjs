@@ -60,6 +60,10 @@ export function fireSteady(heat = 0) {
 // going is woken again long before this runs out; it is only fire that has stopped changing that settles.
 export const PULSE_QUIET_MS = 20000;
 
+// A rectangle that is a place on the map: anything drawn from a rect that is not one draws nothing, in a shape PIXI
+// then carries into the rest of the frame. Whatever hands them in is free to be wrong; the drawing is not.
+export const fireRectOk = (rect) => !!rect && [rect.x, rect.y, rect.w, rect.h].every((n) => Number.isFinite(n));
+
 const INK = 0x1b1410, EMBER = 0xff8a30, EMBER_CORE = 0xffd08a, SOOT = [0x2a2420, 0x4a403a];
 
 // The painted looks of fire on the map. `layer()` gives the container the warm edges are drawn in (over the props,
@@ -155,10 +159,10 @@ export function createFireLooks({ PIXI, layer, floor = layer, grid = () => 100, 
   return {
     sync({ edges: warm = [], flames: lit = [], scorch = [] } = {}) {
       if (!ensure()) return;
-      edges = warm.filter((e) => e?.rect);
-      flames = lit.filter((f) => f?.rect);
-      const key = scorch.map((s) => s.id).join("|");
-      if (key !== scorched) { scorched = key; drawScorch(scorch.filter((s) => s?.rect)); }
+      edges = warm.filter((e) => fireRectOk(e?.rect));
+      flames = lit.filter((f) => fireRectOk(f?.rect));
+      const key = scorch.filter((s) => fireRectOk(s?.rect)).map((s) => s.id).join("|");
+      if (key !== scorched) { scorched = key; drawScorch(scorch.filter((s) => fireRectOk(s?.rect))); }
       // Anything new or hotter than last time wakes the swell for a while; the same fire as before leaves it alone,
       // so a prop left warm by a fire long out is drawn once and then costs nothing.
       const mark = [...edges.map((e) => `${e.id}@${e.heat}`), ...flames.map((f) => `f:${f.id}`)].join("|");

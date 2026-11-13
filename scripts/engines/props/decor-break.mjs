@@ -103,6 +103,30 @@ export function decorView({ d, key }, region, grid) {
   };
 }
 
+/**
+ * The place a decoration's key spells out (pure): a key is `kind:x:y:fingerprint` (decorKeyed), rounded scene pixels.
+ * Null for anything else. It is the stand-in for a view whose placement has lost its place, never the first answer:
+ * the key is rounded, the placement is not.
+ */
+export function decorKeyPlace(key) {
+  const m = /^[^:]+:(-?\d+):(-?\d+):/.exec(String(key ?? ""));
+  return m ? { x: Number(m[1]), y: Number(m[2]) } : null;
+}
+/**
+ * Where a decoration view stands (pure), for anything placed on it: a light, a blast, a mark. Its placement's own x and y
+ * (decorView keeps the placement as `decor.d`: that is what the painter drew it from, so it is the one true answer),
+ * failing that the place its key spells out, failing that the middle of the box the view was dressed in. Null when not
+ * one of the three is a pair of numbers — then nothing is placed, rather than placed nowhere.
+ */
+export function decorPlaceOf(view) {
+  const d = view?.decor?.d;
+  if (Number.isFinite(d?.x) && Number.isFinite(d?.y)) return { x: d.x, y: d.y };
+  const keyed = decorKeyPlace(view?.decor?.key);
+  if (keyed) return keyed;
+  const x = Number(view?.x) + Number(view?.width) / 2, y = Number(view?.y) + Number(view?.height) / 2;
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+}
+
 // The round area a decoration underground hands the cavern or the webs (as decorations.cavern() draws it), as a polygon.
 const ringOf = (d, grid, what) => { const r = d.size * grid * (what === "webs" ? 1.2 : 0.5); return Array.from({ length: 12 }, (_, i) => [d.x + Math.cos((i / 12) * 6.283) * r, d.y + Math.sin((i / 12) * 6.283) * r]); };
 const insideRing = (p, ring) => { let on = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > p.y) !== (yj > p.y) && p.x < ((xj - xi) * (p.y - yi)) / (yj - yi) + xi) on = !on; } return on; };

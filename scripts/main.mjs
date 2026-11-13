@@ -42,7 +42,7 @@ import { areaRefusal } from "./engines/props/prop-areas.mjs";
 import { createFireLooks, warmEdges, charredCells, litCells } from "./engines/props/fire-looks.mjs";
 import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
-import { DECOR_BREAK_MESSAGE, DECOR_NAMES, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
+import { DECOR_BREAK_MESSAGE, DECOR_NAMES, decorPlaceOf, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
 import { bulkBreakableUpdates, windowLike } from "./engines/props/wall-break-bulk.mjs";
@@ -9108,6 +9108,18 @@ function timePropFire(scene, id, tileId, ms) {
   clearTimeout(propFires.get(id)?.timer);
   propFires.set(id, { tileId, timer: setTimeout(() => { propFires.delete(id); if (game.users.activeGM?.isSelf) void deletePropFires(scene, [id]); }, Math.max(0, ms)) });
 }
+// A fire light is never asked for at a place that is not one: a light with a bad x or y is refused by the document and
+// would be asked for again every round for as long as the thing burns, which fills the console and lights nothing.
+// Each thing says so once (`fireLightNowhere`, by the id the light would have carried) and is then left alone.
+const fireLightNowhere = new Set();
+async function makeFireLight(scene, data, what) {
+  if (!Number.isFinite(data?.x) || !Number.isFinite(data?.y)) {
+    if (!fireLightNowhere.has(what)) { fireLightNowhere.add(what); runtime?.trace("props", `fire light has nowhere to go: ${what}`); }
+    return null;
+  }
+  const [light] = await scene.createEmbeddedDocuments("AmbientLight", [data]).catch((e) => { runtime?.trace("props", `fire light not made: ${e?.message ?? e}`); return []; });
+  return light ?? null;
+}
 async function lightPropFire(scene, doc) {
   // On the burning patch (where the spill stopped, walls and all), as every screen lays it out from the note.
   const r = tileRect(doc), centre = { x: r.x + r.width / 2, y: r.y + r.height / 2 }, note = readNote(doc.flags?.[ID]?.prop?.broken);
@@ -9118,7 +9130,7 @@ async function lightPropFire(scene, doc) {
   } catch { at = centre; }
   const data = burnLightData({ centre: at, distance: Number(scene.grid?.distance) || 5,
     levels: [...(doc.levels ?? [])], elevation: Number(doc.elevation) || 0, tileId: doc.id, now: fireNow() });
-  const [light] = await scene.createEmbeddedDocuments("AmbientLight", [data]).catch((e) => { runtime?.trace("props", `fire light not made: ${e?.message ?? e}`); return []; });
+  const light = await makeFireLight(scene, data, doc.id);
   if (light) timePropFire(scene, light.id, doc.id, BURN_MS);
 }
 function sweepPropFires(scenes) {
@@ -9398,6 +9410,16 @@ Hooks.on("deleteCombat", fireReseedRounds);
 const fireLooks = createFireLooks({ PIXI: globalThis.PIXI, layer: floorLayer("fireLooks", 657), floor: floorLayer("fireScorch", 412),
   grid: () => canvas?.grid?.size ?? 100, now: () => fireNow() });
 let fireLooksTimer = 0;
+// The square a burning decoration's warm edge is drawn round: the box it was dressed in while that is a box, else one
+// its own place makes, as wide as the view says or a square. Null when it stands nowhere: nothing is drawn at NaN.
+function decorEdgeRect(view) {
+  const w = Number(view?.width), h = Number(view?.height);
+  if (Number.isFinite(view?.x) && Number.isFinite(view?.y) && w > 0 && h > 0) return { x: view.x, y: view.y, w, h };
+  const at = decorPlaceOf(view), grid = propGrid(canvas?.scene);
+  if (!at) return null;
+  const wide = w > 0 ? w : grid, tall = h > 0 ? h : grid;
+  return { x: at.x - wide / 2, y: at.y - tall / 2, w: wide, h: tall };
+}
 function syncFireLooksNow() {
   if (!canvas?.ready) return;
   const scene = canvas.scene;
@@ -9421,7 +9443,10 @@ function syncFireLooksNow() {
       for (const view of (region ? propSafe("fire looks views", () => decorIndex(region, grid).views) ?? [] : [])) {
         const saved = stored[view.decor.key];
         if (!saved) continue;
-        rects.set(view.decor.key, { rect: { x: view.x, y: view.y, w: view.width, h: view.height }, rotation: 0 });
+        // The box its edge is drawn round: the view's own, else one its place (decorPlaceOf) makes; no place, no edge.
+        const rect = decorEdgeRect(view);
+        if (!rect) continue;
+        rects.set(view.decor.key, { rect, rotation: 0 });
         things.push({ id: view.decor.key, fire: saved });
       }
     }
@@ -9824,7 +9849,7 @@ async function applyDecorBreak(scene, regionDoc, key, cause, rawNote, user) {
     if (check.lightUpdates?.length) await scene.updateEmbeddedDocuments("AmbientLight", check.lightUpdates).catch((e) => runtime?.trace("props", `lights not put out: ${e?.message ?? e}`));
     const view = decorIndex(region, grid).views.find((v) => v.decor.key === key);
     if (view && check.fire) await lightDecorFire(scene, view, entry.note);
-    if (view && check.explode) void runBlastAt(scene, { centre: { x: view.decor.d.x, y: view.decor.d.y }, burst: entry.note.burst ?? view.flags.animater.prop.burst, levels: [...region.levels], sourceId: view.id })
+    if (view && check.explode && decorPlaceOf(view)) void runBlastAt(scene, { centre: decorPlaceOf(view), burst: entry.note.burst ?? view.flags.animater.prop.burst, levels: [...region.levels], sourceId: view.id })
       .catch((e) => runtime?.trace("props", `decoration blast: ${e?.message ?? e}`));
     return true;
   } finally { decorWriting.delete(held); }
@@ -9832,11 +9857,17 @@ async function applyDecorBreak(scene, regionDoc, key, cause, rawNote, user) {
 // A decoration's burning lamp oil (GM): a tile's fire light (lightPropFire), on the patch where its oil stopped, named by the
 // decoration's view id so Repair finds it.
 async function lightDecorFire(scene, view, note) {
-  const grid = propGrid(scene), centre = { x: view.decor.d.x, y: view.decor.d.y };
+  // Where it stands (decorPlaceOf: its placement, then its key, then its box), never a bare reach into the placement.
+  const grid = propGrid(scene), centre = decorPlaceOf(view);
+  if (!centre) {
+    if (!fireLightNowhere.has(view?.id)) { fireLightNowhere.add(view?.id); runtime?.trace("props", `decoration has nowhere to burn: ${view?.id}`); }
+    return;
+  }
   let at = centre;
   try { at = firePatchAt(note, { centre, width: view.width, height: view.height, grid, contents: decorContents(view), rotation: 0, stop: wallStop(centre, decorStopWalls(view), WALL_GAP * grid) }); } catch { at = centre; }
+  if (!Number.isFinite(at?.x) || !Number.isFinite(at?.y)) at = centre;
   const data = burnLightData({ centre: at, distance: Number(scene.grid?.distance) || 5, levels: [...(view.levels ?? [])], elevation: 0, tileId: view.id, now: fireNow() });
-  const [light] = await scene.createEmbeddedDocuments("AmbientLight", [data]).catch((e) => { runtime?.trace("props", `fire light not made: ${e?.message ?? e}`); return []; });
+  const light = await makeFireLight(scene, data, view.id);
   if (light) timePropFire(scene, light.id, view.id, BURN_MS);
 }
 // Repair (GM): the lights these regions' stored breaks put out lit again, and their burning oil put out.
@@ -14130,13 +14161,14 @@ Hooks.once("ready", () => {
       breakDecor: (regionId, key, cause = {}) => {
         const doc = canvas?.scene?.regions?.get(regionId), region = doc ? decorRegionOf(doc) : null;
         const view = region ? decorIndex(region, propGrid(canvas.scene)).views.find((v) => v.decor.key === key) : null;
-        if (!view) return false;
-        return requestDecorBreak(doc, key, { kind: "area", damageType: "bludgeoning", at: { x: view.decor.d.x, y: view.decor.d.y }, ...cause });
+        const at = view ? decorPlaceOf(view) : null;
+        if (!at) return false;
+        return requestDecorBreak(doc, key, { kind: "area", damageType: "bludgeoning", at, ...cause });
       },
       decorKeys: (regionId) => {
         const doc = canvas?.scene?.regions?.get(regionId), region = doc ? decorRegionOf(doc) : null;
         if (!region) return [];
-        return decorIndex(region, propGrid(canvas.scene)).views.map((v) => ({ key: v.decor.key, kind: v.decor.kind, x: Math.round(v.decor.d.x), y: Math.round(v.decor.d.y) }));
+        return decorIndex(region, propGrid(canvas.scene)).views.map((v) => { const at = decorPlaceOf(v) ?? { x: NaN, y: NaN }; return { key: v.decor.key, kind: v.decor.kind, x: Math.round(at.x), y: Math.round(at.y) }; });
       },
       decorBreakable: (regionId) => {
         const doc = canvas?.scene?.regions?.get(regionId), region = doc ? decorRegionOf(doc) : null, scene = canvas?.scene;

@@ -194,3 +194,24 @@ test("final review minors: Repair waits for the writes and holds them (M1), wall
   // The live check's look at what this screen lets break (any user; read-only).
   assert.match(main, /decorBreakable: \(regionId\) => \{[^]*?decorTargets\(\[region\], propGrid\(scene\), decorIndex, decorDrawnOn\(scene\)\)/);
 });
+// The live run (v14): most burning decorations got no fire light, and the refused light was asked for again every
+// round. Nothing reaches into a placement for a place any more, and no light is ever asked for at one that is not.
+test("a decoration's place is asked for, never reached into", () => {
+  assert.doesNotMatch(main, /view\.decor\.d\.x/, "decorPlaceOf answers for a view's place");
+  assert.doesNotMatch(main, /v\.decor\.d\.x/);
+  assert.match(body("lightDecorFire"), /const grid = propGrid\(scene\), centre = decorPlaceOf\(view\);/);
+  assert.match(body("lightDecorFire"), /if \(!centre\) \{/);
+  assert.match(body("lightDecorFire"), /if \(!Number\.isFinite\(at\?\.x\) \|\| !Number\.isFinite\(at\?\.y\)\) at = centre;/);
+  assert.match(body("applyDecorBreak"), /check\.explode && decorPlaceOf\(view\)/);
+  assert.match(body("decorEdgeRect"), /decorPlaceOf\(view\)/);
+});
+test("a fire light is never asked for at a place that is not one, and says so once", () => {
+  assert.match(main, /const fireLightNowhere = new Set\(\);/);
+  const make = body("makeFireLight");
+  assert.match(make, /if \(!Number\.isFinite\(data\?\.x\) \|\| !Number\.isFinite\(data\?\.y\)\)/);
+  assert.match(make, /if \(!fireLightNowhere\.has\(what\)\) \{ fireLightNowhere\.add\(what\);/);
+  // Every fire light goes through it: nothing else hands one to the server.
+  assert.equal((main.match(/createEmbeddedDocuments\("AmbientLight"/g) ?? []).length, 1);
+  assert.match(body("lightPropFire"), /await makeFireLight\(scene, data, doc\.id\)/);
+  assert.match(body("lightDecorFire"), /await makeFireLight\(scene, data, view\.id\)/);
+});
