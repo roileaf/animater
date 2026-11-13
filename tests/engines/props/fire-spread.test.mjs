@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { fireRate, spreadStep, cellStep, GRASS_RATE, CELL_ROUNDS, BURN_ROUNDS, regionBurns, cellId, fireUpdatesFor, dropLostDecorFire, readFire, writeFirePath, decorFireOf, fireCellsOf } from "../../../scripts/engines/props/fire-spread.mjs";
+import { fireRate, spreadStep, cellStep, GRASS_RATE, CELL_ROUNDS, BURN_ROUNDS, NEAR_HEAT, TOUCH_HEAT, HEAT_CATCH, regionBurns, cellId, fireUpdatesFor, dropLostDecorFire, readFire, writeFirePath, decorFireOf, fireCellsOf } from "../../../scripts/engines/props/fire-spread.mjs";
 
 test("the rate is the higher of the material's and the contents'", () => {
   assert.equal(fireRate({ material: "plant", contents: "none" }), 2);
@@ -215,7 +215,7 @@ test("cell wind: only out of doors, only within 90 degrees, by 1 + 0.5 * strengt
   const base = { cells: [{ i: 1, burning: true, roundsLeft: 2 }, { i: 0, heat: 0 }, { i: 2, heat: 0 }], cols: 3, rows: 1, cell: 100, origin: { x: 0, y: 0 } };
   const calm = cellStep(base).heat;
   const heatOf = (r, i) => r.find((h) => h.i === i).heat;
-  assert.equal(heatOf(calm, 0), 30 * GRASS_RATE);
+  assert.equal(heatOf(calm, 0), NEAR_HEAT * GRASS_RATE);
   const indoors = cellStep({ ...base, wind: { angle: 0, strength: 1, outdoor: false } }).heat;
   assert.equal(heatOf(indoors, 2), heatOf(calm, 2));
   const out = cellStep({ ...base, wind: { angle: 0, strength: 1, outdoor: true } }).heat;
@@ -226,7 +226,7 @@ test("cell wind: only out of doors, only within 90 degrees, by 1 + 0.5 * strengt
 test("a cell catches at the catch heat, adds to what it holds, and the rounds it burns are CELL_ROUNDS", () => {
   const r = cellStep({ cells: [{ i: 0, burning: true, roundsLeft: 2 }, { i: 1, heat: 80 }], cols: 2, rows: 1, cell: 100, origin: { x: 0, y: 0 } });
   assert.deepEqual(r.caught, [1]);
-  assert.equal(r.heat[0].heat, 80 + 30 * GRASS_RATE);
+  assert.equal(r.heat[0].heat, 80 + NEAR_HEAT * GRASS_RATE);
   assert.equal(CELL_ROUNDS, 2);
 });
 
@@ -244,6 +244,68 @@ test("burning grass heats a prop beside it, downwind first, and not one a square
   assert.ok(spreadStep({ ...args, wind: { angle: 0, strength: 1, outdoor: true } }).heat[0].heat > calm);
   const far = { id: "f", rect: { x: 300, y: 0, w: 100, h: 100 }, traits: { material: "wood" }, fire: null };
   assert.deepEqual(spreadStep({ ...args, things: [far] }).heat, []);
+});
+
+// One round of grass applied to the squares as the GM's writes apply it: out beats caught beats still burning
+// beats heated (fireUpdatesFor's own order), so a row can be run round by round here.
+function grassRound(cells, args) {
+  const r = cellStep({ cells, ...args });
+  const heat = new Map(r.heat.map((h) => [h.i, h.heat])), caught = new Set(r.caught), out = new Set(r.out);
+  const burning = new Map(r.burning.map((b) => [b.i, b.roundsLeft]));
+  return cells.map((c) => {
+    if (out.has(c.i)) return { ...c, burning: false, charred: true, heat: 0, roundsLeft: 0 };
+    if (caught.has(c.i)) return { ...c, burning: true, roundsLeft: CELL_ROUNDS, heat: heat.get(c.i) ?? HEAT_CATCH };
+    if (burning.has(c.i)) return { ...c, roundsLeft: burning.get(c.i) };
+    if (heat.has(c.i)) return { ...c, heat: heat.get(c.i) };
+    return c;
+  });
+}
+
+test("a burning grass square lights the one beside it before it is charred", () => {
+  const args = { cols: 3, rows: 1, cell: 100, origin: { x: 0, y: 0 } };
+  let cells = [{ i: 0, burning: true, heat: HEAT_CATCH, roundsLeft: CELL_ROUNDS }, { i: 1, heat: 0 }, { i: 2, heat: 0 }];
+  let caught = 0;
+  for (let round = 1; round <= CELL_ROUNDS && !caught; round++) {
+    cells = grassRound(cells, args);
+    if (cells[1].burning) caught = round;
+  }
+  assert.equal(caught, 2, "the next square catches on the second round, while the first still burns");
+  // The old figure could not: 30 * 1.4 * 2 = 84 never reached the threshold, so grass fire died where it started.
+  assert.ok(30 * GRASS_RATE * CELL_ROUNDS < HEAT_CATCH, "the old number fell short");
+  assert.ok(NEAR_HEAT * GRASS_RATE * CELL_ROUNDS >= HEAT_CATCH, "the new one carries");
+});
+
+test("fire runs the length of a row of grass, square by square", () => {
+  const cols = 6, args = { cols, rows: 1, cell: 100, origin: { x: 0, y: 0 } };
+  let cells = Array.from({ length: cols }, (_, i) => (i === 0 ? { i, burning: true, heat: HEAT_CATCH, roundsLeft: CELL_ROUNDS } : { i, heat: 0 }));
+  let rounds = 0;
+  while (rounds < 30 && !(cells[cols - 1].burning || cells[cols - 1].charred)) { cells = grassRound(cells, args); rounds++; }
+  assert.ok(cells[cols - 1].burning || cells[cols - 1].charred, `the far end caught (after ${rounds} rounds)`);
+  assert.ok(rounds <= 12, `and in a reasonable time (${rounds})`);
+  assert.ok(cells[0].charred, "while the square it started in is long charred");
+});
+
+test("what a prop and the grass do to each other adds up inside the source's burn", () => {
+  // A burning prop into the grass it stands on: 55 * 1.4 = 77 a round, so a square catches on the second of three.
+  const prop = { id: "p", rect: { x: 0, y: 0, w: 100, h: 100 }, traits: { material: "wood" }, fire: { burning: true, heat: 100, roundsLeft: BURN_ROUNDS } };
+  const touching = cellStep({ things: [prop], cells: [{ i: 0, heat: 0 }], cols: 2, rows: 1, cell: 100, origin: { x: 0, y: 0 } });
+  assert.equal(touching.heat[0].heat, TOUCH_HEAT * GRASS_RATE);
+  assert.ok(TOUCH_HEAT * GRASS_RATE * 2 >= HEAT_CATCH);
+  // One a square off takes 40 * 1.4 = 56 a round, so it catches on the second round too.
+  const near = cellStep({ things: [prop], cells: [{ i: 2, heat: 0 }], cols: 3, rows: 1, cell: 100, origin: { x: 0, y: 0 } });
+  assert.equal(near.heat[0].heat, NEAR_HEAT * GRASS_RATE);
+  assert.ok(NEAR_HEAT * GRASS_RATE * 2 >= HEAT_CATCH);
+  // Burning grass into a prop of plain wood (rate 1): touching, 55 a round over the two rounds it burns, so it catches.
+  const cells = [{ i: 0, burning: true, heat: HEAT_CATCH, roundsLeft: CELL_ROUNDS }];
+  const crate = (x) => ({ id: "c", rect: { x, y: 0, w: 100, h: 100 }, traits: { material: "wood" }, fire: null });
+  const onIt = spreadStep({ things: [crate(100)], cells, cols: 4, rows: 1, cell: 100, origin: { x: 0, y: 0 }, grid: 100 });
+  assert.equal(onIt.heat[0].heat, TOUCH_HEAT);
+  assert.ok(TOUCH_HEAT * CELL_ROUNDS >= HEAT_CATCH);
+  // A square away it takes 40 a round, 80 over those two rounds: one lone square cannot light it, but a second
+  // square within reach (which a fire running through a field brings the very next round) does.
+  const offIt = spreadStep({ things: [crate(200)], cells, cols: 4, rows: 1, cell: 100, origin: { x: 0, y: 0 }, grid: 100 });
+  assert.equal(offIt.heat[0].heat, NEAR_HEAT);
+  assert.ok(NEAR_HEAT * CELL_ROUNDS < HEAT_CATCH && NEAR_HEAT * CELL_ROUNDS * 2 >= HEAT_CATCH);
 });
 
 test("grass burns by default, and a region's own say wins", () => {

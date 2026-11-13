@@ -73,6 +73,9 @@ function burningCells(cells) {
 // takes 40 a round from a source that only burns BURN_ROUNDS rounds, so it reaches 120 and catches on the third.
 // At any less than 40 nothing of rate 1 could ever catch without touching the fire, and "fire spreads" would only
 // mean "fire spreads between things that touch".
+// Grass goes by the same two figures, scaled by GRASS_RATE: a square beside a burning one takes 40 * 1.4 = 56 a
+// round and so catches on the second of the CELL_ROUNDS its neighbour burns, which is what lets a fire run on
+// through a field after the square it started in is charred.
 export const TOUCH_HEAT = 55, NEAR_HEAT = 40;
 
 // One round of fire: every burning thing heats the things touching it (strongly) or within a square (gently),
@@ -152,7 +155,7 @@ export function cellStep({ cells = [], things = [], cols = 1, rows = 1, origin =
       if (!target || target.burning || target.charred) continue;
       if (target.blocked?.includes(src.id ?? cellId(src.i))) continue;
       if (!sharesLevel(src.levels, target.levels)) continue;
-      add(i, 30 * GRASS_RATE * windBoost(wind, from, cellRect(i, geo)));
+      add(i, NEAR_HEAT * GRASS_RATE * windBoost(wind, from, cellRect(i, geo)));
     }
   }
   const fires = things.filter((t) => t.fire?.burning);
@@ -165,7 +168,7 @@ export function cellStep({ cells = [], things = [], cols = 1, rows = 1, origin =
         if (target.blocked?.includes(src.id)) continue;
         const gap = edgeGap(src.rect, rect);
         if (gap > cell) continue;
-        add(target.i, (gap === 0 ? 55 : 30) * GRASS_RATE * windBoost(wind, src.rect, rect));
+        add(target.i, (gap === 0 ? TOUCH_HEAT : NEAR_HEAT) * GRASS_RATE * windBoost(wind, src.rect, rect));
       }
     }
   }
