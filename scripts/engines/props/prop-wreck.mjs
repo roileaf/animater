@@ -10,6 +10,7 @@ import { burnLayout, splitLayout, burnAt, frontAt, frontTongues, frontPoint, fro
 import { nameTokens } from "./prop-material.mjs";
 import { propTraits, propGuesses, BURST_DEFAULT } from "./prop-traits.mjs";
 import { collapseLayout } from "./prop-collapse.mjs";
+import { charLayout, EMBER_MS } from "./char-layout.mjs";
 import { tipLayout, COAL_MS } from "./prop-tip.mjs";
 import { toppleLayout, roundStump, TOPPLE_MS, CHUNK_MS } from "./prop-topple.mjs";
 import { createPosedPieces, tileFrame } from "./prop-pieces.mjs";
@@ -732,6 +733,65 @@ void main() {
     const reach = offs.length > 8 ? { lo: offs[Math.floor(offs.length * 0.06)], hi: offs[Math.floor(offs.length * 0.94)] } : frontReach(L);
     return { painted: (u, v) => [[0, 0], [near, 0], [-near, 0], [0, near], [0, -near]].some(([du, dv]) => alpha(u + du, v + dv) > 60), reach };
   };
+  // A prop that burnt out (charLayout): the blackened pieces of its own shape lying a little apart, ember seams glowing in
+  // the cracks and going cold over EMBER_MS, a soot mark round it and a thin wisp of smoke from the hottest seams while
+  // it is warm. Painted (ink outline, a stepped lighter face), seeded from the note alone. Drawn on load (animate: false)
+  // it is settled: cold, no smoke. (Named apart from charred(art), the bush's charred heart.)
+  const CHAR_WOOD = [0x4a3a2e, 0x0e0a08], EMBER_HOT = 0xff7a28, EMBER_CORE = 0xffc060, WISP_TONES = [0x3a3633, 0x524c47];
+  function charredWreck({ d, note, entry, box, centre, animate }) {
+    const w = d.width, h = d.height, side = Math.max(w, h), L = charLayout(note, { width: w, height: h, grid: grid() || 100 });
+    const at = tileToWorld(d, centre, { x: w / 2, y: h / 2 }), turn = ((d.rotation ?? 0) * Math.PI) / 180;
+    // On the floor: the soot mark, then the seams, the pieces' shadows and the pieces in the tile's own frame.
+    const marks = new PIXI.Container(); marks.zIndex = -1; box.addChild(marks);
+    marks.addChild(groundMark(flatMark("scorch", { x: at.x, y: at.y, r: L.scorch.rx, squash: L.scorch.ry / L.scorch.rx, angle: turn }, seededRandom((note.seed >>> 0) * 71 + 5)), entry.textures));
+    const floor = frameOf(d, centre, 0); box.addChild(floor);
+    const seams = new PIXI.Graphics(), shadows = new PIXI.Graphics(), body = new PIXI.Graphics();
+    shadows.alpha = 0.35; floor.addChild(seams, shadows, body);
+    const flat = (pts) => pts.flatMap((p) => [p.x + w / 2, p.y + h / 2]);
+    for (const p of L.pieces) {
+      const pts = flat(p.pts), n = p.pts.length;
+      const cx = pts.filter((_, i) => i % 2 === 0).reduce((a, b) => a + b, 0) / n, cy = pts.filter((_, i) => i % 2).reduce((a, b) => a + b, 0) / n;
+      const colour = mix(CHAR_WOOD[0], CHAR_WOOD[1], p.dark);
+      paintShard(shadows, pts.map((v, i) => v + (i % 2 ? 2.5 : 1.5)), 0, 1, true);
+      paintShard(body, pts, colour, 1);
+      body.lineStyle(1.2, INK, 0.9).drawPolygon(pts); // the ink outline, over paintShard's glass edge
+      // a stepped lighter face, shrunk toward the middle and pushed up-left, where the char has not gone so deep
+      body.lineStyle(0).beginFill(shade(colour, 1.5), 0.55).drawPolygon(pts.map((v, i) => (i % 2 ? cy + (v - cy) * 0.55 - 1 : cx + (v - cx) * 0.55 - 1))).endFill();
+    }
+    const line = (pts) => { seams.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) seams.lineTo(pts[i], pts[i + 1]); };
+    const glow = (ms) => {
+      const left = 1 - span(ms, 0, EMBER_MS);
+      seams.clear();
+      for (const s of L.seams) {
+        const pts = flat(s.pts), hot = s.heat * left;
+        seams.lineStyle(3.2, INK, 0.7); line(pts);
+        if (hot > 0.02) {
+          seams.lineStyle(4, EMBER_HOT, Math.min(1, hot * 0.6)); line(pts);
+          seams.lineStyle(1.4, EMBER_CORE, Math.min(1, hot)); line(pts);
+        }
+      }
+    };
+    entry.handle = { update() {}, destroy() {} };
+    if (!animate) { glow(EMBER_MS); return; }
+    // Seen happening: the seams glow and die down, a thin wisp rises off each wisp origin while the wreck is warm.
+    const air = new PIXI.Container(); air.zIndex = 2; box.addChild(air);
+    const gk = (grid() || 100) / 100, s = side / 190, WARM_MS = 14000, EVERY = 1800;
+    const list = [];
+    L.wisps.forEach((wp) => {
+      const o = tileToWorld(d, centre, { x: wp.x + w / 2, y: wp.y + h / 2 }), rand = seededRandom(wp.seed >>> 0);
+      for (let i = 0; i * EVERY < WARM_MS; i++) list.push({ x: o.x + (rand() - 0.5) * 6 * s, y: o.y, vx: (rand() - 0.5) * 18 * gk, vy: -70 * gk, r0: 4 * s, r1: 12 * s, a: 0.2 * (1 - (i * EVERY) / WARM_MS), at: i * EVERY, life: 2600, seed: wp.seed + i });
+    });
+    const smoke = list.length ? fx.puffs(air, list, WISP_TONES) : null;
+    const end = WARM_MS + 2600, t0 = performance.now(); let raf = 0;
+    const done = () => { entry.stop = null; glow(EMBER_MS); quiet(() => smoke?.destroy()); quiet(() => air.destroy({ children: true })); };
+    entry.stop = () => { cancelAnimationFrame(raf); done(); };
+    const tick = () => {
+      const ms = performance.now() - t0;
+      glow(ms); smoke?.update(Math.min(ms, end));
+      if (ms < end) raf = requestAnimationFrame(tick); else done();
+    };
+    glow(0); raf = requestAnimationFrame(tick);
+  }
   function burned({ tile, d, note, entry, box, texture, centre, sortLayer, animate }) {
     const w = d.width, h = d.height, side = Math.max(w, h), gk = (grid() || 100) / 100, web = propGuesses(d.texture?.src).cuttable;
     const L = burnLayout(note, { width: w, height: h, grid: grid() || 100, rotation: d.rotation ?? 0 }), ashAt = tileToWorld(d, centre, L.ash);
@@ -923,6 +983,7 @@ void main() {
     if (note.style === "tip") { dropPrior(entry); tipped({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
     if (note.style === "topple") { dropPrior(entry); toppled({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate }); return; }
     if (note.style === "burn") { dropPrior(entry); burned({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
+    if (note.style === "char") { dropPrior(entry); charredWreck({ d, note, entry, box, centre, animate }); return; }
     if (note.style === "split") { dropPrior(entry); cutApart({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate, contents }); return; }
     const stop = stopFor(d, centre);
     const layout = wreckLayout(note, { centre, width: d.width, height: d.height, grid: grid() || 100, contents, rotation: d.rotation ?? 0, stop });

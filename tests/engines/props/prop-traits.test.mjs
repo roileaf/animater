@@ -47,7 +47,7 @@ test("breakStyle", () => {
   assert.equal(breakStyle({ style: "topple" }, {}), "shatter");
 });
 test("the lists", () => {
-  assert.deepEqual(STYLES, ["shatter", "collapse", "topple", "tip", "burn", "split"]);
+  assert.deepEqual(STYLES, ["shatter", "collapse", "topple", "tip", "burn", "split", "char"]);
   assert.deepEqual(STYLE_CHOICES, ["shatter", "collapse", "topple", "burn"]);
   assert.deepEqual(CONTENTS, ["none", "water", "wine", "oil", "grain", "goods", "books", "potions", "lampoil", "powder"]);
 });
@@ -104,4 +104,14 @@ test("plants guess Burn away and cuttable; a guessed burn needs the plant materi
   assert.equal(propTraits(t("Bush.webp", { material: "wood" }), 100).style, "shatter", "a bush the GM made wood does not guess burn");
   assert.equal(propTraits(t("Crate.webp", { style: "burn" }), 100).style, "burn", "the GM's Burn away on wood stays");
   assert.equal(propTraits(t("Crate.webp"), 100).cuttable, false);
+});
+
+test("burning out chars a solid prop and burns a plant away", () => {
+  assert.equal(breakStyle({ material: "wood" }, { burnedOut: true }), "char");
+  assert.equal(breakStyle({ material: "stone" }, { burnedOut: true }), "char");
+  assert.equal(breakStyle({ material: "plant" }, { burnedOut: true }), "burn");
+  assert.equal(breakStyle({ material: "wood", style: "burn" }, { burnedOut: true }), "burn", "set to Burn away");
+  assert.equal(breakStyle({ material: "wood" }, { damageType: "fire" }), "shatter", "a fire area still shatters it");
+  assert.ok(STYLES.includes("char"));
+  assert.ok(!STYLE_CHOICES.includes("char"), "not offered as a Breaks as choice");
 });
