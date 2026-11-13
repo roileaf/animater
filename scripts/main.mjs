@@ -9371,7 +9371,10 @@ Hooks.on("deleteCombat", fireReseedRounds);
 // What the fire leaves on the viewed map, for everyone (engines/props/fire-looks.mjs): the pulsing edge of anything
 // about to catch, and the scorched ground where grass has burnt out. Both are read from what the GM wrote on the
 // documents, so every screen shows the same, and both go when Repair clears the fires.
-const fireLooks = createFireLooks({ PIXI: globalThis.PIXI, layer: floorLayer("fireLooks", 657), grid: () => canvas?.grid?.size ?? 100 });
+// The edges are drawn over the decorations (657); the scorch lies on the floor (412, under the tiles at 500), so
+// burnt ground never paints over a prop standing on that square. The pulse is read from the server's clock.
+const fireLooks = createFireLooks({ PIXI: globalThis.PIXI, layer: floorLayer("fireLooks", 657), floor: floorLayer("fireScorch", 412),
+  grid: () => canvas?.grid?.size ?? 100, now: () => fireNow() });
 let fireLooksTimer = 0;
 function syncFireLooksNow() {
   if (!canvas?.ready) return;
@@ -10125,9 +10128,13 @@ function breakAreaThings(area, types, { messageId } = {}) {
   const cause = (damageType) => ({ kind: "area", damageType, at: area.at, areaUuid, ...roll });
   const held = (claimId, ask, written) => void askClaimed({ ask, written, release: () => propAreas.release(areaUuid, claimId), wait: CLAIM_SETTLE_MS });
   const flagsOf = (doc) => doc?.flags?.[ID];
-  for (const { thing, type } of hits) held(thing.id, () => askProp(scene, thing.id, cause(type), area.at), () => !!flagsOf(scene.tiles.get(thing.id))?.prop?.broken);
+  // The GM wrote it: broken, or (Fire spreads) set alight, which is just as done. A claim given back over a thing
+  // that caught would let a second pass over the same area break the fire already burning on it.
+  for (const { thing, type } of hits) held(thing.id, () => askProp(scene, thing.id, cause(type), area.at),
+    () => !!flagsOf(scene.tiles.get(thing.id))?.prop?.broken || !!readFire(scene.tiles.get(thing.id)));
   for (const { thing, type } of decorHits) held(thing.id, () => askDecor(scene, thing, cause(type), area.at),
-    () => (flagsOf(scene.regions?.get(thing.decor?.regionId))?.decorBroken ?? []).some((e) => e?.key === thing.decor?.key));
+    () => (flagsOf(scene.regions?.get(thing.decor?.regionId))?.decorBroken ?? []).some((e) => e?.key === thing.decor?.key)
+      || !!readFire(decorFireOf(scene.regions?.get(thing.decor?.regionId))[thing.decor?.key]));
   for (const { thing, type } of doors) held(`wall:${thing.id}`, () => askWall(scene, thing.id, cause(type), area.at), () => !!flagsOf(scene.walls?.get(thing.id))?.breakWall?.broken);
   for (const t of spills) held(`ignite:${t.id}`, () => askProp(scene, t.id, { kind: "ignite", damageType: "fire", at: area.at, areaUuid, ...roll }, area.at),
     () => flagsOf(scene.tiles.get(t.id))?.prop?.broken?.powder !== "spilled");

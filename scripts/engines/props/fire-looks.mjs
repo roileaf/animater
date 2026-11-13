@@ -34,23 +34,21 @@ export function firePulse(ms, heat = 0) {
 
 const INK = 0x1b1410, EMBER = 0xff8a30, EMBER_CORE = 0xffd08a, SOOT = [0x2a2420, 0x4a403a];
 
-// The painted looks of fire on the map. `layer()` gives the container to draw in, `grid()` the square size.
+// The painted looks of fire on the map. `layer()` gives the container the warm edges are drawn in (over the props,
+// so an edge is never hidden by what carries it) and `floor()` the one the scorch is drawn in (under the props, so
+// burnt ground never paints over a prop standing on it). `grid()` is the square size and `now()` the shared clock
+// the pulse is read from, so the swell is in step on every screen.
 // sync({edges, scorch}) is given everything that should show now: edges are {id, rect:{x,y,w,h}, rotation, heat},
-// scorch are {id, rect, seed}. Anything left out goes. The edges breathe on their own; the scorch is still.
-export function createFireLooks({ PIXI, layer, grid = () => 100 }) {
-  let box = null, edgeArt = null, scorchArt = null, raf = 0, edges = [], scorched = "";
-  const start = (typeof performance === "object" && performance?.now ? () => performance.now() : () => Date.now())();
+// scorch are {id, rect, seed}. Anything left out goes. The edges breathe; the scorch is still.
+export function createFireLooks({ PIXI, layer, floor = layer, grid = () => 100, now = () => 0 }) {
+  let box = null, under = null, edgeArt = null, scorchArt = null, raf = 0, edges = [], scorched = "";
   const ensure = () => {
-    const root = layer?.();
-    if (!root) return null;
-    if (!box || box.destroyed) {
-      box = new PIXI.Container();
-      box.sortableChildren = true;
-      scorchArt = new PIXI.Graphics(); scorchArt.zIndex = 0;
-      edgeArt = new PIXI.Graphics(); edgeArt.zIndex = 1;
-      box.addChild(scorchArt, edgeArt);
-    }
+    const root = layer?.(), below = floor?.();
+    if (!root || !below) return null;
+    if (!box || box.destroyed) { box = new PIXI.Container(); edgeArt = new PIXI.Graphics(); box.addChild(edgeArt); }
+    if (!under || under.destroyed) { under = new PIXI.Container(); scorchArt = new PIXI.Graphics(); under.addChild(scorchArt); }
     if (box.parent !== root) root.addChild(box);
+    if (under.parent !== below) below.addChild(under);
     return box;
   };
   // The four corners of a rectangle, turned about its middle as the tile is turned.
@@ -69,7 +67,8 @@ export function createFireLooks({ PIXI, layer, grid = () => 100 }) {
       edgeArt.lineStyle(1.1 * k, INK, 0.5).drawPolygon(pts);
     }
   };
-  const tick = () => { drawEdges((typeof performance === "object" && performance?.now ? performance.now() : Date.now()) - start); raf = edges.length ? requestAnimationFrame(tick) : 0; };
+  // The swell is read off the shared clock, not this screen's own, so every screen is at the same point in it.
+  const tick = () => { drawEdges(Number(now()) || 0); raf = edges.length ? requestAnimationFrame(tick) : 0; };
   // A burnt square: a soot patch of its own, stepped (a wide faint one with a darker one inside), its ragged outline
   // seeded from the square so every screen burns the same ground.
   const drawScorch = (list) => {
@@ -101,8 +100,8 @@ export function createFireLooks({ PIXI, layer, grid = () => 100 }) {
     },
     clear() {
       cancelAnimationFrame(raf); raf = 0; edges = []; scorched = "";
-      try { edgeArt?.clear(); scorchArt?.clear(); box?.destroy({ children: true }); } catch { /* gone */ }
-      box = null; edgeArt = null; scorchArt = null;
+      try { edgeArt?.clear(); scorchArt?.clear(); box?.destroy({ children: true }); under?.destroy({ children: true }); } catch { /* gone */ }
+      box = null; under = null; edgeArt = null; scorchArt = null;
     },
   };
 }

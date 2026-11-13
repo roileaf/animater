@@ -19,8 +19,25 @@ test("a burning thing heats what is within a square of it, once per source", () 
   const near = { id: "b", rect: { x: 104, y: 0, w: 100, h: 100 }, traits: { material: "wood" }, fire: null };
   const far = { id: "c", rect: { x: 400, y: 0, w: 100, h: 100 }, traits: { material: "wood" }, fire: null };
   const r = spreadStep({ things: [fire, near, far], grid: 100 });
-  assert.equal(r.heat.find((h) => h.id === "b").heat, 30);
+  assert.equal(r.heat.find((h) => h.id === "b").heat, 40);
   assert.equal(r.heat.find((h) => h.id === "c"), undefined);
+});
+
+test("a burning crate sets the plain wooden crate a square away alight before it burns out", () => {
+  // The thing the whole feature stands on: ordinary wood (rate 1), not touching, must catch inside BURN_ROUNDS.
+  let fire = { id: "a", rect: { x: 0, y: 0, w: 100, h: 100 }, traits: { material: "wood" }, fire: { burning: true, heat: 100, roundsLeft: BURN_ROUNDS } };
+  let crate = { id: "b", rect: { x: 104, y: 0, w: 100, h: 100 }, traits: { material: "wood" }, fire: null };
+  let caught = 0;
+  for (let round = 1; round <= BURN_ROUNDS; round++) {
+    const r = spreadStep({ things: [fire, crate], grid: 100 });
+    if (r.caught.includes("b")) { caught = round; break; }
+    const heat = r.heat.find((h) => h.id === "b")?.heat ?? 0;
+    crate = { ...crate, fire: { heat, burning: false, roundsLeft: 0 } };
+    const left = r.burning.find((t) => t.id === "a");
+    if (!left) break; // the source has gone out
+    fire = { ...fire, fire: { heat: left.heat, burning: true, roundsLeft: left.roundsLeft } };
+  }
+  assert.equal(caught, 3, "the crate catches on the third round, while its neighbour still burns");
 });
 
 test("touching heats faster, and the rate scales it", () => {
@@ -49,8 +66,8 @@ test("downwind heats half again, but only out of doors", () => {
   const fire = { id: "a", rect: { x: 0, y: 0, w: 100, h: 100 }, traits: { material: "wood" }, fire: { burning: true, roundsLeft: 3 } };
   const east = { id: "b", rect: { x: 104, y: 0, w: 100, h: 100 }, traits: { material: "wood" }, fire: null };
   const wind = { angle: 0, strength: 1, outdoor: true };
-  assert.equal(spreadStep({ things: [fire, east], grid: 100, wind }).heat[0].heat, 45);
-  assert.equal(spreadStep({ things: [fire, east], grid: 100, wind: { ...wind, outdoor: false } }).heat[0].heat, 30);
+  assert.equal(spreadStep({ things: [fire, east], grid: 100, wind }).heat[0].heat, 60);
+  assert.equal(spreadStep({ things: [fire, east], grid: 100, wind: { ...wind, outdoor: false } }).heat[0].heat, 40);
 });
 
 test("a wall between them blocks the heat", () => {
@@ -85,18 +102,18 @@ test("a burning thing with rounds left does not go out", () => {
 test("two sources add up on one target, and one source counts once", () => {
   const src = (id, x) => ({ id, rect: { x, y: 0, w: 100, h: 100 }, traits: { material: "wood" }, fire: { burning: true, roundsLeft: 3 } });
   const mid = { id: "m", rect: { x: 204, y: 0, w: 100, h: 100 }, traits: { material: "wood" }, fire: null };
-  assert.equal(spreadStep({ things: [src("a", 100), src("b", 308), mid], grid: 100 }).heat[0].heat, 60);
-  assert.equal(spreadStep({ things: [src("a", 100), mid], grid: 100 }).heat[0].heat, 30);
+  assert.equal(spreadStep({ things: [src("a", 100), src("b", 308), mid], grid: 100 }).heat[0].heat, 80);
+  assert.equal(spreadStep({ things: [src("a", 100), mid], grid: 100 }).heat[0].heat, 40);
 });
 
 test("things sharing a level interact, and no levels means every level", () => {
   const fire = { id: "a", rect: { x: 0, y: 0, w: 100, h: 100 }, levels: ["L1", "L2"], traits: { material: "wood" }, fire: { burning: true, roundsLeft: 3 } };
   const mk = (levels) => ({ id: "b", rect: { x: 104, y: 0, w: 100, h: 100 }, levels, traits: { material: "wood" }, fire: null });
-  assert.equal(spreadStep({ things: [fire, mk(["L2", "L3"])], grid: 100 }).heat[0].heat, 30);
-  assert.equal(spreadStep({ things: [fire, mk([])], grid: 100 }).heat[0].heat, 30);
-  assert.equal(spreadStep({ things: [fire, mk(undefined)], grid: 100 }).heat[0].heat, 30);
+  assert.equal(spreadStep({ things: [fire, mk(["L2", "L3"])], grid: 100 }).heat[0].heat, 40);
+  assert.equal(spreadStep({ things: [fire, mk([])], grid: 100 }).heat[0].heat, 40);
+  assert.equal(spreadStep({ things: [fire, mk(undefined)], grid: 100 }).heat[0].heat, 40);
   const anywhere = { ...fire, levels: [] };
-  assert.equal(spreadStep({ things: [anywhere, mk(["L9"])], grid: 100 }).heat[0].heat, 30);
+  assert.equal(spreadStep({ things: [anywhere, mk(["L9"])], grid: 100 }).heat[0].heat, 40);
 });
 
 test("a burning thing is never itself heated", () => {

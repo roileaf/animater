@@ -68,6 +68,13 @@ function burningCells(cells) {
   return cells.filter((c) => c.burning && !c.charred);
 }
 
+// How much heat one round of fire gives a thing beside it: much for one it touches, less for one a square away.
+// The near figure is what makes fire spread across a gap at all: a thing of rate 1 (plain wood, a crate of goods)
+// takes 40 a round from a source that only burns BURN_ROUNDS rounds, so it reaches 120 and catches on the third.
+// At any less than 40 nothing of rate 1 could ever catch without touching the fire, and "fire spreads" would only
+// mean "fire spreads between things that touch".
+export const TOUCH_HEAT = 55, NEAR_HEAT = 40;
+
 // One round of fire: every burning thing heats the things touching it (strongly) or within a square (gently),
 // scaled by how flammable the target is, and half again more downwind out of doors. A wall in the way (blocked) or
 // another level stops it. Returns each heated thing's new total heat, who catches (hottest first, up to the cap),
@@ -83,7 +90,7 @@ export function spreadStep({ things = [], wind = null, grid = 100, cap = 12, cel
     if (rate <= 0) continue;
     const reach = (rect, most) => {
       const gap = edgeGap(rect, target.rect);
-      return gap > most ? 0 : (gap === 0 ? 55 : 30) * rate * windBoost(wind, rect, target.rect);
+      return gap > most ? 0 : (gap === 0 ? TOUCH_HEAT : NEAR_HEAT) * rate * windBoost(wind, rect, target.rect);
     };
     for (const src of sources) {
       if (target.blocked?.includes(src.id)) continue;
