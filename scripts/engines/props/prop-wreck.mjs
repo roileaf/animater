@@ -10,7 +10,7 @@ import { burnLayout, splitLayout, burnAt, frontAt, frontTongues, frontPoint, fro
 import { nameTokens } from "./prop-material.mjs";
 import { propTraits, propGuesses, BURST_DEFAULT } from "./prop-traits.mjs";
 import { collapseLayout } from "./prop-collapse.mjs";
-import { charLayout, EMBER_MS } from "./char-layout.mjs";
+import { charLayout, emberAge, EMBER_MS } from "./char-layout.mjs";
 import { tipLayout, COAL_MS } from "./prop-tip.mjs";
 import { toppleLayout, roundStump, TOPPLE_MS, CHUNK_MS } from "./prop-topple.mjs";
 import { createPosedPieces, tileFrame } from "./prop-pieces.mjs";
@@ -112,7 +112,9 @@ export function paintMark(PIXI, mark, held) {
 // doors and its own walls left out); pieces, spills, books, shards, coals and burning oil land short of them.
 export const WALL_GAP = 0.06; // squares short of a wall that something thrown at it comes to rest
 export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = () => "wood", playSound = () => {}, shake = () => {},
-  fireRoot = () => null, fireSeen = () => true, fireLean = () => 0, fireTongues = () => true, fireForget = () => {}, wallsFor = () => [] }) {
+  fireRoot = () => null, fireSeen = () => true, fireLean = () => 0, fireTongues = () => true, fireForget = () => {}, wallsFor = () => [],
+  // The shared clock a charred wreck's ember fade is measured against (the server's, so every screen agrees).
+  now = () => Date.now() }) {
   const wrecks = new Map(); // tile id -> { box, handle, stop }
   const artTextures = new Map(), colours = new Map();
   const posed = createPosedPieces({ PIXI });
@@ -772,7 +774,22 @@ void main() {
       }
     };
     entry.handle = { update() {}, destroy() {} };
-    if (!animate) { glow(EMBER_MS); return; }
+    // Drawn as it stands (a reload, another screen coming in): the seams are as far through their fade as the time
+    // since the fire went out (note.burnedAt), and go on cooling from there. A wreck whose note carries no such time
+    // is settled cold, as every charred wreck was before the time was written.
+    if (!animate) {
+      const age = emberAge(note, now());
+      glow(age);
+      if (age >= EMBER_MS) return;
+      const from = performance.now() - age;
+      let cool = setInterval(() => {
+        const ms = performance.now() - from;
+        glow(Math.min(ms, EMBER_MS));
+        if (ms >= EMBER_MS) { clearInterval(cool); entry.stop = null; }
+      }, 500);
+      entry.stop = () => { clearInterval(cool); entry.stop = null; glow(EMBER_MS); };
+      return;
+    }
     // Seen happening: the seams glow and die down, a thin wisp rises off each wisp origin while the wreck is warm.
     const air = new PIXI.Container(); air.zIndex = 2; box.addChild(air);
     const gk = (grid() || 100) / 100, s = side / 190, WARM_MS = 14000, EVERY = 1800;

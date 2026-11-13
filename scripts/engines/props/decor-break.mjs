@@ -6,7 +6,7 @@ import { CAVERN_KINDS, decorPlacements, DECOR_MOST } from "../motion/decor-regio
 import { DECOR_KINDS, hashText, paintedMaterial, paintSeedOf } from "../motion/decor-paint.mjs";
 import { webCorners } from "../motion/webs.mjs";
 import { readNote } from "./prop-break.mjs";
-import { validBreakRequest } from "./prop-requests.mjs";
+import { validBreakRequest, burntOutCause } from "./prop-requests.mjs";
 import { resolveDecorProp, decorPropFlags, decorPropDefaults } from "./decor-options.mjs";
 
 // Each kind that breaks: its material and style as the prop rules read them, and where the rules need more than the kind's
@@ -242,7 +242,8 @@ export function validDecorBreakRequest({ key, cause, note } = {}, { region, scen
   const no = (why) => ({ ok: false, why });
   if (scene?.flags?.animater?.breakableProps !== true) return no("off");
   if (region?.settings?.canBreak !== true) return no("off");
-  if (cause?.kind === "ignite") return decorIgniteCheck({ key, cause, note }, { region, scene, grid, sender, area, now, index });
+  // Spilled powder set off by a fire area; a decoration whose own fire burnt out (burntOutCause) breaks as any other does.
+  if (cause?.kind === "ignite" && !burntOutCause(cause)) return decorIgniteCheck({ key, cause, note }, { region, scene, grid, sender, area, now, index });
   const { keys, views } = index(region, grid), view = views.find((v) => v.decor.key === key);
   if (!view) return no("missing");
   if (drawn && !drawn(view)) return no("undrawn");

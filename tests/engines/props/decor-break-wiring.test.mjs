@@ -6,7 +6,7 @@ const main = readFileSync(new URL("../../../scripts/main.mjs", import.meta.url),
 
 test("the decor relay: asked of the GM, checked twice, written coalesced", () => {
   assert.match(main, /if \(data\?\.type === DECOR_BREAK_MESSAGE\) \{ void receiveDecorBreak\(data, senderId\)/);
-  assert.match(main, /async function requestDecorBreak\(regionDoc, key, cause, \{ from \} = \{\}\)/);
+  assert.match(main, /async function requestDecorBreak\(regionDoc, key, cause, \{ from, extra \} = \{\}\)/);
   assert.match(main, /async function applyDecorBreak\(scene, regionDoc, key, cause, rawNote, user\)/);
   assert.ok((main.match(/validDecorBreakRequest\(/g) ?? []).length >= 2, "requester and GM");
   assert.match(main, /breakNoteFor\(\{ tile: view, walls: \[\]/);

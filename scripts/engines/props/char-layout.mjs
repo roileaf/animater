@@ -4,6 +4,15 @@
 import { seededRandom } from "../fragments/fragments.mjs";
 
 export const EMBER_MS = 60000; // how long the seams keep glowing before they die down
+
+// How far through that fade a charred wreck stands, in ms: the time since its fire went out (note.burnedAt, on the
+// shared clock `now` is read from). A note with no such time is cold (EMBER_MS), as charred wrecks were before it was
+// written, so a reload mid-fade resumes instead of snapping cold.
+export function emberAge(note, now) {
+  const at = Number(note?.burnedAt), clock = Number(now);
+  if (!Number.isFinite(at) || at <= 0 || !Number.isFinite(clock)) return EMBER_MS;
+  return Math.min(EMBER_MS, Math.max(0, clock - at));
+}
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const lerp = (a, b, u) => a + (b - a) * u;
 const tidy = (v) => Math.round(v * 100) / 100 + 0; // no float dust, no -0

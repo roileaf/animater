@@ -426,6 +426,26 @@ test("M1: Repair's wall batch names each wall once, its door note's restore over
   assert.deepEqual(mergeWallFixes([{ move: 1 }], [{ _id: "c", move: 2 }]), [{ _id: "c", move: 2 }]); // an update without an id is dropped
 });
 
+test("a fire that burnt out breaks the prop it was burning, on the GM's word alone", () => {
+  // The round ticker's own cause: an ignite that names no area and no powder, which the GM makes on any of its scenes.
+  const cause = { kind: "ignite", damageType: "fire", burnedOut: true, at: { x: 250, y: 250 } };
+  const gm = { id: "gm", isGM: true, viewedScene: "other" };
+  const note = noteFor(barrel(), cause, { extra: { burnedAt: 4000 } });
+  const r = validBreakRequest({ cause, note }, ctx({ sender: gm, area: undefined }));
+  assert.equal(r.ok, true);
+  assert.equal(r.note.style, "char"); // a charred wreck, not a shattered one
+  assert.equal(r.note.burnedAt, 4000); // the time it went out, for the ember seams to fade from
+  // A plant burns away to ash instead, and a web with it.
+  const hedge = barrel({ id: "hedge", texture: { src: "props/hedge.webp" } });
+  const burnt = validBreakRequest({ cause, note: noteFor(hedge, cause) }, ctx({ sender: gm, tile: hedge, area: undefined }));
+  assert.equal(burnt.note.style, "burn");
+  assert.equal(burnt.note.mark, "ash");
+  // Only the GM's: a player claiming its own prop burnt out is refused, and the cause survives the socket as it is.
+  assert.deepEqual(validBreakRequest({ cause, note }, ctx()), { ok: false, why: "sender" });
+  assert.equal(cleanCause(cause).burnedOut, true);
+  assert.equal(cleanCause({ kind: "ignite", burnedOut: "yes" }).burnedOut, undefined);
+});
+
 test("an area cause keeps the damage roll it names (a spell whose damage type is chosen at cast)", () => {
   assert.equal(cleanCause({ kind: "area", areaUuid: "Scene.s.Region.r", messageId: "m1" }).messageId, "m1");
   assert.equal(cleanCause({ kind: "area", messageId: 5 }).messageId, undefined);

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { seededRandom } from "../../../scripts/engines/fragments/fragments.mjs";
-import { charLayout, EMBER_MS } from "../../../scripts/engines/props/char-layout.mjs";
+import { charLayout, emberAge, EMBER_MS } from "../../../scripts/engines/props/char-layout.mjs";
 
 test("the same seed lays out the same wreck, and a different seed a different one", () => {
   const a = charLayout({ seed: 7 }, { width: 200, height: 100, grid: 100 });
@@ -82,4 +82,13 @@ test("the wreck has 4 to 9 pieces, 1 to 3 wisps, and a dark share on each piece"
     for (const p of r.pieces) assert.ok(p.dark >= 0 && p.dark <= 1);
   }
   assert.equal(EMBER_MS, 60000);
+});
+
+test("a charred wreck picks its ember fade up where it stands", () => {
+  assert.equal(emberAge({ seed: 1, burnedAt: 1000 }, 21000), 20000);
+  assert.equal(emberAge({ seed: 1, burnedAt: 1000 }, 999000), EMBER_MS); // long cold
+  assert.equal(emberAge({ seed: 1, burnedAt: 5000 }, 1000), 0); // a clock behind the write never runs the fade backwards
+  assert.equal(emberAge({ seed: 1 }, 21000), EMBER_MS); // a wreck from before the time was written stays as it was: cold
+  assert.equal(emberAge(null, 21000), EMBER_MS);
+  assert.equal(emberAge({ burnedAt: 1000 }, NaN), EMBER_MS);
 });

@@ -11,7 +11,7 @@ import { areaCauseRefusal } from "./prop-areas.mjs";
 
 export const PROP_BREAK_MESSAGE = "prop-break";
 const KINDS = ["area", "miss", "path", "blast", "ignite"];
-const GM_STYLES = new Set(["tip", "topple", "burn", "split"]); // styles only the GM decides (validBreakRequest)
+const GM_STYLES = new Set(["tip", "topple", "burn", "split", "char"]); // styles only the GM decides (validBreakRequest)
 const MISS_CHANCE = 25;
 export const PATH_SQUARES = 12; // the longest planned path a slam may claim
 
@@ -20,7 +20,11 @@ const centre = (t) => ({ x: t.x + t.width / 2, y: t.y + t.height / 2 });
 const finite = (p) => Number.isFinite(p?.x) && Number.isFinite(p?.y);
 export const sizeOf = (s) => (Number.isFinite(s) && s > 0 ? Math.min(s, 10) : 1);
 // what canBreak is asked: the slam uses the mover's own size when the GM knows it; a blast breaks any prop
-const breakCause = (cause, mover) => (cause.kind === "path" ? { slam: { size: sizeOf(mover?.size ?? cause.slam?.size) } } : cause.kind === "blast" ? { blast: true } : { damageType: cause.damageType });
+const breakCause = (cause, mover) => (cause.kind === "path" ? { slam: { size: sizeOf(mover?.size ?? cause.slam?.size) } } : cause.kind === "blast" ? { blast: true }
+  : { damageType: cause.damageType, ...(cause.burnedOut === true ? { burnedOut: true } : {}) });
+// A fire that ran its rounds: the GM's own cause {kind: "ignite", burnedOut: true}, which breaks the burning prop into
+// a charred wreck. It is nothing to do with spilled powder (igniteCheck): it names no area and only the GM makes it.
+export const burntOutCause = (cause) => cause?.kind === "ignite" && cause.burnedOut === true;
 
 // A cause as sent over the socket: only its known fields, each well-formed.
 export function cleanCause(c) {
@@ -29,6 +33,7 @@ export function cleanCause(c) {
   if (typeof c.damageType === "string") out.damageType = c.damageType.slice(0, 40);
   if (Number.isFinite(c.slam?.size)) out.slam = { size: c.slam.size };
   if (typeof c.outcome === "string") out.outcome = c.outcome.slice(0, 40);
+  if (c.burnedOut === true) out.burnedOut = true;
   if (finite(c.at)) out.at = { x: c.at.x, y: c.at.y };
   if (finite(c.path?.from) && finite(c.path?.to)) out.path = { from: { x: c.path.from.x, y: c.path.from.y }, to: { x: c.path.to.x, y: c.path.to.y } };
   for (const k of ["targetUuid", "moverUuid", "sourceId", "areaUuid", "messageId"]) if (typeof c[k] === "string") out[k] = c[k].slice(0, 200);
@@ -37,7 +42,7 @@ export function cleanCause(c) {
 
 // An area or ignite cause: the placed area it names holds the tile's centre, on the tile's level, and the sender may
 // name it (prop-areas.mjs). Null for any other cause.
-const areaWhy = (cause, tile, grid, ctx) => (cause.kind === "area" || cause.kind === "ignite"
+const areaWhy = (cause, tile, grid, ctx) => (cause.kind === "area" || (cause.kind === "ignite" && !burntOutCause(cause))
   ? areaCauseRefusal(cause, centre(tile), tile.levels, { area: ctx.area, sceneId: ctx.scene?.id, sender: ctx.sender, now: ctx.now, grid }) : null);
 
 // The cause has to fit where things stand on the GM's screen.
@@ -86,10 +91,13 @@ export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, se
   if (!sender) return no("sender");
   const cause = req?.cause ?? {}, gmBlast = cause.kind === "blast" && sender.isGM === true;
   if (cause.kind === "blast" && !gmBlast) return no("sender");
-  // the GM's blast may run on a scene the GM is not viewing (a player's break set it off)
-  if (!gmBlast && sender.viewedScene !== scene.id) return no("scene");
+  // A fire that burnt out is the GM's own ruling (the round ticker), never a requester's.
+  const burntOut = burntOutCause(cause);
+  if (burntOut && sender.isGM !== true) return no("sender");
+  // the GM's blast (and its round of fire) may run on a scene the GM is not viewing (a player's break set it off)
+  if (!gmBlast && !burntOut && sender.viewedScene !== scene.id) return no("scene");
   if (!tile) return no("missing");
-  if (cause.kind === "ignite") return igniteCheck(cause, tile, grid, { area, scene, sender, now });
+  if (cause.kind === "ignite" && !burntOut) return igniteCheck(cause, tile, grid, { area, scene, sender, now });
   if (propOf(tile).broken) return no("broken");
   if (tile.hidden) return no("hidden");
   if (!KINDS.includes(cause.kind)) return no("cause");
@@ -141,12 +149,13 @@ function igniteCheck(cause, tile, grid, ctx) {
 }
 
 // The requester's note: the tile's own walls, its larger side in squares, cut along the line from the cause.
-export function breakNoteFor({ tile, walls = [], grid = 100, cause = {}, seed, from, scene = {} }) {
+// `extra` is written into the note as it stands (the burnt-out time of a charred wreck, which only the GM knows).
+export function breakNoteFor({ tile, walls = [], grid = 100, cause = {}, seed, from, scene = {}, extra = {} }) {
   const c = centre(tile), at = finite(from) ? from : c;
   const style = breakStyle(propTraits(tile, grid, scene), cause);
   const look = breakLook({ material: propMaterial(tile, grid), shape: propShape(tile.texture?.src), damageType: cause.damageType, slam: cause.slam, style });
   return brokenNote({ seed, cutAngle: Math.atan2(c.y - at.y, c.x - at.x), look, from: at,
-    walls: ownWalls(tile, walls, grid).map((w) => w.id), size: Math.max(tile.width, tile.height) / grid, style });
+    walls: ownWalls(tile, walls, grid).map((w) => w.id), size: Math.max(tile.width, tile.height) / grid, style, extra });
 }
 
 const namedLights = (tile) => readNote(propOf(tile).broken)?.lights ?? [];
