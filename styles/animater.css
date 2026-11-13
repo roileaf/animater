@@ -3191,7 +3191,7 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater .an-entry-status.is-custom b span { color: var(--an-accent); }
 .animater .an-entry-status.is-off b span { color: var(--an-muted); }
 .animater .an-entry-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.animater .an-entry-actions button { flex: 1 1 auto; width: auto; }
+.animater .an-entry-actions button { flex: 1 1 auto; width: auto; font-size: 12px; line-height: 1.3; padding: 6px 10px; }
 .animater .an-entry-preview { display: flex; align-items: center; gap: 8px; }
 .animater .an-entry-preview [data-action="recipe-preview"] { flex: 1 1 auto; }
 .animater .an-entry-preview [data-action="preview"] { flex: none; width: auto; }
@@ -3315,6 +3315,15 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater .an-showcase-steps button{text-align:left;display:flex;flex-direction:column;gap:3px;min-width:0;white-space:normal}
 .animater .an-showcase-steps button.is-active{border-color:#ba935b;background:#332b22}
 .animater .an-showcase-steps small,.animater .an-showcase-select small{color:#aaa7b2;font-size:12px}
+.animater .an-showcase-step-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.animater .an-showcase-step-head h3{margin:0;flex:1;min-width:120px}
+.animater .an-showcase-step-head>button{flex:none;width:auto}
+.animater .an-showcase-edited{font-style:normal;font-size:11px;padding:1px 7px;border-radius:9px;background:#5b4bb5;color:#fff}
+.animater .an-showcase-steps button .an-showcase-edited{align-self:flex-start}
+.animater .an-showcase-edit{flex-basis:100%;border:1px solid #6f5bdc;border-radius:8px;padding:10px;background:#1f2236;display:flex;flex-direction:column;gap:4px}
+.animater .an-showcase-edit label{flex-direction:row;align-items:flex-start;gap:9px;margin:0;padding:4px 0;cursor:pointer}
+.animater .an-showcase-edit label input{flex:none;margin-top:3px}
+.animater .an-showcase-edit label small,.animater .an-showcase-edit>small{display:block;color:#aaa7b2;font-size:12px}
 .animater .an-showcase-missing{margin-top:16px;font-size:13px}
 .animater .an-showcase-missing p{overflow-wrap:anywhere}
 .animater .an-showcase-select{display:block}

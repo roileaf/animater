@@ -62,6 +62,13 @@ test("item UUID wins; bound recipe never applies by name alone", () => {
     null,
   );
 });
+test("a recipe bound to an actor's item also plays for that item on the actor's unlinked tokens", () => {
+  const bound = { ...recipe(), id: "bound", itemUuid: "Actor.a.Item.b" };
+  const event = (uuid) => ({ type: "attack", item: { name: "Jaws", uuid } });
+  assert.equal(matchRecipe([bound], event("Scene.s.Token.t.Actor.a.Item.b")), bound);
+  assert.equal(matchRecipe([bound], event("Scene.s.Token.t.Actor.other.Item.b")), null);
+  assert.equal(matchRecipe([bound], event("Scene.s.Token.t.Actor.a.Item.c")), null);
+});
 test("fallback picks installed asset without inventing premium variants", () => {
   assert.equal(
     resolveAsset({ assets: ["jb2a.fire_bolt.red", "jb2a.fire_bolt"] }, catalog),

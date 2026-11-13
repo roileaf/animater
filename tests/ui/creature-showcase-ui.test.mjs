@@ -28,6 +28,28 @@ test('stopping during media preparation prevents late movement and later steps',
  let ready,constructed=0;class Preview{constructor(){constructed++;}prepare(){return new Promise(r=>ready=r);}play(){throw Error('late play');}stop(){}}
  const f=fixture(Preview),pending=f.ui.play();await settle();f.ui.stop();ready();await pending;assert.equal(constructed,1);assert.ok(!f.calls.includes('move'));assert.match(f.status.textContent,/stopped/);
 });
+test('Edit on an attack step copies the built-in, bound to this creature unless every creature is chosen',async()=>{
+ const f=fixture(),drafts=[];let scope='creature';
+ f.snapshot.creature.actorName='Clockwork Serpent';
+ Object.assign(f.snapshot.steps[1],{name:'Jaws',itemName:'Jaws',trigger:'attack',bindUuid:'Actor.serpent.Item.jaws'});
+ f.w.openDraft=(recipe,message)=>drafts.push({recipe,message});
+ const radio=()=>({value:scope});
+ f.w.root.querySelector=s=>s==='input[name="an-showcase-scope"]:checked'?radio():s==='[data-showcase-stage]'?{innerHTML:'',querySelector:()=>({})}:{textContent:''};
+ f.ui.index=1;assert.match(f.ui.stepHTML(),/Edit Jaws animation/);
+ await f.ui.action('showcase-edit',{dataset:{}});assert.match(f.ui.stepHTML(),/This creature only/);
+ await f.ui.action('showcase-edit-copy',{dataset:{}});
+ assert.equal(drafts[0].recipe.itemUuid,'Actor.serpent.Item.jaws');assert.equal(drafts[0].recipe.trigger,'attack');assert.match(drafts[0].recipe.name,/Clockwork Serpent/);
+ f.ui.index=1;scope='all';await f.ui.action('showcase-edit',{dataset:{}});await f.ui.action('showcase-edit-copy',{dataset:{blank:'true'}});
+ assert.equal(drafts[1].recipe.itemUuid,'');assert.equal(drafts[1].recipe.match,'Jaws');assert.deepEqual(drafts[1].recipe.stages[0].assets,[]);
+});
+test('a step you customized opens your recipe; Movement opens movement sounds',async()=>{
+ const f=fixture(),opened=[];
+ Object.assign(f.snapshot.steps[1],{itemName:'Jaws',trigger:'attack'});
+ f.w.host.recipes=()=>[{id:f.snapshot.steps[1].recipe.id}];f.w.reveal=o=>opened.push(o);f.w.host.openMovementSounds=id=>opened.push(['sounds',id]);
+ f.ui.index=1;assert.match(f.ui.stepHTML(),/Edit customization/);assert.match(f.ui.html(),/Edited/);
+ await f.ui.action('showcase-edit',{dataset:{}});assert.deepEqual(opened[0],{recipeId:f.snapshot.steps[1].recipe.id});
+ f.ui.index=0;assert.match(f.ui.stepHTML(),/Edit movement sounds/);await f.ui.action('showcase-movement-sounds',{dataset:{}});assert.deepEqual(opened[1],['sounds','boss']);
+});
 test('boss commands preserve local versus everyone intent and reject player actions',async()=>{
  const f=fixture();await f.ui.action('boss-preview',{});await f.ui.action('boss-play',{});const requests=f.calls.filter(Array.isArray);assert.equal(requests.at(-2)[1].everyone,false);assert.equal(requests.at(-1)[1].everyone,true);
  f.w.host.playerMode=true;await assert.rejects(f.ui.action('boss-play',{}),/Only a GM/);

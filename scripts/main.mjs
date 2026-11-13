@@ -10786,6 +10786,7 @@ function fullWorkspaceHost() {
       stopLensPreview: () => lensPreview?.stop(),
       lensPreviewBusy: () => lensPreview?.busy() ?? false,
       previewCreatureMovement: tokenId=>showcaseTools.movement(tokenId),
+      openMovementSounds,
       playBossEntrance: (tokenId,options)=>showcaseTools.playBoss(tokenId,options),
       stopBossEntrance: options=>{ app?.workspace?.creatureShowcase?.restoreBossWindow();return showcaseTools.stopBoss(options); },
       flashScreens: () => flash?.screens() ?? [],
@@ -12242,6 +12243,20 @@ function showcaseRecipe(event){
   };
   const options={customEnabled:true,sounds},own=recipes().filter(r=>!starterUnchanged(r));
   return ['pf2e','sf2e'].includes(sys)?twoeCatalogRecipe(sys,event,own,{...options,stateFor}):sys==='dnd5e'?resolveDndAutomaticRecipe(event,stateFor,own,options):sys==='daggerheart'?resolveDaggerheartAutomaticRecipe(event,stateFor,own,options):sys==='draw-steel'?resolveDrawSteelAutomaticRecipe(event,stateFor,own,options):null;
+}
+// Creature showcase "Edit movement sounds": this token's Token Configuration, opened at Animater movement sounds.
+async function openMovementSounds(tokenId){
+  if(!game.user.isGM)throw Error('Only a GM can use Creature showcase.');
+  const doc=canvas?.tokens?.get(tokenId)?.document;
+  if(!doc)throw Error('Choose a creature on this scene.');
+  const sheet=doc.sheet;
+  await sheet.render({force:true});
+  const panel=sheet.element?.querySelector?.('.animater-movement-sounds');
+  if(!panel)return;
+  const tab=panel.closest('.tab[data-tab]');
+  try{if(tab)sheet.changeTab?.(tab.dataset.tab,tab.dataset.group??'sheet');}catch{/* the sheet has no such tab group */}
+  panel.open=true;
+  panel.scrollIntoView?.({block:'nearest'});
 }
 function previewShowcaseMovement(tokenId){
   if(!game.user.isGM)throw Error('Only a GM can preview NPC movement.');

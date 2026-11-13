@@ -78,6 +78,9 @@ export function createCreatureShowcaseTools({resolve,sounds,catalog,movement,tra
   const tokens=all.map(t=>({id:t.id,name:t.name,actorName:t.actor?.name??'',img:t.document?.texture?.src||t.actor?.img||'icons/svg/mystery-man.svg',hidden:!!t.document?.hidden}));
   if(!selected)return {tokens,selectedId:'',steps:[],unavailable:[]};
   const plan=buildCreatureShowcase({actor:selected.actor,systemId:game.system.id,resolve});
+  // Edit binds to the actor's own item; an unlinked token's copy of it matches the same recipe (matchRecipe).
+  const actor=selected.actor,owner=actor?.isToken?`Actor.${actor.id}`:actor?.uuid;
+  for(const step of plan.steps)if(step.itemId&&owner)step.bindUuid=`${owner}.Item.${step.itemId}`;
   const stand=i=>({id:`showcase-target-${i}`,name:`Target ${i+1}`,img:'icons/svg/target.svg',width:1,height:1});
   return {...plan,tokens,selectedId:selected.id,creature:{id:selected.id,name:selected.name,actorName:selected.actor?.name??'',hidden:!!selected.document?.hidden},
    previewTokens:{source:art(selected),targets:stand(0),targetList:[stand(0),stand(1),stand(2)],targetCount:3,gridDistance:canvas.scene?.grid?.distance??5}};

@@ -45,7 +45,7 @@ export function buildCreatureShowcase({actor,systemId,resolve,limit=24}={}){
     const name=activity?.name&&activity.name!==item.name?`${item.name} · ${activity.name}`:item.name;
     const kind=item.type==='spell'?'spell':type==='attack'?'attack':type==='template'?'area':'ability';
     const area=!recipe.previewArea&&recipe.stages.some(s=>s.kind==='template')?showcasePreviewArea(item,activity):null;
-    steps.push({id:key,name,kind,itemId:item.id??item._id,activityId:event.activityId,recipe:validateRecipe({...recipe,...(area?{previewArea:area}:{})})});
+    steps.push({id:key,name,kind,itemId:item.id??item._id,itemName:item.name,trigger:type,activityId:event.activityId,activityType:event.activityType,activityName:event.activityName,recipe:validateRecipe({...recipe,...(area?{previewArea:area}:{})})});
     // A single activation's use/attack followups stay one coherent preview.
     break;
    }

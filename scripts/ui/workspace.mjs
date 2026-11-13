@@ -247,6 +247,14 @@ export class Workspace {
     this.message = `Bound to ${name}. Choose an asset or token motion, then add stages. Save when ready.`;
     this.render();
   }
+  // An unsaved recipe opened in the editor (a built-in copied by Edit / Customize); nothing changes until Save.
+  openDraft(recipe, message) {
+    this.drafts.set(recipe.id, recipe);
+    this.dirty.add(recipe.id);
+    Object.assign(this, { selected: recipe.id, page: "recipes", studio: true, studioTime: 0, builder: null, previewMode: "recipe", category: "All", search: "", stageIndex: 0, studioSettings: false });
+    this.message = message;
+    this.render();
+  }
   constructor(root, host) {
     this.root = root;
     this.host = host;

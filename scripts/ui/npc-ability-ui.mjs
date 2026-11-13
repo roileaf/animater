@@ -11,6 +11,8 @@ import { catalogStatusHTML, previewRowHTML, entryDetailsHTML, stageListHTML } fr
 import { sampleRecipe } from "../engines/playback/composition.mjs";
 
 import {createNpcCatalogProfile} from "./npc-catalog-profile.mjs";
+import { customCopy } from "../core/custom-copy.mjs";
+import { uuid } from "../core/uuid.mjs";
 export const NPC_PAGE = "npc-abilities";
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -27,6 +29,12 @@ const SWITCHES = [
   ["guess", "Animate other NPC abilities from what they do", "Abilities with no design of their own play by the area they place, the damage they deal, or their traits."],
   ["strikes", "Guess NPC Strikes", "An NPC Strike no weapon or creature attack name places still animates by its damage."],
 ];
+// The user's own recipes for this ability (by any of its names): every creature's, or one creature's (bound item).
+const plain = (n) => String(n ?? "").replace(/\s*\([^)]*\)\s*$/, "").trim().toLowerCase();
+const ownRecipes = (w, a) => {
+  const names = new Set(a.names.map(plain));
+  return (w.host.recipes?.() ?? []).filter((r) => !r.finisher && String(r.match ?? "").split(",").some((n) => names.has(plain(n))));
+};
 const state = (w) => ({ abilities: true, guess: true, strikes: true, excluded: [], ...(w.host.npcAbilityState?.() ?? {}) });
 const matches = (w) => {
   const search = String(w.npcFilters?.search ?? "").trim().toLowerCase();
@@ -68,9 +76,21 @@ function detailHTML(w, a, s, env) {
   const nativeAllowed=!nativeId||(settings.enabled===true&&!settings.excluded?.includes(nativeId)&&(settings.scope!=='selected'||settings.selected?.includes(nativeId)||settings.customized?.includes(nativeId)));
   const mapped=a.coverage!=='unmapped',playing = s.abilities && settings.enabled!==false && nativeAllowed && !out && mapped && (a.coverage!=='inferred'||s.guess);
   const delivery=a.delegated?'Its native spell activation plays the actual spell. This preview shows preparation.':a.native?'Its native catalog controls playback, customization and exclusions.':a.form?.delivery==='strike'?'Shows its preparation when used. Each actual Strike keeps its own attack animation.':a.form?.delivery==='spell'?'Shows its preparation when used. Each actual spell keeps its own spell animation.':null;
+  const locked = w.busy || env.demo || env.systemId !== p.systemId;
+  const mine = a.native ? [] : ownRecipes(w, a), everyone = mine.some((r) => !r.itemUuid), creatures = mine.filter((r) => r.itemUuid).length;
+  const customize = recipe && !a.native ? { label: mine.length ? "Edit customization" : "Customize", action: "npc-customize", primary: mine.length > 0, disabled: locked } : null;
+  const leave = { label: a.native?'Open native catalog':out ? "Put back" : "Leave out", action: a.native?'npc-native':"npc-exclude", primary: out && !mine.length, disabled: locked };
+  if (mine.length) return detailFrame(w, a, recipe, catalogStatusHTML({ tone: "custom", title: "Your version plays",
+    text: `${everyone ? "Your recipe plays for every creature with this ability." : "Other creatures play the built-in."}${creatures ? ` ${creatures} creature${creatures === 1 ? " has" : "s have"} a recipe of ${creatures === 1 ? "its" : "their"} own.` : ""}`,
+    buttons: [customize, leave].filter(Boolean) }));
   const status = catalogStatusHTML({ tone: playing ? "on" : "off", title: !s.abilities ? "NPC abilities are off" : out ? "Left out" : !mapped?'Needs a design':settings.enabled===false?'Native catalog is off':!nativeAllowed?'Catalog entry is off':!playing?'Data matching is off':"Plays automatically",
     text: !mapped?"Listed from the native bestiary, but no automatic design matches yet. Your own recipe can cover it.":a.coverage==='inferred'&&!s.guess?'Data-matched NPC abilities are turned off.':out ? (excludedId(a,s)!==a.id?'Its shared design is left out. Putting it back restores that shared design.':'Plays only your own recipe for it.') : delivery ?? (a.trigger === "template" ? "When an NPC places this ability's area." : "When an NPC uses this ability."),
-    buttons: [{ label: a.native?'Open native catalog':out ? "Put back" : "Leave out", action: a.native?'npc-native':"npc-exclude", primary: out, disabled: w.busy || env.demo || env.systemId !== p.systemId }] });
+    buttons: [customize, leave].filter(Boolean) });
+  return detailFrame(w, a, recipe, status);
+}
+
+function detailFrame(w, a, recipe, status) {
+  const env = w.host.environment();
   return `<div class="an-eyebrow">BUILT-IN NPC ABILITY</div>
     <div class="an-spell-detail-title"><div><h2>${esc(a.name)}</h2><small>${esc(a.form?.targetSelection==='all'?'Selected creatures':AIM[a.aim]??'No matching design')} · ${esc(coverageLabel(a))}</small></div></div>
     ${a.creatures.length?`<p>${esc(a.creatures.join(', '))}</p>`:''}
@@ -86,8 +106,16 @@ export function npcAbilitySearch(w, value) { const filters=(w.npcFilters ??= { s
 
 // data-action "select-npc-ability", "npc-setting", "npc-exclude"; false for any other.
 export async function npcAbilityAction(w, action, b) {
-  if(!['npc-native','npc-page','select-npc-ability','npc-setting','npc-exclude'].includes(action))return false;
+  if(!['npc-native','npc-page','select-npc-ability','npc-setting','npc-exclude','npc-customize'].includes(action))return false;
   const p=profileFor(w);
+  if(action==='npc-customize'){
+    const a=p.byId.get(w.selectedNpcAbility);if(!a||a.native)return true;
+    const mine=ownRecipes(w,a),open=mine.find((r)=>!r.itemUuid)??mine[0];
+    if(open){w.reveal({recipeId:open.id});w.render();return true;}
+    const recipe=npcAbilityPageRecipe(w);if(!recipe)return true;
+    w.openDraft(customCopy(recipe,{id:uuid(),name:a.name,names:a.names,systemId:p.systemId}),`Copy of the built-in ${a.name} for every creature. Save to make it play. For one creature only, use Edit in Tools → Creature showcase.`);
+    return true;
+  }
   if(action==='npc-native'){const a=p.byId.get(w.selectedNpcAbility);if(!a?.native)return true;w.reveal({page:p.systemId==='dnd5e'?'feats':'actions',name:a.name,id:a.native.entryId});w.render();return true;}
   if(action==='npc-page'){const filters=(w.npcFilters??={search:''});filters.offset=Math.max(0,Number(b.dataset.offset)||0);w.selectedNpcAbility=matches(w)[filters.offset]?.id??matches(w)[0]?.id;w.stageIndex=0;w.render();return true;}
   if (action === "select-npc-ability") {

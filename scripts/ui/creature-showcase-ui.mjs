@@ -1,6 +1,8 @@
 import {RecipePreview} from '../engines/preview/recipe-preview.mjs';
 import {previewRecipeSounds} from '../engines/sound/spell-sounds.mjs';
 import {BOSS_STYLES,BOSS_TIMING} from '../engines/showcase/boss-entrance.mjs';
+import {customCopy} from '../core/custom-copy.mjs';
+import {uuid} from '../core/uuid.mjs';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const SHOWCASE_PAGE='creature-showcase';
 
@@ -17,7 +19,7 @@ export class CreatureShowcaseUI{
    <div class="an-showcase-columns"><section class="an-showcase-choreography"><div class="an-eyebrow">COMBAT CHOREOGRAPHY · LOCAL PREVIEW</div><h2>${esc(creatureName??'Choose a creature')}</h2><p>Movement, attacks and abilities against stand-in targets. No rolls or changes to creatures. Shows available designs even when automatic playback is off.</p>
     <div class="an-catalog-controls"><button class="an-primary" data-action="showcase-play" ${disabled?'disabled':''}>▶ Play choreography</button><button data-action="showcase-stop">■ Stop preview</button></div>
     <div data-showcase-stage>${this.stepHTML()}</div><p class="an-hint" role="status" data-showcase-status>${steps.length?`${steps.length} steps${total>steps.length?` of ${total} available (first ${steps.length})`:''}. Click a step to preview it.`:'No creature selected.'}</p>
-    <div class="an-showcase-steps">${steps.map((s,i)=>`<button data-action="showcase-step" data-index="${i}" class="${i===this.index?'is-active':''}"><b>${i+1}. ${esc(s.name)}</b><small>${esc(s.kind)}</small></button>`).join('')}</div>
+    <div class="an-showcase-steps">${steps.map((s,i)=>`<button data-action="showcase-step" data-index="${i}" class="${i===this.index?'is-active':''}"><b>${i+1}. ${esc(s.name)}</b><small>${esc(s.kind)}</small>${this.saved(s)?'<i class="an-showcase-edited">Edited</i>':''}</button>`).join('')}</div>
     ${unavailable.length?`<details class="an-showcase-missing"><summary>${unavailable.length} actions without a playable preview</summary><p>${unavailable.map(a=>esc(a.name)).join(', ')}</p><small>Passive features and spellcasting containers are omitted. Paused custom recipes stay paused.</small></details>`:''}
    </section><aside class="an-showcase-boss"><div class="an-eyebrow">BOSS ENTRANCE</div><h2>Make an entrance</h2><p>A cinematic creature reveal: portrait, letterbox framing, gathering energy and a timed impact, with optional camera focus. Each viewer returns to their previous view.</p>
     <label>Style<select data-showcase="style">${Object.entries(BOSS_STYLES).map(([id,name])=>`<option value="${id}" ${id===this.options.style?'selected':''}>${name}</option>`).join('')}</select></label>
@@ -32,8 +34,33 @@ export class CreatureShowcaseUI{
  }
  stepHTML(){
   const step=this.snapshot?.steps[this.index];if(!step)return '<div class="an-empty">Select a scene NPC to build its showcase.</div>';
-  return `<h3>${esc(step.name)}</h3><div class="an-preview an-showcase-preview">${this.w.recipePreviewHTML(step.recipe,this.snapshot.previewTokens)}</div>`;
+  return `<div class="an-showcase-step-head"><h3>${esc(step.name)}</h3>${this.editHTML(step)}</div><div class="an-preview an-showcase-preview">${this.w.recipePreviewHTML(step.recipe,this.snapshot.previewTokens)}</div>`;
  }
+ // The selected step's Edit: movement sounds for Movement, your recipe if you made one, else a copy of the built-in.
+ saved(step){return step?.kind!=='movement'&&(this.w.host.recipes?.()??[]).some(r=>r.id===step.recipe?.id);}
+ editHTML(step){
+  if(step.kind==='movement')return `<button data-action="showcase-movement-sounds" title="This token's Animater movement sounds in Token Configuration">✎ Edit movement sounds</button>`;
+  if(!step.itemName)return '';
+  if(this.saved(step))return `<span class="an-showcase-edited">Edited</span><button data-action="showcase-edit" title="Open your recipe for ${esc(step.itemName)}">✎ Edit customization</button>`;
+  const button=`<button data-action="showcase-edit" aria-expanded="${this.editing===this.index}">✎ Edit ${esc(step.itemName)} animation</button>`;
+  if(this.editing!==this.index)return button;
+  const creature=this.snapshot.creature?.actorName||this.snapshot.creature?.name||'this creature';
+  return `${button}<div class="an-showcase-edit" role="group" aria-label="Edit ${esc(step.itemName)}"><div class="an-eyebrow">Who plays your version?</div>
+   <label><input type="radio" name="an-showcase-scope" value="creature" checked ${step.bindUuid?'':'disabled'}><span><b>This creature only</b><small>${esc(creature)}'s own ${esc(step.itemName)}, on every token of this actor. Other creatures keep the built-in.</small></span></label>
+   <label><input type="radio" name="an-showcase-scope" value="all"><span><b>Every creature's ${esc(step.itemName)}</b><small>Any NPC ${step.kind==='attack'?'Strike':'ability'} with this name.</small></span></label>
+   <div class="an-catalog-controls"><button class="an-primary" data-action="showcase-edit-copy">Copy built-in and edit</button><button data-action="showcase-edit-copy" data-blank="true">Start blank</button><button class="an-quiet" data-action="showcase-edit-cancel">Cancel</button></div>
+   <small>Opens the recipe editor. Nothing changes until you Save; your saved recipe plays before the built-in.</small></div>`;
+ }
+ editCopy(blank){
+  const step=this.snapshot?.steps[this.index];if(!step?.itemName)return;
+  const all=this.w.root.querySelector('input[name="an-showcase-scope"]:checked')?.value==='all'||!step.bindUuid;
+  const creature=this.snapshot.creature?.actorName||this.snapshot.creature?.name||'';
+  const recipe=customCopy(step.recipe,{id:uuid(),name:all||!creature?step.itemName:`${step.itemName} · ${creature}`,names:[step.itemName],itemUuid:all?'':step.bindUuid,trigger:step.trigger,systemId:this.w.host.environment?.().systemId,
+   activity:step.activityId?{id:step.activityId,type:step.activityType,name:step.activityName}:null,blank});
+  this.editing=null;this.stop();
+  this.w.openDraft(recipe,`${blank?'New recipe':'Copy of the built-in'} for ${all?`every creature's ${step.itemName}`:`${creature}'s ${step.itemName}`}. Save to make it play; Tools → Creature showcase brings you back.`);
+ }
+ refreshStage(){this.stop();const container=this.w.root.querySelector('[data-showcase-stage]');if(container)container.innerHTML=this.stepHTML();}
  status(text){const el=this.w.root.querySelector('[data-showcase-status]');if(el)el.textContent=text;}
  stop(){this.serial++;this.run?.stop();this.run=null;this.movementStop?.();this.movementStop=null;this.status('Preview stopped.');}
  suspend(){this.stop();}
@@ -67,8 +94,18 @@ export class CreatureShowcaseUI{
   return true;
  }
  async action(action,b){
-  if(!['showcase-token','showcase-refresh','showcase-play','showcase-step','showcase-stop','boss-preview','boss-play','boss-stop'].includes(action))return false;
+  if(!['showcase-token','showcase-refresh','showcase-play','showcase-step','showcase-stop','boss-preview','boss-play','boss-stop','showcase-edit','showcase-edit-copy','showcase-edit-cancel','showcase-movement-sounds'].includes(action))return false;
   if(this.w.host.playerMode)throw Error('Only a GM can use Creature showcase.');
+  const step=this.snapshot?.steps[this.index];
+  if(action==='showcase-edit'){
+   if(this.saved(step)){this.stop();this.w.reveal({recipeId:step.recipe.id});this.w.render();}
+   else{this.editing=this.editing===this.index?null:this.index;this.refreshStage();}
+   return true;
+  }
+  if(action==='showcase-edit-cancel'){this.editing=null;this.refreshStage();return true;}
+  if(action==='showcase-edit-copy'){this.editCopy(b.dataset.blank==='true');return true;}
+  if(action==='showcase-movement-sounds'){await this.w.host.openMovementSounds?.(this.tokenId);return true;}
+  this.editing=null;
   if(action==='showcase-token'){this.stop();this.tokenId=b.dataset.id;this.index=0;this.options.title='';this.options.subtitle='';this.w.render();}
   else if(action==='showcase-refresh'){this.stop();this.tokenId=undefined;this.index=0;this.w.render();}
   else if(action==='showcase-stop')this.stop();

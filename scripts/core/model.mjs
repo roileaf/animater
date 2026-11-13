@@ -491,6 +491,10 @@ export function matchRecipe(recipes, event) {
     event.item?._stats?.compendiumSource,
     ...sources.uuids,
   ];
+  // An unlinked token's item (Scene.….Token.….Actor.a.Item.b) is its actor's item Actor.a.Item.b: a recipe bound to
+  // the actor's item plays for every token of that actor.
+  const synthetic = /^Scene\.[^.]+\.Token\.[^.]+\.(Actor\.[^.]+\.Item\.[^.]+)$/.exec(String(event.item?.uuid ?? event.itemUuid ?? ""));
+  if (synthetic) uuids.push(synthetic[1]);
   const named = (r) => String(r.match ?? "").split(",").some((n) => n.trim() && names.has(normalize(n)));
   // A recipe bound to one creature's own item (Actor... or a token's) plays for that item only: one hero's look for
   // their spell. Bound to a compendium or world item (the spell as such), it plays for that item first, and for any
