@@ -334,3 +334,17 @@ export function repairFireUpdates(regions) {
   }
   return updates;
 }
+
+// Runs one job per key at a time: an ask for a key already running gets that run's own result (it joins it), and an ask for
+// another key runs at once on its own. The key is freed when its job ends, however it ends. Pure: no Foundry.
+export function createQuenchGate() {
+  const running = new Map();
+  return {
+    run(key, job) {
+      if (running.has(key)) return running.get(key);
+      const task = (async () => { try { return await job(); } finally { running.delete(key); } })();
+      running.set(key, task);
+      return task;
+    },
+  };
+}

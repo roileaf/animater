@@ -516,3 +516,27 @@ test("quenchUpdates also cools what is warm but not yet alight, in every kind", 
   assert.deepEqual(r.tiles, [{ _id: "w", "flags.animater.prop.-=fire": null }]);
   assert.deepEqual(r.regions, [{ _id: "r", "flags.animater.decorFire.-=k": null, "flags.animater.fireCells.-=2": null }]);
 });
+
+import { createQuenchGate } from "../../../scripts/engines/props/fire-spread.mjs";
+
+test("two areas asked while one is running both put their fires out; the same area joins the run in flight", async () => {
+  const gate = createQuenchGate(), fires = new Set(["a", "b"]), runs = [];
+  let release;
+  const slow = new Promise((done) => { release = done; });
+  const first = gate.run("scene:A", async () => { runs.push("A"); await slow; fires.delete("a"); return true; });
+  const second = gate.run("scene:B", async () => { runs.push("B"); fires.delete("b"); return true; });
+  const again = gate.run("scene:A", async () => { runs.push("A2"); return false; });
+  await second;
+  assert.equal(fires.has("b"), false, "the second area ran while the first was still held");
+  release();
+  assert.deepEqual([await first, await again], [true, true]);
+  assert.deepEqual(runs, ["A", "B"]);
+  assert.equal(fires.size, 0);
+  assert.equal(await gate.run("scene:A", async () => "later"), "later", "freed once done");
+});
+
+test("a job that throws still frees its key", async () => {
+  const gate = createQuenchGate();
+  await assert.rejects(gate.run("k", async () => { throw new Error("x"); }));
+  assert.equal(await gate.run("k", async () => 1), 1);
+});

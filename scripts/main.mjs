@@ -37,7 +37,7 @@ import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt
 import { DOOR_ATTACK_SYSTEMS, doorStats, doorCracked, doorHpLine, strikeReaches, strikeIdentifier, doorAttackOf, doorAttackCheck, doorAttackRoller, doorHitUpdate, strikeHasAmmo, pickDoorStamp } from "./engines/props/door-attack.mjs";
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
-import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsOf, dropLostDecorFire, regionBurns, quenchedBy, quenchUpdates, repairFireUpdates } from "./engines/props/fire-spread.mjs";
+import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsOf, dropLostDecorFire, regionBurns, createQuenchGate, quenchedBy, quenchUpdates, repairFireUpdates } from "./engines/props/fire-spread.mjs";
 import { areaRefusal } from "./engines/props/prop-areas.mjs";
 import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
@@ -9352,8 +9352,9 @@ Hooks.on("deleteRegion", (doc) => { fireGrass.delete(doc.id); });
 // own copy holds it (who placed it, its spell's damage types, its age, its scene) exactly as for a break, then writes.
 // Nothing is broken and no creature is touched. A charred square stays charred.
 const QUENCH_MESSAGE = "prop-quench";
-// A scene's quench in flight: a second ask for the scene is dropped, so a flood of them cannot make the GM scan it over and over.
-const quenchRunning = new Set();
+// A quench in flight, by scene and area (fire-spread.mjs quenchGate): a second ask for the same area joins it, so a flood
+// cannot make the GM scan the scene over and over, while another area's ask (two spells in a row) runs on its own.
+const quenchGate = createQuenchGate();
 // What the area's quenching would put out on this screen's documents (quenchUpdates): the fires inside it, as they stand.
 function quenchPutOf(scene, area) {
   const grid = propGrid(scene), things = [], mid = (view) => fireMid(fireRect(view));
@@ -9378,9 +9379,8 @@ function quenchPutOf(scene, area) {
   return quenchUpdates(tilesOnLevel(things, area.levels), area.testPoint);
 }
 async function applyQuench(scene, cause, user) {
-  if (!game.users.activeGM?.isSelf || !scene || !propsOn(scene) || !quenchedBy(cause?.damageType) || quenchRunning.has(scene.id)) return false;
-  quenchRunning.add(scene.id);
-  try { return await runQuench(scene, cause, user); } finally { quenchRunning.delete(scene.id); }
+  if (!game.users.activeGM?.isSelf || !scene || !propsOn(scene) || !quenchedBy(cause?.damageType)) return false;
+  return runQuench(scene, cause, user);
 }
 async function runQuench(scene, cause, user) {
   // messageId: the damage roll, for a spell whose item names no damage type (the GM reads it from that message, as for a break).
@@ -9388,6 +9388,10 @@ async function runQuench(scene, cause, user) {
   // The shape is asked thing by thing (quenchPutOf); every other check (placer, spell types, age, scene) is the break's own.
   const refused = areaRefusal(area ? { ...area, testPoint: () => true } : area, { cause: full, sceneId: scene.id, sender: user, point: { x: 0, y: 0 }, levels: area?.levels, now });
   if (refused) { runtime?.trace("props", `not quenched: ${refused}`); return false; }
+  // Only an area that passed the checks above holds the gate, so a forged ask costs no scan.
+  return quenchGate.run(`${scene.id}:${area.uuid}`, () => quenchWrite(scene, area));
+}
+async function quenchWrite(scene, area) {
   // A fire round still writing would put back what is cleared here: let it finish first.
   for (let i = 0; i < 100 && fireRunning.has(scene.id); i++) await new Promise((done) => setTimeout(done, 50));
   const out = quenchPutOf(scene, area);
@@ -10026,7 +10030,7 @@ function breakAreaThings(area, types, { messageId } = {}) {
   // A refusal is the GM's silence, so the claim is given back unless the fires inside the area are gone after a wait; a later
   // ask (the damage roll's, which names its message) can then still put them out.
   if (quenching) void askClaimed({ ask: () => askQuench(area, quench, messageId), release: () => propAreas.release(area.templateId, "quench"), wait: CLAIM_SETTLE_MS,
-    written: () => !propSafe("quench check", () => quenchPutOf(scene, area).put.length) });
+    written: () => { try { return quenchPutOf(scene, area).put.length === 0; } catch { return false; } } });
   const grid = propGrid(scene), tiles = tilesOnLevel(scene.tiles.contents.map(propTileView), area.levels), walls = (scene.walls?.contents ?? []).map(wallView);
   const decor = propSafe("area decorations", () => decorViews(scene, area.levels)) ?? [], id = (t) => t.id;
   const hits = typesBreaking(types, (type) => propsInArea(tiles, area.testPoint, grid, type), id).filter(({ thing }) => propAreas.claim(area.templateId, thing.id));
