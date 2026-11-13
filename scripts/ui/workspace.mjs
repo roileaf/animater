@@ -73,7 +73,7 @@ import { stateCatalogHTML } from "./state-catalog-ui.mjs";
 import { FlashEditor } from "./flash-editor.mjs";
 import { recipeConflicts, unlinked } from "../core/recipe-conflicts.mjs";
 import { handleStateCatalogAction } from "../catalogs/pf2e/state-catalog-actions.mjs";
-import { setPlayerLibrary } from '../catalogs/shared/catalog-terms.mjs';
+import { setPlayerLibrary, previewRowHTML, stageListHTML } from '../catalogs/shared/catalog-terms.mjs';
 import {catalogListText,catalogNavigation,catalogPageAllowed,catalogPageTitle,worldCatalogSystem,BORROWED_PAGES,borrowedNavigation,borrowedSystem,pf2eCatalogPage,pf2eCatalogsLive} from '../catalogs/shared/catalog-system.mjs';
 import {DndCatalogWorkspace} from './dnd5e-catalog-ui.mjs';
 import {sfCatalogProfile} from '../catalogs/sf2e/sf2e-catalog.mjs';
@@ -538,6 +538,7 @@ export class Workspace {
     });
   }
   recipe() {
+    if (this.page === GM_RECIPES_PAGE) return this.gmRecipe();
     if(this.dndCatalog?.isCatalogPage())return this.dndCatalog.recipe();
     if (this.page === NPC_PAGE) return npcAbilityPageRecipe(this);
     if (["conditions", "effects"].includes(this.page)) {
@@ -790,11 +791,39 @@ export class Workspace {
   isStudio() { return ["recipes", "finishers"].includes(this.page) && !!this.studio && !!this.recipe(); }
   // A player in their own Studio (not the GM reviewing one), who browses the library read-only.
   playerLibrary() { return !!this.host.playerMode && !this.host.reviewing?.(); }
-  // The GM's recipes for a player to copy from: preview each, or copy it into their own animations.
+  // The GM's recipes, for a player to look at without copying them: a list, and the chosen one read-only beside it,
+  // its preview played on stand-in tokens (nothing needed on the canvas). Copy to mine is the only thing that copies.
+  // A player: "it is very inconvenient for players to view DM recipes ... without instantly creating a copy".
+  gmRecipe() {
+    const r = (this.host.gmRecipes?.() ?? []).find((x) => x.id === this.selectedGmRecipe);
+    return r ? validateRecipe(r) : null;
+  }
   gmRecipesHTML() {
-    const list = this.host.gmRecipes?.() ?? [];
-    const rows = list.map((r) => `<div class="an-review-row is-approved"><div><b>${esc(r.name)}</b><small>${esc(EVENTS[r.trigger] ?? r.trigger)}${r.match ? ` · ${esc(r.match)}` : ""} · ${r.stages.length} stage${r.stages.length === 1 ? "" : "s"}</small></div><span></span><div class="an-review-actions"><button class="an-quiet" data-action="gm-preview" data-id="${esc(r.id)}">▷ Preview</button><button class="an-primary" data-action="gm-copy" data-id="${esc(r.id)}">Copy to mine</button></div></div>`).join("");
-    return `<div class="an-library"><div class="an-info">Your GM's animations<p>Examples to start from. Preview one, then copy it into My animations to make it your own${this.host.playerAccess?.() === "free" ? "" : "; your copy plays once your GM approves it"}.</p></div>${rows ? `<div class="an-player-review">${rows}</div>` : `<div class="an-empty">Your GM has no animations of their own yet. The catalogs under Library have plenty to start from.</div>`}</div>`;
+    const all = this.host.gmRecipes?.() ?? [];
+    const approval = this.host.playerAccess?.() === "free" ? "" : " Your copy plays once your GM approves it.";
+    if (!all.length) return `<div class="an-library"><div class="an-info">Your GM's animations<p>Animations your GM made, to watch and to copy from.</p></div><div class="an-empty">Your GM has no animations of their own yet. The catalogs under Library have plenty to start from.</div></div>`;
+    if (!all.some((r) => r.id === this.selectedGmRecipe)) this.selectedGmRecipe = all[0].id;
+    const query = String(this.gmSearch ?? "").trim().toLowerCase();
+    const list = query ? all.filter((r) => `${r.name} ${r.match ?? ""} ${r.category ?? ""}`.toLowerCase().includes(query)) : all;
+    const chosen = this.gmRecipe();
+    const meta = (r) => `${EVENTS[r.trigger] ?? r.trigger}${r.match ? ` · ${r.match}` : ""} · ${r.stages.length} stage${r.stages.length === 1 ? "" : "s"}`;
+    const cards = list.map((r) => `<div class="an-card-slot"><button class="an-spell-card ${r.id === chosen?.id ? "is-selected" : ""}" data-action="select-gm-recipe" data-id="${esc(r.id)}" aria-pressed="${r.id === chosen?.id}"><div><b>${esc(r.name)}</b><small>${esc(meta(r))}</small></div></button></div>`).join("");
+    return `<div class="an-work an-spell-work an-feat-work"><section class="an-library an-spell-library an-feat-library">
+    <div class="an-catalog-intro"><div><span class="an-eyebrow">YOUR GM'S ANIMATIONS</span><h2>${all.length} animation${all.length === 1 ? "" : "s"} to look at.</h2><p>Open one to watch it on stand-in tokens and read its stages. Nothing is copied until you press Copy to mine.</p></div></div>
+    <div class="an-search"><span>⌕</span><input data-search="${GM_RECIPES_PAGE}" aria-label="Search the GM's animations" placeholder="Name, item or category…" value="${esc(this.gmSearch ?? "")}"></div>
+    <div class="an-section-title"><span>${list.length} result${list.length === 1 ? "" : "s"}</span></div>
+    <div class="an-spell-grid">${cards || `<div class="an-empty">None of your GM's animations match.<small>Try another name.</small></div>`}</div>
+  </section><aside class="an-inspector an-spell-detail">${chosen ? this.gmRecipeDetailHTML(chosen, meta(chosen), approval) : `<div class="an-empty">Choose one of your GM's animations.</div>`}</aside></div>`;
+  }
+  gmRecipeDetailHTML(r, meta, approval) {
+    const env = this.host.environment?.() ?? {};
+    const stages = sampleRecipe(r).stages.map((st) => ({ ...st, label: st.label || KINDS[st.kind] || st.kind }));
+    return `<div class="an-eyebrow">GM'S ANIMATION · VIEW ONLY</div>
+    <div class="an-spell-detail-title"><div><h2>${esc(r.name)}</h2><small>${esc(meta)}</small></div></div>
+    <div class="an-preview an-full-preview" style="--effect:${esc(r.color)}">${this.recipePreviewHTML(r)}</div>
+    ${previewRowHTML({ duration: this.previewDuration(r), busy: this.busy, canvasDisabled: env.demo || !env.ready || this.busy, progressLabel: "Recipe playback progress" })}
+    <div class="an-entry-status is-off" role="status"><div><b><span aria-hidden="true">○</span> Not in your animations</b><small>Want to change it? Make your own copy in My animations.${esc(approval)}</small></div><div class="an-entry-actions"><button type="button" class="an-primary" data-action="gm-copy" data-id="${esc(r.id)}">Copy to mine</button></div></div>
+    <div class="an-section-title"><span>Stages</span></div>${stageListHTML(stages)}`;
   }
   // A copy of one of the GM's recipes in this player's animations (a new id, so the two stay apart), open in the Studio.
   async copyGmRecipe(id) {
@@ -2285,6 +2314,7 @@ export class Workspace {
     }
     if (t.dataset.search) {
       if (t.dataset.search === "recipes") this.search = t.value;
+      else if (t.dataset.search === GM_RECIPES_PAGE) this.gmSearch = t.value;
       else if (t.dataset.search === NPC_PAGE) npcAbilitySearch(this, t.value);
       else if (t.dataset.search === "spells") {
         this.spellFilters.search = t.value;
@@ -3078,11 +3108,7 @@ export class Workspace {
       }
       // The GM's review of a player's recipe: preview it locally, then approve or decline that version.
       if (action === "gm-copy") { await this.copyGmRecipe(b.dataset.id); return; }
-      if (action === "gm-preview") {
-        const source = (this.host.gmRecipes?.() ?? []).find((r) => r.id === b.dataset.id);
-        if (source) { await this.host.play(validateRecipe(source), true); this.message = `Previewed "${source.name}".`; this.render(); }
-        return;
-      }
+      if (action === "select-gm-recipe") { this.stopEditorPreview(); this.selectedGmRecipe = b.dataset.id; this.stageIndex = 0; this.render(); return; }
       if (["player-preview", "player-approve", "player-decline", "player-block", "player-unblock"].includes(action)) {
         const row = (this.host.playerSubmissions?.() ?? []).find((r) => r.userId === b.dataset.user && r.recipe.id === b.dataset.id);
         if (!row) return;

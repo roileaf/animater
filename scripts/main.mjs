@@ -208,7 +208,7 @@ import { isMoveStage, playMoveStage, previewMotion, allowedSpot, movePrompt, mov
 import { findCatalogFeat as findFeatEntry } from "./catalogs/pf2e/feats/feat-catalog.mjs";
 import { findCatalogWeapon as findWeaponEntry } from "./catalogs/pf2e/weapons/weapon-catalog.mjs";
 import { findStateEntry as findConditionEntry } from "./catalogs/pf2e/state-catalog.mjs";
-import { findDndEntry as findDndCatalogEntry } from "./catalogs/dnd5e/dnd5e-catalog.mjs";
+import { findDndEntry as findDndCatalogEntry, setDndOriginalNames } from "./catalogs/dnd5e/dnd5e-catalog.mjs";
 import { findSfEntry as findSfCatalogEntry } from "./catalogs/sf2e/sf2e-catalog.mjs";
 const ABILITY_CATALOGS = { actionCatalog: PF2E_ACTION_CATALOG, featureCatalog: PF2E_FEATURE_CATALOG };
 const abilitySettingKey = item => item?.type === "action" ? "actionCatalog" : isFeatureItem(item) ? "featureCatalog" : null;
@@ -11668,6 +11668,13 @@ Hooks.once("init", () => {
   game.settings.registerMenu(ID, "sunMenu", { name: "Sun", label: "Sun and time of day", icon: "fa-solid fa-sun",
     hint: "The sun creatures' shadows are cast by, for every scene left on \u201cWorld default\u201d: following the time of day (long shadows at dawn and dusk, short at noon, none at night), fixed where you put it, or none. And which calendar gives the time, sunrise and sunset: Calendaria, Simple Calendar Reborn or Foundry's own clock. Each scene can choose its own (Scene configuration \u2192 Animater \u2192 Sun).",
     type: sunSettingsMenu(ApplicationV2, { id: ID, clock: () => clockNow() }), restricted: true });
+  registerSetting("originalNames", {
+    name: "Original names in brackets",
+    hint: "In a translated world, the Animater library shows each translated name with its English original after it, as translated content is often written: \u201c\u0422\u044c\u043c\u0430 [Darkness]\u201d. Search finds either name, on or off.",
+    scope: "client", config: true, type: Boolean, default: false,
+    onChange: () => app?.workspace?.render(),
+  });
+  setDndOriginalNames(() => hotSetting("originalNames") === true);
   registerSetting("walkedPathHighlight", {
     name: "Walked path highlight",
     hint: "Foundry highlights every square a token moves through, which hides the dust, prints and splashes it leaves. Faded: the squares already walked show at a quarter strength (the way ahead stays as it is). Hidden: walked squares are not highlighted. As Foundry draws it: unchanged.",

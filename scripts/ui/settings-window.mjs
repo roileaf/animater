@@ -184,6 +184,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "automatic", noReset: true },
     // Off by default: a reset would take the other system's catalogs away from a world using them, so it is exempt too.
     { world: "crossoverCatalog", when: TWOE, noReset: true },
+    { local: "originalNames", when: (env) => env.systemId === "dnd5e" },
     { world: "npcAbilities", when: PF2E },
     { world: "npcAbilityGuess", when: PF2E },
     { world: "npcStrikeGuess", when: PF2E },

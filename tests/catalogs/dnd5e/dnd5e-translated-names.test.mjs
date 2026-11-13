@@ -2,7 +2,7 @@
 // identifiers, and the English name kept on flags.babele.originalName. Names below come from ru-ru's dnd5e files.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {dndEntries,findDndEntry,resolveDndAutomaticRecipe,dndDisplayName,filterDndEntries} from '../../../scripts/catalogs/dnd5e/dnd5e-catalog.mjs';
+import {dndEntries,findDndEntry,resolveDndAutomaticRecipe,dndDisplayName,filterDndEntries,setDndOriginalNames} from '../../../scripts/catalogs/dnd5e/dnd5e-catalog.mjs';
 import {DndCatalogWorkspace} from '../../../scripts/ui/dnd5e-catalog-ui.mjs';
 import {findDndState} from '../../../scripts/catalogs/dnd5e/dnd5e-states.mjs';
 import {DND_NPC_ACTIONS,findDndNpcAction} from '../../../scripts/catalogs/dnd5e/dnd5e-npc-actions.mjs';
@@ -114,4 +114,18 @@ test('an imported NPC with new ids is recognised through the original names of c
  const event=flags=>({systemId:'dnd5e',type:action.trigger,activityId:action.activityId,item:{type:'feat',id:'new-id',name:'Перевод',flags:flags?babele(action.name):undefined,system:{source:{rules:action.edition}}},actor:{type:'npc',name:'Существо',flags:flags?babele(action.creatures[0]):undefined}});
  assert.equal(findDndNpcAction(event(true))?.id,action.id);
  assert.equal(findDndNpcAction(event(false)),null);
+});
+
+// A Russian player: "the names of abilities, items, spells, etc., are indicated as follows: “Тьма [Darkness]”".
+test('"Original names in brackets" shows a translated name with its English one after it',()=>{
+ globalThis.game=world('ru',new Map([[fireball.documentId,{name:'Огненный шар'}]]));
+ let on=true;setDndOriginalNames(()=>on);
+ try{
+  assert.equal(dndDisplayName(fireball),'Огненный шар [Fireball]');
+  assert.equal(dndDisplayName(find('Fireball','spell','2014')),'Fireball','an untranslated entry has no brackets');
+  assert.equal(filterDndEntries('spell',{search:'Fireball',edition:'2024'})[0]?.id,fireball.id,'search unchanged');
+  on=false;assert.equal(dndDisplayName(fireball),'Огненный шар','off: the translation alone');
+  setDndOriginalNames(()=>{throw new Error('settings not ready');});
+  assert.equal(dndDisplayName(fireball),'Огненный шар','a setting not ready yet reads as off');
+ }finally{setDndOriginalNames(false);delete globalThis.game;}
 });

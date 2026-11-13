@@ -134,8 +134,16 @@ function packName(e){
  const [,scope,pack,,id]=e.uuid.split('.'),name=game.packs?.get(`${scope}.${pack}`)?.index?.get(id)?.name;
  return name&&normalize(name)!==normalize(e.name)?name:null;
 }
-// The name to show. Other systems' catalogs share the UI that calls this and keep their own names.
-export const dndDisplayName=e=>byId.get(e.id)===e?packName(e)??e.name:e.name;
+// The name to show. Other systems' catalogs share the UI that calls this and keep their own names. With "Original names in
+// brackets" on, a translated entry reads "Тьма [Darkness]" (the way translated content is often written).
+let bracketOriginal=()=>false;
+export const setDndOriginalNames=f=>{bracketOriginal=typeof f==='function'?f:()=>!!f;};
+export const dndDisplayName=e=>{
+ const shown=byId.get(e.id)===e?packName(e):null;
+ if(!shown)return e.name;
+ let both=false;try{both=!!bracketOriginal();}catch{/* translated only */}
+ return both?`${shown} [${e.name}]`:shown;
+};
 const BOOK_SPELL_NAMES={"bigby's hand":'Arcane Hand',"mordenkainen's sword":'Arcane Sword',"nystul's magic aura":"Arcanist's Magic Aura"};
 export function srdSpellName(name){
  const lower=String(name??'').toLowerCase().replace(/[’]/g,"'");

@@ -850,13 +850,24 @@ test("the GM reviewing a player sees only that player's animations and assets", 
   assert.deepEqual([...html.matchAll(/data-page="([^"]+)"/g)].map((m) => m[1]), ["recipes", "assets"]);
 });
 
-test("the GM's animations page lists their recipes for a player to preview and copy", async () => {
+// A player: "it is very inconvenient for players to view DM recipes ... without instantly creating a copy".
+test("the GM's animations open read-only beside the list, previewed on stand-ins, copied only on Copy to mine", async () => {
   const saved = [];
-  const w = navWorkspace({ playerMode: true, playerAccess: () => "free", gmRecipes: () => [{ id: "g1", name: "Boss Breath", trigger: "use", match: "Breath", enabled: true, stages: [{ kind: "impact", assets: ["jb2a.impact.001.orange"] }] }],
+  const gm = [{ id: "g1", name: "Boss Breath", trigger: "use", match: "Breath", enabled: true, stages: [{ kind: "impact", assets: ["jb2a.impact.001.orange"] }] },
+    { id: "g2", name: "Healer's Glow", trigger: "use", match: "Heal", enabled: true, stages: [{ kind: "impact", assets: ["jb2a.impact.001.orange"] }] }];
+  const w = navWorkspace({ playerMode: true, playerAccess: () => "free", gmRecipes: () => gm, catalog: () => [], environment: () => ({ ready: true }), previewTokens: () => ({}),
     recipes: () => [], save: async (list) => saved.push(list) });
+  w.page = GM_RECIPES_PAGE;
   const html = w.gmRecipesHTML();
-  assert.match(html, /Boss Breath[\s\S]*data-action="gm-preview" data-id="g1"[\s\S]*data-action="gm-copy" data-id="g1"/);
-  assert.doesNotMatch(html, /approves/, "no approval wording when none is needed");
+  assert.match(html, /data-action="select-gm-recipe" data-id="g1"[^>]*aria-pressed="true"/, "the first is open");
+  assert.match(html, /VIEW ONLY[\s\S]*Boss Breath[\s\S]*data-recipe-scene[\s\S]*data-action="recipe-preview"[\s\S]*data-action="gm-copy" data-id="g1"/, "a stand-in preview, then Copy to mine");
+  assert.doesNotMatch(html, /<input(?![^>]*data-search)|<select|<textarea/, "nothing to edit");
+  assert.equal(w.recipe().id, "g1", "Preview and On canvas play the open recipe");
+  assert.equal(saved.length, 0, "opening copies nothing");
+  w.selectedGmRecipe = "g2"; assert.equal(w.recipe().name, "Healer's Glow");
+  w.gmSearch = "heal"; assert.doesNotMatch(w.gmRecipesHTML(), /data-action="select-gm-recipe" data-id="g1"/, "search narrows the list");
+  w.selectedGmRecipe = "g1"; w.gmSearch = "";
+  assert.doesNotMatch(w.gmRecipesHTML(), /approves/, "no approval wording when none is needed");
   w.render = () => {};
   await w.copyGmRecipe("g1");
   assert.equal(saved[0].length, 1);
