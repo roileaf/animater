@@ -83,8 +83,12 @@ export const TOUCH_HEAT = 55, NEAR_HEAT = 40;
 // another level stops it. Returns each heated thing's new total heat, who catches (hottest first, up to the cap),
 // who just started to warm, and which burning things have run out of rounds.
 // Burning grass squares (`cells` with `cols`, `origin`, `cell`) heat props the same way, in this one pass.
-export function spreadStep({ things = [], wind = null, grid = 100, cap = 12, cells = [], cols = 1, origin = { x: 0, y: 0 }, cell = grid } = {}) {
-  const sources = things.filter((t) => t.fire?.burning);
+// `spills` are fires that are not things of their own: a broken prop whose lamp oil is alight is a burning prop by
+// the rules ({id, rect, levels}), so it heats what stands beside it, but it is never heated, never counted down and
+// never caught — it is already wrecked, and its own minute is what ends it.
+export function spreadStep({ things = [], wind = null, grid = 100, cap = 12, cells = [], cols = 1, origin = { x: 0, y: 0 }, cell = grid, spills = [] } = {}) {
+  const burners = things.filter((t) => t.fire?.burning);
+  const sources = [...burners, ...(spills ?? []).filter((s) => s?.rect)];
   const fires = burningCells(cells).map((c) => ({ id: c.id ?? cellId(c.i), levels: c.levels, rect: cellRect(c.i, { cols, origin, cell }) }));
   const gain = new Map();
   for (const target of things) {
@@ -122,9 +126,9 @@ export function spreadStep({ things = [], wind = null, grid = 100, cap = 12, cel
   }
   catching.sort((a, b) => b.heat - a.heat);
   const caught = catching.slice(0, cap).map((c) => c.id);
-  const out = sources.filter((t) => (t.fire.roundsLeft ?? 0) <= 1).map((t) => t.id);
+  const out = burners.filter((t) => (t.fire.roundsLeft ?? 0) <= 1).map((t) => t.id);
   // Still burning and not out: each keeps its heat and has one round fewer left, for the caller to save.
-  const burning = sources.filter((t) => (t.fire.roundsLeft ?? 0) > 1).map((t) => ({ id: t.id, heat: t.fire.heat ?? 0, roundsLeft: t.fire.roundsLeft - 1 }));
+  const burning = burners.filter((t) => (t.fire.roundsLeft ?? 0) > 1).map((t) => ({ id: t.id, heat: t.fire.heat ?? 0, roundsLeft: t.fire.roundsLeft - 1 }));
   return { heat, caught, out, warn, burning };
 }
 
@@ -136,9 +140,11 @@ export function spreadStep({ things = [], wind = null, grid = 100, cap = 12, cel
 //   cellId(i)) or a burning prop's id. Fire from a listed source never reaches it.
 //   `levels` lists the levels a square or prop is on; fire passes only between things sharing one, and an empty or
 //   missing list means every level.
+// `spills` are burning props that are not in `things`: a broken prop whose lamp oil is alight sets the grass round it
+// going exactly as an unbroken burning prop does, and like one it is only ever a source ({id, rect, levels}).
 // Returns each heated square's new total heat, which catch (hottest first, up to the cap; each then burns CELL_ROUNDS), and
 // which burning squares have run out of rounds (to be charred).
-export function cellStep({ cells = [], things = [], cols = 1, rows = 1, origin = { x: 0, y: 0 }, cell = 100, wind = null, cap = 12 } = {}) {
+export function cellStep({ cells = [], things = [], cols = 1, rows = 1, origin = { x: 0, y: 0 }, cell = 100, wind = null, cap = 12, spills = [] } = {}) {
   const geo = { cols, origin, cell };
   const byIndex = new Map(cells.map((c) => [c.i, c]));
   const sources = burningCells(cells);
@@ -158,7 +164,7 @@ export function cellStep({ cells = [], things = [], cols = 1, rows = 1, origin =
       add(i, NEAR_HEAT * GRASS_RATE * windBoost(wind, from, cellRect(i, geo)));
     }
   }
-  const fires = things.filter((t) => t.fire?.burning);
+  const fires = [...things.filter((t) => t.fire?.burning), ...(spills ?? []).filter((s) => s?.rect)];
   if (fires.length) {
     for (const target of cells) {
       if (target.burning || target.charred) continue;

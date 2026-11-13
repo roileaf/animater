@@ -619,3 +619,41 @@ test("a job that throws still frees its key", async () => {
   await assert.rejects(gate.run("k", async () => { throw new Error("x"); }));
   assert.equal(await gate.run("k", async () => 1), 1);
 });
+
+test("a burning lamp-oil spill is a burning prop: it lights what is beside it but is never a target", () => {
+  // The oil fire lives on a prop that is already broken, so it is handed in as a spill, not as a thing.
+  const spill = { id: "spill:keg", rect: { x: 0, y: 0, w: 100, h: 100 }, levels: [] };
+  const crate = { id: "b", rect: { x: 100, y: 0, w: 100, h: 100 }, traits: { material: "wood" }, fire: null };
+  const r = spreadStep({ things: [crate], grid: 100, spills: [spill] });
+  assert.equal(r.heat.find((h) => h.id === "b").heat, TOUCH_HEAT, "the blazing spill heats the crate it touches");
+  // It is never heated, never caught, never counted down and never broken: it is a wreck already.
+  assert.equal(r.heat.some((h) => h.id === spill.id), false);
+  assert.deepEqual(r.caught, []);
+  assert.deepEqual(r.out, []);
+  assert.deepEqual(r.burning, []);
+  // A square away it still carries, as any burning prop does.
+  const away = { ...crate, rect: { x: 104, y: 0, w: 100, h: 100 } };
+  assert.equal(spreadStep({ things: [away], grid: 100, spills: [spill] }).heat[0].heat, NEAR_HEAT);
+  // Without the spill nothing happens at all, which is the gap this closes.
+  assert.deepEqual(spreadStep({ things: [crate], grid: 100 }).heat, []);
+  // A wall between them stops it like any other source, and so does another level.
+  assert.deepEqual(spreadStep({ things: [{ ...crate, blocked: [spill.id] }], grid: 100, spills: [spill] }).heat, []);
+  assert.deepEqual(spreadStep({ things: [{ ...crate, levels: ["upper"] }], grid: 100, spills: [{ ...spill, levels: ["ground"] }] }).heat, []);
+  // A burning prop of its own still counts itself down beside a spill.
+  const alight = { id: "a", rect: { x: 400, y: 0, w: 100, h: 100 }, traits: { material: "wood" }, fire: { burning: true, heat: 100, roundsLeft: 1 } };
+  assert.deepEqual(spreadStep({ things: [crate, alight], grid: 100, spills: [spill] }).out, ["a"]);
+});
+
+test("a burning lamp-oil spill sets the grass round it alight", () => {
+  const cells = [{ i: 0 }, { i: 1 }, { i: 2 }, { i: 3 }];
+  const geo = { cols: 4, rows: 1, origin: { x: 0, y: 0 }, cell: 100 };
+  const spill = { id: "spill:keg", rect: { x: 0, y: 0, w: 100, h: 100 }, levels: [] }; // standing on square 0
+  const r = cellStep({ cells, ...geo, spills: [spill] });
+  assert.equal(r.heat.find((h) => h.i === 0).heat, TOUCH_HEAT * GRASS_RATE); // the square it stands on
+  assert.equal(r.heat.find((h) => h.i === 1).heat, TOUCH_HEAT * GRASS_RATE); // the square it touches
+  assert.equal(r.heat.find((h) => h.i === 2).heat, NEAR_HEAT * GRASS_RATE); // a square away
+  assert.equal(r.heat.find((h) => h.i === 3), undefined); // two squares away is out of reach
+  // Nothing without it, and a wall between stops it.
+  assert.deepEqual(cellStep({ cells, ...geo }).heat, []);
+  assert.deepEqual(cellStep({ cells: cells.map((c) => ({ ...c, blocked: [spill.id] })), ...geo, spills: [spill] }).heat, []);
+});

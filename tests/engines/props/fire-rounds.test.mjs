@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { areaCatch, fireRoundDue, fireNextLast, fireReseed, fireScenesOf, wallBetween, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "../../../scripts/engines/props/fire-rounds.mjs";
+import { areaCatch, areaCellCatch, areaCellsLit, fireAwake, fireRoundDue, fireNextLast, fireReseed, fireScenesOf, wallBetween, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "../../../scripts/engines/props/fire-rounds.mjs";
+import { CELL_ROUNDS, HEAT_CATCH } from "../../../scripts/engines/props/fire-spread.mjs";
 
 test("in combat a round comes from the tracker, out of combat from the clock", () => {
   assert.equal(fireRoundDue({ combat: { started: true, round: 3 }, last: { round: 2 } }), true);
@@ -127,6 +128,65 @@ test("only the squares whose middle is in the shape, and nothing past the cap", 
   assert.deepEqual(grassCells({ bounds: { x: 0, y: 0, w: 10000, h: 10000 }, cell: 100, cap: 100 }).indices, []);
   assert.deepEqual(grassCells({ bounds: null }).indices, []);
   assert.deepEqual(grassCells({ bounds: { x: 0, y: 0, w: 0, h: 0 } }).indices, []);
+});
+
+test("a fire area sets the grass it covers alight too, and only where the ground burns", () => {
+  const fire = { fireSpreads: true, kind: "area", damageType: "fire" };
+  assert.deepEqual(areaCellCatch({ ...fire, burns: true }), { heat: HEAT_CATCH, burning: true, roundsLeft: CELL_ROUNDS });
+  // Off: a fireball over a meadow does exactly what it did before this feature, which is nothing to the grass.
+  assert.equal(areaCellCatch({ ...fire, fireSpreads: false, burns: true }), null);
+  // Only a fire area, and only a region whose ground burns.
+  assert.equal(areaCellCatch({ ...fire, damageType: "cold", burns: true }), null);
+  assert.equal(areaCellCatch({ ...fire, kind: "miss", burns: true }), null);
+  assert.equal(areaCellCatch({ ...fire, burns: false }), null);
+  // Already alight, or charred for good: nothing to light.
+  assert.equal(areaCellCatch({ ...fire, burns: true, cell: { heat: HEAT_CATCH, burning: true, roundsLeft: 2 } }), null);
+  assert.equal(areaCellCatch({ ...fire, burns: true, cell: { charred: true, heat: 0, burning: false } }), null);
+  // Merely warm: the area finishes what the spread started.
+  assert.deepEqual(areaCellCatch({ ...fire, burns: true, cell: { heat: 60, burning: false, roundsLeft: 0 } }),
+    { heat: HEAT_CATCH, burning: true, roundsLeft: CELL_ROUNDS });
+});
+
+test("a fireball on an open meadow lights the squares it covers, by name, and no others", () => {
+  // Two regions of grass, one of bare stone. The area covers squares 1 and 2 of the meadow and square 0 of the yard.
+  const covered = new Set(["10,10", "20,10", "0,0"]);
+  const cells = (pts) => pts.map(([i, x, y], n) => ({ i, point: { x, y }, saved: n === 2 ? { heat: HEAT_CATCH, burning: true, roundsLeft: 2 } : null }));
+  const regions = [
+    { id: "meadow", burns: true, cells: cells([[1, 10, 10], [2, 20, 10], [3, 30, 10], [4, 99, 99]]) },
+    { id: "yard", burns: false, cells: cells([[0, 0, 0]]) },
+  ];
+  const lit = areaCellsLit({ regions, inArea: (p) => covered.has(`${p.x},${p.y}`), fireSpreads: true, kind: "area", damageType: "fire" });
+  assert.deepEqual(lit.lit, [{ regionId: "meadow", i: 1 }, { regionId: "meadow", i: 2 }]);
+  assert.equal(lit.regions.length, 1);
+  assert.deepEqual(lit.regions[0], { _id: "meadow",
+    "flags.animater.fireCells.1": { heat: HEAT_CATCH, burning: true, roundsLeft: CELL_ROUNDS },
+    "flags.animater.fireCells.2": { heat: HEAT_CATCH, burning: true, roundsLeft: CELL_ROUNDS } });
+  // Each square is written at its own path: Foundry merges an object flag, so the squares already saved stand.
+  assert.ok(Object.keys(lit.regions[0]).every((k) => k === "_id" || /^flags\.animater\.fireCells\.\d+$/.test(k)));
+  // Nothing at all with the switch off, with another damage type, or without a shape to ask.
+  assert.deepEqual(areaCellsLit({ regions, inArea: () => true, fireSpreads: false, kind: "area", damageType: "fire" }).lit, []);
+  assert.deepEqual(areaCellsLit({ regions, inArea: () => true, fireSpreads: true, kind: "area", damageType: "cold" }).lit, []);
+  assert.deepEqual(areaCellsLit({ regions, inArea: null, fireSpreads: true, kind: "area", damageType: "fire" }).lit, []);
+  // A shape that throws is a shape that holds nothing.
+  assert.deepEqual(areaCellsLit({ regions, inArea: () => { throw new Error("no shape"); }, fireSpreads: true, kind: "area", damageType: "fire" }).lit, []);
+});
+
+test("a scene with every fire cold is left alone, and the least spark wakes it", () => {
+  const tile = (fire) => ({ flags: { animater: { prop: { fire } } } });
+  const region = (decorFire, fireCells) => ({ flags: { animater: { decorFire, fireCells } } });
+  const cold = { tiles: [tile(null), tile({ heat: 90, burning: false, roundsLeft: 0 })],
+    regions: [region({ "crate:1:1:a": { heat: 60, burning: false, roundsLeft: 0 } }, { 3: { charred: true, heat: 0, burning: false } }), region({}, {})] };
+  // Warm props, a warm decoration and burnt-out grass are not a fire: the round does no work at all.
+  assert.equal(fireAwake(cold), false);
+  assert.equal(fireAwake({}), false);
+  assert.equal(fireAwake(), false);
+  // A burning tile, a burning decoration, a burning square or a burning oil spill each wake it.
+  assert.equal(fireAwake({ ...cold, tiles: [...cold.tiles, tile({ heat: 100, burning: true, roundsLeft: 3 })] }), true);
+  assert.equal(fireAwake({ ...cold, regions: [region({ "crate:1:1:a": { heat: 100, burning: true, roundsLeft: 2 } }, {})] }), true);
+  assert.equal(fireAwake({ ...cold, regions: [region({}, { 4: { heat: 100, burning: true, roundsLeft: 2 } })] }), true);
+  assert.equal(fireAwake({ ...cold, spills: 1 }), true);
+  // A square that is charred AND marked burning is still out: charred is for good.
+  assert.equal(fireAwake({ tiles: [], regions: [region({}, { 4: { heat: 100, burning: true, charred: true } })] }), false);
 });
 
 test("the GM's warning names the thing the fire is heading for", () => {

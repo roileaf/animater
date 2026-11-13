@@ -1,6 +1,6 @@
 // When a fire's round comes round, which scenes it burns on, what a fire area sets alight, which walls stand between
 // its sources and what they heat, and the grass squares a region holds. Pure: no Foundry, no globals, no clocks.
-import { fireRate, HEAT_CATCH, BURN_ROUNDS } from "./fire-spread.mjs";
+import { fireRate, readFire, decorFireOf, fireCellsOf, HEAT_CATCH, BURN_ROUNDS, CELL_ROUNDS } from "./fire-spread.mjs";
 
 // What a fire area does to one thing it covers, with Fire spreads on: it sets alight whatever will take fire
 // instead of breaking it outright (it then burns its rounds and chars, which is the whole feature), and leaves
@@ -15,6 +15,59 @@ export function areaCatch({ fireSpreads = false, kind = "", damageType = "", tra
   if (fireSpreads !== true || kind !== "area" || damageType !== "fire") return null;
   if (traits?.contents === "powder" || !(fireRate(traits) > 0) || fire?.burning === true) return null;
   return { heat: HEAT_CATCH, burning: true, roundsLeft: BURN_ROUNDS };
+}
+
+// What a fire area does to one square of grass it covers, the counterpart of areaCatch: in a region whose ground
+// burns, the fire area lights the square itself, so a fireball over an open meadow starts a grass fire even where
+// there is not a prop in sight. The fire to write, or null for "nothing here":
+//   - Fire spreads off, or the cause is not a fire area: null (with the switch off nothing anywhere changes).
+//   - A region whose ground does not burn (its Burns switch, else its floor): null.
+//   - A square already alight, or charred for good: null.
+export function areaCellCatch({ fireSpreads = false, kind = "", damageType = "", burns = false, cell = null } = {}) {
+  if (fireSpreads !== true || kind !== "area" || damageType !== "fire" || burns !== true) return null;
+  if (cell?.charred === true || readFire(cell)?.burning === true) return null;
+  return { heat: HEAT_CATCH, burning: true, roundsLeft: CELL_ROUNDS };
+}
+
+// Which grass squares a fire area sets alight, as region updates ready for updateEmbeddedDocuments. `regions` are
+// {id, burns, cells: [{i, point, saved}]} — each region's own squares, with the fire each already has saved and the
+// middle of each square for the area to be asked about. `inArea(point)` is the area's own shape test, on the GM's
+// screen. Foundry merges object flags, so each square is written at its own path (`<flag>.<index>`), never as a
+// whole object. Returns {regions, lit}: the updates, and the squares lit, so the caller knows whether to write.
+export function areaCellsLit({ regions = [], inArea = null, fireSpreads = false, kind = "area", damageType = "" } = {}) {
+  const updates = [], lit = [];
+  if (typeof inArea !== "function") return { regions: updates, lit };
+  for (const r of regions ?? []) {
+    if (typeof r?.id !== "string") continue;
+    const fields = {};
+    for (const c of r.cells ?? []) {
+      if (!Number.isInteger(c?.i)) continue;
+      const next = areaCellCatch({ fireSpreads, kind, damageType, burns: r.burns === true, cell: c.saved });
+      if (!next) continue;
+      let inside = false;
+      try { inside = inArea(c.point) === true; } catch { inside = false; }
+      if (!inside) continue;
+      fields[`flags.animater.fireCells.${c.i}`] = next;
+      lit.push({ regionId: r.id, i: c.i });
+    }
+    if (Object.keys(fields).length) updates.push({ _id: r.id, ...fields });
+  }
+  return { regions: updates, lit };
+}
+
+// Whether a scene has any fire alive on it at all, read from nothing but what is stored: a tile's own fire, a
+// region's burning decorations, and its grass squares still alight (a charred one is out for good). `spills` is how
+// many broken props are burning (a lamp-oil fire counts as a burning prop), which the caller counts from its fire
+// lights. This is the cheap look before a round: with every fire cold there is nothing to lay out and nothing to
+// write, and a scene nobody is even looking at costs the GM a walk over its tiles and regions, no more.
+export function fireAwake({ tiles = [], regions = [], spills = 0 } = {}) {
+  if (Number(spills) > 0) return true;
+  for (const doc of tiles ?? []) if (readFire(doc)?.burning === true) return true;
+  for (const doc of regions ?? []) {
+    for (const entry of Object.values(decorFireOf(doc))) if (readFire(entry)?.burning === true) return true;
+    for (const entry of Object.values(fireCellsOf(doc))) if (entry?.charred !== true && readFire(entry)?.burning === true) return true;
+  }
+  return false;
 }
 
 // How long a round lasts out of combat (a round of play), in ms. In combat the tracker's round is what counts.
