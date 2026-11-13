@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+Fire now spreads from prop to prop and through grass.
+
+- **Fire spreads.** Turn it on per scene: Scene configuration → Animater → **This place** → **Fire spreads** (off until you turn it on; it needs **Breakable props** on too). A burning prop heats everything within a square of it, a round at a time: the combat tracker's rounds during a fight, about six seconds otherwise. How fast something catches depends on what it is made of and what it holds, and what it holds wins, so a glass bottle of lamp oil burns though glass never would. Plants and oil catch fastest, then books and papers, then potions, then grain, goods and plain wood. Stone, clay, metal and glass never catch on their own. The GM is whispered when something starts to smoulder ("The fire is spreading toward the bookshelf."). A thing burns for three rounds. Wood and other solids then fall into a **charred wreck** where they stood: blackened pieces of their own shape with ember seams that glow and cool over about a minute, a scorch beneath and a thin wisp of smoke. Plants and anything that burns away still turn to ash. A powder keg that has caught explodes as it burns out, as kegs already do. A stone or metal prop whose contents burn can't break, so it leaves a scorch and the GM is whispered. Grass carries fire square by square, faster downwind, and each region has a **Burns** switch in its ground section (on for grass and fields). Walls stop fire in every direction, between two props, between grass and a prop, and between two squares of grass; closed doors and windows count, open doors don't, and levels are kept apart. Wind speeds fire downwind, out of doors only. **Water** and **cold** areas put fires out, a kineticist impulse by the damage type its roll comes to, and **Repair broken props** puts everything back: fires out, props whole, grass unburnt. Fires survive a reload with their count. Nothing ever changes a creature's HP; the GM is told instead.
+
 ## 4.3.2
 
 Players see conditions on NPCs again.
