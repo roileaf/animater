@@ -21,6 +21,7 @@ function gridOf(rand, width, height) {
 // wisps: [{x, y, seed}]}. The rectangle is cut along ragged cracks into pieces that share their edges; each piece is then
 // drawn in a touch toward its own middle and nudged, so a thin gap opens along every crack and the silhouette still reads.
 // dark: 0-1 how black the piece is. heat: 0-1 how hot a seam glows. scorch: the radii of the soot mark round the wreck.
+// (It takes no rotation: the tile's own turn is the drawing step's job.)
 export function charLayout(note, { width, height, grid = 100 } = {}) {
   const rand = seededRandom(((note?.seed ?? 0) >>> 0) * 523 + 41);
   const w = Math.max(1, Number(width) || 0), h = Math.max(1, Number(height) || 0), gs = Number(grid) || 100;

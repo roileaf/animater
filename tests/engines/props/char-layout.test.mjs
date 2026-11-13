@@ -8,10 +8,49 @@ test("the same seed lays out the same wreck, and a different seed a different on
   assert.notDeepEqual(a.pieces, charLayout({ seed: 8 }, { width: 200, height: 100, grid: 100 }).pieces);
 });
 
-test("every piece stays inside the prop's own outline", () => {
-  const { pieces } = charLayout({ seed: 3 }, { width: 200, height: 100, grid: 100 });
-  assert.ok(pieces.length >= 4);
-  for (const p of pieces) for (const q of p.pts) { assert.ok(Math.abs(q.x) <= 100, `x ${q.x}`); assert.ok(Math.abs(q.y) <= 50, `y ${q.y}`); }
+const bbox = (pts) => { const xs = pts.map((q) => q.x), ys = pts.map((q) => q.y); return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) }; };
+
+test("every piece stays inside the prop's own outline, and together they fill it", () => {
+  for (const [width, height] of [[200, 100], [100, 100], [300, 80], [60, 160]]) {
+    for (let seed = 1; seed <= 25; seed++) {
+      const { pieces } = charLayout({ seed }, { width, height, grid: 100 });
+      assert.ok(pieces.length >= 4);
+      for (const p of pieces) {
+        for (const q of p.pts) { assert.ok(Math.abs(q.x) <= width / 2, `x ${q.x}`); assert.ok(Math.abs(q.y) <= height / 2, `y ${q.y}`); }
+        const b = bbox(p.pts);
+        assert.ok(b.x1 - b.x0 >= 0.04 * width && b.y1 - b.y0 >= 0.04 * height, `piece too small ${width}x${height} seed ${seed}`);
+      }
+      const all = bbox(pieces.flatMap((p) => p.pts));
+      assert.ok(all.x1 - all.x0 >= 0.85 * width && all.y1 - all.y0 >= 0.85 * height, `wreck too small ${width}x${height} seed ${seed}`);
+    }
+  }
+});
+
+test("each seam runs along a crack where two pieces meet", () => {
+  for (const [width, height] of [[200, 100], [100, 100]]) {
+    const tol = 0.12 * Math.min(width, height);
+    for (let seed = 1; seed <= 25; seed++) {
+      const { pieces, seams } = charLayout({ seed }, { width, height, grid: 100 });
+      for (const s of seams) {
+        const b = bbox(s.pts);
+        assert.ok(b.x1 - b.x0 > 1 || b.y1 - b.y0 > 1, "seam points are all the same");
+        for (const q of s.pts) {
+          assert.ok(Math.abs(q.x) <= width / 2 && Math.abs(q.y) <= height / 2);
+          const near = pieces.filter((p) => p.pts.some((v) => Math.hypot(v.x - q.x, v.y - q.y) <= tol)).length;
+          assert.ok(near >= 2, `seam point (${q.x}, ${q.y}) touches ${near} pieces, seed ${seed}`);
+        }
+      }
+    }
+  }
+});
+
+test("a missing or zero size does not throw or give NaN", () => {
+  for (const size of [{}, { width: 0, height: 0 }, { width: 0, height: 100 }, { width: 100 }, undefined]) {
+    const r = charLayout({ seed: 2 }, size);
+    const pts = [...r.pieces.flatMap((p) => p.pts), ...r.seams.flatMap((s) => s.pts), ...r.wisps, { x: r.scorch.rx, y: r.scorch.ry }];
+    for (const q of pts) assert.ok(Number.isFinite(q.x) && Number.isFinite(q.y), "NaN coordinate");
+  }
+  assert.doesNotThrow(() => charLayout(undefined, { width: 100, height: 100 }));
 });
 
 test("the scorch covers more than the prop, and the seams sit on the pieces", () => {
@@ -28,5 +67,5 @@ test("the wreck has 4 to 9 pieces, 1 to 3 wisps, and a dark share on each piece"
     assert.ok(r.wisps.length >= 1 && r.wisps.length <= 3);
     for (const p of r.pieces) assert.ok(p.dark >= 0 && p.dark <= 1);
   }
-  assert.ok(EMBER_MS > 0);
+  assert.equal(EMBER_MS, 60000);
 });
