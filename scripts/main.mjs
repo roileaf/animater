@@ -13500,7 +13500,7 @@ Hooks.once("ready", () => {
       drawnElsewhere: (item, token) => { try { return orbsOn() && isOrbEffect(item?.name) && lightKindOf(token, token?.light?.data ?? {}) === "orb"; } catch { return false; } },
       catalog: () => runtime.getCatalog(),
       state: (kind) => hotSetting(game.system.id==='sf2e'?sfSettingKey(kind):game.system.id==='dnd5e'?dndSettingKey(kind):game.system.id==='daggerheart'?dhSettingKey(kind):game.system.id==='draw-steel'?dsSettingKey(kind):kind === "condition" ? "conditionCatalog" : "effectCatalog"),
-      visibility: () => ({ isGM: game.user.isGM, secretConditions: ['pf2e','sf2e'].includes(game.system.id)&&game.settings.get(game.system.id, "metagame_secretCondition") === true }),
+      visibility: () => ({ isGM: game.user.isGM }),
       gridSize: () => canvas.grid?.size ?? 100,
       gridDistance: () => canvas.scene?.grid?.distance ?? 5,
       sequence: () => new Sequence({ moduleName: ID }),

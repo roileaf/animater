@@ -26,12 +26,13 @@ export function activeState(item){
  if(item?.type==='condition')return (item.active??item.system?.active)===true&&(!item.system?.value?.isValued||Number(item.value??item.system.value.value)>0);
  return item?.type==='effect'&&item.isExpired!==true&&item.system?.expired!==true&&item.system?.disabled!==true;
 }
-export function stateVisible(item,token,{isGM=false,secretConditions=false}={},lookup=findStateEntry){
+// A condition shows to whoever can see the token, like its status icon. PF2e's "Hide Condition Update Message"
+// (metagame_secretCondition) hides only the update chat and floating text, never the icons, so it does not gate looks.
+export function stateVisible(item,token,{isGM=false}={},lookup=findStateEntry){
  if(!token||token.destroyed||token.visible===false)return false;
  if(!isGM&&token.document?.hidden)return false;
  if(isGM)return true;
  if(item.type==='effect'&&(item.animaterAura?.source??item).system?.unidentified===true)return false;
- if(item.type==='condition'&&secretConditions&&!token.actor?.hasPlayerOwner)return false;
  const entry=lookup(item);
  if(entry?.private&&!token.isOwner&&!token.actor?.isOwner)return false;
  return true;

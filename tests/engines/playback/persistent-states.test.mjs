@@ -187,8 +187,18 @@ test('local viewer gates never change native documents or reveal unidentified / 
  const token={visible:true,isOwner:true,actor:{isOwner:true,hasPlayerOwner:true},document:{}},effect=native(bless);
  effect.system.unidentified=true;assert.equal(stateVisible(effect,token,{isGM:false}),false);
  token.visible=false;assert.equal(stateVisible(effect,token,{isGM:true}),false);token.visible=true;token.document.hidden=true;assert.equal(stateVisible(effect,token,{isGM:false}),false);
- token.document.hidden=false;token.actor.hasPlayerOwner=false;assert.equal(stateVisible(native(fear),token,{secretConditions:true}),false);
+ token.document.hidden=false;
  assert.equal(activeState({...native(fear),active:false}),false);assert.equal(activeState({...effect,isExpired:true}),false);
+});
+// Adramach's report: a player saw a PC's Prone but not the gremlin's. PF2e's "Hide Condition Update Message"
+// hides only the chat and floating messages; the NPC's condition icons stay on the token for players, so its look does too.
+test('a player sees a condition on an NPC token they can see, even with PF2e hiding condition update messages',()=>{
+ const prone=PF2E_CONDITIONS.find(e=>e.slug==='prone'),npc={visible:true,isOwner:false,actor:{isOwner:false,hasPlayerOwner:false},document:{hidden:false}};
+ assert.equal(stateVisible(native(prone),npc,{isGM:false,secretConditions:true}),true);
+ assert.equal(stateVisible(native(prone),npc,{isGM:false}),true);
+ // Still hidden when the GM hid the token, or this player can't see it (undetected, out of sight).
+ assert.equal(stateVisible(native(prone),{...npc,document:{hidden:true}},{isGM:false,secretConditions:true}),false);
+ assert.equal(stateVisible(native(prone),{...npc,visible:false},{isGM:false,secretConditions:true}),false);
 });
 test('derived conditions tie to stored granters; granter cycles fail closed; ownership transitions clear visuals',async()=>{
  const grant=native(bless,'grant'),derived={...native(fear,'derived'),isInMemoryOnly:true,appliedBy:grant},f=fixture([grant]);f.actor.conditions={active:[derived]};await f.manager.reconcile();
