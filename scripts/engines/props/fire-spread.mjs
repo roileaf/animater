@@ -113,7 +113,9 @@ export function spreadStep({ things = [], wind = null, grid = 100, cap = 12, cel
   catching.sort((a, b) => b.heat - a.heat);
   const caught = catching.slice(0, cap).map((c) => c.id);
   const out = sources.filter((t) => (t.fire.roundsLeft ?? 0) <= 1).map((t) => t.id);
-  return { heat, caught, out, warn };
+  // Still burning and not out: each keeps its heat and has one round fewer left, for the caller to save.
+  const burning = sources.filter((t) => (t.fire.roundsLeft ?? 0) > 1).map((t) => ({ id: t.id, heat: t.fire.heat ?? 0, roundsLeft: t.fire.roundsLeft - 1 }));
+  return { heat, caught, out, warn, burning };
 }
 
 // One round of fire through grass: each burning square heats the four squares beside it (not the diagonals) at
@@ -171,10 +173,12 @@ export function cellStep({ cells = [], things = [], cols = 1, rows = 1, origin =
   catching.sort((a, b) => b.heat - a.heat);
   const caught = catching.slice(0, cap).map((c) => c.i);
   const out = sources.filter((c) => (c.roundsLeft ?? 0) <= 1).map((c) => c.i);
-  return { heat, caught, out };
+  // Still burning and not out: each has one round fewer left, for the caller to save.
+  const burning = sources.filter((c) => (c.roundsLeft ?? 0) > 1).map((c) => ({ i: c.i, roundsLeft: c.roundsLeft - 1 }));
+  return { heat, caught, out, burning };
 }
 
-// The flag path a tile's fire is written to (empty for no id); a decoration's fire lives in its region's decorFire flag instead.
+// The flag path a tile's fire is written to; an empty string for an empty id. A decoration's fire lives in its region's decorFire flag instead.
 export const writeFirePath = (id) => (id ? "flags.animater.prop.fire" : "");
 
 // A thing's fire as saved on a tile or region entry: { heat, burning, roundsLeft }, or null when it has none.
@@ -197,18 +201,22 @@ export function dropLostDecorFire(stored, liveKeys) {
 }
 
 // A round's result as document updates for updateEmbeddedDocuments. `tiles` lists the tiles in play ({ id }); `regions` the
-// regions holding decorations ({ id, keys: live decoration keys, flags }). A tile that heats keeps its heat, one that
-// catches burns BURN_ROUNDS, one that is out has its fire flag removed (`-=` with null, as repair does). A decoration key
+// regions holding decorations, each shaped { id, keys, flags } where `keys` are the region's live decoration keys.
+// Order: out beats caught beats still-burning (`step.burning`, one round fewer left) beats heated. A tile that heats keeps
+// its heat, one that catches burns BURN_ROUNDS (and is not counted down that same round), one that is out has its fire
+// flag removed (`-=` with null, as repair does). A decoration key
 // is written into its region's decorFire flag the same way; a key no longer painted is dropped, and an empty flag is removed.
 export function fireUpdatesFor(step, { tiles = [], regions = [] } = {}) {
   const heat = new Map((step?.heat ?? []).map((h) => [h.id, h.heat]));
   const caught = new Set(step?.caught ?? []);
   const out = new Set(step?.out ?? []);
+  const burning = new Map((step?.burning ?? []).map((b) => [b.id, b]));
   const path = writeFirePath(true);
   const tileUpdates = [];
   for (const t of tiles ?? []) {
     if (out.has(t.id)) tileUpdates.push({ _id: t.id, "flags.animater.prop.-=fire": null });
     else if (caught.has(t.id)) tileUpdates.push({ _id: t.id, [path]: { heat: heat.get(t.id) ?? HEAT_CATCH, burning: true, roundsLeft: BURN_ROUNDS } });
+    else if (burning.has(t.id)) tileUpdates.push({ _id: t.id, [path]: { heat: burning.get(t.id).heat ?? HEAT_CATCH, burning: true, roundsLeft: burning.get(t.id).roundsLeft } });
     else if (heat.has(t.id)) tileUpdates.push({ _id: t.id, [path]: { heat: heat.get(t.id), burning: false, roundsLeft: 0 } });
   }
   const regionUpdates = [];
@@ -219,6 +227,7 @@ export function fireUpdatesFor(step, { tiles = [], regions = [] } = {}) {
     for (const key of r.keys ?? []) {
       if (out.has(key)) { if (key in next) { delete next[key]; touched = true; } }
       else if (caught.has(key)) { next[key] = { heat: heat.get(key) ?? HEAT_CATCH, burning: true, roundsLeft: BURN_ROUNDS }; touched = true; }
+      else if (burning.has(key)) { next[key] = { heat: burning.get(key).heat ?? HEAT_CATCH, burning: true, roundsLeft: burning.get(key).roundsLeft }; touched = true; }
       else if (heat.has(key)) { next[key] = { heat: heat.get(key), burning: false, roundsLeft: 0 }; touched = true; }
     }
     if (!touched) continue;

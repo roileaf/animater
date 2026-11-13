@@ -275,3 +275,55 @@ test("a decoration key that no longer exists is dropped", () => {
 test("nothing to say makes no update at all", () => {
   assert.deepEqual(fireUpdatesFor({ heat: [], caught: [], out: [], warn: [] }, { tiles: [] }), { tiles: [], regions: [] });
 });
+
+// A crate beside a long-burning fire catches, then counts down every round until it goes out; the saved flag is carried forward.
+function crateLife(rounds, region = false) {
+  const key = "crate:3:4:0";
+  const source = { id: "fire", rect: { x: 0, y: 0, w: 50, h: 50 }, traits: {}, fire: { heat: 100, burning: true, roundsLeft: 99 } };
+  const crate = { id: region ? key : "crate", rect: { x: 50, y: 0, w: 50, h: 50 }, traits: { material: "plant" }, fire: null };
+  const log = [];
+  let stored = {};
+  for (let n = 0; n < rounds; n++) {
+    const step = spreadStep({ things: [source, crate] });
+    const r = region
+      ? fireUpdatesFor(step, { regions: [{ id: "r1", keys: [key], flags: { animater: { decorFire: stored } } }] })
+      : fireUpdatesFor(step, { tiles: [{ id: "crate" }] });
+    const u = region ? r.regions[0] : r.tiles[0];
+    const flag = region ? "flags.animater.decorFire" : "flags.animater.prop.fire";
+    const cleared = region ? "flags.animater.-=decorFire" : "flags.animater.prop.-=fire";
+    if (u && flag in u) {
+      crate.fire = region ? u[flag][key] : u[flag];
+      stored = region ? u[flag] : stored;
+    } else if (u && cleared in u) { crate.fire = null; stored = {}; }
+    log.push(crate.fire ? crate.fire.roundsLeft : "cleared");
+  }
+  return log;
+}
+
+test("a crate's whole fire: catches at 3, then 2, then 1, then goes out and the flag is cleared", () => {
+  assert.deepEqual(crateLife(4), [3, 2, 1, "cleared"]);
+});
+
+test("a decoration's whole fire counts down the same way in its region flag", () => {
+  assert.deepEqual(crateLife(4, true), [3, 2, 1, "cleared"]);
+});
+
+test("a thing that catches this round is not also counted down", () => {
+  const step = { heat: [], caught: ["a"], out: [], warn: [], burning: [{ id: "a", heat: 100, roundsLeft: 1 }] };
+  assert.equal(fireUpdatesFor(step, { tiles: [{ id: "a" }] }).tiles[0]["flags.animater.prop.fire"].roundsLeft, 3);
+  const gone = { heat: [], caught: [], out: ["a"], warn: [], burning: [{ id: "a", heat: 100, roundsLeft: 1 }] };
+  assert.equal(fireUpdatesFor(gone, { tiles: [{ id: "a" }] }).tiles[0]["flags.animater.prop.-=fire"], null);
+});
+
+test("a grass square's whole fire: catches at CELL_ROUNDS, then one fewer, then out", () => {
+  const cells = [{ i: 0, burning: true, roundsLeft: 99 }, { i: 1, heat: 60 }];
+  const log = [];
+  for (let n = 0; n < 3; n++) {
+    const s = cellStep({ cells, cols: 2, rows: 1 });
+    const c1 = cells[1];
+    if (s.out.includes(1)) { c1.burning = false; c1.charred = true; log.push("out"); }
+    else if (s.caught.includes(1)) { c1.burning = true; c1.roundsLeft = CELL_ROUNDS; log.push(c1.roundsLeft); }
+    else if (s.burning.some((b) => b.i === 1)) { c1.roundsLeft = s.burning.find((b) => b.i === 1).roundsLeft; log.push(c1.roundsLeft); }
+  }
+  assert.deepEqual(log, [CELL_ROUNDS, 1, "out"]);
+});
