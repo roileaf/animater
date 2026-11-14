@@ -77,3 +77,32 @@ test("a thin cell beside a thick one is not fenced", () => {
   assert.equal(e.length, 4);
   assert.ok(e.every((s) => Math.max(s.a.x, s.b.x) <= 100));
 });
+
+test("THICK is pinned: 1.1 fences, 1.09 does not", () => {
+  assert.equal(smokeEdges([{ i: 5, v: 1.1 }], g).length, 4);
+  assert.deepEqual(smokeEdges([{ i: 5, v: 1.09 }], g), []);
+});
+
+test("every side of a cell honours a non-zero origin and a non-round cell size", () => {
+  const e = smokeEdges([{ i: 5, v: 2 }], { cols: 4, rows: 4, origin: { x: -20, y: 1000 }, cell: 37 });
+  assert.deepEqual(e, [
+    { a: { x: 17, y: 1037 }, b: { x: 54, y: 1037 } },
+    { a: { x: 17, y: 1037 }, b: { x: 17, y: 1074 } },
+    { a: { x: 54, y: 1037 }, b: { x: 54, y: 1074 } },
+    { a: { x: 17, y: 1074 }, b: { x: 54, y: 1074 } },
+  ]);
+});
+
+test("a clear cell between two runs on one grid line keeps them two segments", () => {
+  const e = smokeEdges(T(4, 6), g);
+  assert.equal(e.length, 8, "two separate cells, four sides each, nothing spans the gap");
+  assert.ok(e.every((s) => len(s) === 50));
+});
+
+test("a duplicated cell index fences once", () => {
+  assert.equal(smokeEdges([{ i: 5, v: 2 }, { i: 5, v: 3 }], g).length, 4);
+});
+
+test("cell indices outside the grid are ignored", () => {
+  assert.deepEqual(smokeEdges([{ i: 16, v: 2 }, { i: -1, v: 2 }], g), []);
+});
