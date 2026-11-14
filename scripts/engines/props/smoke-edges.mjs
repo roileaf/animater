@@ -41,3 +41,48 @@ export function smokeEdges(cells, { cols, rows, origin, cell }) {
   ];
   return edges.sort((p, q) => p.a.y - q.a.y || p.a.x - q.a.x || p.b.y - q.b.y || p.b.x - q.b.x);
 }
+
+// ---- The Foundry-facing half, still pure: scene data in, edge descriptions out. ----
+
+export const SMOKE_EDGE_PREFIX = "animater.smoke.";
+
+// The one grid every smoke cell index is read against: the whole canvas, origin 0,0, one cell per grid square.
+// (Same convention as the fire's scene-wide grid.) The task that WRITES smoke must use this same function, or the
+// stored indices and the fence disagree.
+export function smokeGridOf(dimensions) {
+  const cell = Number(dimensions?.size);
+  const width = Number(dimensions?.width);
+  const height = Number(dimensions?.height);
+  if (!(cell > 0) || !(width > 0) || !(height > 0)) return null;
+  return { cols: Math.ceil(width / cell), rows: Math.ceil(height / cell), origin: { x: 0, y: 0 }, cell };
+}
+
+// smokeCellsOf gives a map with STRING keys; smokeEdges wants [{i, v}] with numeric i. This is the one place they meet.
+export const smokeCellList = (cells) => Object.entries(cells ?? {}).map(([i, v]) => ({ i: Number(i), v }));
+
+// Every fence segment of a scene, rebuilt from its stored grid alone: [{id, a, b}]. The id is made of the segment's own
+// coordinates, so the same smoke always gives the same ids. [] when there is no smoke or no usable canvas size.
+export function smokeEdgeSpecs(scene, cellsOf) {
+  const grid = smokeGridOf(scene?.dimensions);
+  if (!grid) return [];
+  return smokeEdges(smokeCellList(cellsOf(scene)), grid).map((e) => ({
+    id: `${SMOKE_EDGE_PREFIX}${e.a.x},${e.a.y},${e.b.x},${e.b.y}`, a: e.a, b: e.b,
+  }));
+}
+
+// Put exactly `specs` into each level's edge set: first remove what was put there before (`priorIds`), then add.
+// `makeEdge(spec)` builds the engine's edge object. Returns the new id list. Removing before adding means a rebuild
+// over a set that already holds smoke (a changed grid) never leaves stale segments, and over one the engine just
+// cleared (a reset) removes nothing and adds everything.
+export function syncSmokeEdges(levels, specs, makeEdge, priorIds = []) {
+  const ids = [];
+  for (const level of levels) {
+    for (const id of priorIds) level.edges.delete(id);
+  }
+  for (const spec of specs) {
+    const edge = makeEdge(spec);
+    for (const level of levels) level.edges.set(spec.id, edge);
+    ids.push(spec.id);
+  }
+  return ids;
+}

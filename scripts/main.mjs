@@ -23,6 +23,8 @@ import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
 import { BURN_MS, burnLightData, fireTimers, unhideLights, firesOf } from "./engines/props/prop-lights.mjs";
 import { propMaterial, canBreak } from "./engines/props/prop-material.mjs";
+import { smokeCellsOf } from "./engines/props/smoke-field.mjs";
+import { smokeEdgeSpecs, syncSmokeEdges } from "./engines/props/smoke-edges.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls, blockingWalls, wallStop } from "./engines/props/prop-walls.mjs";
@@ -16302,4 +16304,36 @@ Hooks.on("updateUser", (user, changes) => {
 Hooks.once("ready", () => {
   try { wrapRulerHighlight(CONFIG.Token?.rulerClass, () => { try { return hotSetting("walkedPathHighlight"); } catch { return "fade"; } }, { libWrapper: globalThis.libWrapper, target: "CONFIG.Token.rulerClass.prototype._getGridHighlightStyle" }); }
   catch (error) { console.warn("Animater walked path:", error?.message ?? error); }
+});
+
+// Thick smoke blocks sight. The fence is rebuilt from the scene's STORED grid inside Foundry's own `initializeEdges` hook,
+// never injected once: a scene config save, a level change or a canvas redraw resets the scene's edges to walls alone and
+// calls that hook again, and an edge added only once would vanish then, silently, leaving smoke that draws and does not
+// block. The edges are module-owned objects made per client from what the GM stored; nothing is written to any document.
+const smokeFence = new WeakMap(); // scene -> { ids, key } of the edges put there last
+const smokeEdgeOf = (spec) => new foundry.canvas.geometry.edges.Edge(spec.a, spec.b, {
+  id: spec.id, type: "wall", sight: CONST.EDGE_SENSE_TYPES.NORMAL, // sight only: light, darkness, move and sound stay NONE
+});
+function fenceSmoke(scene) {
+  if (!scene?.initializedEdges) return false;
+  const specs = smokeEdgeSpecs(scene, smokeCellsOf);
+  const key = specs.map((s) => s.id).join("|");
+  const prior = smokeFence.get(scene);
+  if (prior && prior.key === key && prior.live) return false;
+  const ids = syncSmokeEdges([...scene.levels], specs, smokeEdgeOf, prior?.ids ?? []);
+  smokeFence.set(scene, { ids, key, live: true });
+  return true;
+}
+Hooks.on("initializeEdges", (scene) => {
+  // The engine has just cleared every level's edges and rebuilt the walls: ours are gone whatever we remember.
+  smokeFence.delete(scene);
+  try { fenceSmoke(scene); } catch (err) { console.warn("Animater | smoke fence", err); }
+});
+// The GM's tick changes the stored grid: rebuild the fence now and have vision notice (an edge added outside a wall's own
+// path does not ask for it), on every client, since every client gets this update.
+Hooks.on("updateScene", (scene, change) => {
+  const mine = change?.flags?.[ID];
+  if (!mine || !("smoke" in mine || "-=smoke" in mine)) return;
+  try { if (fenceSmoke(scene) && scene === canvas?.scene) canvas.perception.update({ initializeVision: true, refreshVision: true }); }
+  catch (err) { console.warn("Animater | smoke fence", err); }
 });

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { smokeEdges } from "../../../scripts/engines/props/smoke-edges.mjs";
+import { smokeEdges, smokeEdgeSpecs, smokeGridOf, smokeCellList, syncSmokeEdges } from "../../../scripts/engines/props/smoke-edges.mjs";
+import { smokeCellsOf } from "../../../scripts/engines/props/smoke-field.mjs";
 
 const g = { cols: 4, rows: 4, origin: { x: 0, y: 0 }, cell: 50 };
 const T = (...is) => is.map((i) => ({ i, v: 2 }));
@@ -105,4 +106,72 @@ test("a duplicated cell index fences once", () => {
 
 test("cell indices outside the grid are ignored", () => {
   assert.deepEqual(smokeEdges([{ i: 16, v: 2 }, { i: -1, v: 2 }], g), []);
+});
+
+// ---- the Foundry-facing half: stored grid -> fence, and surviving a reset ----
+
+const scene = (cells) => ({ dimensions: { size: 100, width: 800, height: 600 }, flags: { animater: { smoke: cells } } });
+const level = () => ({ edges: new Map() });
+const mk = (spec) => ({ ...spec });
+
+test("the stored map's string keys become numeric cell indices", () => {
+  assert.deepEqual(smokeCellList({ 5: 2, 12: 0.4 }), [{ i: 5, v: 2 }, { i: 12, v: 0.4 }]);
+  assert.equal(typeof smokeCellList({ 5: 2 })[0].i, "number");
+});
+
+test("without Number() the fence would be empty: stored thick smoke does produce edges", () => {
+  // cols = 8 for an 800 px canvas of 100 px squares; cell 9 is column 1, row 1.
+  const specs = smokeEdgeSpecs(scene({ 9: 2 }), smokeCellsOf);
+  assert.equal(specs.length, 4);
+  const xs = specs.flatMap((s) => [s.a.x, s.b.x]), ys = specs.flatMap((s) => [s.a.y, s.b.y]);
+  assert.deepEqual([Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)], [100, 200, 100, 200]);
+});
+
+test("thin smoke, no smoke and a canvas of unknown size all give no edges", () => {
+  assert.deepEqual(smokeEdgeSpecs(scene({ 9: 0.5 }), smokeCellsOf), []);
+  assert.deepEqual(smokeEdgeSpecs(scene({}), smokeCellsOf), []);
+  assert.deepEqual(smokeEdgeSpecs({ dimensions: {}, flags: { animater: { smoke: { 9: 2 } } } }, smokeCellsOf), []);
+  assert.equal(smokeGridOf({ size: 100, width: 850, height: 600 }).cols, 9, "a partial last column still counts");
+});
+
+test("edge ids are Animater's own and the same smoke gives the same ids", () => {
+  const a = smokeEdgeSpecs(scene({ 9: 2 }), smokeCellsOf).map((s) => s.id);
+  assert.ok(a.every((id) => id.startsWith("animater.smoke.")));
+  assert.deepEqual(a, smokeEdgeSpecs(scene({ 9: 2 }), smokeCellsOf).map((s) => s.id));
+});
+
+test("a reset that empties every level is repaired by rebuilding from the stored grid alone", () => {
+  const s = scene({ 9: 2, 10: 2 });
+  const levels = [level(), level()];
+  const first = syncSmokeEdges(levels, smokeEdgeSpecs(s, smokeCellsOf), mk, []);
+  assert.equal(first.length, 4);
+  for (const l of levels) assert.equal(l.edges.size, 4);
+  for (const l of levels) l.edges.clear(); // what a scene save / level change / redraw does
+  const again = syncSmokeEdges(levels, smokeEdgeSpecs(s, smokeCellsOf), mk, first);
+  assert.deepEqual(again, first);
+  for (const l of levels) assert.equal(l.edges.size, 4);
+});
+
+test("a changed grid replaces the old fence rather than adding to it", () => {
+  const levels = [level()];
+  const before = syncSmokeEdges(levels, smokeEdgeSpecs(scene({ 9: 2 }), smokeCellsOf), mk, []);
+  const after = syncSmokeEdges(levels, smokeEdgeSpecs(scene({ 20: 2 }), smokeCellsOf), mk, before);
+  assert.equal(levels[0].edges.size, 4);
+  for (const id of before) assert.ok(!levels[0].edges.has(id), "the old fence is gone");
+  for (const id of after) assert.ok(levels[0].edges.has(id));
+});
+
+test("smoke that clears leaves no edges behind", () => {
+  const levels = [level()];
+  const ids = syncSmokeEdges(levels, smokeEdgeSpecs(scene({ 9: 2 }), smokeCellsOf), mk, []);
+  syncSmokeEdges(levels, smokeEdgeSpecs(scene({}), smokeCellsOf), mk, ids);
+  assert.equal(levels[0].edges.size, 0);
+});
+
+test("walls already in the set are never touched", () => {
+  const levels = [level()];
+  levels[0].edges.set("wall.abc", { wall: true });
+  const ids = syncSmokeEdges(levels, smokeEdgeSpecs(scene({ 9: 2 }), smokeCellsOf), mk, []);
+  syncSmokeEdges(levels, [], mk, ids);
+  assert.deepEqual([...levels[0].edges.keys()], ["wall.abc"]);
 });
