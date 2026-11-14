@@ -14,8 +14,8 @@ export function holdsUp(limit, size) {
 
 // What one move does to the ice. Walks the squares entered in order: a creature two sizes over breaks the first and goes
 // no further; one size over cracks each square, and breaks one that was already cracked or that the move ended on.
-// A square is only ever in one list. The note is the GM whisper, or null when nothing happened.
-export function iceStep({ limit, size, squares, cracked, ended, name }) {
+// A square entered twice in one move counts as crossing its own crack. A square is only ever in one list, once. The note is the GM whisper, or null when nothing happened.
+export function iceStep({ limit, size, squares = [], cracked = [], ended, name } = {}) {
   const over = holdsUp(limit, size);
   const cracks = [];
   const breaks = [];
@@ -23,8 +23,13 @@ export function iceStep({ limit, size, squares, cracked, ended, name }) {
     if (squares.length) breaks.push(squares[0]);
   } else if (over === 1) {
     for (const square of squares) {
-      if (cracked.includes(square) || square === ended) breaks.push(square);
-      else cracks.push(square);
+      if (breaks.includes(square)) continue;
+      // Already cracked, cracked earlier in this same walk, or where the move ended: the ice gives way.
+      if (cracked.includes(square) || cracks.includes(square) || square === ended) {
+        const i = cracks.indexOf(square);
+        if (i >= 0) cracks.splice(i, 1);
+        breaks.push(square);
+      } else cracks.push(square);
     }
   }
   const who = name || "A creature";

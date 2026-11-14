@@ -67,3 +67,29 @@ test("an unnamed creature still gets a plain whisper", () => {
   const r = iceStep({ limit: "med", size: "huge", squares: ["3,4"], cracked: [] });
   assert.equal(r.note, "A creature breaks through the ice into the water (swim).");
 });
+
+test("crossing its own crack in the same move breaks it, and lists no square twice", () => {
+  const r = iceStep({ limit: "med", size: "lg", squares: ["3,4", "3,5", "3,4"], cracked: [] });
+  assert.deepEqual(r.breaks, ["3,4"]);
+  assert.deepEqual(r.cracks, ["3,5"]);
+});
+
+test("a square entered three times in one move is still listed once", () => {
+  const r = iceStep({ limit: "med", size: "lg", squares: ["1,1", "1,1", "1,1"], cracked: [] });
+  assert.deepEqual(r.breaks, ["1,1"]);
+  assert.deepEqual(r.cracks, []);
+});
+
+test("a cracked square entered twice is broken once", () => {
+  const r = iceStep({ limit: "med", size: "lg", squares: ["1,1", "1,1"], cracked: ["1,1"] });
+  assert.deepEqual(r.breaks, ["1,1"]);
+  assert.deepEqual(r.cracks, []);
+});
+
+test("a region with no cracked list yet does not throw", () => {
+  const r = iceStep({ limit: "med", size: "lg", squares: ["3,4"] });
+  assert.deepEqual(r.cracks, ["3,4"]);
+  assert.deepEqual(r.breaks, []);
+  assert.deepEqual(iceStep({ limit: "med", size: "lg" }), { cracks: [], breaks: [], note: null });
+  assert.deepEqual(iceStep(), { cracks: [], breaks: [], note: null });
+});
