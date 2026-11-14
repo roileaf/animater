@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { THICK, THIN, DROP_FLOOR, DENSITY_CAP, smokeStep, smokeTier, smokeUpdatesFor, smokeCellsOf, smokeOpeningsOf, wallStandsOpen, smokeWalls } from "../../../scripts/engines/props/smoke-field.mjs";
+import { THICK, THIN, DROP_FLOOR, DENSITY_CAP, smokeStep, smokeTier, smokeUpdatesFor, smokeCellsOf, smokeOpeningsOf, wallStandsOpen, smokeWalls, frameStandsOpen } from "../../../scripts/engines/props/smoke-field.mjs";
 import { blockingWalls } from "../../../scripts/engines/props/prop-walls.mjs";
-import { CLOSING_WINDOWS, windowSenses } from "../../../scripts/engines/motion/window-state.mjs";
+import { CLOSING_WINDOWS, windowSenses, closesWindow } from "../../../scripts/engines/motion/window-state.mjs";
 import { wallBreakUpdate } from "../../../scripts/engines/props/wall-break.mjs";
 import { wallBetween } from "../../../scripts/engines/props/fire-rounds.mjs";
 
@@ -537,4 +537,89 @@ test("end to end: smoke crosses an open window and is held by a shut one", () =>
   assert.ok(spread([brokenWindowDoc()]) > 0);
   // And opening the window is the ONLY difference: with no wall at all the open window matches it.
   assert.equal(spread([windowWall({ window: "glassWindow", windowOpen: true })]), spread([]));
+});
+
+// ---- The frames that never close: a lattice and a grate are holes, not glass. ----
+// The second half of the same bug. The wall configuration calls an empty frame, a wooden lattice and iron bars
+// "always open" in its own words, but wallStandsOpen asked only for "open", so a lattice and a grate held smoke as
+// though they were glazed. Two separate questions, both pinned here: smoke must get THROUGH them (smokeWalls), and
+// they must count as an OPENING where they lead outdoors (smokeOpeningsOf).
+
+// Every fixed kind the wall configuration offers, split by whether anything fills it. The filled ones are the guard
+// against the tempting wrong rule, "any kind not in CLOSING_WINDOWS": these are not in it either and must stay shut.
+const NEVER_CLOSES = ["open", "lattice", "bars"];
+const FILLED_FIXED = ["", "glass", "shuttered", "curtained", "slit"];
+
+test("a frame nothing fills is an opening: an empty frame, a lattice and a grate alike", () => {
+  for (const kind of NEVER_CLOSES) {
+    assert.equal(frameStandsOpen(kind), true, kind);
+    assert.equal(wallStandsOpen(windowWall({ window: kind })), true, `${kind} stands open with no state to read`);
+    // It never closes, so the GM's openness flag is beside the point either way.
+    assert.equal(wallStandsOpen(windowWall({ window: kind, windowOpen: false })), true, `${kind} cannot be shut`);
+  }
+});
+
+test("a frame something fills is not an opening, so the CLOSING_WINDOWS complement is NOT the rule", () => {
+  for (const kind of FILLED_FIXED) {
+    // None of these shuts either — they are simply filled — so "does not shut" would wrongly open every one.
+    assert.equal(closesWindow(kind), false, `${kind} is not a kind that shuts`);
+    assert.equal(frameStandsOpen(kind), false, `${kind} has something in it`);
+    assert.equal(wallStandsOpen(windowWall({ window: kind })), false, `${kind} holds the smoke in`);
+    assert.deepEqual(ids(smokeWalls([windowWall({ window: kind })])), ["win"], `${kind} still walls smoke`);
+  }
+  // A kind nobody has heard of is filled, not open: an unknown kind never loses a room its smoke.
+  assert.equal(frameStandsOpen("portcullis"), false);
+  assert.equal(frameStandsOpen(undefined), false);
+  assert.equal(frameStandsOpen(null), false);
+  // And every kind that DOES shut is shut until it is opened.
+  for (const kind of Object.keys(CLOSING_WINDOWS)) assert.equal(frameStandsOpen(kind), false, kind);
+});
+
+test("question one: smoke gets THROUGH a lattice and a grate", () => {
+  for (const kind of NEVER_CLOSES) {
+    assert.deepEqual(smokeWalls([windowWall({ window: kind })]), [], `${kind} does not wall smoke`);
+  }
+  // End to end, wired as main.mjs wires it: cells 12 and 13 either side of the wall down x = 300.
+  const COLS = 5, ROWS = 5, CELL = 100;
+  const centre = (i) => ({ x: (i % COLS) * CELL + CELL / 2, y: Math.floor(i / COLS) * CELL + CELL / 2 });
+  const spread = (walls) => {
+    const blocked = wallBetween(centre(12), centre(13), smokeWalls(walls)) ? [{ from: 12, to: 13 }] : [];
+    const r = smokeStep({ cells: [{ i: 12, v: 3 }], sources: [], cols: COLS, rows: ROWS, blocked });
+    return r.cells.find((c) => c.i === 13)?.v ?? 0;
+  };
+  for (const kind of NEVER_CLOSES) {
+    assert.ok(spread([windowWall({ window: kind })]) > 0, `smoke crosses ${kind}`);
+    // As freely as if the wall were not there at all.
+    assert.equal(spread([windowWall({ window: kind })]), spread([]), `${kind} is a hole`);
+  }
+  // A glazed one, and an arrow slit, still hold it.
+  assert.equal(spread([windowWall({ window: "glassWindow" })]), 0);
+  assert.equal(spread([windowWall({ window: "slit" })]), 0);
+});
+
+test("question two: a lattice or a grate in an outside wall COUNTS as an opening", () => {
+  // A 10-wide grid of 50px cells. The wall runs down x = 100 from y = 100 to y = 200: the line between columns 1 and
+  // 2, over rows 2 and 3. The room is the four cells to its RIGHT (columns 2 and 3 of those rows); column 1 is out of
+  // doors, so a frame in that wall leads out.
+  const g = { grid: 100, cell: 50, origin: { x: 0, y: 0 }, cols: 10, rows: 10 };
+  const inHouse = (i) => [22, 23, 32, 33].includes(i);
+  const outer = [100, 100, 100, 200];
+  const ventedBy = (kind, indoors) => smokeOpeningsOf({ walls: [{ c: outer, door: 0, flags: { animater: { window: kind } } }], ...g, indoors });
+  for (const kind of NEVER_CLOSES) {
+    const o = ventedBy(kind, inHouse);
+    assert.ok(o.includes(22) && o.includes(32), `${kind} vents the room it stands in (${o})`);
+  }
+  // Filled kinds vent nothing at all.
+  for (const kind of FILLED_FIXED) assert.deepEqual(ventedBy(kind, inHouse), [], `${kind} vents nothing`);
+  // Inside the house a lattice joins two rooms and does NOT vent: the smoke goes next door, not out of the model.
+  const inside = [{ c: [150, 100, 150, 200], door: 0, flags: { animater: { window: "lattice" } } }];
+  assert.deepEqual(smokeOpeningsOf({ walls: inside, ...g, indoors: () => true }), []);
+  // And a room really does empty faster through a grate than through glass.
+  const clearIn = (kind) => {
+    const openings = ventedBy(kind, inHouse);
+    let cells = Array.from({ length: 25 }, (_, i) => ({ i, v: 1.5 }));
+    for (let n = 1; n <= 80; n++) { cells = smokeStep({ cells, sources: [], cols: 5, rows: 5, openings }).cells; if (!cells.length) return n; }
+    return Infinity;
+  };
+  assert.ok(clearIn("bars") < clearIn("glassWindow"), `${clearIn("bars")} rounds through a grate, ${clearIn("glassWindow")} through glass`);
 });

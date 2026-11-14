@@ -95,6 +95,28 @@ export function smokeSourcesOf({ fires = [], lights = [], grid = 100, cell = 100
 // outdoor one with no wall between them is an opening by that alone. This list is the walls' own.)
 // Foundry's door state for OPEN (hard-coded to keep this module pure, as wall-break.mjs does): 0 shut, 1 open, 2 locked.
 const OPEN_DOOR = 1;
+
+// The window kinds that NEVER close, which the wall configuration says of each in so many words: an empty frame
+// ("Empty frame: always open"), a wooden lattice ("always open, light in small squares") and iron bars ("always open,
+// light in stripes"). Nothing fills them — at most open-work a draught passes between — so they are holes in the wall
+// and always were, with no state to read. An empty frame is one case of this, not the whole of it; it was the whole of
+// it, which is why a lattice and a grate held smoke like glass.
+//
+// This is deliberately NOT the complement of CLOSING_WINDOWS. "A kind that does not shut" sounds like the general rule
+// and is wrong: the same vocabulary holds "" (Auto — not a window at all, or Foundry's glass), the legacy fixed
+// `glass` and `shuttered`, and `curtained`. Those are a pane, boards and hanging cloth; each FILLS its frame and none
+// of them opens, so the complement would blow every glazed window on the map wide open. The question is not "does it
+// open?" but "is anything in it?", and nothing on the kind itself answers that — hence a named set.
+//
+// `slit` (an arrow slit) is left out on purpose, unglazed though it is. The field has no notion of how BIG an opening
+// is: an opening cell loses LEAK every round and vents its room exactly as a full doorway does, so counting a
+// hand's-breadth of stone as a doorway would empty a room through it. Left out it errs toward keeping the smoke in,
+// which is the way this module leans elsewhere (see `rows` in smokeOpeningsOf).
+const OPEN_FRAMES = Object.freeze(new Set(["open", "lattice", "bars"]));
+// Whether a window kind is a frame with nothing in it (pure). Smoke's own reading of the kinds, and only smoke's:
+// light, sight, sound and fire each have their own and none of them asks this.
+export const frameStandsOpen = (kind) => OPEN_FRAMES.has(kind ?? "");
+
 export function wallStandsOpen(wall) {
   const own = wall?.flags?.animater;
   // Broken through: the note the break wrote is on the wall whatever its door type now says.
@@ -102,8 +124,8 @@ export function wallStandsOpen(wall) {
   if (hole && typeof hole === "object") return true;
   if (Number(wall?.door) > 0) return Number(wall?.ds) === OPEN_DOOR;
   const kind = own?.window;
-  // An empty frame (what a break leaves of a window that does not open), or one the GM has swung open.
-  if (kind === "open") return true;
+  // A frame nothing fills (an empty frame, a lattice, a grate), or a window the GM has swung open.
+  if (frameStandsOpen(kind)) return true;
   return closesWindow(kind) && own?.windowOpen === true;
 }
 
