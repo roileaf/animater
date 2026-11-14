@@ -327,6 +327,10 @@ test("the smoke picks regions by their flag and their level, never by whether a 
   assert.match(smoke, /indoorPolygonsOf\(here, regionAreas\)/);
   assert.match(smoke, /skyRegionsOf\(here\)/);
   assert.match(smoke, /smokeRegionPlan\(scene\.regions, shapes, \{ level, visioner: smokeConceals\(\) \}\)/);
+  // The order of the region writes is the plan's, applied by one loop, so there is nothing here to put the wrong way
+  // round; and nothing catches a refused removal, because it has to stop the creation behind it.
+  assert.match(smoke, /for \(const step of plan\.steps\) \{/);
+  assert.doesNotMatch(smoke.slice(smoke.indexOf("async function smokeRegionNow")), /EmbeddedDocuments\("Region"[^\n]*\.catch/);
   // And viewedRegions is still used where something really is drawn on the canvas scene.
   assert.match(main, /const regionsHere = \(\) => viewedRegions\(canvas\?\.scene\?\.regions\);/);
 });
@@ -581,7 +585,9 @@ test("a non-active scene with a switch off loses its region along with its cells
   assert.deepEqual(p.fields, CLEARED, "the cells and the geometry, each by name");
   assert.deepEqual(p.shapes, []);
   // And those empty shapes take the region away, which they could not do while it was looked for through `viewed`.
-  assert.deepEqual(smokeRegionPlan([mine], p.shapes, { level: p.level }), { remove: ["mine"], create: [], update: [] });
+  const region = smokeRegionPlan([mine], p.shapes, { level: p.level });
+  assert.deepEqual([region.remove, region.create, region.update], [["mine"], [], []]);
+  assert.deepEqual(region.steps, [{ kind: "remove", ids: ["mine"] }]);
   // So after that pass the scene holds nothing of ours, and smokeHeldBy agrees it need not be visited again.
   assert.equal(smokeHeldBy({ flags: { animater: { roomSmoke: true, breakableProps: true, fireSpreads: false } } }), false);
 });

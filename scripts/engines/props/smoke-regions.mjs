@@ -83,25 +83,45 @@ export function smokeRegionData(shapes, options) {
   };
 }
 
-// What a round's shapes mean for the scene's own smoke region (pure; the caller writes): {remove, create, update}, each
-// a list, any of them empty. An unchanged round asks for nothing at all.
+// One region shape as a single string, for telling two footprints apart. Every field a Foundry region shape can
+// carry, `points` included: a polygon whose outline alone had moved was keeping a stale footprint, because comparing
+// only type/x/y/width/height could not see it. One join per shape rather than a JSON round trip, because this runs
+// every round on every scene with a fire, and comparing strings rather than JSON means key order cannot fool it.
+const shapeKey = (sh) => [sh?.type, sh?.x, sh?.y, sh?.width, sh?.height, sh?.radiusX, sh?.radiusY, sh?.rotation,
+  sh?.hole === true ? 1 : 0, sh?.points ? Array.from(sh.points).join(",") : ""].join("|");
+const sameShapes = (a, b) => a.length === b.length && a.every((sh, k) => shapeKey(sh) === shapeKey(b[k]));
+
+// What a round's shapes mean for the scene's own smoke region (pure; the caller writes).
 // Exactly ONE region of ours per scene and level: it is found, grown or shrunk, and taken away with the last of the
 // smoke. Found through ownSmokeRegion, never through `viewed`, or off-canvas it would be missed every round — and a
 // region that is missed is a region remade, so a fire burning on a scene nobody is looking at left one more
 // concealment region behind every round it burned.
 // Whether the concealment is there at all can only change by remaking the region, so that case removes and creates;
-// the shape and the level are a plain update. `remove` is always applied before `create`.
+// the shape and the level are a plain update. An unchanged round asks for nothing at all.
+//
+// Returns { steps, remove, create, update }. `steps` is the ORDER, and is what a caller applies: the removal of a
+// region being remade must land before the region replacing it, or for the moment between the two writes the scene
+// carries two concealment regions, and a caller whose create then fails leaves them both. The order is part of this
+// answer rather than of the caller's code so that it can be read, and tested, without a Foundry. The three lists are
+// the same steps by kind, for reading.
 export function smokeRegionPlan(regions, shapes, { level = null, visioner = false } = {}) {
   const own = ownSmokeRegion(regions, { level });
   const list = shapes ?? [];
-  const nothing = { remove: [], create: [], update: [] };
-  if (!list.length) return { ...nothing, remove: own ? [own.id] : [] };
+  // The steps IN ORDER: a removal always before a creation. Everything below says what happens, never when.
+  const plan = (remove = [], create = [], update = []) => ({
+    steps: [
+      ...(remove.length ? [{ kind: "remove", ids: remove }] : []),
+      ...(create.length ? [{ kind: "create", data: create }] : []),
+      ...(update.length ? [{ kind: "update", data: update }] : []),
+    ],
+    remove, create, update,
+  });
+  if (!list.length) return plan(own ? [own.id] : []);
   const data = smokeRegionData(list, { levels: level ? [level] : [], visioner });
-  if (!own) return { ...nothing, create: [data] };
+  if (!own) return plan([], [data]);
   const had = Array.from(own.behaviors ?? []).some((b) => b?.type === CONCEALMENT_BEHAVIOUR);
-  if (had !== (data.behaviors.length > 0)) return { ...nothing, remove: [own.id], create: [data] };
-  const now = Array.from(own.shapes ?? []).map((sh) => ({ type: sh.type, x: sh.x, y: sh.y, width: sh.width, height: sh.height }));
+  if (had !== (data.behaviors.length > 0)) return plan([own.id], [data]);
   const sameLevels = JSON.stringify(Array.from(own.levels ?? []).sort()) === JSON.stringify([...data.levels].sort());
-  if (sameLevels && JSON.stringify(now) === JSON.stringify(data.shapes)) return nothing;
-  return { ...nothing, update: [{ _id: own.id, shapes: data.shapes, levels: data.levels }] };
+  if (sameLevels && sameShapes(Array.from(own.shapes ?? []), data.shapes)) return plan();
+  return plan([], [], [{ _id: own.id, shapes: data.shapes, levels: data.levels }]);
 }

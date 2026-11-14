@@ -10371,13 +10371,18 @@ async function smokeRound(scene, burning = []) {
 // concealed.
 // The whole decision is smoke-regions.mjs's (smokeRegionPlan): one region of ours per scene and level, found by its own
 // flag so it is found on any scene, grown or shrunk to the smoke, remade only when the concealment itself comes or goes,
-// and taken away with the last of the smoke. An unchanged round writes nothing. Removals go before creations, so a
-// region being remade never overlaps the one it replaces.
+// and taken away with the last of the smoke. An unchanged round writes nothing.
+// The plan's own `steps` carry the ORDER, so there is nothing here to put in the wrong one: a removal lands before the
+// creation that replaces it. Nothing is caught: a removal that the database refuses MUST stop the creation behind it,
+// or the scene is left carrying two concealment regions and only one of them comes off per later round. The throw goes
+// up to whoever asked — for the round, its own catch in fireRoundsNow, which traces it and tries again next round.
 async function smokeRegionNow(scene, shapes, level) {
   const plan = smokeRegionPlan(scene.regions, shapes, { level, visioner: smokeConceals() });
-  if (plan.remove.length) await scene.deleteEmbeddedDocuments("Region", plan.remove, SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke region not removed: ${e?.message ?? e}`));
-  if (plan.create.length) await scene.createEmbeddedDocuments("Region", plan.create, SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke region not made: ${e?.message ?? e}`));
-  if (plan.update.length) await scene.updateEmbeddedDocuments("Region", plan.update, SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke region not written: ${e?.message ?? e}`));
+  for (const step of plan.steps) {
+    if (step.kind === "remove") await scene.deleteEmbeddedDocuments("Region", step.ids, SMOKE_NOTE);
+    else if (step.kind === "create") await scene.createEmbeddedDocuments("Region", step.data, SMOKE_NOTE);
+    else await scene.updateEmbeddedDocuments("Region", step.data, SMOKE_NOTE);
+  }
 }
 // A fire round still writing would put back whatever is cleared or thinned while it is in flight. One wait, used by
 // everything that clears behind the round's back (Repair, a quench): never a second mechanism.
@@ -10404,7 +10409,7 @@ async function clearSmokeNow(scene) {
       await scene.update(withDeletes(plan.fields, propDel()), SMOKE_NOTE)
         .catch((e) => runtime?.trace("props", `smoke not cleared: ${e?.message ?? e}`));
     }
-    await smokeRegionNow(scene, [], null);
+    await smokeRegionNow(scene, [], null).catch((e) => runtime?.trace("props", `smoke region not cleared: ${e?.message ?? e}`));
   } finally { fireRunning.delete(scene.id); }
 }
 // The ticker: every scene with both switches on, each keeping its own count, on the active GM alone. Then any scene
@@ -10651,7 +10656,7 @@ async function quenchWrite(scene, area) {
   if (thinnedAny) {
     await scene.update(withDeletes(thinned.fields, del), SMOKE_NOTE)
       .catch((e) => runtime?.trace("props", `smoke not thinned: ${e?.message ?? e}`));
-    if (!thinned.cells.length) await smokeRegionNow(scene, [], null);
+    if (!thinned.cells.length) await smokeRegionNow(scene, [], null).catch((e) => runtime?.trace("props", `smoke region not thinned away: ${e?.message ?? e}`));
   }
   if (!out.put.length) return thinnedAny;
   if (out.tiles.length) await scene.updateEmbeddedDocuments("Tile", out.tiles.map((u) => withDeletes(u, del)), { animater: { propFire: true } })

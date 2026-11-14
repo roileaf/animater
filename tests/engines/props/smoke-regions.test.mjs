@@ -165,17 +165,21 @@ test("two rounds on a scene nobody is looking at make ONE region, not two", () =
   assert.equal(second.update[0]._id, "mine");
   assert.equal(second.update[0].shapes.length, 2);
   // Round three, unchanged: nothing at all is written.
-  assert.deepEqual(smokeRegionPlan(scene, SQUARE, { level: A, visioner: true }), { remove: [], create: [], update: [] });
+  const quiet = smokeRegionPlan(scene, SQUARE, { level: A, visioner: true });
+  assert.deepEqual([quiet.steps, quiet.remove, quiet.create, quiet.update], [[], [], [], []]);
 });
 
 test("the last of the smoke takes the region with it, on any scene", () => {
   const scene = [off({ id: "else" }), ours()];
   // This is the leftover pass: a switch has gone off, so the plan clears and its shapes are empty.
   for (const shapes of [[], null, undefined]) {
-    assert.deepEqual(smokeRegionPlan(scene, shapes, { level: null }), { remove: ["mine"], create: [], update: [] });
+    const gone = smokeRegionPlan(scene, shapes, { level: null });
+    assert.deepEqual([gone.remove, gone.create, gone.update], [["mine"], [], []], JSON.stringify(shapes));
+    assert.deepEqual(gone.steps, [{ kind: "remove", ids: ["mine"] }]);
   }
   // Nothing of ours to take away: nothing asked for.
-  assert.deepEqual(smokeRegionPlan([off({ id: "else" })], []), { remove: [], create: [], update: [] });
+  const none = smokeRegionPlan([off({ id: "else" })], []);
+  assert.deepEqual([none.steps, none.remove, none.create, none.update], [[], [], [], []]);
 });
 
 test("the concealment coming or going remakes the region; removals go before creations", () => {
@@ -201,4 +205,77 @@ test("a changed level alone is enough to write, and the plan touches nothing it 
   const before = JSON.stringify(scene);
   smokeRegionPlan(scene, OTHER, { level: A });
   assert.equal(JSON.stringify(scene), before, "pure: the regions are read, never touched");
+});
+
+// ---- The order of the writes, and what a refused one does. ----
+// A remake is a removal and a creation. Between the two writes the scene carries both regions, so the removal MUST
+// land first: the other way round, a scene momentarily holds two concealment regions, and if the second write fails it
+// holds them for good. The order therefore lives in the plan, where it can be read without a Foundry, and the caller
+// has one loop with nothing to put in the wrong order.
+
+test("a remake removes before it creates, and says so in its own steps", () => {
+  const withIt = ours({ behaviors: [{ type: CONCEALMENT_BEHAVIOUR }], shapes: [...SQUARE] });
+  const remade = smokeRegionPlan([withIt], SQUARE, { visioner: false });
+  assert.deepEqual(remade.steps.map((st) => st.kind), ["remove", "create"], "the removal first, always");
+  assert.deepEqual(remade.steps[0].ids, ["mine"]);
+  assert.equal(remade.steps[1].data.length, 1);
+  // Every other answer's steps too, so the caller never has to decide anything.
+  assert.deepEqual(smokeRegionPlan([ours()], [], {}).steps.map((st) => st.kind), ["remove"]);
+  assert.deepEqual(smokeRegionPlan([], SQUARE, {}).steps.map((st) => st.kind), ["create"]);
+  assert.deepEqual(smokeRegionPlan([ours({ shapes: [...SQUARE] })], OTHER, {}).steps.map((st) => st.kind), ["update"]);
+  assert.deepEqual(smokeRegionPlan([ours({ shapes: [...SQUARE] })], SQUARE, {}).steps, [], "an unchanged round writes nothing");
+  // The steps and the three lists are the same answer twice over, never two different ones.
+  for (const plan of [remade, smokeRegionPlan([], SQUARE, {}), smokeRegionPlan([ours()], [], {})]) {
+    const byKind = { remove: plan.remove, create: plan.create, update: plan.update };
+    for (const st of plan.steps) assert.deepEqual(st.ids ?? st.data, byKind[st.kind]);
+    assert.equal(plan.steps.length, [plan.remove, plan.create, plan.update].filter((l) => l.length).length);
+  }
+});
+
+// Apply a plan the way main.mjs does: one loop over the steps, nothing caught, so a refusal stops the rest.
+const applyPlan = async (plan, scene, { refuse = null } = {}) => {
+  for (const step of plan.steps) {
+    if (step.kind === refuse) throw new Error(`the database refused to ${step.kind}`);
+    if (step.kind === "remove") for (const id of step.ids) scene.splice(scene.findIndex((r) => r.id === id), 1);
+    else if (step.kind === "create") for (const data of step.data) scene.push(ours({ id: "new", shapes: [...data.shapes], behaviors: data.behaviors }));
+  }
+};
+
+test("a refused removal stops the creation behind it, so the scene never holds two of ours", async () => {
+  const start = () => [off({ id: "else" }), ours({ behaviors: [{ type: CONCEALMENT_BEHAVIOUR }], shapes: [...SQUARE] })];
+  const plan = (scene) => smokeRegionPlan(scene, SQUARE, { visioner: false });
+  // The removal is refused: it throws, nothing else is written, and there is still exactly one region of ours.
+  const scene = start();
+  await assert.rejects(() => applyPlan(plan(scene), scene, { refuse: "remove" }), /refused to remove/);
+  assert.equal(scene.filter((r) => r.flags?.animater?.smokeRegion === true).length, 1, "one stale region, not two");
+  // Nothing was lost either: the next round asks for the very same remake, and unrefused it leaves one region.
+  const again = plan(scene);
+  assert.deepEqual(again.steps.map((st) => st.kind), ["remove", "create"]);
+  await applyPlan(again, scene);
+  const mine = scene.filter((r) => r.flags?.animater?.smokeRegion === true);
+  assert.equal(mine.length, 1, "still one");
+  assert.deepEqual(mine[0].behaviors, [], "and it is the remade one");
+});
+
+test("a footprint that changed only in its points is still a change", () => {
+  const poly = (points) => [{ type: "polygon", points }];
+  const held = ours({ shapes: poly([0, 0, 100, 0, 100, 100]) });
+  // The same outline: nothing to write.
+  assert.deepEqual(smokeRegionPlan([held], poly([0, 0, 100, 0, 100, 100]), {}).steps, []);
+  // A moved outline, with every other field identical: an update, which comparing only x/y/width/height missed.
+  const moved = smokeRegionPlan([held], poly([0, 0, 100, 0, 100, 200]), {});
+  assert.equal(moved.update.length, 1, "the region kept a stale footprint before this");
+  assert.deepEqual(moved.update[0].shapes[0].points, [0, 0, 100, 0, 100, 200]);
+  // One point more, and one fewer.
+  assert.equal(smokeRegionPlan([held], poly([0, 0, 100, 0, 100, 100, 0, 100]), {}).update.length, 1);
+  assert.equal(smokeRegionPlan([held], poly([0, 0, 100, 0]), {}).update.length, 1);
+  // And the ordinary rectangle comparison still holds, by every field it has.
+  const box = ours({ shapes: [{ type: "rectangle", x: 0, y: 0, width: 100, height: 100 }] });
+  assert.deepEqual(smokeRegionPlan([box], [{ type: "rectangle", x: 0, y: 0, width: 100, height: 100 }], {}).steps, []);
+  for (const change of [{ x: 50 }, { y: 50 }, { width: 50 }, { height: 50 }, { type: "ellipse" }]) {
+    const one = smokeRegionPlan([box], [{ type: "rectangle", x: 0, y: 0, width: 100, height: 100, ...change }], {});
+    assert.equal(one.update.length, 1, JSON.stringify(change));
+  }
+  // Key order cannot fool it: the same shape written the other way round is the same shape.
+  assert.deepEqual(smokeRegionPlan([box], [{ height: 100, width: 100, y: 0, x: 0, type: "rectangle" }], {}).steps, []);
 });
