@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { SIZES, holdsUp, iceStep, iceStateOf, iceUpdatesFor, squareKeyAt, squaresCrossed, sizeNameOf, squaresAcross, weightOffset, iceHoleAt, iceMoveFor } from "../../../scripts/engines/regions/thin-ice.mjs";
+import { SIZES, holdsUp, iceStep, iceStateOf, iceUpdatesFor, squareKeyAt, squaresCrossed, sizeNameOf, squaresAcross, weightOffset, iceHoleAt, iceMoveFor, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares, MELTED } from "../../../scripts/engines/regions/thin-ice.mjs";
 
 test("the limit holds its own size and everything smaller", () => {
   assert.equal(holdsUp("med", "sm"), 0);
@@ -99,11 +99,11 @@ const regionWith = (thinIce) => ({ id: "reg1", flags: { animater: { thinIce } } 
 
 test("iceStateOf reads the stored maps back as sorted key lists", () => {
   const doc = regionWith({ cracks: { "3,5": 1, "3,4": 1 }, holes: { "7,2": 1 } });
-  assert.deepEqual(iceStateOf(doc), { cracks: ["3,4", "3,5"], holes: ["7,2"], holeSizes: { "7,2": 1 } });
+  assert.deepEqual(iceStateOf(doc), { cracks: ["3,4", "3,5"], holes: ["7,2"], holeSizes: { "7,2": 1 }, melts: [] });
 });
 
 test("iceStateOf is empty for a missing flag, an empty object, null, a string and a number", () => {
-  const empty = { cracks: [], holes: [], holeSizes: {} };
+  const empty = { cracks: [], holes: [], holeSizes: {}, melts: [] };
   assert.deepEqual(iceStateOf({}), empty);
   assert.deepEqual(iceStateOf({ flags: {} }), empty);
   assert.deepEqual(iceStateOf(regionWith({})), empty);
@@ -115,9 +115,9 @@ test("iceStateOf is empty for a missing flag, an empty object, null, a string an
 });
 
 test("iceStateOf drops junk: non-object maps, NaN or empty markers, keys that are not squares", () => {
-  assert.deepEqual(iceStateOf(regionWith({ cracks: "3,4", holes: ["1,1"] })), { cracks: [], holes: [], holeSizes: {} });
+  assert.deepEqual(iceStateOf(regionWith({ cracks: "3,4", holes: ["1,1"] })), { cracks: [], holes: [], holeSizes: {}, melts: [] });
   const doc = regionWith({ cracks: { "3,4": 1, "5,5": NaN, "6,6": null, "7,7": 0, nope: 1, "": 1 }, holes: { "1,1": 1, "x,2": 1 } });
-  assert.deepEqual(iceStateOf(doc), { cracks: ["3,4"], holes: ["1,1"], holeSizes: { "1,1": 1 } });
+  assert.deepEqual(iceStateOf(doc), { cracks: ["3,4"], holes: ["1,1"], holeSizes: { "1,1": 1 }, melts: [] });
 });
 
 test("iceStateOf reads how wide each hole is, and a hole stored without a size has none", () => {
@@ -126,6 +126,13 @@ test("iceStateOf reads how wide each hole is, and a hole stored without a size h
   assert.deepEqual(state.holes, ["1,1", "2,2", "3,3", "4,4"], "anything truthy is a hole; a size of its own is extra");
   assert.deepEqual(state.holeSizes, { "1,1": 3 }, "only a width that makes sense; the drawing falls back to the limit for the rest");
   assert.deepEqual(state.cracks, ["9,9"], "cracks are untouched by any of it");
+});
+
+test("iceStateOf names the squares fire melted apart from the ones a creature broke", () => {
+  const state = iceStateOf(regionWith({ holes: { "1,1": MELTED, "2,2": 3 } }));
+  assert.deepEqual(state.holes, ["1,1", "2,2"], "both are open water");
+  assert.deepEqual(state.melts, ["1,1"], "only the melt is a melt");
+  assert.deepEqual(state.holeSizes, { "2,2": 3 }, "and a melt has no creature's width");
 });
 
 test("a new crack is written at its own key, never as a whole object", () => {
@@ -366,4 +373,78 @@ test("an even-width creature's weight lands in a square it stands in, not the on
   assert.equal(squareKeyAt(weight(1, 4).x, weight(1, 4).y, GRID), "2,2", "a Gargantuan creature on 1,1 covers 1 to 4");
   assert.equal(squareKeyAt(weight(1, 3).x, weight(1, 3).y, GRID), "2,2", "an odd footprint has a middle square of its own");
   assert.equal(squareKeyAt(weight(1, 1).x, weight(1, 1).y, GRID), "1,1");
+});
+
+// ---- putting the ice back (Refreeze and Repair), and fire melting it ----
+
+const stored = (id, thinIce, extra = {}) => ({ id, flags: { animater: { iceThin: true, iceHolds: "med", thinIce, ...extra } } });
+
+
+test("Refreeze clears every crack and every hole by name, and never writes a parent next to a delete under it", () => {
+  const region = stored("reg1", { cracks: { "1,1": 1, "-2,3": 1 }, holes: { "4,5": 2 } });
+  const [u] = iceRefreezeUpdates(region);
+  assert.equal(u._id, "reg1");
+  assert.deepEqual(Object.keys(u).filter((k) => k !== "_id").sort(), [
+    `${FLAG}.cracks.-=-2,3`, `${FLAG}.cracks.-=1,1`, `${FLAG}.holes.-=4,5`,
+  ].sort());
+  for (const value of Object.entries(u).filter(([k]) => k !== "_id").map(([, v]) => v)) assert.equal(value, null, "each delete is null, for the caller to convert");
+  // The bug that has shipped twice in this feature: a parent object written beside a delete beneath it leaves stale keys.
+  for (const key of Object.keys(u)) assert.ok(!/\.(cracks|holes)$/.test(key) && key !== FLAG, `${key} writes a parent object`);
+});
+
+test("Refreeze on a region with nothing stored writes nothing at all", () => {
+  assert.deepEqual(iceRefreezeUpdates(stored("reg1", {})), []);
+  assert.deepEqual(iceRefreezeUpdates(stored("reg1", { cracks: {}, holes: {} })), []);
+  assert.deepEqual(iceRefreezeUpdates({ flags: { animater: { thinIce: { holes: { "1,1": 1 } } } } }), [], "and nothing without an id");
+  assert.deepEqual(iceRefreezeUpdates(undefined), []);
+});
+
+test("Refreeze clears a key the ice stored falsy or malformed too: the region is put back whole", () => {
+  const [u] = iceRefreezeUpdates(stored("reg1", { cracks: { "1,1": 0 }, holes: { junk: 1 } }));
+  assert.deepEqual(Object.keys(u).filter((k) => k !== "_id").sort(), [`${FLAG}.cracks.-=1,1`, `${FLAG}.holes.-=junk`]);
+});
+
+test("Repair puts back every region's ice, one update each, and deletes no region", () => {
+  const updates = iceRepairUpdates([
+    stored("reg1", { holes: { "1,1": 1 } }),
+    stored("reg2", {}),
+    stored("reg3", { cracks: { "2,2": 1 } }),
+  ]);
+  assert.deepEqual(updates.map((u) => u._id), ["reg1", "reg3"]);
+  assert.ok(updates.every((u) => !("deleteRegions" in u)));
+  assert.deepEqual(iceRepairUpdates([]), []);
+  assert.deepEqual(iceRepairUpdates(undefined), []);
+});
+
+test("Repair clears the ice of a region the GM has since turned thin ice off on", () => {
+  const off = stored("reg1", { holes: { "1,1": 1 } }, { iceThin: false });
+  assert.deepEqual(iceRepairUpdates([off]).map((u) => u._id), ["reg1"]);
+});
+
+test("fire melts the squares it covers to open water, stored as a melt and not as a break", () => {
+  const [u] = iceMeltUpdates([{ ...stored("reg1", { cracks: { "1,1": 1 } }), squares: ["1,1", "1,2"] }]);
+  assert.equal(u[`${FLAG}.holes.1,1`], MELTED);
+  assert.equal(u[`${FLAG}.holes.1,2`], MELTED);
+  assert.equal(u[`${FLAG}.cracks.-=1,1`], null, "the crack under the melt goes by name");
+  assert.ok(!(`${FLAG}.cracks.-=1,2`in u), "and a square that was never cracked is not deleted");
+});
+
+test("fire melts nothing on a region without thin ice, and nothing where the ice is already open", () => {
+  assert.deepEqual(iceMeltUpdates([{ ...stored("reg1", {}, { iceThin: false }), squares: ["1,1"] }]), []);
+  assert.deepEqual(iceMeltUpdates([{ ...stored("reg1", { holes: { "1,1": 2 } }), squares: ["1,1"] }]), [], "a hole stays the break it was");
+  assert.deepEqual(iceMeltUpdates([{ ...stored("reg1", {}), squares: [] }]), []);
+  assert.deepEqual(iceMeltUpdates([{ ...stored("reg1", {}), squares: ["junk", "1.5,2"] }]), []);
+  assert.deepEqual(iceMeltUpdates(), []);
+});
+
+test("the squares a fire area covers are the region's own, on the map's grid", () => {
+  const bounds = { x: 0, y: 0, w: 300, h: 300 };
+  const round = (at) => Math.hypot(at.x - 150, at.y - 150) <= 60;
+  assert.deepEqual(iceMeltSquares({ bounds, grid: GRID, inArea: round }), ["1,1"]);
+  assert.deepEqual(iceMeltSquares({ bounds, grid: GRID, inArea: () => true }).length, 9, "all nine squares of the box");
+  assert.deepEqual(iceMeltSquares({ bounds, grid: GRID, inside: (at) => at.y < 100, inArea: () => true }), ["0,0", "1,0", "2,0"], "only the squares the region itself holds");
+  assert.deepEqual(iceMeltSquares({ bounds, grid: GRID }), [], "an area covering nothing melts nothing");
+  assert.deepEqual(iceMeltSquares({ bounds, grid: GRID, inside: () => { throw new Error("a region mid-change"); }, inArea: () => true }), []);
+  assert.deepEqual(iceMeltSquares({ bounds: { x: 0, y: 0, w: 1e6, h: 1e6 }, grid: GRID, inArea: () => true }), [], "a region too big to walk melts nothing");
+  for (const bad of [undefined, { bounds: { x: 0, y: 0, w: 0, h: 0 }, grid: GRID }, { bounds: { x: 0, y: 0, w: 100, h: 100 }, grid: 0 }]) assert.deepEqual(iceMeltSquares(bad), []);
 });

@@ -1,6 +1,6 @@
-import { iceStateOf, iceSettingsOf, breakerSquares } from "./thin-ice.mjs";
-// The ice's own state and sizes live with the judgement (thin-ice.mjs); the screen asks for them here.
-export { iceSettingsOf, breakerSquares };
+import { iceStateOf, iceSettingsOf, breakerSquares, MELTED } from "./thin-ice.mjs";
+// The ice's own state, sizes and the mark fire leaves live with the judgement (thin-ice.mjs); the screen asks for them here.
+export { iceSettingsOf, breakerSquares, MELTED };
 
 // The shapes of thin ice breaking: the cracks painted in a square that has cracked, the jagged hole of dark water where it gave
 // way, and the loose shards of ice floating in that hole. Geometry only, pure: no Foundry, no PIXI, no drawing; a later layer
@@ -93,6 +93,48 @@ export function shards(key, { grid, seed = 0, size } = {}) {
   return out;
 }
 
+// How a melt is drawn: more points round it than a break has and only a little wander in them, with a few slow lobes.
+// A melt is its own shape, not the hole's with another seed: a break is shattered ice, long spikes alternating with
+// short ones, and feeding that same shape another seed would still read as shattered. Fire eats the ice away instead,
+// so the opening is round, lobed and soft-edged, and the ice left floating at its rim is slush.
+const MELT_POINTS = 22, MELT_LOW = 0.97, MELT_LOBE = 0.1, MELT_LOBES = 2;
+
+/** A square fire melted through: a rounded opening of open water about `size` squares across (1 for one square of
+ *  water), centred on its square, as [{x, y}, ...]. Star-shaped and wound by rising angle, as holeOutline is, so the
+ *  water engine reads it the same way. The first point is NOT repeated at the end. */
+export function meltOutline(key, { grid, seed = 0, size } = {}) {
+  const sq = parseKey(key);
+  if (!sq || !validGrid(grid) || !(Number(size) > 0) || !Number.isFinite(size)) return [];
+  const next = stream(sq, seed, 4);
+  const cx = (sq.col + 0.5) * grid, cy = (sq.row + 0.5) * grid, half = (size / 2) * grid;
+  const turn = next() * Math.PI * 2, step = (Math.PI * 2) / MELT_POINTS;
+  const ring = [];
+  for (let k = 0; k < MELT_POINTS; k++) {
+    const angle = turn + (k + (next() - 0.5) * 0.4) * step; // up to 0.2 of a step either way: the angles still rise
+    // A few slow lobes round it — fire eats further in at some places than others — and a little wander on top.
+    const lobe = 1 + MELT_LOBE * Math.sin(angle * MELT_LOBES + turn);
+    const radius = half * lobe * (MELT_LOW + (1 - MELT_LOW) * next());
+    ring.push({ x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius });
+  }
+  return ring;
+}
+
+/** The slush round a melt: small chips of ice crowded at its edge, [{x, y, r, turn}] as shards are, so they float and
+ *  turn on the meltwater through the very same painter. Well inside the outline, and never out in the middle. */
+export function slushRing(key, { grid, seed = 0, size } = {}) {
+  const sq = parseKey(key);
+  if (!sq || !validGrid(grid) || !(Number(size) > 0) || !Number.isFinite(size)) return [];
+  const next = stream(sq, seed, 5);
+  const cx = (sq.col + 0.5) * grid, cy = (sq.row + 0.5) * grid, half = (size / 2) * grid;
+  const count = 7 + Math.round(size * 6);
+  const out = [];
+  for (let k = 0; k < count; k++) {
+    const angle = ((k + next() * 0.8) / count) * Math.PI * 2, dist = half * (0.52 + next() * 0.22);
+    out.push({ x: cx + Math.cos(angle) * dist, y: cy + Math.sin(angle) * dist, r: grid * (0.025 + next() * 0.035), turn: (next() - 0.5) * Math.PI * 2 });
+  }
+  return out;
+}
+
 // ---- what a region draws ----
 // A region's thin ice as the screen draws it. Pure: the region arrives as { id, flags } and the answer is plain data, so what a
 // client draws is tested without Foundry; main.mjs only hands regions in and puts the answers on the map.
@@ -113,6 +155,9 @@ const flatten = (ring) => ring.flatMap((p) => [p.x, p.y]);
 // Still, deep, dark water that never freezes with the rest of the region: the same look the decorations' cave pools have. The
 // caller adds what only the screen has (the bed's colour texture, the map's rectangle, whether a roof is over it).
 const holeLook = { watery: true, over: [], kind: "still", followsWind: false, edge: 1, depth: { hold: 1.6, dark: 0.72 }, beach: false, sand: null, waves: null, angle: null, current: 0, keeps: true };
+// What fire melts is the same water, shallower and softer at its edge: meltwater standing in the ice, not a hole torn
+// through to the deep, and it fades into the ice it ate away rather than ending at a break line.
+const meltLook = { ...holeLook, edge: 2.2, depth: { hold: 1.1, dark: 0.45 } };
 
 /** What a region's thin ice draws: { holes: water specs (one per hole, id "<region>:ice:<square>", areas one flat polygon),
  *  cracks: [{ id, lines }] one per cracked square, shards: [{ id, list }] one per hole }. All empty unless the region has thin
@@ -123,16 +168,18 @@ export function iceBreakOf(region, { grid } = {}) {
   if (!region?.id || !validGrid(grid)) return none;
   const { thin, holds } = iceSettingsOf(region);
   if (!thin) return none;
-  const { cracks, holes, holeSizes } = iceStateOf(region);
+  const { cracks, holes, holeSizes, melts } = iceStateOf(region);
   const seed = seedOfId(region.id), usual = breakerSquares(holds);
   const out = { holes: [], cracks: [], shards: [] };
   for (const key of holes) {
-    const stored = Number(holeSizes?.[key]), size = stored > 0 && Number.isFinite(stored) ? stored : usual; // (the creature that fell, once the ice stores it)
-    const ring = holeOutline(key, { grid, seed, size });
+    // Fire melted this square: one square of open water, lobed and soft-edged, with its ice floating at the rim as slush.
+    const melted = melts.includes(key);
+    const stored = Number(holeSizes?.[key]), size = melted ? 1 : stored > 0 && Number.isFinite(stored) ? stored : usual; // (the creature that fell, once the ice stores it)
+    const ring = melted ? meltOutline(key, { grid, seed, size }) : holeOutline(key, { grid, seed, size });
     if (!ring.length) continue;
     const id = `${region.id}:ice:${key}`;
-    out.holes.push({ id, areas: [flatten(ring)], ...holeLook });
-    out.shards.push({ id, list: shards(key, { grid, seed, size }) });
+    out.holes.push({ id, areas: [flatten(ring)], ...(melted ? meltLook : holeLook) });
+    out.shards.push({ id, list: melted ? slushRing(key, { grid, seed, size }) : shards(key, { grid, seed, size }) });
   }
   for (const key of cracks) {
     if (holes.includes(key)) continue; // a square that gave way is a hole, not a crack

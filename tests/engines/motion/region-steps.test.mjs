@@ -368,3 +368,16 @@ test('water depth: medium is the look water always had, and each step down holds
   assert.ok(WATER_DEPTHS.some(([key]) => key === 'turquoise'), 'a clear sea is among them');
   assert.deepEqual(waterDepthLook('turquoise'), { hold: 1, dark: 0, tint: true }, 'its colour its own, no darker for it');
 });
+
+test('thin ice is frozen over whatever the weather, through the water list\'s own step', () => {
+  const ice = { floor: 'water', iceThin: true };
+  const frozen = defaultSteps('water').find((s) => s.name === 'Frozen over');
+  assert.deepEqual(activeStep(ice), frozen, 'the very step a GM would pick by hand, not a second ice of its own');
+  assert.equal(stepFlags(ice).floor, 'ice', 'it walks as ice');
+  assert.equal(stepLook(ice, 'water').look, 'frozen', 'and it is drawn as ice');
+  // Whatever else the region was showing, and whether or not its steps are hidden: it is thin ice, so it is frozen.
+  assert.equal(activeStep({ ...ice, steps: defaultSteps('water'), stepsFloor: 'water', step: 1 }).look, 'frozen');
+  assert.equal(activeStep({ ...ice, stepHidden: true }).look, 'frozen');
+  assert.equal(activeStep({ floor: 'water' }), null, 'water without thin ice is left alone');
+  assert.equal(activeStep({ floor: 'water', iceThin: 'yes' }), null, 'and only the flag set true is thin ice');
+});

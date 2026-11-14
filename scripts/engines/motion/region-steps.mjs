@@ -3,6 +3,7 @@
 // has (mist, steam, lava...) or set a river's speed. All of it lives in the region's flags, so it reaches every screen and
 // stays when the scene is loaded again: `steps` the list, `stepsFloor` the floor it was made for, `step` the current one, `stepAt` where it was clicked,
 // `stepHidden`, `stepHow` ('spread' or 'fade') and `stepSeconds`.
+import { thinIceOn } from '../regions/thin-ice.mjs';
 
 // Each look: its key, its number in floor-looks.mjs, its name in the list, and its group there.
 const LOOKS = Object.freeze([
@@ -83,8 +84,14 @@ const indexIn = (list, index) => { const i = Number(index); return Number.isInte
 // Which step of its list a region is on.
 export const stepIndexOf = (own, floor) => (hasList(own) ? indexIn(own.steps, own.step) : STARTS_AT[floor] ?? 0);
 
+// Thin ice is frozen over whatever the weather (engines/regions/thin-ice.mjs): the region shows the water list's own
+// "Frozen over" step, so it draws and walks as ice through the one ice look Animater has, and no second ice drawing is
+// invented for it. The weather's own freeze is untouched: this is the region saying it is frozen, cold or not.
+const FROZEN_OVER = defaultSteps('water').find((s) => s.look === 'frozen');
+
 // The step showing now, or null: no steps saved, or hidden. Read as a creature walks, so it builds nothing.
 export function activeStep(own) {
+  if (thinIceOn(own)) return { ...FROZEN_OVER };
   if (!hasList(own) || own.stepHidden) return null;
   return own.steps[indexIn(own.steps, own.step)] ?? null;
 }

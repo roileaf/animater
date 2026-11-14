@@ -16,6 +16,7 @@ import { ROOM_DRESSING, kindFlags } from './region-panel-model.mjs';
 import { DECOR_DEFAULT_KINDS, freshDecor } from '../engines/motion/decor-regions.mjs';
 import { decorPropRows, DECOR_PROP_SHORT } from './decor-prop-options.mjs';
 import { readHeight, readRamp, CROSSING_KINDS, HEIGHT_MAX, heightName } from '../engines/regions/heights.mjs';
+import { thinIceOn, iceHoldsOf } from '../engines/regions/thin-ice.mjs';
 // Whether the ground here is built out over water (a dock): on, it shows how it is built, its posts and its shadow.
 const OVER_WATER_TIP = 'Built out over water: a deck, a jetty, a bridge. The water goes on under it; what walks here walks on its boards, and it shows how it is built, its posts and its shadow.';
 
@@ -141,6 +142,25 @@ const decorSection = (c) => {
   return parts;
 };
 
+// Thin ice (engines/regions/thin-ice.mjs): water frozen only thinly, which holds a light creature and gives way under a
+// heavy one. Off until the GM turns it on for this region, as every map-specific feature is. The three sizes offered are
+// the ones a table meets; a flag naming another (set by hand) is shown as it is and kept.
+const ICE_SIZE_NAMES = { tiny: 'Tiny', sm: 'Small', med: 'Medium', lg: 'Large', huge: 'Huge', grg: 'Gargantuan' };
+const ICE_HOLDS = [['sm', 'Small'], ['med', 'Medium'], ['lg', 'Large']];
+const withHolds = (value) => (ICE_HOLDS.some(([v]) => v === value) ? ICE_HOLDS : [...ICE_HOLDS, [value, ICE_SIZE_NAMES[value] ?? capital(value)]]);
+const iceParts = (c) => {
+  const { own, act, doc } = c;
+  const parts = [toggle('Thin ice', thinIceOn(own), (on) => act({ iceThin: on }), 'The water here is frozen only thinly, whatever the weather. The ice holds a light creature; a heavier one cracks it square by square, and a much heavier one goes straight through into the water.')];
+  if (!thinIceOn(own)) return parts;
+  parts.push(row('Holds up to', choice(withHolds(iceHoldsOf(own)), iceHoldsOf(own), 'Holds up to', (v) => act({ iceHolds: v })), 'A creature of this size or smaller walks over it safely. One size over cracks the ice it crosses and falls through a crack already there; two sizes over goes straight through.'));
+  if (c.refreezeIce) {
+    const buttons = element('div', 'an-rp-buttons');
+    buttons.append(tip(button('Refreeze', '', () => c.refreezeIce(doc)), 'Every crack and every hole in this region frozen over again.'));
+    parts.push(buttons);
+  }
+  return parts;
+};
+
 // When the step showing has a current of its own, it wins over the river's: said under Current, with a way back to the river's.
 const overriddenCurrent = ({ own, floor, act }) => {
   const menu = stepMenu(own, floor);
@@ -163,6 +183,7 @@ export const SECTIONS = {
     if (kind !== 'falls') parts.push(row('Depth', choice(WATER_DEPTHS, own.waterDepth ?? '', 'How deep the water is', (v) => act({ waterDepth: v }))));
     parts.push(toggle('Reflections', own.reflections !== 'off', (on) => act({ reflections: on ? '' : 'off' }), 'Still water mirrors creatures, tiles, fires and the moon. Off in Scene configuration turns them off everywhere.'),
       toggle('Freezes in the cold', own.noFreeze !== true, (on) => act({ noFreeze: !on }), 'Off: stays open in a hard frost, like a hot spring or a fast river.'),
+      ...iceParts(c),
       toggle('Water sound', soundOn(own), (on) => act({ regionSound: on ? '' : 'off' })));
     parts.push(...c.more('water', 'More: drips, coast, waterfall…', () => [...SECTIONS.drips(c),
       toggle('Coast waves and tide', said(own, 'sea'), flip('sea', act), 'Waves wash in on its shores, the wet sand moves with the tide, and crabs keep to the shore.'),

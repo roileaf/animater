@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { crackLines, holeOutline, shards } from "../../../scripts/engines/regions/ice-break-look.mjs";
+import { crackLines, holeOutline, shards, meltOutline, slushRing, iceBreakOf } from "../../../scripts/engines/regions/ice-break-look.mjs";
+import { MELTED } from "../../../scripts/engines/regions/ice-break-look.mjs";
 
 const GRID = 100;
 const KEYS = ["3,4", "0,0", "-1,2", "-7,-5", "12,-3"];
@@ -129,4 +130,77 @@ test("junk input gives nothing and never throws", () => {
   assert.deepEqual(crackLines("3,4", { grid: 0 }), []);
   assert.deepEqual(crackLines("3,4", undefined), []);
   assert.ok(crackLines("3,4", { grid: GRID }).length >= 3, "a missing seed is just seed 0");
+});
+
+// ---- what fire melts: open water with a slushy edge, drawn as a melt and never as a break ----
+
+test("a melt is a rounded opening about its square, simple and wound the way the water engine reads", () => {
+  for (const key of KEYS) for (let seed = 0; seed < 10; seed++) {
+    const ring = meltOutline(key, { grid: GRID, seed, size: 1 });
+    assert.ok(ring.length >= 12, "enough points for a soft edge");
+    assert.ok(isSimple(ring), `${key} seed ${seed} crosses itself`);
+    assert.ok(area2(ring) > 0, "wound clockwise on screen, as a hole is");
+    const mid = centre(key, GRID);
+    for (const p of ring) {
+      const r = Math.hypot(p.x - mid.x, p.y - mid.y);
+      assert.ok(r > GRID * 0.3 && r < GRID * 0.62, `${key} reaches ${r}: about the square it melted`);
+    }
+  }
+});
+
+test("a melt's edge is far smoother than a break's: fire eats the ice away, it does not shatter it", () => {
+  // How far the edge jumps from one point to the next, against how far out it reaches: a break is spikes of shattered
+  // ice, a melt a few slow lobes. Over many seeds, so neither is judged on one lucky shape.
+  const wander = (ring, key) => {
+    const mid = centre(key, GRID), rs = ring.map((p) => Math.hypot(p.x - mid.x, p.y - mid.y));
+    let step = 0;
+    for (let i = 0; i < rs.length; i++) step += Math.abs(rs[i] - rs[(i + 1) % rs.length]);
+    return step / rs.length / (rs.reduce((a, b) => a + b, 0) / rs.length);
+  };
+  const mean = (list) => list.reduce((a, b) => a + b, 0) / list.length;
+  const seeds = [...Array(20).keys()];
+  const melt = mean(seeds.map((seed) => wander(meltOutline("3,4", { grid: GRID, seed, size: 1 }), "3,4")));
+  const broke = mean(seeds.map((seed) => wander(holeOutline("3,4", { grid: GRID, seed, size: 1 }), "3,4")));
+  assert.ok(melt < broke * 0.6, `a melt wanders ${melt.toFixed(3)}, a break ${broke.toFixed(3)}`);
+});
+
+test("the slush rides the melt's own edge: small chips, all inside it, none in its middle", () => {
+  for (const key of KEYS) {
+    const ring = meltOutline(key, { grid: GRID, seed: 2, size: 1 }), mid = centre(key, GRID);
+    const chips = slushRing(key, { grid: GRID, seed: 2, size: 1 });
+    assert.ok(chips.length >= 6, "enough of it to read as slush");
+    for (const chip of chips) {
+      assert.ok(chip.r > 0 && chip.r < GRID * 0.12, `a chip, not a floe: ${chip.r}`);
+      assert.ok(Math.abs(chip.turn) <= Math.PI * 2);
+      assert.ok(inside(ring, chip), "in the melt");
+      assert.ok(Math.hypot(chip.x - mid.x, chip.y - mid.y) > GRID * 0.15, "out at the edge, not floating in the middle");
+    }
+  }
+});
+
+test("a melt and a slush ring are the same on every client, and junk gives nothing", () => {
+  assert.deepEqual(meltOutline("3,4", { grid: GRID, seed: 1, size: 1 }), meltOutline("3,4", { grid: GRID, seed: 1, size: 1 }));
+  assert.deepEqual(slushRing("3,4", { grid: GRID, seed: 1, size: 1 }), slushRing("3,4", { grid: GRID, seed: 1, size: 1 }));
+  for (const bad of [{}, { grid: 0, size: 1 }, { grid: GRID }, { grid: GRID, size: 0 }, undefined]) {
+    assert.deepEqual(meltOutline("3,4", bad), []);
+    assert.deepEqual(slushRing("3,4", bad), []);
+  }
+  for (const key of ["", "a,b", null, 7]) {
+    assert.deepEqual(meltOutline(key, { grid: GRID, size: 1 }), []);
+    assert.deepEqual(slushRing(key, { grid: GRID, size: 1 }), []);
+  }
+});
+
+test("a region draws a melted square as a melt and a broken one as a break", () => {
+  const region = { id: "reg1", flags: { animater: { iceThin: true, thinIce: { holes: { "1,1": MELTED, "5,5": 2 } } } } };
+  const { holes, shards: floating } = iceBreakOf(region, { grid: GRID });
+  const melt = holes.find((h) => h.id === "reg1:ice:1,1"), broke = holes.find((h) => h.id === "reg1:ice:5,5");
+  assert.ok(melt && broke, "both are open water");
+  assert.equal(melt.watery, true);
+  const reach = (spec, key) => { const mid = centre(key, GRID); const pts = []; for (let i = 0; i < spec.areas[0].length; i += 2) pts.push(Math.hypot(spec.areas[0][i] - mid.x, spec.areas[0][i + 1] - mid.y)); return Math.max(...pts); };
+  assert.ok(reach(melt, "1,1") < GRID * 0.62, "a melt opens about the one square it melted");
+  assert.ok(reach(broke, "5,5") > GRID, "a break is as wide as what fell through it");
+  assert.ok(melt.edge > broke.edge, "the melt's water fades into the ice; the break ends at a hard edge");
+  const chips = floating.find((s) => s.id === "reg1:ice:1,1").list, mid = centre("1,1", GRID);
+  assert.ok(chips.length >= 6 && chips.every((c) => Math.hypot(c.x - mid.x, c.y - mid.y) > GRID * 0.15), "slush at its edge, not shards in its middle");
 });

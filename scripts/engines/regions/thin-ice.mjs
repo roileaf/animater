@@ -132,6 +132,13 @@ function sizesIn(map) {
   return out;
 }
 
+// The squares fire melted, where the ice stored them: a hole whose value is MELTED, open water the fire ate through,
+// which is drawn as a melt with a slushy edge and not as a break. Sorted, as the other lists are.
+function meltsIn(map) {
+  if (!map || typeof map !== "object" || Array.isArray(map)) return [];
+  return Object.keys(map).filter((key) => SQUARE_KEY.test(key) && map[key] === MELTED).sort();
+}
+
 // What a region has stored: `flags.animater.thinIce` holds two maps keyed by square (`{ cracks: { "3,4": 1 }, holes: {} }`),
 // because Foundry merges object flags and a key can only be removed by name. Returns the keys as sorted arrays, and how wide
 // each hole is where that was stored (`holeSizes`, by key).
@@ -139,13 +146,19 @@ function sizesIn(map) {
 export function iceStateOf(doc) {
   const stored = doc?.flags?.animater?.thinIce;
   const flag = stored && typeof stored === "object" ? stored : {};
-  return { cracks: squaresIn(flag.cracks), holes: squaresIn(flag.holes), holeSizes: sizesIn(flag.holes) };
+  return { cracks: squaresIn(flag.cracks), holes: squaresIn(flag.holes), holeSizes: sizesIn(flag.holes), melts: meltsIn(flag.holes) };
 }
 
+// Whether a region's own flags (`flags.animater`) have thin ice on: off unless the flag is exactly true, so a region the
+// GM never marked is never thin ice. The panel and the steps read it from the flags; iceSettingsOf from the document.
+export const thinIceOn = (own) => own?.iceThin === true;
+// What the ice holds, by its flags: Medium unless they name one of the sizes in SIZES. The panel offers three of the six;
+// a flag naming another size is kept as it is, never collapsed to Medium.
+export const iceHoldsOf = (own) => (SIZES.includes(own?.iceHolds) ? own.iceHolds : "med");
 // The region's own thin-ice settings: off unless the flag is exactly true; Medium unless it names one of the sizes in SIZES.
 export function iceSettingsOf(doc) {
   const own = doc?.flags?.animater;
-  return { thin: own?.iceThin === true, holds: SIZES.includes(own?.iceHolds) ? own.iceHolds : "med" };
+  return { thin: thinIceOn(own), holds: iceHoldsOf(own) };
 }
 
 // How many squares across a creature that breaks ice holding up to `limit` is: the first size over it, the next in SIZES (the
@@ -205,4 +218,85 @@ export function iceMoveFor({ region, size, squares = [], ended, name } = {}) {
   const step = iceStep({ limit: holds, size, squares, cracked: iceStateOf(region).cracks, ended, name });
   const updates = iceUpdatesFor(step, { region, size: squaresAcross(size) });
   return updates.length ? { updates, note: step.note } : none;
+}
+
+// ---- putting the ice back, and fire melting it ----
+
+// A hole fire melted, as the ice stores it: not a number of squares across (what a creature that fell through leaves)
+// but open water melted through one square, drawn as a melt with a slushy edge and never as a break.
+export const MELTED = "melt";
+
+// The keys one stored map really holds, whatever is under them: clearing the ice takes a falsy or malformed key too, or
+// it would sit in the flag for ever.
+const keysIn = (map) => (map && typeof map === "object" && !Array.isArray(map) ? Object.keys(map) : []);
+
+/** Every crack and hole one region has stored, cleared by name: `flags.animater.thinIce.cracks.-=<key>` and
+ *  `...holes.-=<key>`, in the `-=`/null form the caller converts (withDeletes). The `thinIce` flag itself and the two
+ *  maps inside it are never written, so no delete under them is undone by a parent written beside it and nothing stale
+ *  is ever left behind. {} when the region has nothing stored. Pure. */
+function iceClearFields(region) {
+  const stored = region?.flags?.animater?.thinIce;
+  const flag = stored && typeof stored === "object" ? stored : {};
+  const fields = {};
+  for (const key of keysIn(flag.cracks)) fields[`${ICE_FLAG}.cracks.-=${key}`] = null;
+  for (const key of keysIn(flag.holes)) fields[`${ICE_FLAG}.holes.-=${key}`] = null;
+  return fields;
+}
+
+// Refreeze (the region panel's button): one region's ice whole again, as updates for updateEmbeddedDocuments("Region").
+// [] when it has nothing stored or has no id. Thin ice being off does not stop it: what is stored is cleared either way.
+export function iceRefreezeUpdates(region) {
+  const id = region?.id ?? region?._id;
+  const fields = id ? iceClearFields(region) : {};
+  return Object.keys(fields).length ? [{ _id: id, ...fields }] : [];
+}
+
+// Repair: the thin ice of every region whole again, one update each (none for a region with nothing stored). No region
+// is ever deleted — unlike a prop's rubble, thin ice is the region itself, and only its own keys go.
+export const iceRepairUpdates = (regions) => (regions ?? []).flatMap((region) => iceRefreezeUpdates(region));
+
+/** What a fire melts. `regions` are [{ id, flags, squares }]: the squares of that region the fire covers, as square keys.
+ *  Each becomes a hole stored as MELTED — open water with a slushy edge — and a crack under it goes by name. A square
+ *  already open stays the hole it is (a break keeps its own shape), and a region the GM never marked melts nothing.
+ *  Updates for updateEmbeddedDocuments("Region"); [] when nothing melts. Pure: the caller finds the squares and writes. */
+export function iceMeltUpdates(regions = []) {
+  const out = [];
+  for (const region of regions ?? []) {
+    const id = region?.id ?? region?._id;
+    if (!id || !iceSettingsOf(region).thin) continue;
+    const { cracks, holes } = iceStateOf(region);
+    const fields = {};
+    for (const key of region?.squares ?? []) {
+      if (!SQUARE_KEY.test(key) || holes.includes(key)) continue;
+      if (cracks.includes(key)) fields[`${ICE_FLAG}.cracks.-=${key}`] = null;
+      fields[`${ICE_FLAG}.holes.${key}`] = MELTED;
+    }
+    if (Object.keys(fields).length) out.push({ _id: id, ...fields });
+  }
+  return out;
+}
+
+/** The squares of one region a fire area covers, as the ice keys them ("<col>,<row>" on the canvas grid, the same keys a
+ *  move writes). `bounds` is the region's own box in pixels ({ x, y, w, h }); `inside(point)` says whether the point is
+ *  in the region and `inArea(point)` whether the fire covers it, both asked at the middle of each square. A region
+ *  larger than `cap` squares melts nothing rather than walking the whole map. Sorted, so every list reads the same. Pure. */
+export function iceMeltSquares({ bounds, grid, inside = () => true, inArea = () => false, cap = 4000 } = {}) {
+  const size = Number(grid);
+  if (!bounds || !(size > 0) || !Number.isFinite(size)) return [];
+  const { x, y, w, h } = bounds;
+  if (![x, y, w, h].every(Number.isFinite) || !(w > 0) || !(h > 0)) return [];
+  const col0 = Math.floor(x / size), row0 = Math.floor(y / size);
+  // The squares the box really reaches into: an edge landing exactly on a grid line is not a square of its own.
+  const cols = Math.max(1, Math.ceil((x + w) / size) - col0), rows = Math.max(1, Math.ceil((y + h) / size) - row0);
+  if (cols <= 0 || rows <= 0 || cols * rows > cap) return [];
+  const out = [];
+  for (let row = row0; row < row0 + rows; row++) {
+    for (let col = col0; col < col0 + cols; col++) {
+      const at = { x: (col + 0.5) * size, y: (row + 0.5) * size };
+      let covered = false;
+      try { covered = inside(at) === true && inArea(at) === true; } catch { covered = false; }
+      if (covered) out.push(`${col},${row}`);
+    }
+  }
+  return out;
 }

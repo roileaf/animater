@@ -41,7 +41,7 @@ import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsO
 import { areaRefusal } from "./engines/props/prop-areas.mjs";
 import { createFireLooks, thingFires, charredCells, litCells } from "./engines/props/fire-looks.mjs";
 import { iceBreakOf } from "./engines/regions/ice-break-look.mjs";
-import { iceSettingsOf, iceStateOf, iceHoleAt, iceMoveFor, sizeNameOf, squaresCrossed, weightOffset } from "./engines/regions/thin-ice.mjs";
+import { iceSettingsOf, iceStateOf, iceHoleAt, iceMoveFor, sizeNameOf, squaresCrossed, weightOffset, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares } from "./engines/regions/thin-ice.mjs";
 import { createIceBreakLook } from "./engines/regions/ice-break-draw.mjs";
 import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
@@ -4729,7 +4729,7 @@ const outlinePanelRegion = (doc) => {
   g.eventMode = "none"; canvas.interface.addChild(g); panelOutline = g;
 };
 Hooks.on("canvasTearDown", () => { panelOutline = null; });
-const regionPanel = createRegionPanel({ brush: (doc) => startDecorBrush(doc), repairDecor: (doc) => repairDecorRegionAsk(doc), cliffWalls: { get: () => heightsSceneOn("walls"), set: (on) => void canvas.scene?.update({ [`flags.${ID}.cliffWalls`]: on }) }, addCrossing: (kind) => { startDecorBrush(); decorBrushing?.bar?.setCrossing?.(kind); }, cliffView: { get: () => (cliffsTopDown() ? "topdown" : "side"), set: (v) => void canvas.scene?.update({ [`flags.${ID}.cliffView`]: v === "topdown" ? "topdown" : "side" }) }, shows: outlinePanelRegion, flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, fireSpreads: () => canvas.scene?.flags?.[ID]?.fireSpreads === true, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]), configure: (doc) => doc.sheet?.render({ force: true }), remove: (doc) => doc.deleteDialog?.(), confirm: (text) => foundry.applications.api.DialogV2.confirm({ window: { title: "Animater: None" }, content: `<p>${foundry.utils.escapeHTML?.(text) ?? text}</p>`, rejectClose: false }).then((yes) => yes === true) });
+const regionPanel = createRegionPanel({ brush: (doc) => startDecorBrush(doc), repairDecor: (doc) => repairDecorRegionAsk(doc), refreezeIce: (doc) => refreezeIceAsk(doc), cliffWalls: { get: () => heightsSceneOn("walls"), set: (on) => void canvas.scene?.update({ [`flags.${ID}.cliffWalls`]: on }) }, addCrossing: (kind) => { startDecorBrush(); decorBrushing?.bar?.setCrossing?.(kind); }, cliffView: { get: () => (cliffsTopDown() ? "topdown" : "side"), set: (v) => void canvas.scene?.update({ [`flags.${ID}.cliffView`]: v === "topdown" ? "topdown" : "side" }) }, shows: outlinePanelRegion, flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, fireSpreads: () => canvas.scene?.flags?.[ID]?.fireSpreads === true, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]), configure: (doc) => doc.sheet?.render({ force: true }), remove: (doc) => doc.deleteDialog?.(), confirm: (text) => foundry.applications.api.DialogV2.confirm({ window: { title: "Animater: None" }, content: `<p>${foundry.utils.escapeHTML?.(text) ?? text}</p>`, rejectClose: false }).then((yes) => yes === true) });
 Hooks.on("updateRegion", (doc, change) => { const flags = change?.flags?.[ID]; if (flags && "step" in flags) refreshStepsWindow(doc.id); });
 // With a region's panel open, a left-drag inside that region moves it: its outline follows the pointer, and on letting go the
 // region is moved by as much (its decorations, heights and crossings go with it, by their own hooks). Shift lays it off the grid.
@@ -5042,6 +5042,29 @@ Hooks.on("moveToken", (doc, movement) => {
     if (updates.length) void writeIceBreak(canvas.scene, updates, notes);
   } catch { /* a token mid-change */ }
 });
+// Refreeze (the region panel's button, the GM's own): every crack and every hole this region has stored goes by name, so
+// the ice is whole again and nothing is left reading as water where a hole was. One region, one write, stamped as
+// Animater's own on an options object built here for this write alone (Foundry writes to the one it is handed).
+// How many keys it cleared.
+async function refreezeIceRegion(doc) {
+  const scene = doc?.parent;
+  if (!game.user?.isGM || !scene) return 0;
+  const updates = iceRefreezeUpdates({ id: doc.id, flags: doc.flags ?? {} });
+  if (!updates.length) return 0;
+  try { await scene.updateEmbeddedDocuments("Region", updates.map((u) => withDeletes(u, propDel())), { animater: { thinIce: true } }); }
+  catch (err) { runtime?.trace?.("thin ice", `not refrozen: ${err?.message ?? err}`); return 0; }
+  return Object.keys(updates[0]).length - 1;
+}
+// The panel's Refreeze: the GM says yes, then the region's ice is whole again.
+let iceRefreezeAsking = false;
+const refreezeIceAsk = async (doc) => {
+  if (iceRefreezeAsking || !game.user?.isGM || !doc) return;
+  iceRefreezeAsking = true;
+  try {
+    if (!await foundry.applications.api.DialogV2.confirm({ window: { title: "Refreeze" }, content: "<p>Freeze over every crack and hole in this region?</p>", rejectClose: false })) return;
+    await refreezeIceRegion(doc);
+  } catch (err) { runtime?.trace?.("thin ice", `refreeze: ${err?.message ?? err}`); } finally { iceRefreezeAsking = false; }
+};
 const verminOn = () => bothSettingsOn("vermin"), dripsOn = () => bothSettingsOn("drips");
 // The map's own picture and where it lies (seen through a puddle's water, bent by its ripples).
 const mapFloor = () => {
@@ -10649,6 +10672,67 @@ async function receiveGrassCatch(data, senderId) {
   if (!user || !scene || typeof data.cause?.areaUuid !== "string") return;
   await applyGrassCatch(scene, { areaUuid: data.cause.areaUuid, messageId: typeof data.cause.messageId === "string" ? data.cause.messageId : undefined }, user);
 }
+// Fire melting thin ice (engines/regions/thin-ice.mjs): a fire area over a region of thin ice eats the squares it covers
+// away to open water with a slushy edge — the same holes a creature's weight leaves, stored as melts so they are drawn
+// melted and not shattered. The screen that sees the area asks the active GM once for it (claimed, as a break, a quench
+// and a grass fire are), who re-derives the area from its own copy (who placed it, that its spell really deals fire, its
+// age, its scene, its levels and its shape square by square) and writes. Nothing is broken and no creature is touched.
+// Like the grass fire, it rides the areas the props already watch, so it waits on the scene's Breakable props.
+const ICE_MELT_MESSAGE = "thin-ice-melt";
+// One ask per scene and area at a time, so a sustained flame cannot make the GM walk the ice over and over.
+const iceMeltGate = createQuenchGate();
+const sceneHasThinIce = (scene) => (scene?.regions?.contents ?? []).some((doc) => { try { return iceSettingsOf(doc).thin; } catch { return false; } });
+// What this area melts, on this screen's documents: each thin-ice region's own squares, on the map's grid, that both the
+// region and the area cover (thin-ice.mjs iceMeltSquares). A region mid-change is only itself.
+function iceMeltOf(scene, area) {
+  const grid = propGrid(scene), regions = [];
+  for (const doc of scene?.regions?.contents ?? []) {
+    try {
+      if (!iceSettingsOf(doc).thin) continue;
+      const areas = regionAreas(doc) ?? [];
+      if (!areas.length) continue;
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const a of areas) for (let i = 0; i + 1 < a.length; i += 2) { x0 = Math.min(x0, a[i]); x1 = Math.max(x1, a[i]); y0 = Math.min(y0, a[i + 1]); y1 = Math.max(y1, a[i + 1]); }
+      const inside = (p) => areas.some((a) => pointInPolygon(p, a) && !(a.holes ?? []).some((h) => pointInPolygon(p, h)));
+      const squares = iceMeltSquares({ bounds: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, grid, inside, inArea: area.testPoint });
+      if (squares.length) regions.push({ id: doc.id, flags: doc.flags ?? {}, levels: [...(doc.levels ?? [])], squares });
+    } catch (err) { runtime?.trace?.("thin ice", `melt ${doc?.id ?? "?"}: ${err?.message ?? err}`); }
+  }
+  return iceMeltUpdates(tilesOnLevel(regions, area.levels));
+}
+// The GM's one region batch for a melt, stamped as Animater's own on an options object built for this write alone.
+async function meltIceWrite(scene, area) {
+  const updates = propSafe("thin ice melt", () => iceMeltOf(scene, area)) ?? [];
+  if (!updates.length) return false;
+  await scene.updateEmbeddedDocuments("Region", updates.map((u) => withDeletes(u, propDel())), { animater: { thinIce: true } })
+    .catch((e) => runtime?.trace?.("thin ice", `melt not written: ${e?.message ?? e}`));
+  return true;
+}
+async function applyIceMelt(scene, cause, user) {
+  if (!game.users.activeGM?.isSelf || !scene) return false;
+  // messageId: the damage roll, for a spell whose item names no damage type (the GM reads the types off it itself).
+  const full = { kind: "area", damageType: "fire", areaUuid: cause?.areaUuid, ...(typeof cause?.messageId === "string" ? { messageId: cause.messageId } : {}) };
+  const { area, now } = areaPlace(full, user);
+  // The shape is asked square by square above; every other check (placer, the spell's own damage types, age, scene) is the break's.
+  const refused = areaRefusal(area ? { ...area, testPoint: () => true } : area, { cause: full, sceneId: scene.id, sender: user, point: { x: 0, y: 0 }, levels: area?.levels, now });
+  if (refused) { runtime?.trace?.("thin ice", `ice not melted: ${refused}`); return false; }
+  return iceMeltGate.run(`${scene.id}:${area.uuid}`, () => meltIceWrite(scene, area));
+}
+// True once asked of (or started by) the GM; false with none connected.
+function askIceMelt(area, messageId) {
+  const scene = area?.scene, gm = game.users.activeGM;
+  if (!scene || !gm) return false;
+  const cause = { areaUuid: area.templateId, ...(typeof messageId === "string" ? { messageId } : {}) };
+  if (gm.isSelf) { void applyIceMelt(scene, cause, game.user).catch((e) => runtime?.trace?.("thin ice", `melt: ${e?.message ?? e}`)); return true; }
+  game.socket.emit(`module.${ID}`, { type: ICE_MELT_MESSAGE, sender: clientId, sceneId: scene.id, cause });
+  return true;
+}
+async function receiveIceMelt(data, senderId) {
+  if (data?.type !== ICE_MELT_MESSAGE || !game.users.activeGM?.isSelf) return;
+  const user = senderId ? game.users.get(senderId) : null, scene = game.scenes.get(String(data.sceneId ?? ""));
+  if (!user || !scene || typeof data.cause?.areaUuid !== "string") return;
+  await applyIceMelt(scene, { areaUuid: data.cause.areaUuid, messageId: typeof data.cause.messageId === "string" ? data.cause.messageId : undefined }, user);
+}
 // Water and cold putting fires out (engines/props/fire-spread.mjs quenchUpdates). An area whose spell deals a quenching
 // damage type puts out every fire inside it: a prop's, a decoration's and a grass square's flags are cleared and their fire
 // lights deleted. The screen that sees the area asks the active GM (one ask per area, claimed), who checks the area as its
@@ -11202,6 +11286,9 @@ async function repairAllProps(scene = canvas?.scene) {
     const decorFixes = decorRepairUpdates(sceneRegions(scene));
     // Each region's fire (decorations' and grass squares', whole flags) goes in the same update as its breaks.
     for (const u of repairFireUpdates(sceneRegions(scene))) { const own = decorFixes.find((d) => d._id === u._id); if (own) Object.assign(own, u); else decorFixes.push(u); }
+    // And the thin ice: every crack and hole cleared by name, in the same update as that region's breaks. A thin-ice
+    // region is never deleted, unlike a prop's rubble: only its own keys go.
+    for (const u of iceRepairUpdates(sceneRegions(scene))) { const own = decorFixes.find((d) => d._id === u._id); if (own) Object.assign(own, u); else decorFixes.push(u); }
     await relightDecor(scene, (scene.regions?.contents ?? []).filter((r) => decorFixes.some((u) => u._id === r.id)));
     if (decorFixes.length) await scene.updateEmbeddedDocuments("Region", decorFixes.map((u) => withDeletes(u, del)), { animater: { decorRepair: true } });
   });
@@ -11353,6 +11440,10 @@ function breakAreaThings(area, types, { messageId } = {}) {
   const lighting = types.includes("fire") && scene.flags?.[ID]?.fireSpreads === true && propAreas.claim(area.templateId, "grass");
   if (lighting) void askClaimed({ ask: () => askGrassCatch(area, messageId), release: () => propAreas.release(area.templateId, "grass"), wait: CLAIM_SETTLE_MS,
     written: () => { try { return grassCatchOf(scene, area).lit.length === 0; } catch { return false; } } });
+  // A fire area melts the thin ice it covers to open water (asked of the GM once per area), as it lights the grass.
+  const melting = types.includes("fire") && sceneHasThinIce(scene) && propAreas.claim(area.templateId, "ice");
+  if (melting) void askClaimed({ ask: () => askIceMelt(area, messageId), release: () => propAreas.release(area.templateId, "ice"), wait: CLAIM_SETTLE_MS,
+    written: () => { try { return iceMeltOf(scene, area).length === 0; } catch { return false; } } });
   const grid = propGrid(scene), tiles = tilesOnLevel(scene.tiles.contents.map(propTileView), area.levels), walls = (scene.walls?.contents ?? []).map(wallView);
   const decor = propSafe("area decorations", () => decorViews(scene, area.levels)) ?? [], id = (t) => t.id;
   const hits = typesBreaking(types, (type) => propsInArea(tiles, area.testPoint, grid, type), id).filter(({ thing }) => propAreas.claim(area.templateId, thing.id));
@@ -11362,7 +11453,7 @@ function breakAreaThings(area, types, { messageId } = {}) {
   const decorHits = typesBreaking(types, (type) => propsInArea(decor, area.testPoint, grid, type), id).filter(({ thing }) => propAreas.claim(area.templateId, thing.id));
   // Decorations whose powder spilled earlier: a fire area sets them off, once, as it does a keg tile's.
   const decorSpills = !types.includes("fire") ? [] : (propSafe("area decoration powder", () => ignitableInArea(tilesOnLevel(decorSpilled(decorRegionsOf(scene, { breaking: true }), grid, decorIndex), area.levels), area.testPoint)) ?? []).filter((v) => propAreas.claim(area.templateId, `ignite:${v.id}`));
-  if (!hits.length && !doors.length && !spills.length && !decorHits.length && !decorSpills.length) return quenching || lighting;
+  if (!hits.length && !doors.length && !spills.length && !decorHits.length && !decorSpills.length) return quenching || lighting || melting;
   const areaUuid = area.templateId, roll = typeof messageId === "string" ? { messageId } : {};
   const cause = (damageType) => ({ kind: "area", damageType, at: area.at, areaUuid, ...roll });
   const held = (claimId, ask, written) => void askClaimed({ ask, written, release: () => propAreas.release(areaUuid, claimId), wait: CLAIM_SETTLE_MS });
@@ -14869,6 +14960,7 @@ Hooks.once("ready", () => {
     if (data?.type === PROP_BREAK_MESSAGE) { void receivePropBreak(data, senderId).catch((e) => console.warn("Animater props:", e?.message ?? e)); return; }
     if (data?.type === QUENCH_MESSAGE) { void receiveQuench(data, senderId).catch((e) => console.warn("Animater props (quench):", e?.message ?? e)); return; }
     if (data?.type === GRASS_FIRE_MESSAGE) { void receiveGrassCatch(data, senderId).catch((e) => console.warn("Animater props (grass fire):", e?.message ?? e)); return; }
+    if (data?.type === ICE_MELT_MESSAGE) { void receiveIceMelt(data, senderId).catch((e) => console.warn("Animater thin ice (melt):", e?.message ?? e)); return; }
     if (data?.type === DECOR_BREAK_MESSAGE) { void receiveDecorBreak(data, senderId).catch((e) => console.warn("Animater props (decoration):", e?.message ?? e)); return; }
     if (data?.type === WALL_BREAK_MESSAGE) { void receiveWallBreak(data, senderId).catch((e) => console.warn("Animater props (door):", e?.message ?? e)); return; }
     if (data?.type === BLAST_MESSAGE) { if (data.blast?.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) playBlast(data.blast); return; }
@@ -15289,6 +15381,10 @@ Hooks.once("ready", () => {
         return requestWallBreak(doc, { kind: "area", damageType: "bludgeoning", at: side, ...cause }, { from: cause.at ?? side });
       },
       repairProps: () => repairAllProps(canvas?.scene),
+      // GM: one region's thin ice frozen over again (the panel's Refreeze, without the question), and a round patch of
+      // thin ice melted as a fire area over it would melt it (its middle and how far it reaches, in pixels).
+      refreezeIce: (regionId) => refreezeIceRegion(canvas?.scene?.regions?.get(regionId)),
+      meltIce: (at, radius = canvas.grid?.size ?? 100) => meltIceWrite(canvas?.scene, { testPoint: (p) => Math.hypot(p.x - at.x, p.y - at.y) <= radius, levels: [] }),
       // Break a region's decoration (a key from decorKeys) as a bludgeoning area at its centre would (both switches still
       // apply; a player's is asked of the GM, who checks it as any other); the region's breakable decorations, with their
       // keys; and the keys this screen lets break now (drawn, not broken: decorBreakable).
