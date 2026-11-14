@@ -34,7 +34,7 @@
 <pre id="stats"></pre>
 
 <script type="module">
-import { frontsOf, frontLook, groundLook, tilePlan, frameMix, leanAt, bakeTile, bakeSeats, bakeGround, tileSize, seatSize, groundPx,
+import { frontsOf, frontTiles, groundLook, frameMix, fadeWeights, leanAt, bakeTile, bakeSeats, bakeGround, paintScorch, tileSize, seatSize, groundPx,
   FRAMES, FRAME_MS, ABOVE, FOOT, CELL_PX, VARIANTS } from "../../scripts/engines/props/fire-bake.mjs";
 
 const GRID = 88;
@@ -75,6 +75,7 @@ let bakeMs = 0;
 const timed = (fn) => { const t = performance.now(); const v = fn(); bakeMs += performance.now() - t; return v; };
 const tileOf = (spec) => { const key = `${spec.variant}:${spec.kind}:${spec.k}`; if (!tiles.has(key)) tiles.set(key, timed(() => bakeTile(makeCanvas, spec))); return tiles.get(key); };
 const seatsOf = (spec) => { const key = `${spec.variant}:${spec.kind}:${spec.k}`; if (!seats.has(key)) seats.set(key, timed(() => bakeSeats(makeCanvas, spec))); return seats.get(key); };
+const scorchPic = (() => { const g = groundPx(); const cv = makeCanvas(g.w, g.h); paintScorch(cv.getContext("2d")); return cv; })();
 const groundOf = (v) => { if (!grounds.has(v)) grounds.set(v, timed(() => bakeGround(makeCanvas, v))); return grounds.get(v); };
 const T = tileSize(), G = groundPx(), SE = seatSize();
 // Both scenes are lowered by the same amount, so a front that stands two squares tall is not cut by the top of the canvas.
@@ -103,23 +104,24 @@ function draw() {
   for (const cell of cells) { // the ground pictures, as the module's ground sprites
     const look = groundLook(cell.seed), m = frameMix(ms, look.phase, still), s = GRID / CELL_PX;
     c.save(); c.translate(cell.rect.x, cell.rect.y); c.scale(s, s);
-    c.drawImage(groundOf(look.variant)[m.a], -G.ax, -G.ay);
-    c.globalAlpha = m.t; c.drawImage(groundOf(look.variant)[m.b], -G.ax, -G.ay); c.globalAlpha = 1; c.restore();
+    const w = fadeWeights(m.t);
+    c.drawImage(scorchPic, -G.ax, -G.ay); // the still scorch, never faded
+    c.globalAlpha = w.base; c.drawImage(groundOf(look.variant)[m.a], -G.ax, -G.ay);
+    c.globalAlpha = w.over; c.drawImage(groundOf(look.variant)[m.b], -G.ax, -G.ay); c.globalAlpha = 1; c.restore();
   }
   for (const front of frontsOf(cells)) { // the flames, as the module's tile sprites
-    const look = frontLook(front.cells[0].seed), n = front.cells.length, m = frameMix(ms, look.phase, still), lean = leanAt(ms, look.phase, still);
+    const { look, tiles: plan } = frontTiles(front), m = frameMix(ms, look.phase, still), w = fadeWeights(m.t), lean = leanAt(ms, look.phase, still);
     const scale = front.w / CELL_PX;
-    tilePlan(n, look.offset).forEach((spec, i) => {
-      const at = look.mirror ? n - 1 - i : i;
-      const px = front.x + at * front.w + (look.mirror ? front.w : 0), py = front.y + FOOT * front.h;
+    plan.forEach((spec, i) => {
+      const px = front.x + i * front.w, py = front.y + FOOT * front.h;
       c.save();
-      c.transform(look.mirror ? -scale : scale, 0, -Math.sin(lean) * scale, Math.cos(lean) * scale, px, py);
-      const tex = tileOf({ variant: look.variant, ...spec });
-      c.drawImage(tex[m.a], 0, -ABOVE * CELL_PX);
-      c.globalAlpha = m.t; c.drawImage(tex[m.b], 0, -ABOVE * CELL_PX); c.globalAlpha = 1; // the next frame faded in
+      c.transform(scale, 0, -Math.sin(lean) * scale, Math.cos(lean) * scale, px, py);
+      const tex = tileOf(spec);
+      c.globalAlpha = w.base; c.drawImage(tex[m.a], 0, -ABOVE * CELL_PX);
+      c.globalAlpha = w.over; c.drawImage(tex[m.b], 0, -ABOVE * CELL_PX); c.globalAlpha = 1; // each frame fades out as the next fades in
       const f = m.a;
       c.globalCompositeOperation = "lighter"; // the foot light is added to the ground, as the module's additive seat sprites do
-      c.drawImage(seatsOf({ variant: look.variant, ...spec })[f], 0, -SE.ay);
+      c.drawImage(seatsOf(spec)[f], 0, -SE.ay);
       c.globalCompositeOperation = "source-over";
       if ($("seams").checked) { c.strokeStyle = "#0ff8"; c.lineWidth = 1 / scale; c.strokeRect(0, -ABOVE * CELL_PX, T.w, T.h); }
       c.restore();

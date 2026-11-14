@@ -62,12 +62,16 @@ export function frontsOf(cells) {
   return out.map(({ cells: row }) => ({ x: row[0].rect.x, y: row[0].rect.y, w: row[0].rect.w, h: row[0].rect.h, cells: row }));
 }
 
-// How a front looks, from its first square's seed: which of the baked variants, whether it is mirrored, and where in the
-// loop it starts (so two fronts never breathe in step) and where along the ring its strip begins (so two fronts never show
-// the same stretch of edge). Same seed, same answer, on every screen.
-export function frontLook(seed) {
-  const r = rng(seed >>> 0, 0xf17e);
-  return { variant: Math.floor(r() * VARIANTS), mirror: r() < 0.5, phase: Math.floor(r() * FRAMES), offset: Math.floor(r() * RING) };
+// Where a square sits on the grid, as whole squares: the strip is laid out by these, never by which fire it belongs to, so
+// a square that catches beside a front leaves the tiles already drawn exactly as they were.
+export const cellAt = (rect) => ({ col: Math.floor(rect.x / rect.w + 0.5), row: Math.floor(rect.y / rect.h + 0.5) });
+
+// The strip a row of squares is cut from: which of the baked variants, where in the loop it starts and where round the ring
+// it begins, all from the row alone. Every front in a row is a stretch of the same strip, so fronts that grow or join
+// never change the look of the squares already burning. Same row, same answer, on every screen.
+export function stripLook(row) {
+  const r = rng(row | 0, 0xf17e);
+  return { variant: Math.floor(r() * VARIANTS), phase: Math.floor(r() * FRAMES), shift: Math.floor(r() * RING) };
 }
 // The same for the ground picture of one square.
 export function groundLook(seed) {
@@ -84,6 +88,25 @@ export function tilePlan(n, offset = 0) {
   for (let i = 1; i < count - 1; i++) plan.push({ kind: "mid", k: (o + i) % RING });
   plan.push({ kind: "right", k: (o + count - 1) % RING });
   return plan;
+}
+
+// The tiles of a front {cells}: for each square its picture family and the look of its row's strip. A square's ring place is
+// its column (plus its row's shift), so it is the same whichever fire it is part of; only its end-ness (an end tile has the
+// edge fall to the ground) changes when a neighbour catches.
+export function frontTiles(front) {
+  const first = cellAt(front.cells[0].rect), look = stripLook(first.row);
+  const o = (((first.col + look.shift) % RING) + RING) % RING;
+  return { look, tiles: tilePlan(front.cells.length, o).map((spec) => ({ ...spec, variant: look.variant })) };
+}
+
+// How much of each of two consecutive frames to show, `t` of the way from the first to the second. Both fade, so a pixel
+// that is the same in both frames keeps nearly the same alpha all the way through (laying the second over a whole first
+// would climb to 1-(1-A)^2 and snap back at the flip).
+export const fadeWeights = (t) => ({ base: 1 - t, over: t });
+// The alpha a pixel of alpha `a` in the first frame and `b` in the second ends up with, composited as two sprites.
+export function compositeAlpha(a, b, t) {
+  const w = fadeWeights(t);
+  return 1 - (1 - w.base * a) * (1 - w.over * b);
 }
 
 // Which frame of the loop shows at `ms`, for a front that starts `phase` frames in. Read off the shared clock by the
@@ -299,16 +322,23 @@ export function paintSeats(c, { variant, kind, k }, theta, S = CELL_PX) {
   }
 }
 
-// The dark under and over a burning square: the scorch it lies on, the glow it throws on the ground, and the smoke that
-// climbs off it. Units are squares with 0,0 at the square's top-left corner; the picture reaches past it on every side.
-export function paintGround(c, variant, theta, S = CELL_PX) {
-  const glow = 0.5 + 0.5 * Math.sin(TAU * theta);
+// The dark under and over a burning square: the scorch it lies on (paintScorch), the glow it throws on the ground, and the
+// smoke that climbs off it. Units are squares with 0,0 at the square's top-left corner; the picture reaches past it on every side.
+// The scorch the fire lies on never moves, so it is one picture with no frames (cross-fading a still, dark picture would make
+// it pulse).
+export function paintScorch(c, S = CELL_PX) {
   c.setTransform(S, 0, 0, S, G_LEFT * S, G_UP * S);
   c.globalCompositeOperation = "source-over";
   c.globalAlpha = 0.72; c.fillStyle = SOOT;
   c.beginPath(); c.ellipse(0.5, 0.78, 0.46, 0.22, 0, 0, TAU); c.fill();
   c.globalAlpha = 0.3;
   c.beginPath(); c.ellipse(0.5, 0.74, 0.62, 0.3, 0, 0, TAU); c.fill();
+  c.globalAlpha = 1;
+}
+export function paintGround(c, variant, theta, S = CELL_PX) {
+  const glow = 0.5 + 0.5 * Math.sin(TAU * theta);
+  c.setTransform(S, 0, 0, S, G_LEFT * S, G_UP * S);
+  c.globalCompositeOperation = "source-over";
   c.globalAlpha = 0.5 + 0.3 * glow;
   const halo = c.createRadialGradient(0.5, 0.6, 0.02, 0.5, 0.6, 0.95);
   halo.addColorStop(0, "#ff9a2155"); halo.addColorStop(1, "#ff9a2100");
@@ -343,39 +373,72 @@ export function bakeGround(makeCanvas, variant, S = CELL_PX) {
 }
 export const groundPx = (S = CELL_PX) => ({ w: Math.ceil((1 + G_LEFT + G_RIGHT) * S), h: Math.ceil((G_UP + G_DOWN) * S), ax: G_LEFT * S, ay: G_UP * S });
 
-// The textures, baked on first use and kept for as long as anything draws with them. Never baked per tick or per front.
-export function createFlameBank({ PIXI, makeCanvas = defaultCanvas(), S = CELL_PX }) {
+// How many tile families (each: 8 flame frames and 8 foot-light frames) the bank keeps baked at once. A family is
+// 8 x 55,808 + 8 x 8,192 = 512,000 bytes of texture, so 24 of them are 12.3 MB; the 3 ground variants (8 x 90,112 each) and
+// the one scorch add 2.3 MB: about 14.6 MB all told, under the 16 MB asked for. Families that sprites are using are never
+// evicted, so a scene with more distinct families on screen than this is the only way past it.
+export const FAMILY_CAP = 24;
+export const familyKey = (spec) => `${spec.variant}:${spec.kind}:${spec.k}`;
+
+// The textures, baked on first use and kept while anything draws with them, then least-recently-used first out. Never
+// baked per tick or per front.
+export function createFlameBank({ PIXI, makeCanvas = defaultCanvas(), S = CELL_PX, cap = FAMILY_CAP }) {
   if (!makeCanvas || typeof PIXI?.Texture?.from !== "function") return null;
-  const tiles = new Map(), seats = new Map(), grounds = new Map();
-  let bakes = 0, gone = false;
+  const families = new Map(), grounds = new Map();
+  let scorch = null, held = new Set(), bakes = 0, gone = false;
   const upload = (cvs) => cvs.map((cv) => PIXI.Texture.from(cv));
   const tw = tileSize(S), gp = groundPx(S), sw = seatSize(S);
+  const free = (cvs, tex) => {
+    for (const t of tex) { try { t.destroy(true); } catch { /* gone */ } }
+    for (const cv of cvs) { try { cv.width = 0; cv.height = 0; } catch { /* a canvas that cannot shrink */ } }
+  };
+  const evict = () => {
+    for (const [key, fam] of families) {
+      if (families.size <= cap) break;
+      if (held.has(key)) continue;
+      free(fam.cvs, [...fam.tex, ...fam.light]);
+      families.delete(key);
+    }
+  };
+  const family = (spec) => {
+    const key = familyKey(spec);
+    let fam = families.get(key);
+    if (fam) { families.delete(key); families.set(key, fam); return fam; } // most recently used goes last
+    if (gone) return { tex: [], light: [] };
+    const tcv = bakeTile(makeCanvas, spec, S), lcv = bakeSeats(makeCanvas, spec, S);
+    fam = { tex: upload(tcv), light: upload(lcv), cvs: [...tcv, ...lcv] };
+    families.set(key, fam); bakes++;
+    evict();
+    return fam;
+  };
   return {
     S,
-    // The FRAMES textures of one tile family: {variant, kind, k}.
-    tile(spec) {
-      const key = `${spec.variant}:${spec.kind}:${spec.k}`;
-      if (!tiles.has(key) && !gone) { tiles.set(key, upload(bakeTile(makeCanvas, spec, S))); bakes++; }
-      return tiles.get(key) ?? [];
-    },
-    // The FRAMES textures of the foot light of one tile family, drawn additively.
-    seats(spec) {
-      const key = `${spec.variant}:${spec.kind}:${spec.k}`;
-      if (!seats.has(key) && !gone) { seats.set(key, upload(bakeSeats(makeCanvas, spec, S))); bakes++; }
-      return seats.get(key) ?? [];
-    },
+    cap,
+    // The flame and foot-light textures of one tile family: {variant, kind, k}.
+    family,
+    tile: (spec) => family(spec).tex,
+    seats: (spec) => family(spec).light,
+    // The families a layout is using: these are not evicted until the next call replaces them.
+    hold(specs) { held = new Set(specs.map(familyKey)); evict(); },
     ground(variant) {
-      if (!grounds.has(variant) && !gone) { grounds.set(variant, upload(bakeGround(makeCanvas, variant, S))); bakes++; }
-      return grounds.get(variant) ?? [];
+      if (!grounds.has(variant) && !gone) { const cv = bakeGround(makeCanvas, variant, S); grounds.set(variant, { tex: upload(cv), cvs: cv }); bakes++; }
+      return grounds.get(variant)?.tex ?? [];
+    },
+    // The one still scorch picture, shared by every burning square.
+    scorch() {
+      if (!scorch && !gone) { const cv = makeCanvas(gp.w, gp.h); paintScorch(cv.getContext("2d"), S); scorch = { tex: upload([cv]), cvs: [cv] }; bakes++; }
+      return scorch?.tex[0] ?? null;
     },
     stats() {
-      const t = tiles.size * FRAMES, g = grounds.size * FRAMES, e = seats.size * FRAMES;
-      return { families: tiles.size, grounds: grounds.size, textures: t + g + e, bakes, bytes: (t * tw.w * tw.h + g * gp.w * gp.h + e * sw.w * sw.h) * 4 };
+      const f = families.size * FRAMES, g = grounds.size * FRAMES + (scorch ? 1 : 0);
+      return { families: families.size, grounds: grounds.size, textures: f * 2 + g, bakes, bytes: (f * tw.w * tw.h + f * sw.w * sw.h + g * gp.w * gp.h) * 4 };
     },
     destroy() {
       gone = true;
-      for (const list of [...tiles.values(), ...seats.values(), ...grounds.values()]) for (const tex of list) { try { tex.destroy(true); } catch { /* gone */ } }
-      tiles.clear(); seats.clear(); grounds.clear();
+      for (const fam of families.values()) free(fam.cvs, [...fam.tex, ...fam.light]);
+      for (const g of grounds.values()) free(g.cvs, g.tex);
+      if (scorch) free(scorch.cvs, scorch.tex);
+      families.clear(); grounds.clear(); scorch = null;
     },
   };
 }

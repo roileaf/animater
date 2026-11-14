@@ -4,7 +4,7 @@
 // The picking and the pulse are pure; only createFireLooks touches PIXI. The flames are baked pictures (fire-bake.mjs) placed as sprites.
 import { seededRandom } from "../fragments/fragments.mjs";
 import { readFire, HEAT_WARN, HEAT_CATCH } from "./fire-spread.mjs";
-import { frontsOf, frontLook, groundLook, tilePlan, frameMix, leanAt, topAt, liftAt, acquireFlameBank, releaseFlameBank, tileSize, seatSize, groundPx, FRAMES, ABOVE, FOOT } from "./fire-bake.mjs";
+import { frontsOf, frontTiles, groundLook, frameMix, fadeWeights, leanAt, topAt, liftAt, acquireFlameBank, releaseFlameBank, tileSize, seatSize, groundPx, FRAMES, ABOVE, FOOT } from "./fire-bake.mjs";
 
 // The things that are smouldering: at or over the warning heat and not yet alight. `heat` is how far they are from
 // the warning heat to catching (0-1), which is how hard the edge pulses. Things are {id, fire} (a tile's flag, a
@@ -126,52 +126,58 @@ export function createFireLooks({ PIXI, layer, floor = layer, grid = () => 100, 
     dropSprites();
     if (!flames.length || !groundBox) return;
     const b = flameBank();
-    if (!b) { fronts = frontsOf(flames).map((f) => ({ f, look: frontLook(f.cells[0].seed), tiles: [] })); return; }
+    const laid = frontsOf(flames).map((f) => ({ f, ...frontTiles(f) }));
+    if (!b) { fronts = laid.map(({ f, look }) => ({ f, look, tiles: [] })); return; }
+    b.hold(laid.flatMap(({ tiles, look }) => tiles.map((t) => ({ ...t, variant: look.variant })))); // nothing in use is evicted while these are laid
     const tile = tileSize(b.S), seat = seatSize(b.S), ground = groundPx(b.S);
+    const clone = (sprite) => {
+      const over = new PIXI.Sprite(sprite.texture);
+      over.anchor.set(sprite.anchor.x, sprite.anchor.y); over.position.set(sprite.position.x, sprite.position.y); over.scale.set(sprite.scale.x, sprite.scale.y); over.alpha = 0;
+      return over;
+    };
     const overs = [];
-    for (const f of frontsOf(flames)) {
-      const look = frontLook(f.cells[0].seed), n = f.cells.length, scale = f.w / b.S;
-      const tiles = tilePlan(n, look.offset).map((spec, i) => {
-        const tex = b.tile({ variant: look.variant, ...spec });
+    for (const { f, look, tiles: specs } of laid) {
+      const scale = f.w / b.S;
+      const tiles = specs.map((spec, i) => {
+        const { tex, light } = b.family(spec);
         if (!tex.length) return null;
         const sprite = new PIXI.Sprite(tex[0]);
         sprite.anchor.set(0, (ABOVE * b.S) / tile.h);
-        // Mirrored fronts run their strip from the right, so a front is not always the same way round.
-        const at = look.mirror ? n - 1 - i : i;
-        sprite.position.set(f.x + at * f.w + (look.mirror ? f.w : 0), f.y + FOOT * f.h);
-        sprite.scale.set(look.mirror ? -scale : scale, scale);
+        sprite.position.set(f.x + i * f.w, f.y + FOOT * f.h);
+        sprite.scale.set(scale, scale);
         flameBox.addChild(sprite);
-        // The next frame is faded in over this one, so the 8 baked frames play as continuous motion.
-        const over = new PIXI.Sprite(tex[0]);
-        over.anchor.set(sprite.anchor.x, sprite.anchor.y); over.position.set(sprite.position.x, sprite.position.y); over.scale.set(sprite.scale.x, sprite.scale.y); over.alpha = 0;
+        // The next frame is faded in as this one fades out, so the 8 baked frames play as continuous motion.
+        const over = clone(sprite);
         overs.push(over);
         // The heat put back at the foot is added to the ground, not laid over it: its own sprite, blended additively.
-        const light = b.seats({ variant: look.variant, ...spec });
         let glow = null;
         if (light.length) {
           glow = new PIXI.Sprite(light[0]);
           glow.anchor.set(0, seat.ay / seat.h);
           glow.position.set(sprite.position.x, sprite.position.y);
-          glow.scale.set(sprite.scale.x, sprite.scale.y);
+          glow.scale.set(scale, scale);
           if (PIXI.BLEND_MODES) glow.blendMode = PIXI.BLEND_MODES.ADD;
           seatBox.addChild(glow);
         }
-        return { sprite, over, tex, glow, light, shown: 0 };
+        return { sprite, over, tex, glow, light, shown: 0, next: -1 };
       }).filter(Boolean);
       fronts.push({ f, look, tiles });
     }
     for (const over of overs) flameBox.addChild(over);
+    const scorch = b.scorch();
+    const place = (sprite, c) => {
+      sprite.anchor.set(ground.ax / ground.w, ground.ay / ground.h);
+      sprite.position.set(c.rect.x, c.rect.y);
+      sprite.scale.set(c.rect.w / b.S);
+      return sprite;
+    };
+    if (scorch) for (const c of flames) groundBox.addChild(place(new PIXI.Sprite(scorch), c)); // the still dark under it, never faded
     const groundOvers = [];
     for (const c of flames) {
       const look = groundLook(c.seed), tex = b.ground(look.variant);
       if (!tex.length) continue;
-      const sprite = new PIXI.Sprite(tex[0]);
-      sprite.anchor.set(ground.ax / ground.w, ground.ay / ground.h);
-      sprite.position.set(c.rect.x, c.rect.y);
-      sprite.scale.set(c.rect.w / b.S);
-      groundBox.addChild(sprite);
-      const over = new PIXI.Sprite(tex[0]);
-      over.anchor.set(sprite.anchor.x, sprite.anchor.y); over.position.set(sprite.position.x, sprite.position.y); over.scale.set(sprite.scale.x, sprite.scale.y); over.alpha = 0;
+      const sprite = groundBox.addChild(place(new PIXI.Sprite(tex[0]), c));
+      const over = place(new PIXI.Sprite(tex[0]), c); over.alpha = 0;
       groundOvers.push(over);
       grounds.push({ sprite, over, tex, phase: look.phase, shown: -1, next: -1 });
     }
@@ -181,18 +187,18 @@ export function createFireLooks({ PIXI, layer, floor = layer, grid = () => 100, 
     if (!flameArt) return;
     flameArt.clear();
     for (const g of grounds) {
-      const { a, b, t } = frameMix(ms, g.phase, still);
+      const { a, b, t } = frameMix(ms, g.phase, still), w = fadeWeights(t);
       if (a !== g.shown) { g.sprite.texture = g.tex[a]; g.shown = a; }
       if (b !== g.next) { g.over.texture = g.tex[b]; g.next = b; }
-      g.over.alpha = t;
+      g.sprite.alpha = w.base; g.over.alpha = w.over;
     }
     for (const fr of fronts) {
-      const { a, b, t } = frameMix(ms, fr.look.phase, still), lean = leanAt(ms, fr.look.phase, still);
+      const { a, b, t } = frameMix(ms, fr.look.phase, still), w = fadeWeights(t), lean = leanAt(ms, fr.look.phase, still);
       if (!fr.tiles.length) { fallbackBody(fr, a); continue; }
       for (const tile of fr.tiles) {
         if (a !== tile.shown) { tile.sprite.texture = tile.tex[a]; if (tile.glow) tile.glow.texture = tile.light[a]; tile.shown = a; }
         if (b !== tile.next) { tile.over.texture = tile.tex[b]; tile.next = b; }
-        tile.over.alpha = t;
+        tile.sprite.alpha = w.base; tile.over.alpha = w.over;
         tile.sprite.skew.x = -lean; tile.over.skew.x = -lean;
       }
     }

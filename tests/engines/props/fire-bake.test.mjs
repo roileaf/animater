@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { frontsOf, frontLook, groundLook, tilePlan, frameAt, frameMix, footAt, leanAt, topAt, liftAt, cellFeatures, paintTile, paintSeats, paintGround, bakeTile,
+import { frontsOf, stripLook, cellAt, frontTiles, fadeWeights, compositeAlpha, FAMILY_CAP, familyKey, groundLook, tilePlan, frameAt, frameMix, footAt, leanAt, topAt, liftAt, cellFeatures, paintTile, paintSeats, paintGround, bakeTile,
   createFlameBank, acquireFlameBank, releaseFlameBank, tileSize, FRAMES, FRAME_MS, RING, VARIANTS, LEAN } from "../../../scripts/engines/props/fire-bake.mjs";
 import { createFireLooks } from "../../../scripts/engines/props/fire-looks.mjs";
 
@@ -47,16 +47,38 @@ test("squares are told apart by position on the real, fractional grid too", () =
   assert.equal(frontsOf([row[0], { ...row[1], rect: { ...row[1].rect, w: g * 2 } }]).length, 2);
 });
 
-test("a front's look is its first square's seed, the same every time, and uses every variant", () => {
-  assert.deepEqual(frontLook(12345), frontLook(12345));
+test("a row's strip look is the same every time and uses every variant; a ground picture's is its square's own", () => {
+  assert.deepEqual(stripLook(12), stripLook(12));
   assert.deepEqual(groundLook(12345), groundLook(12345));
   const seen = new Set();
-  for (let s = 1; s < 200; s++) {
-    const l = frontLook(s * 2654435761);
-    assert.ok(l.variant >= 0 && l.variant < VARIANTS && l.phase >= 0 && l.phase < FRAMES && typeof l.mirror === "boolean");
+  for (let row = 0; row < 200; row++) {
+    const l = stripLook(row);
+    assert.ok(l.variant >= 0 && l.variant < VARIANTS && l.phase >= 0 && l.phase < FRAMES && l.shift >= 0 && l.shift < RING);
     seen.add(l.variant);
   }
   assert.equal(seen.size, VARIANTS);
+});
+
+test("a square that catches beside a front leaves every tile already drawn as it was", () => {
+  const sq = (col, row = 4, g = 100) => ({ id: `${col},${row}`, seed: (col + 1) * 2654435761 % 0xffffffff, rect: { x: col * g, y: row * g, w: g, h: g } });
+  const three = frontTiles(frontsOf([sq(5), sq(6), sq(7)])[0]);
+  const grewLeft = frontTiles(frontsOf([sq(4), sq(5), sq(6), sq(7)])[0]);
+  const grewRight = frontTiles(frontsOf([sq(5), sq(6), sq(7), sq(8)])[0]);
+  assert.deepEqual(grewLeft.look, three.look, "same variant and loop phase");
+  assert.deepEqual(grewRight.look, three.look);
+  // The squares in the middle keep their picture exactly; only the end that was an end changes kind (the edge no longer falls
+  // to the ground there), never its place in the ring or its variant.
+  assert.deepEqual(grewLeft.tiles.slice(2), three.tiles.slice(1), "the old second and third tiles");
+  assert.deepEqual(grewLeft.tiles[1], { ...three.tiles[0], kind: "mid" });
+  assert.deepEqual(grewRight.tiles.slice(0, 2), three.tiles.slice(0, 2));
+  assert.deepEqual(grewRight.tiles[2], { ...three.tiles[2], kind: "mid" });
+  for (const f of [three, grewLeft, grewRight]) assert.ok(f.tiles.every((t) => t.variant === f.look.variant));
+  // A square's ring place is its column, whatever front it is in; fractional grids give the same answer.
+  assert.equal(cellAt({ x: 17.7 + 3 * 91.3, y: 40.1, w: 91.3, h: 91.3 }).col - cellAt({ x: 17.7 + 2 * 91.3, y: 40.1, w: 91.3, h: 91.3 }).col, 1);
+  const k = (f) => f.tiles.map((t) => t.k);
+  assert.deepEqual(k(grewLeft).slice(1), k(three), "ring places of the old tiles are unchanged");
+  // Another row is another strip.
+  assert.notDeepEqual(stripLook(3), stripLook(4));
 });
 
 test("a front of n squares is n tiles: its two ends fall to the ground and the squares between run on round the ring", () => {
@@ -79,7 +101,7 @@ test("a front of n squares is n tiles: its two ends fall to the ground and the s
 
 test("fronts start at different places round the ring, and a wide front shows no period", () => {
   const offsets = new Set();
-  for (let s = 1; s < 200; s++) { const o = frontLook(s * 7919).offset; assert.ok(Number.isInteger(o) && o >= 0 && o < RING); offsets.add(o); }
+  for (let s = 1; s < 200; s++) { const o = stripLook(s * 7919).shift; assert.ok(Number.isInteger(o) && o >= 0 && o < RING); offsets.add(o); }
   assert.equal(offsets.size, RING);
   assert.ok(RING >= 8);
   const h = (x) => topAt(x, 0.3, 1);
@@ -146,6 +168,27 @@ test("the loop is played by cross-fading each frame into the next, never by cutt
     last = m;
   }
   assert.equal(frameMix(5000, 2).a, frameAt(5000, 2), "the same frame as the cut would show");
+});
+
+test("cross-fading two frames never pulses: both fade, and a pixel the same in both stays within 11% of itself", () => {
+  assert.deepEqual(fadeWeights(0), { base: 1, over: 0 });
+  assert.deepEqual(fadeWeights(1), { base: 0, over: 1 });
+  for (const A of [0.2, 0.42, 0.72]) {
+    for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+      const c = compositeAlpha(A, A, t);
+      assert.ok(c <= A + 1e-12, `A=${A} t=${t}: ${c} never rises above itself (laying the next over a whole base climbs to ${1 - (1 - A) ** 2})`);
+      assert.ok(c >= A * (1 - 0.26 * A) - 1e-12 && c >= A * 0.74);
+    }
+    assert.ok(Math.abs(compositeAlpha(A, A, 0) - A) < 1e-12, "continuous at the start");
+    assert.ok(Math.abs(compositeAlpha(A, A, 1) - A) < 1e-12, "and at the flip: no snap");
+    assert.ok(Math.abs(compositeAlpha(A, A, 0.5) - (A - A * A / 4)) < 1e-12);
+  }
+  // The body fill (0.42): the dip is about 10%.
+  assert.ok(compositeAlpha(0.42, 0.42, 0.5) > 0.42 * 0.89);
+  // Different frames really blend: from the first alone to the second alone.
+  assert.equal(compositeAlpha(0.8, 0, 0), 0.8);
+  assert.equal(compositeAlpha(0, 0.6, 1), 0.6);
+  assert.ok(compositeAlpha(0.8, 0, 0.5) < 0.8 && compositeAlpha(0, 0.6, 0.5) < 0.6);
 });
 
 test("the mass breathes with the loop and the swell comes round to where it began", () => {
@@ -224,17 +267,18 @@ test("the bank bakes a family once, on first use, and destroys every texture it 
   const spec = { variant: 0, kind: "solo", k: 0 };
   const a = bank.tile(spec);
   assert.equal(a.length, FRAMES);
-  assert.equal(log.canvases, FRAMES);
+  assert.equal(log.canvases, FRAMES * 2, "a family is its flame frames and its foot-light frames");
   assert.strictEqual(bank.tile(spec), a, "the same textures come back");
-  assert.equal(log.canvases, FRAMES, "and nothing is baked again");
-  bank.tile({ ...spec, kind: "left" }); bank.seats(spec); bank.ground(1);
+  assert.equal(log.canvases, FRAMES * 2, "and nothing is baked again");
+  bank.tile({ ...spec, kind: "left" }); bank.seats(spec); bank.ground(1); assert.ok(bank.scorch());
   const stats = bank.stats();
-  assert.equal(stats.textures, FRAMES * 4);
+  assert.equal(stats.textures, FRAMES * 4 + FRAMES + 1);
   assert.ok(stats.bytes > 0);
+  const canvases = log.canvases;
   bank.destroy();
-  assert.equal(log.destroyed, FRAMES * 4);
+  assert.equal(log.destroyed, FRAMES * 4 + FRAMES + 1);
   assert.deepEqual(bank.tile(spec), [], "a destroyed bank bakes nothing more");
-  assert.equal(log.canvases, FRAMES * 4);
+  assert.equal(log.canvases, canvases);
 });
 
 test("without a canvas or a PIXI that can make textures there is no bank, and no error", () => {
@@ -251,7 +295,7 @@ test("the module-wide bank is shared, and let go of only when the last holder le
   releaseFlameBank();
   assert.equal(log.destroyed, 0, "one holder is still using it");
   releaseFlameBank();
-  assert.equal(log.destroyed, FRAMES);
+  assert.equal(log.destroyed, FRAMES * 2);
   releaseFlameBank(); // an extra release is harmless
 });
 
@@ -270,8 +314,8 @@ test("burning grass is drawn as one body per front, off the shared clock, baked 
     looks.sync({ flames });
     const tileSprites = log.sprites.filter((s) => s.anchor.y > 0 && s.anchor.x === 0 && s.blendMode === 0 && s.scale.x !== 0 && Math.abs(s.scale.x) < 2);
     const additive = log.sprites.filter((s) => s.blendMode === 1);
-    // 5 squares in 3 fronts: per square a flame tile and the next frame over it, a foot light, a ground picture and its next frame.
-    assert.equal(log.sprites.length, 25);
+    // 5 squares in 3 fronts: per square a flame tile and the next frame, a foot light, a still scorch, a ground picture and its next frame.
+    assert.equal(log.sprites.length, 30);
     assert.equal(additive.length, 5);
     assert.ok(tileSprites.length >= 5);
     const baked = log.canvases;
@@ -311,25 +355,90 @@ test("burning grass is drawn as one body per front, off the shared clock, baked 
   } finally { globalThis.requestAnimationFrame = realRaf; globalThis.cancelAnimationFrame = realCancel; }
 });
 
-test("a front of n squares is placed as n tiles side by side on the grid, mirrored fronts running from the right", () => {
+test("a front of n squares is placed as n tiles side by side on the grid, all one way round", () => {
   const { PIXI, log } = fakePixi();
-  const frames = [];
-  globalThis.requestAnimationFrame = (fn) => { frames.push(fn); return 1; }; globalThis.cancelAnimationFrame = () => {};
+  globalThis.requestAnimationFrame = () => 1; globalThis.cancelAnimationFrame = () => {};
   try {
-    for (let seed = 1; seed < 40; seed++) {
+    for (let row = 0; row < 6; row++) {
       const root = new PIXI.Container();
       const looks = createFireLooks({ PIXI, layer: () => root, grid: () => 100, now: () => 0, makeCanvas: fakeCanvas(log) });
       const from = log.sprites.length;
-      looks.sync({ flames: [0, 1, 2, 3].map((i) => ({ id: `s${i}`, seed: seed + (i === 0 ? 0 : 1000 * i), rect: { x: 200 + i * 100, y: 300, w: 100, h: 100 } })) });
+      looks.sync({ flames: [0, 1, 2, 3].map((i) => ({ id: `s${i}`, seed: 77 + i, rect: { x: 200 + i * 100, y: row * 100, w: 100, h: 100 } })) });
       const mine = log.sprites.slice(from).filter((s) => s.blendMode === 0 && s.anchor.x === 0 && s.anchor.y > 0.9 && s.alpha !== 0);
-      const xs = mine.map((s) => (s.scale.x < 0 ? s.position.x - 100 : s.position.x)).sort((a, b) => a - b);
-      assert.deepEqual(xs, [200, 300, 400, 500], "four tiles, one per square, abutting exactly");
-      assert.ok(mine.every((s) => Math.abs(Math.abs(s.scale.x) - 100 / 64) < 1e-9), "scaled so a tile is one square wide");
-      assert.ok(mine.every((s) => Math.abs(s.position.y - (300 + 82)) < 1e-9), "standing on the foot line");
-      assert.equal(new Set(mine.map((s) => Math.sign(s.scale.x))).size, 1, "all one way round: one mass");
+      assert.deepEqual(mine.map((s) => s.position.x).sort((a, b) => a - b), [200, 300, 400, 500], "four tiles, one per square, abutting exactly");
+      assert.ok(mine.every((s) => Math.abs(s.scale.x - 100 / 64) < 1e-9), "scaled so a tile is one square wide");
+      assert.ok(mine.every((s) => Math.abs(s.position.y - (row * 100 + 82)) < 1e-9), "standing on the foot line");
       looks.clear();
     }
   } finally { delete globalThis.requestAnimationFrame; delete globalThis.cancelAnimationFrame; }
+});
+
+test("a burning square's sprites fade the frame out as the next fades in, and the scorch never fades", () => {
+  const { PIXI, log } = fakePixi();
+  globalThis.cancelAnimationFrame = () => {};
+  try {
+    const frames = [];
+    globalThis.requestAnimationFrame = (fn) => { frames.push(fn); return 1; };
+    let clock = 0;
+    const looks = createFireLooks({ PIXI, layer: () => new PIXI.Container(), grid: () => 100, now: () => clock, makeCanvas: fakeCanvas(log) });
+    looks.sync({ flames: [cell(0, 0)] });
+    const base = log.sprites.filter((s) => s.blendMode === 0);
+    for (const t of [0, 0.25, 0.5, 0.75]) {
+      clock = Math.round(FRAME_MS * (8 + t));
+      frames.shift()();
+      const alphas = base.map((s) => s.alpha).filter((a) => a !== undefined);
+      assert.ok(alphas.some((a) => Math.abs(a - (1 - t)) < 0.01), `a base sprite at ${1 - t}`);
+      assert.ok(alphas.some((a) => Math.abs(a - t) < 0.01), `a next-frame sprite at ${t}`);
+      assert.ok(base.some((s) => s.alpha === undefined), "the scorch sprite is never touched, so it never fades");
+    }
+    looks.clear();
+  } finally { delete globalThis.requestAnimationFrame; delete globalThis.cancelAnimationFrame; }
+});
+
+test("the bank never holds more families than its cap, however many it is asked for, and never evicts one that is in use", () => {
+  const { PIXI, log } = fakePixi();
+  const cap = 6;
+  const bank = createFlameBank({ PIXI, makeCanvas: fakeCanvas(log), cap });
+  const specs = [];
+  for (let v = 0; v < VARIANTS; v++) for (const kind of ["solo", "left", "mid", "right"]) for (let k = 0; k < RING; k++) specs.push({ variant: v, kind, k });
+  assert.equal(specs.length, 96, "the distinct families a long campaign can reach");
+  const used = specs.slice(0, 2); // a layout using two
+  bank.hold(used);
+  const keep = used.map((u) => bank.family(u));
+  for (let round = 0; round < 3; round++) {
+    for (const spec of specs) {
+      bank.family(spec);
+      assert.ok(bank.stats().families <= cap, "never over the cap");
+    }
+  }
+  assert.equal(bank.stats().families, cap);
+  used.forEach((u, i) => { assert.strictEqual(bank.family(u), keep[i], "a family in use keeps its textures"); assert.ok(keep[i].tex.every((t) => !t.gone)); });
+  // Everything evicted was destroyed: live textures are exactly the kept families' (flame + foot light) plus none from the rest.
+  const live = log.textures.filter((t) => !t.gone).length;
+  assert.equal(live, cap * FRAMES * 2);
+  assert.ok(log.canvases > cap * FRAMES * 2, "far more were baked than are kept");
+  // The least recently used goes first.
+  const fresh = createFlameBank({ PIXI, makeCanvas: fakeCanvas(log), cap: 2 });
+  const [x, y, z] = specs;
+  const fx = fresh.family(x); fresh.family(y); fresh.family(x); fresh.family(z);
+  assert.strictEqual(fresh.family(x), fx, "x was used more recently than y, so y went");
+  assert.equal(fresh.stats().families, 2);
+  // More held than the cap are all kept (in use), and let go of once released.
+  const crowd = createFlameBank({ PIXI, makeCanvas: fakeCanvas(log), cap: 2 });
+  crowd.hold(specs.slice(0, 5)); for (const sp of specs.slice(0, 5)) crowd.family(sp);
+  assert.equal(crowd.stats().families, 5);
+  crowd.hold([]);
+  assert.equal(crowd.stats().families, 2);
+  // The shipped cap keeps the realistic ceiling under 16 MB.
+  const b = createFlameBank({ PIXI, makeCanvas: fakeCanvas(log) });
+  assert.equal(b.cap, FAMILY_CAP);
+  for (const sp of specs) b.family(sp);
+  for (let v = 0; v < VARIANTS; v++) b.ground(v);
+  b.scorch();
+  assert.ok(b.stats().families <= FAMILY_CAP);
+  assert.ok(b.stats().bytes < 16 * 1024 * 1024, `${b.stats().bytes} bytes`);
+  assert.equal(familyKey({ variant: 1, kind: "mid", k: 3 }), "1:mid:3");
+  for (const x of [bank, fresh, crowd, b]) x.destroy();
 });
 
 test("with no way to paint, a front is still drawn, as one plain body", () => {
