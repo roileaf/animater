@@ -491,7 +491,10 @@ export function tailDrag(at, { half, width, base = {}, part = {}, flip = 1 } = {
 }
 // One stride's tracks for `gait` from a floor's print part. Big creatures print less often (a Huge one every other
 // stride, a Gargantuan or bigger every third) with bigger prints; grooves and smears never break.
-export function tracksFor(gait, part, base, at, { grid, width, seed = '', shape = gait }) {
+// `printWidth` sizes each print where that differs from `width`, which spaces them: a wagon's team walks a narrow line
+// between the ruts, but a harnessed horse's hoof is the same hoof it leaves walking on its own (Roi, of a wagon's team:
+// "the horse footprints are too small for it's size" — they were sized by the narrowed width and so came out half).
+export function tracksFor(gait, part, base, at, { grid, width, printWidth = width, seed = '', shape = gait }) {
   // 'unknown' (a creature Animater cannot place, or a wheeled thing) and any other unlisted gait: no tracks at all.
   const track = TRACKS[gait], heading = at.heading ?? 0, index = at.index ?? 0;
   if (!track) return [];
@@ -519,7 +522,7 @@ export function tracksFor(gait, part, base, at, { grid, width, seed = '', shape 
       bite: rutBite((from + to) / 2), alpha: (part.alpha ?? 1) * 0.9 }));
     // What pulls it walks between the ruts: its prints are laid on the middle line, a touch fainter than its own would be.
     if (!track.team) return ruts;
-    const team = tracksFor(track.team, { ...part, alpha: (part.alpha ?? 1) * 0.85 }, base, at, { grid, width: width * 0.55, seed: `${seed}|team`, shape: track.team });
+    const team = tracksFor(track.team, { ...part, alpha: (part.alpha ?? 1) * 0.85 }, base, at, { grid, width: width * 0.55, printWidth: width, seed: `${seed}|team`, shape: track.team });
     return [...ruts, ...team];
   }
   const marks = [];
@@ -531,7 +534,7 @@ export function tracksFor(gait, part, base, at, { grid, width, seed = '', shape 
   const [out, by] = STEP_TURN[shape] ?? [0, 0];
   const print = (d, a, extra) => {
     const foot = `${index}${extra?.hind ? 'h' : ''}`, noise = (salt) => stepNoise(seed, foot, salt), outer = a < 0 ? -1 : 1, depth = 0.65 + 0.35 * (0.5 + 0.5 * noise('depth'));
-    return { ...base, color: part.color, ...place(d * width + noise('along') * grid * 0.025, a * width + noise('across') * grid * 0.02), radius: width * part.size * track.size * (1 + 0.06 * noise('size')),
+    return { ...base, color: part.color, ...place(d * width + noise('along') * grid * 0.025, a * width + noise('across') * grid * 0.02), radius: printWidth * part.size * track.size * (1 + 0.06 * noise('size')),
       alpha: (Number.isFinite(base.alpha) ? base.alpha : part.alpha) * depth, depth, rotation: heading + ((outer * out + by * noise('turn')) * Math.PI) / 180, mirror: outer < 0, grow: 0, gait: shape, ...extra };
   };
   if (track.feet === 'quad') marks.push(print(0.16, 0.1 * side), print(-0.16, 0.13 * side, { hind: true }));

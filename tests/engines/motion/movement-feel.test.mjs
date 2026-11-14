@@ -1600,3 +1600,22 @@ test('a wagon leaves its team between the ruts; a hand cart a person; a sled nob
   const thin = (gait) => tracksFor(gait, part, {}, at, { grid, width: 50 }).find((m) => m.kind === 'rut').thick;
   assert.ok(thin('runners') > thin('wheels'), 'a runner presses broader than a rim');
 });
+
+// Roi, of the team under a wagon: "the horse footprints are too small for it's size". The team is handed a narrowed
+// width so it walks a thin line between the ruts, and the print was sized by that same number — shrunk twice, so a
+// harnessed horse pressed half the hoof it presses walking on its own. Hitching a horse does not shrink its feet.
+test('a harnessed horse leaves the same hoof as one walking on its own', async () => {
+  const { tracksFor, TRACKS: T } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const grid = 100, width = 200, part = { color: 0x55443a, alpha: 1, size: 0.11 };
+  const at = { x: 0, y: 0, heading: 0, index: 1 };
+  const team = tracksFor('wheels', part, {}, at, { grid, width }).filter((m) => m.gait === 'hooves');
+  const alone = tracksFor('hooves', part, {}, at, { grid, width });
+  assert.ok(team.length > 0 && alone.length > 0);
+  // Each step varies its own size by a few per cent off its own seed, so compare them against the hoof they both mean.
+  const nominal = width * part.size * T.hooves.size;
+  const near = (r) => Math.abs(r - nominal) / nominal < 0.07;
+  assert.ok(team.every((m) => near(m.radius)), 'sized by the animal, not by the line it is made to walk');
+  assert.ok(alone.every((m) => near(m.radius)), 'the same hoof unharnessed');
+  // The narrowed width still does its own job: the team's prints stay inside the wheel tracks.
+  assert.ok(team.every((m) => Math.abs(m.y) < T.wheels.spread * width), 'between the ruts');
+});
