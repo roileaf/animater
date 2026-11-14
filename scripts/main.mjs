@@ -41,7 +41,7 @@ import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsO
 import { areaRefusal } from "./engines/props/prop-areas.mjs";
 import { createFireLooks, thingFires, charredCells, litCells } from "./engines/props/fire-looks.mjs";
 import { iceBreakOf } from "./engines/regions/ice-break-look.mjs";
-import { iceSettingsOf, iceStateOf, iceHoleAt, iceMoveFor, sizeNameOf, squaresCrossed } from "./engines/regions/thin-ice.mjs";
+import { iceSettingsOf, iceStateOf, iceHoleAt, iceMoveFor, sizeNameOf, squaresCrossed, weightOffset } from "./engines/regions/thin-ice.mjs";
 import { createIceBreakLook } from "./engines/regions/ice-break-draw.mjs";
 import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
@@ -5012,7 +5012,9 @@ Hooks.on("moveToken", (doc, movement) => {
     const regions = iceRegionsHere(); if (!regions.length) return;
     // The creature's size by name: Small and Medium both stand in one square, and the ice tells them apart.
     const size = sizeNameOf(doc.actor, doc); if (!size) return;
-    const grid = canvas.grid.size, base = canvas.level?.elevation?.base ?? 0, mid = (w) => ({ x: w.x + ((w.width ?? doc.width) * grid) / 2, y: w.y + ((w.height ?? doc.height) * grid) / 2 });
+    // Where its weight falls, which for an even footprint is not its middle: that is exactly on a grid line (thin-ice.mjs
+    // weightOffset), and the square it reads must be one the creature really stands in.
+    const grid = canvas.grid.size, base = canvas.level?.elevation?.base ?? 0, mid = (w) => ({ x: w.x + weightOffset(w.width ?? doc.width) * grid, y: w.y + weightOffset(w.height ?? doc.height) * grid });
     const squares = [];
     let from = movement?.origin, ended = null;
     for (const way of movement?.passed?.waypoints ?? []) {
@@ -8361,7 +8363,13 @@ const tickBurrowSink = () => {
     if (!d || t.isPreview) continue;
     const onLevel = level === undefined || d.level === undefined || d.level === level;
     const below = onLevel && (d.elevation ?? 0) < base;
-    const medium=below?movementEnvironment({elevation:d.elevation,base,action:d.movementAction},movementFeelFloor(t.center??d.getCenterPoint?.(),d)):null;
+    // Thin ice that gave way where it stands: in the hole the water is at the level's own floor, so the movement feel
+    // reads it as swimming and as deep as one below the floor (movement-feel movementEnvironment `hole`) and the
+    // submerged look below follows, without the token's elevation ever changing. Only while that look is on.
+    const onFloor = onLevel && !below && (d.elevation ?? 0) === base;
+    const at = below || onFloor ? t.center ?? d.getCenterPoint?.() : null;
+    const hole = onFloor && waterOn && inIceHole(at, base);
+    const medium=below||hole?movementEnvironment({elevation:d.elevation,base,action:d.movementAction,hole},movementFeelFloor(at,d)):null;
     const under = burrowsOn&&medium?.underground===true;
     const first = !sinkSeen.has(d.id);
     if (first) sinkSeen.add(d.id);

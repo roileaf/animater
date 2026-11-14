@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { SIZES, holdsUp, iceStep, iceStateOf, iceUpdatesFor, squareKeyAt, squaresCrossed, sizeNameOf, squaresAcross, iceHoleAt, iceMoveFor } from "../../../scripts/engines/regions/thin-ice.mjs";
+import { SIZES, holdsUp, iceStep, iceStateOf, iceUpdatesFor, squareKeyAt, squaresCrossed, sizeNameOf, squaresAcross, weightOffset, iceHoleAt, iceMoveFor } from "../../../scripts/engines/regions/thin-ice.mjs";
 
 test("the limit holds its own size and everything smaller", () => {
   assert.equal(holdsUp("med", "sm"), 0);
@@ -345,4 +345,25 @@ test("iceHoleAt never throws on junk, and a region that throws is only itself", 
 test("nothing to write is nothing to whisper: a creature falling into a hole that is already there", () => {
   const region = iceRegion({ holes: { "1,1": 3 } });
   assert.deepEqual(iceMoveFor({ region, size: "huge", squares: ["1,1"], ended: "1,1", name: "Torvald" }), { updates: [], note: null });
+});
+
+test("where a creature's weight is read in its footprint, in squares from its own corner", () => {
+  assert.equal(weightOffset(1), 0.5, "a Medium creature: the middle of its one square");
+  assert.equal(weightOffset(3), 1.5, "a Huge one: the middle of its middle square");
+  // An even footprint has no middle square: its middle falls exactly on the grid line between two it stands on equally,
+  // and the square nearer its own corner is read, so the weight is always in a square the creature really occupies.
+  assert.equal(weightOffset(2), 0.5, "a Large one: the first of the two it straddles");
+  assert.equal(weightOffset(4), 1.5, "a Gargantuan one: the first of the middle two");
+  assert.equal(weightOffset(0.5), 0.25, "a Tiny one: its own middle, well inside its square");
+  for (const junk of [0, -2, NaN, undefined, null, "lg"]) assert.equal(weightOffset(junk), 0.5, `${junk} reads as one square`);
+});
+
+test("an even-width creature's weight lands in a square it stands in, not the one past it", () => {
+  // A Large creature with its corner on 1,1 covers columns 1 and 2 and rows 1 and 2. Its middle is the point 200,200 —
+  // the very corner of 2,2, which it stands on no more than on 1,1, 1,2 and 2,1.
+  const weight = (corner, wide) => ({ x: (corner + weightOffset(wide)) * GRID, y: (corner + weightOffset(wide)) * GRID });
+  assert.equal(squareKeyAt(weight(1, 2).x, weight(1, 2).y, GRID), "1,1");
+  assert.equal(squareKeyAt(weight(1, 4).x, weight(1, 4).y, GRID), "2,2", "a Gargantuan creature on 1,1 covers 1 to 4");
+  assert.equal(squareKeyAt(weight(1, 3).x, weight(1, 3).y, GRID), "2,2", "an odd footprint has a middle square of its own");
+  assert.equal(squareKeyAt(weight(1, 1).x, weight(1, 1).y, GRID), "1,1");
 });

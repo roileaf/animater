@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { squaresAcross } from "../../scripts/engines/regions/thin-ice.mjs";
 
 // The active GM watching a move over thin ice: main.mjs's own moveToken listener, run here against a stand-in for Foundry.
 // Nothing is asserted about main.mjs's source text; every test moves a token and reads what was written to the scene.
@@ -59,15 +60,16 @@ const view = (scene) => ({
   tokens: { placeables: [] },
 });
 
-// A token standing with its top-left corner in the square it is in, and a move as Foundry hands it over: the waypoints
-// passed, each with the corner it reached.
-const mover = (scene, { name = "Torvald", size = "huge", width = 1 } = {}) => ({
+// A token as big as its size really is — a Large creature is two squares wide, a Gargantuan four — standing with its
+// top-left corner in the square named, and a move as Foundry hands it over: the waypoints passed, each with the corner
+// the token reached and the footprint it reached it with.
+const mover = (scene, { name = "Torvald", size = "huge", width = squaresAcross(size) } = {}) => ({
   id: "tok1", name, parent: scene, actor: { size }, width, height: width, elevation: 0,
 });
-const waypoint = (col, row, extra = {}) => ({ x: col * GRID, y: row * GRID, width: 1, height: 1, elevation: 0, action: "walk", teleport: false, ...extra });
+const waypoint = (col, row, extra = {}, wide = 1) => ({ x: col * GRID, y: row * GRID, width: wide, height: wide, elevation: 0, action: "walk", teleport: false, ...extra });
 const moved = (doc, squares, options = {}) => {
   const [first, ...rest] = squares;
-  const movement = { origin: waypoint(...first), passed: { waypoints: rest.map((s) => waypoint(...s, options)) } };
+  const movement = { origin: waypoint(...first, options, doc.width), passed: { waypoints: rest.map((s) => waypoint(...s, options, doc.width)) } };
   for (const fn of moveToken) fn(doc, movement);
 };
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
@@ -95,11 +97,12 @@ test("a creature the ice holds writes nothing at all", async () => {
 });
 
 test("a creature two sizes over the limit breaks the square it entered, with one hole and no cracks", async () => {
+  // A Huge creature is three squares wide: cornered on 1,1 it covers 1 to 3 each way and its weight is in 2,2.
   const scene = await walk([region("reg1")], [[1, 1], [1, 2], [1, 3]], { size: "huge" });
   assert.equal(scene.writes.length, 1);
   const { type, updates } = scene.writes[0];
   assert.equal(type, "Region");
-  assert.deepEqual(updates, [{ _id: "reg1", [`${FLAG}.holes.1,1`]: 3 }]);
+  assert.deepEqual(updates, [{ _id: "reg1", [`${FLAG}.holes.2,2`]: 3 }]);
   assert.deepEqual(whispers.map((w) => w.content), ["Torvald breaks through the ice into the water (swim)."]);
   assert.deepEqual(whispers[0].whisper, ["gm1"], "the GMs alone");
 });
@@ -168,7 +171,7 @@ test("two thin-ice regions under one move are each written, and one that throws 
   broken.testPoint = () => { throw new Error("a region mid-change"); };
   const scene = await walk([broken, region("reg2")], [[1, 1], [1, 2]], { size: "huge" });
   assert.equal(scene.writes.length, 1);
-  assert.deepEqual(scene.writes[0].updates, [{ _id: "reg2", [`${FLAG}.holes.1,1`]: 3 }]);
+  assert.deepEqual(scene.writes[0].updates, [{ _id: "reg2", [`${FLAG}.holes.2,2`]: 3 }]);
 });
 
 test("a client that is not the active GM writes nothing: every screen draws what the GM stored", async () => {
@@ -190,7 +193,24 @@ test("a move on another scene than the one in view is left to that scene's own G
 });
 
 test("nothing is written twice: a move over a square that is already a hole changes nothing", async () => {
-  const scene = await walk([region("reg1", { thinIce: { holes: { "1,1": 3 } } })], [[1, 1], [1, 2]], { size: "huge" });
+  const scene = await walk([region("reg1", { thinIce: { holes: { "2,2": 3 } } })], [[1, 1], [1, 2]], { size: "huge" });
   assert.deepEqual(scene.writes, []);
   assert.deepEqual(whispers, [], "and the GM is not told again");
+});
+
+test("a Large creature's weight is read in a square it really stands in, walking either way", async () => {
+  // A Large creature is two squares wide: cornered on 1,1 it covers columns 1 and 2 and rows 1 and 2, and its middle is
+  // the point 200,200 — the bare corner of 2,2. The square it cracks must be one of the four it stands on.
+  const east = await walk([region("reg1")], [[1, 1], [2, 1]], { name: "Bron", size: "lg" });
+  assert.deepEqual(east.writes[0].updates, [{ _id: "reg1", [`${FLAG}.holes.2,1`]: 2, [`${FLAG}.cracks.1,1`]: 1 }]);
+  const south = await walk([region("reg1")], [[1, 1], [1, 2]], { name: "Bron", size: "lg" });
+  assert.deepEqual(south.writes[0].updates, [{ _id: "reg1", [`${FLAG}.holes.1,2`]: 2, [`${FLAG}.cracks.1,1`]: 1 }]);
+});
+
+test("a Gargantuan creature breaks the first square under it, walking either way", async () => {
+  // Four squares wide: cornered on 0,0 it covers 0 to 3 each way, and of the middle two, 1 and 2, the first is read.
+  for (const to of [[1, 0], [0, 1]]) {
+    const scene = await walk([region("reg1")], [[0, 0], to], { name: "Grond", size: "grg" });
+    assert.deepEqual(scene.writes[0].updates, [{ _id: "reg1", [`${FLAG}.holes.1,1`]: 4 }], `walking to ${to}`);
+  }
 });

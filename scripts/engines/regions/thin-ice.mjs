@@ -21,6 +21,18 @@ export function sizeNameOf(actor, token) {
   return wide < 0.75 ? "tiny" : wide < 1 ? "sm" : wide < 2 ? "med" : wide < 3 ? "lg" : wide < 4 ? "huge" : "grg";
 }
 
+/** Where a creature's weight is read inside its footprint, in squares from its own corner: its middle, except that a
+ *  footprint an even number of squares across has no middle square — its middle falls exactly on the grid line between
+ *  two squares it stands on equally (a Large creature cornered on 1,1 is at 200,200) — and then the square nearer its own
+ *  corner is read. Left to a bare middle, Math.floor would resolve that tie to the square past the line, so a Large
+ *  creature walking north would crack the column it is only half in and leave its hole half a square off from where it
+ *  stood. Anything that is not a footprint reads as one square. Pure. */
+export function weightOffset(squares) {
+  const wide = Number(squares) > 0 && Number.isFinite(Number(squares)) ? Number(squares) : 1;
+  const middle = wide / 2;
+  return Number.isInteger(middle) ? middle - 0.5 : middle;
+}
+
 /** The square a point is in, as the key the ice is stored by ("<col>,<row>", either negative): null without a grid or a point. */
 export function squareKeyAt(x, y, grid) {
   const size = Number(grid);

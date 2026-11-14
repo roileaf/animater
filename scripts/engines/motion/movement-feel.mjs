@@ -1214,14 +1214,21 @@ export function swimOutWaypoints(start, waypoints, floorAt, { walk = 'walk', bas
   }
   return out;
 }
+// Nothing that goes over or under the water is ever in it: a flier above the surface, a burrower beneath the bed, a blink
+// across.
+const OUT_OF_WATER = new Set(['fly', 'burrow', 'displace']);
 // Depth is relative to the viewed level, not absolute world elevation. Swimming
 // below water (or explicit Swim on an underwater map) is never burrowing.
 export function movementEnvironment(token, floor) {
   const relative = Number(token.elevation ?? 0) - Number(token.base ?? 0);
   const below = Number.isFinite(relative) && relative < 0;
   const action = String(token.action ?? '').toLowerCase();
-  const swimming = action === 'swim' || (below && floor === 'water' && action !== 'burrow');
-  return { relative, swimming, submerged: swimming && below, underground: below && !swimming };
+  // `hole`: the floor gave way under it — thin ice (engines/regions/thin-ice.mjs). The water is where it stands, at the
+  // level's own floor, so it swims there and is as deep in it as a creature below the floor, without its elevation ever
+  // changing. Only at the floor itself: over the hole it is still over it, and under it, it is already below.
+  const inHole = token.hole === true && floor === 'water' && relative === 0 && !OUT_OF_WATER.has(action);
+  const swimming = action === 'swim' || inHole || (below && floor === 'water' && action !== 'burrow');
+  return { relative, swimming, submerged: swimming && (below || inHole), underground: below && !swimming };
 }
 export function surfaceSplash(at, {seed='',grid=100,width=grid}={}) {
   const random=rng(`${seed}:surface`),size=grid*Math.sqrt(clamp(width/grid,.5,6));
