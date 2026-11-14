@@ -200,7 +200,7 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
   const shadows = () => shadowsOf(at), ground = () => groundOf(at), above = () => aboveOf(at), flat = () => flatOf(at);
   const pictures = new Map(), regions = new Map(), PICTURES_KEPT = 240;
   // The wind now (0-1, blowing toward angle in radians) and a clock for the cloth it stirs.
-  let air = { strength: 0, angle: 0 }, clock = 0;
+  let air = { strength: 0, angle: 0 }, clock = 0, litTrees = null;
   let sun = null, canopyTrees = false, open = new Map(), snow = { amount: 0, toSun: [0, 0], z: 0, low: 1, color: [1, 0.97, 0.9] };
   const snowUniforms = (u) => Object.assign(u, { uAmount: snow.amount, uToSun: snow.toSun, uZ: snow.z, uLow: snow.low, uSunColor: snow.color });
   // A region's snow: its standing decorations' pictures and domes baked small, one quad over them on the ground layer.
@@ -355,9 +355,12 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
       clock += Math.min(0.1, Math.max(0, Number(seconds) || 0));
       for (const r of regions.values()) for (const s of r.cloth) { const m = clothMotion(s.decor, air, clock, s.rotation), u = s.shader.uniforms; u.uTime = clock; u.uPush = m.push; u.uDir = m.dir; u.uAlpha = s.alpha; }
     },
+    // The trees on fire now, told ahead of trees() (a Set of burningDecorIds; none clears it).
+    burning(ids) { litTrees = ids ?? null; },
     // The trees for the canopy's shade: each crown's picture where it stands, its height, kind and leaves.
     // `burning`: ids (decor-break burningDecorIds) of the trees on fire, whose shade thins and whose leaves fall fewer. (A broken tree has no crown left to list.)
-    trees({ burning = null } = {}) {
+    // `burning` may be given here, else the set last told by burning() is used (so the canopy's feed keeps its plain `trees()` call).
+    trees({ burning = litTrees } = {}) {
       const out = [];
       for (const [id, r] of regions) for (const c of r.crowns) {
         const d = c.decor, k = canopyKindOf(d.kind, r.look?.season); if (!k) continue;

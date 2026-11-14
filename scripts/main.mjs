@@ -2335,12 +2335,12 @@ const heightOf = (tiles, usual) => {
   return ups.length ? ups.reduce((a, b) => a + b, 0) / ups.length : usual;
 };
 // The trees on fire now (their region's saved decoration fires): the canopy thins their shade and leaves while they burn.
-const burningTrees = () => { const out = new Set(); try { for (const doc of canvas?.scene?.regions?.contents ?? []) for (const id of burningDecorIds(doc.id, decorFireOf(doc))) out.add(id); } catch { /* none */ } return out; };
+const burningTrees = () => { const out = new Set(); try { for (const doc of viewedRegions(canvas?.scene?.regions)) for (const id of burningDecorIds(doc.id, decorFireOf(doc))) out.add(id); } catch { /* none */ } return out; };
 const rebuildCanopy = () => {
   try {
     if (!canvas?.ready || (!canopyOn() && !roofLightOn() && !leavesOn())) { canopyLight.clear(); return; }
     // (The decorations' trees with the tiles': the same shade, flecks and falling leaves.)
-    const { tree, roof } = sunlitTiles(), trees = canopyOn() || leavesOn() ? [...tree, ...decorations.trees({ burning: burningTrees() })] : [], roofs = roofLightOn() && !shadowsOffHere() ? roof : [];
+    const { tree, roof } = sunlitTiles(); decorations.burning(burningTrees()); const trees = canopyOn() || leavesOn() ? [...tree, ...decorations.trees()] : [], roofs = roofLightOn() && !shadowsOffHere() ? roof : [];
     canopyHeight = heightOf(trees, 3); roofHeight = heightOf(roofs, 4);
     canopySunKey = sunKeyOf(sunNow);
     let water = []; try { water = surfacesHere().water; } catch { /* no flecks kept off */ }
