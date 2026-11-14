@@ -56,12 +56,17 @@ test("junk regions give nothing and never throw", () => {
 });
 
 test("how much the ice holds sets how wide the hole is, for every size in the list", () => {
-  const span = (holds) => {
-    const spec = iceBreakOf(region("r", { holes: { "0,0": 1 } }, { iceHolds: holds }), { grid: GRID }).holes[0].areas[0];
+  // A hole stored with no width of its own (`true`): what the limit says is as much as the screen knows.
+  const span = (holds, stored = true) => {
+    const spec = iceBreakOf(region("r", { holes: { "0,0": stored } }, { iceHolds: holds }), { grid: GRID }).holes[0].areas[0];
     const xs = spec.filter((_, i) => i % 2 === 0);
     return Math.max(...xs) - Math.min(...xs);
   };
-  const widths = ["tiny", "sm", "med", "lg", "huge", "grg"].map(span);
+  // The width the ice stored for the creature that fell through is what is drawn, whatever the limit is.
+  // Ice that holds up to Large is broken by a Huge creature, so the width stored for a Huge one is the width that limit draws.
+  assert.equal(span("med", 3), span("lg"), "a Huge creature, through Medium ice, leaves the hole Large ice would");
+  assert.equal(span("med", 1), span("tiny"), "and a Small one the hole of a Small");
+  const widths = ["tiny", "sm", "med", "lg", "huge", "grg"].map((holds) => span(holds));
 
   assert.ok(span("sm") < span("med") && span("med") < span("lg") && span("lg") < span("huge") && span("huge") <= span("grg"), widths.join(" "));
   assert.equal(span("tiny"), span("sm"), "a Tiny breaker is as wide as a Small one");

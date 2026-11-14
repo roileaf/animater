@@ -41,6 +41,7 @@ import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsO
 import { areaRefusal } from "./engines/props/prop-areas.mjs";
 import { createFireLooks, thingFires, charredCells, litCells } from "./engines/props/fire-looks.mjs";
 import { iceBreakOf } from "./engines/regions/ice-break-look.mjs";
+import { iceSettingsOf, iceStateOf, iceHoleAt, iceMoveFor, sizeNameOf, squaresCrossed } from "./engines/regions/thin-ice.mjs";
 import { createIceBreakLook } from "./engines/regions/ice-break-draw.mjs";
 import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
@@ -1282,6 +1283,16 @@ const buildFloorViews = () => regionsHere().map((doc) => {
     flags: { [ID]: own }, doc,
   };
 });
+// Thin ice that has given way (engines/regions/thin-ice.mjs): the regions on the level in view with a hole stored in them,
+// kept with the rest of the floor's reading and built again whenever a region changes. A map with no broken ice costs nothing.
+const iceHolesHere = () => {
+  const cache = floorCacheHere();
+  return (cache.iceHoles ??= regionsHere().filter((doc) => { try { return iceSettingsOf(doc).thin && iceStateOf(doc).holes.length > 0; } catch { return false; } }));
+};
+const inIceHole = (point, elevation) => {
+  const regions = iceHolesHere();
+  return regions.length > 0 && iceHoleAt(point, { regions, grid: canvas.grid?.size ?? 100, inside: (doc, at) => doc.testPoint({ x: at.x, y: at.y, elevation }) });
+};
 const movementFeelFloor = (point, token) => {
   const base = sceneFloorNow();
   const elevation = Math.max(Number(token?.elevation ?? 0), canvas.level?.elevation?.base ?? 0);
@@ -1316,6 +1327,9 @@ const movementFeelFloor = (point, token) => {
     const rect = canvas.dimensions?.sceneRect, patch = lying > 0 && rect ? snowPatchAt({ x: point.x - rect.x, y: point.y - rect.y }, lying, canvas.grid?.size ?? 100) : 0;
     floor = snowFloor(floor, patch >= 0.5 ? lying : 0);
   }
+  // Thin ice that gave way: the hole is open water underfoot — the step's own sound, the swim, the ripples — whatever the
+  // cold laid over the rest of the ice.
+  if (inIceHole(point, elevation)) return "water";
   return floor;
 };
 // The scene's weather (engines/motion/ground-trails.mjs sceneWeather): Foundry's own scene weather, else FXMaster's
@@ -4976,6 +4990,56 @@ Hooks.on("moveToken", (doc, movement) => {
 });
 for (const hook of ["canvasReady", "updateScene", "updateWorldTime", "clientSettingChanged", "updateSetting"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) drawTracks(hook !== "updateWorldTime" && hook !== "updateScene"); });
 Hooks.on("canvasTearDown", () => { if (trackWriteTimer) { clearTimeout(trackWriteTimer); void writeTracks(); } oldTracks.clear(); trackGait.clear(); trackDrawnKey = null; });
+// Thin ice (engines/regions/thin-ice.mjs): the ice holds a light creature and gives way under a heavy one. The active GM
+// watches each move over a region the GM marked as thin ice, judges what the crossing did to it — the squares cracked, the
+// square it broke through — and writes that to the region, so every screen draws the same break from what is stored and the
+// hole reads as open water underfoot. Its own listener: the footprints' one above is off for most tables.
+const iceRegionsHere = () => regionsHere().filter((doc) => { try { return iceSettingsOf(doc).thin; } catch { return false; } });
+const iceSquareMid = (key, grid) => { const [col, row] = key.split(",").map(Number); return { x: (col + 0.5) * grid, y: (row + 0.5) * grid }; };
+// The GM's whisper and the one region batch: the deletion of a crack by name goes as the database's own operator (v14
+// deprecates the "-=key" form), and the options are built here, afresh for this write, because Foundry writes to them itself.
+const writeIceBreak = async (scene, updates, notes) => {
+  try { await scene.updateEmbeddedDocuments("Region", updates.map((u) => withDeletes(u, propDel())), { animater: { thinIce: true } }); }
+  catch (err) { runtime?.trace?.("thin ice", `not written: ${err?.message ?? err}`); return; }
+  for (const note of notes) {
+    try { await ChatMessage.create({ whisper: game.users.filter((u) => u.isGM).map((u) => u.id), speaker: { alias: "Animater" }, content: note }); }
+    catch (err) { runtime?.trace?.("thin ice", `not whispered: ${err?.message ?? err}`); }
+  }
+};
+Hooks.on("moveToken", (doc, movement) => {
+  try {
+    if (!game.user?.isActiveGM || !canvas?.ready || doc?.parent?.id !== canvas.scene?.id) return;
+    const regions = iceRegionsHere(); if (!regions.length) return;
+    // The creature's size by name: Small and Medium both stand in one square, and the ice tells them apart.
+    const size = sizeNameOf(doc.actor, doc); if (!size) return;
+    const grid = canvas.grid.size, base = canvas.level?.elevation?.base ?? 0, mid = (w) => ({ x: w.x + ((w.width ?? doc.width) * grid) / 2, y: w.y + ((w.height ?? doc.height) * grid) / 2 });
+    const squares = [];
+    let from = movement?.origin, ended = null;
+    for (const way of movement?.passed?.waypoints ?? []) {
+      // Flying, burrowing, swimming and blinking across crack nothing, nor does a creature above the ice.
+      const walked = from && !["fly", "burrow", "swim", "displace"].includes(way.action) && !way.teleport && Number(way.elevation ?? base) === base;
+      ended = null;
+      if (walked) {
+        for (const key of squaresCrossed([mid(from), mid(way)], grid)) if (squares[squares.length - 1] !== key) squares.push(key);
+        ended = squares[squares.length - 1] ?? null; // where the move came to rest, if its last leg was walked
+      }
+      from = way;
+    }
+    if (!squares.length) return;
+    const updates = [], notes = [];
+    for (const region of regions) {
+      try {
+        // Only the squares this region itself holds: the move may have crossed its edge.
+        const mine = [];
+        for (const key of squares) if (region.testPoint({ ...iceSquareMid(key, grid), elevation: base }) && mine[mine.length - 1] !== key) mine.push(key);
+        const { updates: wrote, note } = iceMoveFor({ region, size, squares: mine, ended: mine.includes(ended) ? ended : null, name: doc.name });
+        updates.push(...wrote);
+        if (note) notes.push(note);
+      } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
+    }
+    if (updates.length) void writeIceBreak(canvas.scene, updates, notes);
+  } catch { /* a token mid-change */ }
+});
 const verminOn = () => bothSettingsOn("vermin"), dripsOn = () => bothSettingsOn("drips");
 // The map's own picture and where it lies (seen through a puddle's water, bent by its ripples).
 const mapFloor = () => {

@@ -1,4 +1,6 @@
-import { iceStateOf, SIZES } from "./thin-ice.mjs";
+import { iceStateOf, iceSettingsOf, breakerSquares } from "./thin-ice.mjs";
+// The ice's own state and sizes live with the judgement (thin-ice.mjs); the screen asks for them here.
+export { iceSettingsOf, breakerSquares };
 
 // The shapes of thin ice breaking: the cracks painted in a square that has cracked, the jagged hole of dark water where it gave
 // way, and the loose shards of ice floating in that hole. Geometry only, pure: no Foundry, no PIXI, no drawing; a later layer
@@ -94,22 +96,6 @@ export function shards(key, { grid, seed = 0, size } = {}) {
 // ---- what a region draws ----
 // A region's thin ice as the screen draws it. Pure: the region arrives as { id, flags } and the answer is plain data, so what a
 // client draws is tested without Foundry; main.mjs only hands regions in and puts the answers on the map.
-
-// How many squares across each creature size is (Tiny takes up half a square).
-const SQUARES = { tiny: 0.5, sm: 1, med: 1, lg: 2, huge: 3, grg: 4 };
-
-// How many squares across a creature that breaks ice holding up to `limit` is: the first size over it, the next in SIZES (the one
-// list holdsUp judges by); ice that holds the largest size is only ever broken by that size. The hole is that plus one square.
-export function breakerSquares(limit) {
-  const at = SIZES.indexOf(limit);
-  return SQUARES[SIZES[Math.min(SIZES.length - 1, at + 1)]];
-}
-
-// The region's own thin-ice settings: off unless the flag is exactly true; Medium unless it names one of the sizes in SIZES.
-export function iceSettingsOf(doc) {
-  const own = doc?.flags?.animater;
-  return { thin: own?.iceThin === true, holds: SIZES.includes(own?.iceHolds) ? own.iceHolds : "med" };
-}
 
 /** Where a floating shard is `seconds` in: it bobs about its place and turns slowly, each shard out of step with the others by
  *  its own seeded turn, so every client sees the same drift at the same time. Pure; {x, y, turn}. */
