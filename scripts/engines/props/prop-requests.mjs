@@ -2,13 +2,13 @@
 import { propMaterial, propShape, canBreak } from "./prop-material.mjs";
 import { propTraits, breakStyle } from "./prop-traits.mjs";
 import { breakLook, brokenNote, readNote, missBreaks } from "./prop-break.mjs";
-import { ownWalls, openUpdates, restoreUpdates } from "./prop-walls.mjs";
+import { ownWalls, blockingWalls, openUpdates, restoreUpdates } from "./prop-walls.mjs";
 import { lightsOfProp, lightsInReach, hideLights, unhideLights, oilCatches, firesOf, allFires } from "./prop-lights.mjs";
 import { segRectDist, headsInto, onLevel, tipsOver } from "./prop-pick.mjs";
 import { explodes, blastFrom, inBurst } from "./prop-blast.mjs";
 import { toppleStrip } from "./prop-topple.mjs";
 import { areaCauseRefusal } from "./prop-areas.mjs";
-import { areaCatch } from "./fire-rounds.mjs";
+import { areaCatch, wallBetween } from "./fire-rounds.mjs";
 import { readFire } from "./fire-spread.mjs";
 
 export const PROP_BREAK_MESSAGE = "prop-break";
@@ -53,6 +53,19 @@ export function cleanCause(c) {
 const areaWhy = (cause, tile, grid, ctx) => (cause.kind === "area" || (cause.kind === "ignite" && !gmFireCause(cause))
   ? areaCauseRefusal(cause, centre(tile), tile.levels, { area: ctx.area, sceneId: ctx.scene?.id, sender: ctx.sender, now: ctx.now, grid }) : null);
 
+// A wall stops a fire area. Roi, of a cave full of burning bushes: "fire spreads through walls lol" — and it did,
+// at the very first moment: the area set alight everything its shape covered, and a template's shape takes no notice
+// of walls, so a fireball on one side of a wall lit the bushes on the other and the fire went on from there. Fire
+// from an area now has to reach: no wall between the middle of the area and the thing. The thing's own walls (a door
+// it is) never stop it, and only fire is held this way — every other damage type reaches as it always has.
+const fireAreaBlocked = (cause, point, { area, walls = [], own = new Set(), levels = [] } = {}) => {
+  if (cause?.damageType !== "fire" || (cause.kind !== "area" && cause.kind !== "ignite")) return false;
+  // The middle of the area: the GM's own record of it, else the point the cause names (the GM's direct call).
+  const from = area?.at ?? cause.at;
+  if (!from || !Number.isFinite(from.x) || !Number.isFinite(from.y)) return false;
+  return wallBetween(from, point, blockingWalls((walls ?? []).filter((w) => onLevel(w.levels, levels)), own));
+};
+
 // The cause has to fit where things stand on the GM's screen.
 // A blast reaches the tile's centre from its source keg (blastFrom: one that exploded), on the blast's levels.
 function plausible(cause, tile, grid, { target, mover, source, levels }) {
@@ -92,7 +105,9 @@ export function slamPlausible(tile, path, mover, grid = 100) {
 // explode: the break sets a powder keg off (the GM then runs its blast).
 // An area or ignite cause names its placed area (cause.areaUuid); area is the GM's own record of it and now the GM's
 // clock (prop-areas.mjs areaRefusal), refused as "area" unless it holds the tile's centre.
-export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, sender, target, mover, roll = 1, lights = [], source, levels, area, now } = {}) {
+// `fireWalls` are the walls a fire area has to reach past (fireAreaBlocked); the scene's own, which for a decoration
+// are not the same list as `walls` — a decoration owns none and opens none, so it is judged with `walls: []`.
+export function validBreakRequest(req, { tile, walls = [], fireWalls = null, scene, grid = 100, sender, target, mover, roll = 1, lights = [], source, levels, area, now } = {}) {
   const no = (why) => ({ ok: false, why });
   const own = scene?.flags?.animater ?? {};
   if (own.breakableProps !== true) return no("off");
@@ -123,6 +138,7 @@ export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, se
   if (note.walls.some((id) => !ids.has(id))) return no("wall");
   const unplaced = areaWhy(cause, tile, grid, { area, scene, sender, now });
   if (unplaced) return no(unplaced);
+  if (fireAreaBlocked(cause, centre(tile), { area, walls: fireWalls ?? walls, own: ids, levels: tile.levels })) return no("wall");
   if (!plausible(cause, tile, grid, { target, mover, source, levels })) return no("far");
   const chance = Number(own.propMissChance ?? MISS_CHANCE); // a form may save it as text
   if (cause.kind === "miss" && !missBreaks(cause.outcome, Number.isFinite(chance) ? chance : MISS_CHANCE, roll)) return no("lucky");

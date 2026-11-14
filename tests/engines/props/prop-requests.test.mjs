@@ -493,3 +493,26 @@ test("undoing one prop's break clears its fire too, as Repair does; with no fire
   const none = undoUpdates({ id: "t", x: 0, y: 0, width: 100, height: 100, flags: { animater: { prop: { broken: {} } } } }, []);
   assert.equal("flags.animater.prop.-=fire" in none.tile, false);
 });
+
+// Roi, of a cave where a fireball lit every bush on both sides of a wall: "fire spreads through walls lol". It did,
+// on the very first round: a template's shape takes no notice of walls, so the area set alight what it covered behind
+// one and the fire went on from there. Fire from an area now has to reach what it lights.
+test("a wall between the area and a prop keeps the fire off it", () => {
+  const far = { kind: "area", areaUuid: AREA, damageType: "fire", at: { x: 700, y: 250 } };
+  const between = [...walls, wall("div", [450, 0, 450, 600])];
+  const burning = { scene: scene({ fireSpreads: true }), area: covering({ at: far.at }) };
+  // Nothing in the way: it catches, as it did before.
+  assert.equal(validBreakRequest({ cause: far, note: noteFor(barrel(), far) }, ctx({ ...burning })).catches, true);
+  // A wall across the way: refused outright, so it neither catches nor breaks.
+  assert.deepEqual(validBreakRequest({ cause: far, note: noteFor(barrel(), far) }, ctx({ ...burning, walls: between })), { ok: false, why: "wall" });
+  // The prop's own walls never stop it (a barrel standing in its own doorway still catches).
+  assert.equal(validBreakRequest({ cause: far, note: noteFor(barrel(), far) }, ctx({ ...burning, walls })).catches, true);
+  // An open door is no wall at all.
+  const open = [...walls, wall("door", [450, 0, 450, 600], { door: 1, ds: 1 })];
+  assert.equal(validBreakRequest({ cause: far, note: noteFor(barrel(), far) }, ctx({ ...burning, walls: open })).catches, true);
+  // Only fire is held this way: everything else reaches through as it always has.
+  const hit = { kind: "area", areaUuid: AREA, damageType: "bludgeoning", at: far.at };
+  assert.equal(validBreakRequest({ cause: hit, note: noteFor(barrel(), hit) }, ctx({ ...burning, walls: between })).ok, true);
+  // And with Fire spreads off, a fire area still cannot reach past the wall: it is the area that is stopped, not the catching.
+  assert.deepEqual(validBreakRequest({ cause: far, note: noteFor(barrel(), far) }, ctx({ walls: between, area: covering({ at: far.at }) })), { ok: false, why: "wall" });
+});

@@ -40,7 +40,7 @@ import { propTraits } from "./engines/props/prop-traits.mjs";
 import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsOf, dropLostDecorFire, regionBurns, createQuenchGate, quenchedBy, quenchUpdates, repairFireUpdates } from "./engines/props/fire-spread.mjs";
 import { areaRefusal } from "./engines/props/prop-areas.mjs";
 import { createFireLooks, thingFires, charredCells, litCells } from "./engines/props/fire-looks.mjs";
-import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
+import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, wallBetween, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
 import { DECOR_BREAK_MESSAGE, DECOR_NAMES, burningDecorIds, decorPlaceOf, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
@@ -10524,7 +10524,12 @@ function grassCatchOf(scene, area) {
     regions.push({ id: doc.id, burns: true, levels: [...(doc.levels ?? [])], cells: laid.indices.map((i) => ({ i, saved: saved[String(i)] ?? null,
       point: { x: laid.origin.x + (i % laid.cols) * grid + grid / 2, y: laid.origin.y + Math.floor(i / laid.cols) * grid + grid / 2 } })) });
   }
-  return areaCellsLit({ regions: tilesOnLevel(regions, area.levels), inArea: area.testPoint, fireSpreads: true, kind: "area", damageType: "fire" });
+  // A wall stops the area here too: a square it covers behind a wall never catches (prop-requests fireAreaBlocked is
+  // the same rule for the things standing on the grass).
+  const walls = blockingWalls((scene.walls?.contents ?? []).map(wallView)), from = area.at;
+  const reaches = (p) => (!walls.length || !Number.isFinite(from?.x) ? true : !wallBetween(from, p, walls));
+  const inArea = typeof area.testPoint === "function" ? (p) => area.testPoint(p) === true && reaches(p) : area.testPoint;
+  return areaCellsLit({ regions: tilesOnLevel(regions, area.levels), inArea, fireSpreads: true, kind: "area", damageType: "fire" });
 }
 async function applyGrassCatch(scene, cause, user) {
   if (!game.users.activeGM?.isSelf || !scene || !propsOn(scene) || scene.flags?.[ID]?.fireSpreads !== true) return false;
@@ -10824,7 +10829,7 @@ async function requestDecorBreak(regionDoc, key, cause, { from, extra } = {}) {
   // GM's roll; anything else shows at once.
   const waiting = decorBrokenKeys(regionDoc);
   const here = validDecorBreakRequest({ key, cause: clean, note }, { region, scene, grid, sender: game.user, lights: sceneLights(scene), ...await propPlace(clean, scene, grid), ...areaPlace(clean, game.user),
-    roll: 0, queued: waiting, index: decorIndex, drawn: decorDrawnOn(scene) });
+    roll: 0, queued: waiting, index: decorIndex, drawn: decorDrawnOn(scene), fireWalls: scene.walls?.contents ?? [] });
   if (!here.ok) return false;
   if (scene === canvas?.scene && !here.catches && clean.kind !== "ignite" && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakDecorHere(regionDoc, view, here.entry.note);
   game.socket.emit(`module.${ID}`, { type: DECOR_BREAK_MESSAGE, sender: clientId, sceneId: scene.id, regionId: regionDoc.id, key, cause: clean, note });
@@ -10840,7 +10845,7 @@ async function applyDecorBreak(scene, regionDoc, key, cause, rawNote, user) {
     // Read after the wait: the region as it stands now, with the breaks queued or in flight for it.
     const region = decorRegionOf(regionDoc);
     const check = validDecorBreakRequest({ key, cause, note: rawNote }, { region, scene, grid, sender: user, lights: sceneLights(scene), ...place, ...blastPlace(cause, scene), ...areaPlace(cause, user),
-      roll: Math.random(), queued: queuedDecorKeys(regionDoc.id), index: decorIndex, drawn: decorDrawnOn(scene) });
+      roll: Math.random(), queued: queuedDecorKeys(regionDoc.id), index: decorIndex, drawn: decorDrawnOn(scene), fireWalls: scene.walls?.contents ?? [] });
     if (!check.ok) { runtime?.trace("props", `decoration not broken: ${check.why}`); return false; }
     // Caught fire instead of breaking (Fire spreads): its region keeps the fire under its key, and its flames are lit.
     if (check.catches) {
