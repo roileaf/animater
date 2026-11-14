@@ -1272,7 +1272,7 @@ export function perceive({ isGM = false, docHidden = false, tokenVisible = false
   return tokenVisible ? { see: true, hear: true } : { see: false, hear: false };
 }
 
-export function createMovementFeel({ groundShadows = () => false, shadowsOverTokens = () => false, flightDust = () => false, drips = () => false, tokens, floorAt: floorOf, enabled, density, grid, distance, now, layer, footstep, cap = 120, printCap = 80, printLifetime = 0, trailLifetime = () => 0, fills = () => 1, burrowDepth = () => -10, holes = () => true, trails = null, sun = () => DEFAULT_SUN, shadowShapes = () => true, lightShadows = () => true, ripples = null, swimRipples = null, kicks = null, kickAmount = () => 1 }) {
+export function createMovementFeel({ groundShadows = () => false, shadowsOverTokens = () => false, flightDust = () => false, drips = () => false, tokens, floorAt: floorOf, enabled, density, grid, distance, now, layer, footstep, cap = 120, printCap = 80, printLifetime = 0, trailLifetime = () => 0, fills = () => 1, burrowDepth = () => -10, holes = () => true, keepHole = null, trails = null, sun = () => DEFAULT_SUN, shadowShapes = () => true, lightShadows = () => true, ripples = null, swimRipples = null, kicks = null, kickAmount = () => 1 }) {
   // Where a creature's shadows fall now (shadowFalls: the sun's and a lamp's), each eased toward its aim over about a
   // quarter second so it swings round as the light or the sun moves, and fades in and out instead of popping.
   // `lit`: token.light(), { light, darkness }. Returns [sun, lamp], the stronger first.
@@ -1422,7 +1422,23 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     prints.delete(particle);
     try { layer.removeParticle(particle.handle); } catch { /* keep going */ }
   };
+  // Holes that stay (showHoles): drawn as they lie, never aged or counted against the prints' budget.
+  const keptHoles = new Map();
+  const showHoles = (list) => {
+    const want = new Map((list ?? []).filter((h) => h?.key != null).map((h) => [String(h.key), h]));
+    for (const [key, handle] of keptHoles) if (!want.has(key)) { keptHoles.delete(key); try { layer.removeParticle(handle); } catch { /* keep going */ } }
+    for (const [key, h] of want) {
+      if (keptHoles.has(key)) continue;
+      try {
+        const handle = layer.addParticle(h);
+        layer.updateParticle(handle, { x: h.x, y: h.y, scale: 1, alpha: h.alpha ?? HOLE_LOOK.alpha, rotation: h.rotation ?? 0 });
+        keptHoles.set(key, handle);
+      } catch { /* not drawn */ }
+    }
+    return keptHoles.size;
+  };
   const clear = () => {
+    keptHoles.clear();
     particles.clear();
     prints.clear();
     shadows.clear();
@@ -1588,7 +1604,12 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
         // back up an exit hole (earth thrown all around), each where it happened.
         if (move.under !== undefined && move.under !== under && token.visible && holes() !== false) {
           const heading = move.heading ?? Math.atan2(point.y - move.y, point.x - move.x);
-          lay(burrowHole({ x: point.x, y: point.y, heading }, { seed: token.id, grid: size, width: token.width || size, exit: !under }), time);
+          const parts = burrowHole({ x: point.x, y: point.y, heading }, { seed: token.id, grid: size, width: token.width || size, exit: !under });
+          // Kept (`keepHole(hole, token)` true: "Burrow holes stay until cleared"), the hole is drawn from what is kept
+          // (showHoles) and only its thrown gravel is laid here, to settle and fade.
+          let kept = false;
+          try { kept = keepHole?.(parts.find((p) => p.kind === 'hole'), token) === true; } catch { /* lay it as before */ }
+          lay(kept ? parts.filter((p) => p.kind !== 'hole') : parts, time);
         }
         // Going under the water: a splash heard. Coming back up: the splash seen and heard.
         if (move.submerged === false && medium.submerged && token.visible) sound('water', point, token, 'dive');
@@ -1790,5 +1811,5 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     for (const particle of particles) if (particle.owner === id) laid++;
     return { laid, shown: lastUnseen.has(id) ? 0 : laid, total: laidTotals.get(id) ?? 0 };
   };
-  return { tick, clear, marksOf, previewStep: (floor, at, token, kind) => footstep?.(floor, at, token, kind), get size() { return particles.size; }, get prints() { return prints.size; } };
+  return { tick, clear, marksOf, showHoles, previewStep: (floor, at, token, kind) => footstep?.(floor, at, token, kind), get size() { return particles.size; }, get prints() { return prints.size; } };
 }

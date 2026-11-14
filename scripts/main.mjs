@@ -5021,7 +5021,8 @@ const bringCeilingDown = async ({ x, y, radius } = {}) => {
   await canvas.scene.update({ [`flags.${ID}.rubble`]: [...sceneRubble(), r].slice(-24) });
   return true;
 };
-const clearRubble = async () => { if (!game.user?.isGM || !canvas?.scene) return false; await canvas.scene.unsetFlag(ID, "rubble"); return true; };
+// Clear rubble takes the burrow holes that stay with it.
+const clearRubble = async () => { if (!game.user?.isGM || !canvas?.scene) return false; localHoles = []; holeQueue = []; showKeptHoles(); await canvas.scene.update({ [`flags.${ID}.-=rubble`]: null, [`flags.${ID}.-=burrowHoles`]: null }); return true; };
 // The cave-in on the Animater controls (GM), where the GM is during play: Cave-in arms a click on the map, a dusty ring following the pointer to show
 // where and how wide; the click brings the ceiling down there (Shift: a bigger fall); Escape or a right click lets it
 // go. Clear rubble asks first, then takes every cave-in's rubble away.
@@ -5683,7 +5684,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
       onChange: () => aimCaveIn() });
     add({ name: "animaterEnergyBlast", title: "Energy blast: pick a kind, click where it goes off", icon: "fa-solid fa-explosion", order: order + 3, button: true, visible: toolShown("toolEnergyBlast"),
       onChange: () => askBlast() });
-    add({ name: "animaterClearRubble", title: "Clear rubble: take away every cave-in's rubble", icon: "fa-solid fa-broom", order: order + 1, button: true, visible: toolShown("toolClearRubble"),
+    add({ name: "animaterClearRubble", title: "Clear rubble: take away every cave-in's rubble and the burrow holes", icon: "fa-solid fa-broom", order: order + 1, button: true, visible: toolShown("toolClearRubble"),
       onChange: () => clearRubbleAsk() });
     add({ name: "animaterRepairProps", title: "Repair broken props: put every broken prop, decoration, door, window and breached wall in this scene back", icon: "fa-solid fa-hammer", order: order + 1.5, button: true, visible: toolShown("toolRepairProps"),
       onChange: () => repairPropsAsk() });
@@ -5796,10 +5797,12 @@ const aimBreach = () => {
 };
 let rubbleAsking = false;
 const clearRubbleAsk = async () => {
-  if (rubbleAsking || !sceneRubble().length) { if (!sceneRubble().length) ui.notifications?.info("No rubble in this scene."); return; }
+  const caveIns = sceneRubble().length, holes = sceneHoles().length + localHoles.length;
+  if (rubbleAsking || !(caveIns + holes)) { if (!(caveIns + holes)) ui.notifications?.info("No rubble or burrow holes in this scene."); return; }
   rubbleAsking = true;
   try {
-    const ok = await foundry.applications.api.DialogV2.confirm({ window: { title: "Clear rubble" }, content: `<p>Take away the rubble of all ${sceneRubble().length} cave-in(s) in this scene?</p>` });
+    const what = [caveIns ? `the rubble of ${caveIns} cave-in(s)` : "", holes ? `${holes} burrow hole(s)` : ""].filter(Boolean).join(" and ");
+    const ok = await foundry.applications.api.DialogV2.confirm({ window: { title: "Clear rubble" }, content: `<p>Take away ${what} in this scene?</p>` });
     if (ok) await clearRubble();
   } catch { /* closed */ } finally { rubbleAsking = false; }
 };
@@ -7812,6 +7815,8 @@ const movementFeel = createMovementFeel({
   enabled: () => movementFeelSettingOn("movementFeel") && movementFeelSettingOn("movementFeelLocal"),
   // Burrowers' entrance and exit holes (world setting "Burrow holes").
   holes: () => movementFeelSettingOn("burrowHoles"),
+  // "Burrow holes stay until cleared": kept with the scene instead of fading.
+  keepHole: (hole, token) => keepBurrowHole(hole, token),
   // Balanced and up draw it all, Low half, Off none.
   density: () => movementDensity(qualityRank(localQuality())),
   cap: () => (localQuality() === "low" ? 60 : 120),
@@ -8074,6 +8079,50 @@ Hooks.on("updateToken", (doc, changed, options) => {
     feelSkip.set(doc.id, performance.now() + (options.animation?.duration ?? 1500) + 400);
 });
 Hooks.on("canvasTearDown", clearMovementFeel);
+// Burrow holes that stay ("Burrow holes stay until cleared"): kept with the scene ({ key, x, y, rotation, radius, variant,
+// exit, alpha, level }), saved by the GM, drawn on every screen until Clear rubble takes them away. Each screen draws the
+// holes it saw made at once (localHoles) and drops them as they come back saved.
+const BURROW_HOLES = "burrowHoles", BURROW_HOLES_MOST = 300;
+let localHoles = [], holeQueue = [], holeSaveTimer = null;
+const holeKey = (h) => `${Math.round(h.x)}:${Math.round(h.y)}:${h.exit ? 1 : 0}`;
+const sceneHoles = () => (canvas?.scene?.flags?.[ID]?.[BURROW_HOLES] ?? []).filter((h) => h && Number.isFinite(Number(h.x)) && Number.isFinite(Number(h.y)) && Number(h.radius) > 0);
+const keptHoleSpec = (h) => ({ kind: "hole", key: h.key ?? holeKey(h), x: Number(h.x), y: Number(h.y), rotation: Number(h.rotation) || 0, radius: Number(h.radius),
+  variant: (Number(h.variant) || 0) % 4, exit: h.exit === true, alpha: Number(h.alpha) || 0.85, color: 0x140d07, rim: [] });
+const showKeptHoles = () => {
+  if (!canvas?.ready) return;
+  const saved = sceneHoles(), keys = new Set(saved.map((h) => h.key ?? holeKey(h)));
+  localHoles = localHoles.filter((h) => !keys.has(h.key));
+  const level = canvas.level?.id ?? null, here = (h) => !h.level || !level || h.level === level;
+  try { movementFeel.showHoles([...saved, ...localHoles].filter(here).map(keptHoleSpec)); } catch (error) { console.warn("Animater | burrow holes", error); }
+};
+const saveHolesSoon = () => {
+  clearTimeout(holeSaveTimer);
+  holeSaveTimer = setTimeout(() => {
+    const scene = canvas?.scene, add = holeQueue; holeQueue = [];
+    if (!scene || !add.length || game.users?.activeGM?.id !== game.user?.id) return;
+    const saved = sceneHoles(), keys = new Set(saved.map((h) => h.key ?? holeKey(h)));
+    const list = [...saved, ...add.filter((h) => !keys.has(h.key))].slice(-BURROW_HOLES_MOST);
+    void scene.update({ flags: { [ID]: { [BURROW_HOLES]: list } } }, { render: false }).catch((error) => console.warn("Animater | saving burrow holes", error));
+  }, 500);
+};
+// movementFeel's keepHole: true when the hole stays (then it is drawn from here, not left to fade).
+const keepBurrowHole = (spec, token) => {
+  if (!spec || hotSetting("burrowHolesStay") === false) return false;
+  const h = { key: holeKey(spec), x: Math.round(spec.x), y: Math.round(spec.y), rotation: +(Number(spec.rotation) || 0).toFixed(3), radius: spec.radius,
+    variant: spec.variant ?? 0, exit: spec.exit === true, alpha: spec.alpha, level: bloodLevelOf(token?.id) };
+  localHoles.push(h);
+  showKeptHoles();
+  if (game.users?.activeGM?.id === game.user?.id) { holeQueue.push(h); saveHolesSoon(); }
+  return true;
+};
+Hooks.on("canvasReady", () => { localHoles = []; holeQueue = []; showKeptHoles(); });
+Hooks.on("updateScene", (scene, change) => {
+  const own = change?.flags?.[ID];
+  if (scene?.id !== canvas?.scene?.id || !own || !(BURROW_HOLES in own || `-=${BURROW_HOLES}` in own)) return;
+  // Cleared: what this screen still had unsaved goes too.
+  if (`-=${BURROW_HOLES}` in own || !sceneHoles().length) { localHoles = []; holeQueue = []; }
+  showKeptHoles();
+});
 // Burrowed creatures sink out of sight (engines/motion/burrow-sink.mjs; world setting "Burrowed creatures sink out of
 // sight"): a token whose elevation is below its level's floor shrinks and fades into its hole. Once it is down, a
 // viewer who does not own it no longer sees it at all (nor its nameplate, bars or effects, nor can hover, click or
@@ -13138,7 +13187,12 @@ Hooks.once("init", () => {
   });
   registerSetting("burrowHoles", {
     name: "Burrow holes",
-    hint: "A burrowing creature leaves a hole where it goes under and a wider one where it comes up, with earth thrown out, lingering about 20 seconds.",
+    hint: "A burrowing creature leaves a hole where it goes under and a wider one where it comes up, with earth thrown out.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  registerSetting("burrowHolesStay", {
+    name: "Burrow holes stay until cleared",
+    hint: "On: burrow holes stay with the scene, on every screen and after a reload, until the GM takes them away with the Clear rubble button in the Animater controls. Off: each fades after about 20 seconds.",
     scope: "world", config: true, type: Boolean, default: true,
   });
   registerSetting('burrowTrailDepth',{

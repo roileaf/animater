@@ -179,7 +179,7 @@ test('render: mounds and wake arms draw', () => {
 });
 
 // A controller over plain token views; `sounds` records [floor, kind] per host call.
-function harness({ tokens, floor = 'dirt', holes, burrowDepth, trailLifetime, swimRipples } = {}) {
+function harness({ tokens, floor = 'dirt', holes, keepHole, burrowDepth, trailLifetime, swimRipples } = {}) {
   let time = 0;
   const live = new Set(), sounds = [], log = { added: 0, shadows: 0 };
   const layer = {
@@ -191,6 +191,7 @@ function harness({ tokens, floor = 'dirt', holes, burrowDepth, trailLifetime, sw
     tokens: () => tokens, floorAt: () => (typeof floor === 'function' ? floor() : floor), enabled: () => true, density: () => 1,
     grid: () => 100, distance: () => 5, now: () => time, layer, footstep: (f, at, t, kind) => sounds.push([f, kind ?? 'step']),
     ...(holes ? { holes } : {}),
+    ...(keepHole ? { keepHole } : {}),
     ...(swimRipples ? { swimRipples } : {}),
     ...(burrowDepth?{burrowDepth}:{}),...(trailLifetime?{trailLifetime}:{}),
   });
@@ -444,4 +445,29 @@ test('controller: a prone creature crawls, whatever its movement action says', (
   const up = { ...tok, id: 'u', x: 0, prone: false }, hu = harness({ tokens: [up], floor: 'dirt' });
   hu.feel.tick(); hu.walk(up, 12);
   assert.ok(hu.sounds.every(([, kind]) => kind === 'step'), 'on its feet it steps');
+});
+
+test('kept burrow holes: the hole goes to keepHole (gravel still laid), and showHoles draws what is kept until it is gone', () => {
+  const kept = [], tok = { id: 'mole', x: 0, y: 0, width: 100, elevation: 0, base: 0, visible: true };
+  const h = harness({ tokens: [tok], keepHole: (hole, token) => { kept.push([hole, token.id]); return true; } });
+  h.feel.tick(); tok.elevation = -10; h.feel.tick();
+  assert.equal(kept.length, 1); assert.equal(kept[0][0].kind, 'hole'); assert.equal(kept[0][1], 'mole');
+  assert.ok(!h.kinds().includes('hole'), 'the kept hole is not laid to fade');
+  assert.ok(h.kinds().includes('chip'), 'its gravel still flies');
+  const spec = { ...kept[0][0], key: 'a' };
+  assert.equal(h.feel.showHoles([spec]), 1);
+  h.wait(60000);
+  assert.equal(h.kinds().filter((k) => k === 'hole').length, 1, 'still there after a minute');
+  assert.equal(h.feel.showHoles([spec, { ...spec, key: 'b', x: 300 }]), 2);
+  assert.equal(h.kinds().filter((k) => k === 'hole').length, 2, 'not drawn twice');
+  assert.equal(h.feel.showHoles([]), 0);
+  assert.ok(!h.kinds().includes('hole'), 'cleared');
+});
+test('a hole keepHole declines fades as before', () => {
+  const tok = { id: 'mole2', x: 0, y: 0, width: 100, elevation: 0, base: 0, visible: true };
+  const h = harness({ tokens: [tok], keepHole: () => false });
+  h.feel.tick(); tok.elevation = -10; h.feel.tick();
+  assert.equal(h.kinds().filter((k) => k === 'hole').length, 1);
+  h.wait(25000);
+  assert.ok(!h.kinds().includes('hole'));
 });
