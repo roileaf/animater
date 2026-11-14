@@ -28,32 +28,6 @@
         },
         "manifest": "https://github.com/fantasycalendar/FoundryVTT-Sequencer/releases/latest/download/module.json"
       }
-    ],
-    "recommends": [
-      {
-        "id": "ggg",
-        "type": "module",
-        "reason": "Primary sound library for spells, feats and weapons.",
-        "manifest": "https://github.com/ChasarooniZ/GGG-Sequencer-Sound-DB-Collection/releases/latest/download/module.json"
-      },
-      {
-        "id": "soundfxlibrary",
-        "type": "module",
-        "reason": "Fallback sounds when GGG or PSFX (free or Patreon) are missing.",
-        "manifest": "https://github.com/MaterialFoundry/SoundFxLibrary/releases/latest/download/module.json"
-      },
-      {
-        "id": "pf2e-creature-sounds",
-        "type": "module",
-        "reason": "Creature voices for natural attacks.",
-        "manifest": "https://github.com/olilan1/pf2e-creature-sounds/releases/latest/download/module.json"
-      },
-      {
-        "id": "fxmaster",
-        "type": "module",
-        "reason": "Scene weather effects added by catalog animations.",
-        "manifest": "https://github.com/gambit07/fxmaster/releases/latest/download/module.json"
-      }
     ]
   },
   "socket": true,

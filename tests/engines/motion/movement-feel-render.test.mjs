@@ -77,7 +77,8 @@ test('every gait draws its own track shape in its colour', () => {
   const root = container();
   const layer = createMovementFeelLayer({ PIXI: { Graphics }, root: () => root });
   const shapes = new Map();
-  for (const gait of GAITS.filter((g) => g !== 'none' && g !== 'unknown')) {
+  // 'hull' marks no floor at all, like 'none': a boat leaves its wake on the water (swimWake), not a track underfoot.
+  for (const gait of GAITS.filter((g) => g !== 'none' && g !== 'unknown' && g !== 'hull')) {
     const specs = puffsFor('mud', { x: 0, y: 0, heading: 0.3, index: 1 }, { seed: 'r', grid: 100, gait }).filter((p) => p.kind === 'print' || p.kind === 'groove' || p.kind === 'rut');
     assert.ok(specs.length >= 1, gait);
     const main = specs.find((p) => p.gait === gait) ?? specs.find((p) => p.kind === 'rut') ?? specs[0];

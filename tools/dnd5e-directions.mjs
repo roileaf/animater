@@ -93,6 +93,14 @@ const named={
  'webs':{theme:'web',delivery:'contact',hit:'web.complete.002.white,web.01'},
  'sticky net':{theme:'web',delivery:'contact',hit:'web.complete.002.white,web.01'},
  'grasping root':{theme:'plant',area:'vine.complete.nature.group.01.green,entangle.02.complete.02.green',hit:'entangle.02.complete.02.green'},
+ // Arcana Unleashed spells the generator read wrong from their own text (Roi: "did you add fitting animations
+ // though?"). Iron Body hardens the caster and has nothing to do with poison, which is where "resistance to poison
+ // damage" in its description had put it. Wail of the Banshee is a killing scream, not a daze. Power Word Pain is
+ // agony, and the charm branch had put pink hearts over the victim. Illusory Dragon is a dragon and a cone of fear.
+ 'iron body':{theme:'ward',aura:'token_border.circle.static,glint',cast:'magic_signs.circle.02.abjuration.complete'},
+ 'wail of the banshee':{theme:'void',cast:'soundwave.02.purple',area:'soundwave',aura:'soundwave',hit:'energy_strands.in.purple,markers.skull'},
+ 'power word pain':{theme:'mind',hit:'dizzy_stars.200px.purple',aura:'dizzy_stars.200px.purple,energy_strands.in.purple'},
+ 'illusory dragon':{theme:'illusion',cast:'magic_signs.circle.02.illusion.complete.dark_purple',area:'smoke.plumes.01.purple,markers.fear',hit:'markers.fear,smoke.plumes'},
  // A bell tolls over the target; "Healthy Target" is a damage tier, not healing.
  'toll the dead':{theme:'void',cast:'cast_generic.01.dark_purple',hit:'toll_the_dead.purple.complete,toll_the_dead.purple.bell'},
  'acid splash':{theme:'acid',area:'liquid.splash.bright_green,liquid.splash.green'},

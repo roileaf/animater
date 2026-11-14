@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lookFor, coatOf, rollPhase, framePath, groupOf, isPainted, teamStep, headingOf, travelOf, lookStep, lookSize, trueSquares, bodyRide, leanTurn, CARRIER_LOOKS, COATS, ROLL_FRAMES, LOOK } from '../../../scripts/engines/motion/carrier-look.mjs';
+import { lookFor, coatOf, rollPhase, framePath, groupOf, isPainted, teamStep, packSize, SETS, headingOf, travelOf, lookStep, lookSize, trueSquares, bodyRide, leanTurn, CARRIER_LOOKS, COATS, ROLL_FRAMES, LOOK } from '../../../scripts/engines/motion/carrier-look.mjs';
 import { readFileSync } from 'node:fs';
 
 // Roi: "where is the wagon model it's supposed to get" — so a carrier wears the baked wagon, not its own picture.
@@ -66,22 +66,58 @@ test('the drawing reads the road once a frame, however many times it is called',
 // pair cast one shadow from the empty air between them. The vehicle is baked alone now and the team is its own picture.
 test('a wagon has a team of its own, walking its own stride out in front of it', () => {
   const team = teamStep('wagon', 1, 0, true);
-  assert.equal(team.group, 'farm', 'the horses the farm sheet already holds');
-  assert.match(team.path, /^draughtHorses\/1\/walk\/[0-3]$/);
-  assert.ok(team.ahead > 10, 'out past the bed and the shafts');
-  const over = Array.from({ length: 10 }, (_, i) => teamStep('wagon', 1, i * 0.4, true).path);
+  assert.equal(team.length, 1, 'one in the shafts');
+  assert.equal(team[0].group, 'farm', 'the horses the farm sheet already holds');
+  assert.match(team[0].path, /^draughtHorses\/1\/walk\/[0-3]$/);
+  assert.ok(team[0].ahead > 10, 'out past the bed and the shafts');
+  const over = Array.from({ length: 10 }, (_, i) => teamStep('wagon', 1, i * 0.4, true)[0].path);
   assert.ok(new Set(over).size > 1, 'its legs keep their own time down the road');
   // Roi: "lets have idle animation to the horse". Stopped, it goes round a standing round instead of freezing.
-  assert.match(teamStep('wagon', 1, 3, false, 0, 'w').path, /^draughtHorses\/1\/idle\/[0-3]$/);
-  const waiting = Array.from({ length: 8 }, (_, i) => teamStep('wagon', 1, 3, false, i * 1000, 'w').path);
+  assert.match(teamStep('wagon', 1, 3, false, 0, 'w')[0].path, /^draughtHorses\/1\/idle\/[0-3]$/);
+  const waiting = Array.from({ length: 8 }, (_, i) => teamStep('wagon', 1, 3, false, i * 1000, 'w')[0].path);
   assert.ok(new Set(waiting).size > 2, 'and it shifts while it waits');
-  assert.equal(teamStep('wagon', 1, 3, false, 0, 'a').path === teamStep('wagon', 1, 3, false, 0, 'b').path, false, 'two horses do not breathe as one');
+  assert.equal(teamStep('wagon', 1, 3, false, 0, 'a')[0].path === teamStep('wagon', 1, 3, false, 0, 'b')[0].path, false, 'two horses do not breathe as one');
   assert.equal(teamStep('cart', 0, 1, true), null, 'nothing is in the shafts of a hand cart');
   assert.equal(teamStep('horse', 0, 1, true), null, 'and nothing pulls a riding horse');
   const step = lookStep({ id: 'w', kind: 'wagon', from: { x: 0, y: 0 }, to: { x: 60, y: 0 }, grid: 100 }, {});
   assert.equal(step.group, 'vehicles');
-  assert.ok(step.team?.path, 'the step carries its team with it');
+  assert.ok(step.team?.[0]?.path, 'the step carries its team with it');
   assert.equal(lookStep({ id: 'm', kind: 'mount', from: { x: 0, y: 0 }, to: { x: 60, y: 0 }, grid: 100 }, {}).team, null);
+});
+
+// Roi: "give it 2-4 wolves that pull?" A sled is roped to a pack, not harnessed to one animal in shafts.
+test('a sled is pulled by a pack of wolves, two to four of them', () => {
+  const sizes = new Set(Array.from({ length: 40 }, (_, i) => packSize('sled', `s${i}`)));
+  assert.ok([...sizes].every((n) => n >= 2 && n <= 4), 'never fewer than two, never more than four');
+  assert.ok(sizes.size > 1, 'and not the same team on every sled');
+  assert.equal(packSize('sled', 's1'), packSize('sled', 's1'), 'one sled keeps its own pack');
+  assert.equal(packSize('wagon', 's1'), 1, 'a wagon still has the one in the shafts');
+  assert.equal(packSize('cart', 's1'), 0, 'and a hand cart has nobody');
+  const pack = teamStep('sled', 0, 0, true, 0, 's1');
+  assert.equal(pack.length, packSize('sled', 's1'));
+  assert.ok(pack.every((w) => w.group === 'field'), 'the wolves the field sheet already holds');
+  assert.ok(pack.every((w) => /^wolf\/[0-2]\/trot\/[0-7]$/.test(w.path)), JSON.stringify(pack.map((w) => w.path)));
+  // Not one animal copied: each takes its own coat and its own moment of the stride.
+  assert.ok(new Set(pack.map((w) => w.path)).size === pack.length, 'no two of them move as one');
+  // Two abreast, the pairs one behind the other, all of them out in front of the sled.
+  assert.ok(pack.every((w) => w.ahead > SETS.sled.span * 0.33 + 2), 'clear of the sled\'s nose, out on the rope');
+  if (pack.length > 1) assert.ok(pack[0].across < 0 && pack[1].across > 0, 'the first pair runs side by side');
+  if (pack.length > 2) assert.ok(pack[2].ahead > pack[0].ahead, 'and the next pair runs ahead of them');
+  // Roi: "i think the wolves scale is weird, they are also low quality (blurry)". Both were one fault: a frame with
+  // no size baked in was drawn at a draught horse's ten feet, so a wolf came out double size and stretched soft.
+  assert.ok(pack.every((w) => w.feet === 5), 'a wolf is five feet nose to tail, not a horse');
+  assert.ok(teamStep('wagon', 0, 0, true).every((h) => h.feet === 10), 'and the horse keeps its own length');
+  // Roi: "shouldnt there be a rope holding them to the sled?" A sled is roped; a wagon's horse is in shafts.
+  assert.ok(pack.every((w) => w.rope === true));
+  // Roi: "it doesnt touch the sled lol", and then "traces to corners". Each trace is made fast to a front corner of
+  // the deck itself, measured off the painted sled: its deck ends 2.19 feet ahead of the middle and is 1.47 feet
+  // wide to each side, where the frame's half-span is 5.5.
+  assert.ok(SETS.sled.hitch.ahead > 1.5 && SETS.sled.hitch.ahead < SETS.sled.span / 2, 'on the deck, not out in the air');
+  assert.ok(SETS.sled.hitch.across > 0.5 && SETS.sled.hitch.across < 2, 'at its corners, not down its middle');
+  assert.ok(teamStep('wagon', 0, 0, true).every((h) => h.rope === false));
+  // Standing, a wolf waits on its feet rather than going round a horse's standing round.
+  const still = teamStep('sled', 0, 0, false, 0, 's1');
+  assert.ok(still.every((w) => /^wolf\/[0-2]\/rest\/0$/.test(w.path)), JSON.stringify(still.map((w) => w.path)));
 });
 
 // The horses are the only carrier frames still taken from a sheet; every vehicle is painted.
@@ -91,8 +127,19 @@ test('the horse frames are the ones the farm sheet was baked with', () => {
   for (let coat = 0; coat < COATS; coat++) {
     for (let p = 0; p < ROLL_FRAMES; p++) assert.ok(paths.has(framePath('horse', coat, p)), `${framePath('horse', coat, p)} is in the sheet`);
     for (let i = 0; i < 6; i++) assert.ok(paths.has(framePath('horse', coat, null, i)), `${framePath('horse', coat, null, i)} is in the sheet`);
-    const team = teamStep('wagon', coat, 0, true);
-    assert.ok(paths.has(team.path.replace(/^/, '')), `${team.path} is in the sheet`);
+    for (const animal of teamStep('wagon', coat, 0, true)) assert.ok(paths.has(animal.path), `${animal.path} is in the sheet`);
+  }
+});
+
+// The sled's pack comes off the field sheet, which has had wolves trotting and resting in it all along.
+test('the wolf frames a sled asks for are the ones the field sheet was baked with', () => {
+  const map = JSON.parse(readFileSync(new URL('../../../assets/animals/field.json', import.meta.url), 'utf8'));
+  const paths = new Set(Object.keys(map.frames));
+  for (const seed of ['s1', 's2', 's3', 's4', 's5', 's6']) {
+    for (const rolled of [0, 0.3, 0.7, 1.4, 2.9]) {
+      for (const animal of teamStep('sled', 0, rolled, true, 0, seed)) assert.ok(paths.has(animal.path), `${animal.path} is in the sheet`);
+    }
+    for (const animal of teamStep('sled', 0, 0, false, 0, seed)) assert.ok(paths.has(animal.path), `${animal.path} is in the sheet`);
   }
 });
 

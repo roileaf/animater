@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { boarding, boardList, stillAboard, ridePlan, landPlan, aroundSpots, boardLabel, carrierAt, pulledOff, carrierKind, kindLabel, capacityOf, overCapacity, tooBig, CARRIER_KINDS, ABOARD, KIND, STOW, RIDING } from '../../../scripts/engines/motion/carriers.mjs';
+import { boarding, boardList, stillAboard, ridePlan, landPlan, aroundSpots, boardLabel, carrierAt, pulledOff, carrierKind, kindLabel, capacityOf, overCapacity, tooBig, seatsOf, overSeats, seatsLeft, CARRIER_KINDS, ABOARD, KIND, STOW, RIDING, SEATS } from '../../../scripts/engines/motion/carriers.mjs';
 
 // Roi: a wagon the GM "can put and remove quickly and put all tokens inside".
 const wagon = { id: 'w', x: 1000, y: 1000, elevation: 0 };
@@ -142,6 +142,25 @@ test('what each kind holds, and who is plainly too big for it', () => {
   assert.equal(overCapacity('boat', 9), 5);
   assert.equal(tooBig({ width: 1, height: 1 }, { width: 2, height: 1 }), true, 'a horse does not get into a hand cart');
   assert.equal(tooBig({ width: 2, height: 2 }, { width: 1, height: 1 }), false);
+});
+
+// Roi: "make the number of passengers limit as a setting on the token (disabled default)". The kinds' own figures
+// stay a remark; this one is the GM's decision about this carrier, so it is kept — and it is off until they set it.
+test('a limit set on the token is off by default, and a whole number of seats when it is not', () => {
+  assert.equal(SEATS, 'carrierSeats', 'its own flag, so an old carrier simply has none');
+  for (const off of [undefined, null, '', 0, -3, 0.4, 'horse', NaN, Infinity]) {
+    assert.equal(seatsOf(off), 0, `${String(off)} is no limit at all`);
+    assert.equal(overSeats(off, 50), 0, 'and nothing is ever over it');
+    assert.equal(seatsLeft(off, 50), Infinity, 'so there is always room for one more');
+  }
+  assert.equal(seatsOf(4), 4);
+  assert.equal(seatsOf('4'), 4, 'a sheet hands back what was typed into it');
+  assert.equal(seatsOf(4.8), 4, 'and half a seat is not a seat');
+  assert.equal(overSeats(4, 4), 0);
+  assert.equal(overSeats(4, 7), 3, 'three of the seven stay where they are');
+  assert.equal(seatsLeft(4, 0), 4);
+  assert.equal(seatsLeft(4, 3), 1);
+  assert.equal(seatsLeft(4, 9), 0, 'a limit lowered under the ones already aboard takes nobody new');
 });
 
 test('a passenger keeps the height it had over the carrier, riding and landing', () => {

@@ -34,7 +34,10 @@ export const SETS = Object.freeze({
   wagon: Object.freeze({ paint: "wagon", span: 20, team: "draughtHorses" }),
   tilt: Object.freeze({ paint: "tilt", span: 20, team: "draughtHorses" }),
   cart: Object.freeze({ paint: "cart", span: 14, team: "" }),
-  sled: Object.freeze({ paint: "sled", span: 11, team: "" }),
+  // A sled is not pulled from shafts by one big animal: it is roped to a pack (Roi: "give it 2-4 wolves that pull?").
+  // The wolves come from the field sheet, which has had them trotting and running all along, so nothing new is baked;
+  // how many are in this sled's team is settled once by its own id and never changes under it.
+  sled: Object.freeze({ paint: "sled", span: 11, team: "wolf", group: "field", moving: "trot", still: "rest", frames: 8, pack: [2, 4], ahead: 8, apart: 3.5, rows: 4.5, feet: 5, rope: true, hitch: Object.freeze({ ahead: 2.19, across: 1.47 }) }),
   boat: Object.freeze({ decor: "rowboat", span: 13, team: "" }),
   horse: Object.freeze({ group: "farm", folder: "horses", still: "idle", moving: "walk", team: "" }),
 });
@@ -55,6 +58,8 @@ export const headUp = (frame = 0) => (Number(frame) || 0) < HEAD_UP;
 // stands with its hindquarters over their tips and they run up alongside it: set further out, it floated ahead of the
 // wagon with a clear gap and nothing joining the two.
 const TEAM_AHEAD = 12;
+// How long a team animal is drawn, nose to tail, in feet, where its frame has no size baked into it: a draught horse.
+const TEAM_FEET = 10;
 const TEAM_FRAMES = 4;
 export const COATS = 3;
 export const ROLL_FRAMES = 4;
@@ -98,17 +103,44 @@ export const framePath = (set, coat = 0, phase = null, still = 0) => {
   // A standing round has frames of its own; a standing pose is the one frame.
   return own.still === "idle" ? `${folder}/${coat}/idle/${still}` : `${folder}/${coat}/${own.still}`;
 };
+/** How many pull this carrier: one in the shafts, or a pack of as many as its set allows, settled by the carrier's id. */
+export function packSize(set, seed = "") {
+  const pack = SETS[set]?.pack;
+  if (!pack) return SETS[set]?.team ? 1 : 0;
+  const [least, most] = pack;
+  return least + (coatOf(`pack:${seed}`) % (most - least + 1));
+}
 /**
- * The team in the shafts, as `{ group, path, ahead }` — `ahead` in feet from the vehicle's middle — or null for the
- * ones nothing pulls. It walks its own stride rather than the wheels', so the horse's legs keep their own time.
+ * What pulls this carrier, as a list of `{ group, path, ahead, across }` — `ahead` and `across` in feet from the
+ * vehicle's middle — or null for the ones nothing pulls. They run their own stride rather than the wheels', so their
+ * legs keep their own time, and a pack is strung out two abreast with each animal a little out of step with the next:
+ * four wolves moving as one animal is a toy, not a team.
  */
 export function teamStep(set, coat = 0, rolled = 0, moving = true, now = 0, seed = "") {
-  const team = SETS[set]?.team;
-  if (!team) return null;
-  const n = moving ? Math.floor((((rolled / 1.4) % 1) + 1) % 1 * TEAM_FRAMES) % TEAM_FRAMES : null;
-  // Standing in the shafts it does not freeze: it goes round its standing round, shifting and putting its head down.
-  const path = n === null ? `${team}/${coat}/idle/${idleFrame(now, seed)}` : `${team}/${coat}/walk/${n}`;
-  return { group: "farm", path, ahead: TEAM_AHEAD };
+  const spec = SETS[set];
+  if (!spec?.team) return null;
+  const group = spec.group ?? "farm", frames = spec.frames ?? TEAM_FRAMES;
+  const ahead = spec.ahead ?? TEAM_AHEAD, count = packSize(set, seed);
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    // Each one takes its own coat and its own place in the stride, so the pack does not move as one body.
+    const mine = (coat + i) % COATS, offset = i / Math.max(1, count);
+    const n = moving ? Math.floor(((((rolled / 1.4) + offset) % 1) + 1) % 1 * frames) % frames : null;
+    // Standing, it does not freeze: a horse goes round its standing round, a wolf waits on its feet.
+    const path = n === null
+      ? `${spec.team}/${mine}/${spec.still ?? "idle"}/${spec.still === "rest" ? 0 : idleFrame(now, `${seed}:${i}`)}`
+      : `${spec.team}/${mine}/${spec.moving ?? "walk"}/${n}`;
+    // Two abreast, the pairs one behind the other, so a team of four is a column and not a row across the road. An odd
+    // team leaves one at the front with nobody beside it, and that one runs up the middle rather than off to one side.
+    const pair = Math.floor(i / 2), alone = count === 1 || i === count - 1 && count % 2;
+    const side = alone ? 0 : i % 2 ? 1 : -1;
+    // How long the animal is, nose to tail, in feet: a wolf is not a draught horse, and a frame with no size baked
+    // into it was being drawn at a horse's ten feet (Roi, of the sled's pack: "i think the wolves scale is weird,
+    // they are also low quality (blurry)" — both are the same fault, a 256px frame stretched to two squares).
+    out.push({ group, path, feet: spec.feet ?? TEAM_FEET, rope: spec.rope === true,
+      ahead: ahead + pair * (spec.rows ?? 0), across: side * ((spec.apart ?? 0) / 2) });
+  }
+  return out;
 }
 
 /**

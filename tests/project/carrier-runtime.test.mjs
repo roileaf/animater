@@ -43,8 +43,13 @@ test('walking onto a carrier boards nobody', () => {
 // the footstep that used to clop over them goes quiet while they play.
 test('a ridden horse sounds like the pace it is going, and only once', () => {
   assert.match(main, /const pace = mountPace\(state\.run \?\? 0\)/, 'the pace comes off the journey so far');
-  assert.match(main, /kind === "mount" \? hoofFile\(kind, pace, doc\.id\) : rollFile\(/);
-  assert.match(main, /kind === "mount" \? hoofShape\(\{ speed: state\.speed \?\? 0, pace, seed: doc\.id \}\)/);
+  assert.match(main, /const hooves = hoofFile\(kind, pace, doc\.id\);/);
+  assert.match(main, /const hoof = hoofShape\(\{ speed: state\.speed \?\? 0, pace, seed: doc\.id, kind \}\);/);
+  // Its own held voice beside the rims, so a wagon is heard as both at once (Roi: "wagon should combine wagon and
+  // horse sfx"), and it is let go with the carrier like the other two.
+  assert.match(main, /holdCarrierVoice\(carrierHoofVoices, doc\.id, hooves,/);
+  assert.match(main, /holdCarrierVoice\(carrierVoices, doc\.id, roll,/, 'the rims keep their own');
+  assert.match(main, /for \(const \[id, voice\] of carrierHoofVoices\) if \(!live\.has\(id\)\) \{ stopVoice\(voice, 300\); carrierHoofVoices\.delete\(id\); \}/);
   // The journey is measured as it is drawn, and forgotten once the horse has properly stopped.
   assert.match(main, /if \(rolling\) state\.run = \(state\.run \?\? 0\) \+ went \/ grid;/);
   assert.match(main, /else if \(state\.speed < 0\.15\) state\.run = 0;/);
@@ -55,6 +60,58 @@ test('a ridden horse sounds like the pace it is going, and only once', () => {
   // And the size-paced footstep is silenced under it, rather than skipped: its tread still shakes the ground.
   assert.match(main, /token\.carrier === "mount" && carriersOn\(\) && bothSettingsOn\("carrierSounds"\)\) level = 0;/);
   assert.match(main, /carrier: kindOf\(d\) \?\? null,/, 'the view says which carrier a token is');
+});
+
+// Roi: "make the number of passengers limit as a setting on the token (disabled default)".
+test('how many ride is a number on the token, off until the GM sets it, and kept once they do', () => {
+  // On the token's own sheet, beside the kind, starting at 0 — which is off.
+  assert.match(main, /<label>Animater: passenger limit<\/label>/);
+  assert.match(main, /<input type="number" min="0" step="1" name="flags\.\$\{ID\}\.\$\{CARRIER_SEATS\}" value="\$\{seats \|\| 0\}">/);
+  assert.match(main, /0 is off, which is how it starts/, 'and the sheet says so');
+  // Loading fills the seats and leaves the rest standing, rather than telling the GM off afterwards.
+  const load = main.slice(main.indexOf('const loadCarrier = async (doc)'), main.indexOf('// `where` lets a carrier'));
+  assert.match(load, /const riding = Number\.isFinite\(room\) \? list\.slice\(0, aboard\.length \+ room\) : list;/);
+  assert.match(load, /seatsLeft\(doc\.flags\?\.\[ID\]\?\.\[CARRIER_SEATS\], aboard\.length\)/);
+  assert.match(load, /is full — it is set to carry \$\{seats\}/, 'a full carrier says so instead of silently taking nobody');
+  assert.match(load, /\$\{behind\} stayed behind/, 'and anyone left standing is named');
+  assert.match(load, /await doc\.setFlag\(ID, ABOARD, riding\);/, 'only those who got on are aboard');
+  assert.ok(!/ridePlan\(list,/.test(load), 'nobody rides who was left behind');
+  // With no limit set, the kind's own figure is still only a remark, which is what it always was.
+  assert.match(load, /const kind = kindOf\(doc\) \|\| "party", over = seats \? 0 : overCapacity\(kind, riding\.length\);/);
+});
+
+// A boat is a hull, not an incorporeal thing: it leaves a wake on the water and nothing on land.
+test('a boat leaves a wake behind it', () => {
+  assert.match(main, /const CARRIER_GAITS = \{ wagon: "wheels", cart: "barrow", sled: "runners", mount: "hooves", boat: "hull" \};/);
+  const feel = readFileSync(new URL('../../scripts/engines/motion/movement-feel.mjs', import.meta.url), 'utf8');
+  assert.match(feel, /if \(token\.gait === 'hull'\) \{/, 'the stride lays a wake instead of marking the floor');
+  // Roi: "why boat use this and not the ripple like ducks do? it should use the ripple engine on water we have".
+  // It does: the hull drives the water's own rings, and the drawn wake is only the fallback where that is not running.
+  assert.match(feel, /if \(token\.visible && floor === 'water' && !swimRipples\?\.\(token\)\) lay\(swimWake\(at, opts\), time, floor, 'swim'\);/);
+  assert.match(feel, /the way a duck paddling does/);
+  assert.match(feel, /const SILENT_GAITS = new Set\(\['none', 'wheels', 'barrow', 'runners', 'hull'\]\);/, 'and it has no footfall');
+});
+
+// Roi, of the sled's pack on the table: "i think the wolves scale is weird, they are also low quality (blurry) also
+// shouldnt there be a rope holding them to the sled?"
+test('the pack is drawn at its own length, on a rope', () => {
+  // Sized by what the set says the animal is, not by a draught horse's ten feet.
+  assert.match(main, /\(\(animal\.feet \/ feet\) \* grid\) \/ along/);
+  assert.ok(!/\(\(10 \/ feet\) \* grid\) \/ along/.test(main.slice(main.indexOf('const paintCarrierTeam'), main.indexOf('const tickCarrierLooks'))),
+    'nothing in the team is still drawn at a horse\'s length');
+  // The traces: one line from the sled's nose to each animal, its own child so it can be let go with the rest.
+  assert.match(main, /const paintCarrierRope = \(token, step, grid, art, ahead, beside, team\)/);
+  assert.match(main, /const roped = team\.filter\(\(a\) => a\.rope\);/);
+  assert.match(main, /rope\.quadraticCurveTo\(mid\.x, mid\.y, end\.x, end\.y\);/, 'and it sags rather than ruling a line');
+  // Roi: "it doesnt touch the sled lol", then "traces to corners". Each one is made fast to the deck's own corner,
+  // the side the animal runs on, and the painted bridle that used to stand in for them is gone from the art.
+  assert.match(main, /const hitch = CARRIER_SETS\[step\.set\]\?\.hitch/);
+  assert.match(main, /const corner = place\(hitch\.ahead, Math\.sign\(animal\.across \?\? 0\) \* hitch\.across\);/);
+  assert.match(main, /rope\.moveTo\(corner\.x, corner\.y\);/);
+  const paint = readFileSync(new URL('../../scripts/engines/motion/carrier-paint.mjs', import.meta.url), 'utf8');
+  const sled = paint.slice(paint.indexOf('  sled(g, s, rng, o) {'), paint.indexOf('};', paint.indexOf('  sled(g, s, rng, o) {')));
+  assert.ok(!/const rope =/.test(sled), 'the sled no longer paints a bridle of its own for the traces to double');
+  assert.match(main, /for \(const key of \[CARRY_LOOK, CARRY_TEAM, CARRY_ROPE\]\)/, 'the rope goes with the picture');
 });
 
 test('a passenger remembers its carrier, so one whose carrier is gone can be found again', () => {

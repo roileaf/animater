@@ -48,22 +48,32 @@ export function mountPace(run = 0) {
   const squares = Math.max(0, Number(run) || 0);
   return squares >= PACE_AT.gallop ? 'gallop' : squares >= PACE_AT.trot ? 'trot' : 'walk';
 }
-/** The hooves a mount holds under it at this pace; null for a kind that is not itself an animal. */
+/**
+ * Whether there are hooves to be heard at all: a mount is itself the horse, and a wagon has a pair of them in the
+ * shafts (Roi: "i think wagon should combine wagon and horse sfx no?" — it should; a wagon was rims and chains with
+ * nothing pulling it). A hand cart and a sled have nobody in harness, and a boat has no hooves to put anywhere.
+ */
+export const hasHooves = (kind) => kind === 'mount' || hasTeam(kind);
+/** The hooves held under a mount or a team at this pace; null for a kind with no horse about it. */
 export function hoofFile(kind, pace = 'walk', seed = '') {
-  if (kind !== 'mount') return null;
+  if (!hasHooves(kind)) return null;
   return pick(HOOF_SOUNDS[pace] ?? HOOF_SOUNDS.walk, seed, `hoof:${pace}`);
 }
 // A gallop carries further than a walk, as it does in a field.
 const HOOF_VOLUME = { walk: 0.26, trot: 0.3, gallop: 0.34 };
+// A team in the shafts is heard under its own wagon: the rims and the chains are nearer the listener than the horses
+// are, so the hooves sit below them rather than fighting them for the front.
+const TEAM_GAIN = 0.7;
 /**
- * How loud the hooves run and at what pitch (pure). It fades in with the horse rather than switching on, and the
+ * How loud the hooves run and at what pitch (pure). They fade in with the horse rather than switching on, and the
  * recording is left at its own pace: the only pitch move is a couple of percent by seed, so two horses abreast do not
  * fall into step with each other.
  */
-export function hoofShape({ speed = 0, pace = 'walk', seed = '' } = {}) {
+export function hoofShape({ speed = 0, pace = 'walk', seed = '', kind = 'mount' } = {}) {
   const s = Math.max(0, Number(speed) || 0);
   if (s < 0.05) return { volume: 0, rate: 1 };
-  const volume = Math.min(1, (HOOF_VOLUME[pace] ?? HOOF_VOLUME.walk) * Math.min(1, s / 1.1));
+  const under = kind === 'mount' ? 1 : TEAM_GAIN;
+  const volume = Math.min(1, (HOOF_VOLUME[pace] ?? HOOF_VOLUME.walk) * under * Math.min(1, s / 1.1));
   let h = 2166136261;
   const text = `hoof:${seed}`;
   for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }

@@ -199,6 +199,26 @@ test('official-book entries join only for active book modules', async () => {
   assert.equal(addDndBookEntries([book],id=>id==='dnd-test-book'),1);
   assert.equal(findDndEntry({item:{type:'spell',name:'x',_stats:{compendiumSource:book.uuid}}})?.id,book.id);
 });
+// Roi bought Arcana Unleashed, so its spells, feats and items are in the book catalogue too — and, like every
+// book's, only for someone who owns it. Its content is named and composed here; none of its text is.
+test('Arcana Unleashed is in the book catalogue, and builds', async () => {
+  const {addDndBookEntries,dndEntry,dndRecipe:build,dndBookLabel}=await import('../../../scripts/catalogs/dnd5e/dnd5e-catalog.mjs');
+  const {DND5E_BOOK_ENTRIES}=await import('../../../data/dnd5e-book-catalog.mjs');
+  const mine=DND5E_BOOK_ENTRIES.filter(e=>e.requires==='dnd-arcana-unleashed');
+  assert.ok(mine.length>=140,`the book's content is there (${mine.length})`);
+  assert.ok(mine.every(e=>e.uuid.startsWith('Compendium.dnd-arcana-unleashed.')),'each one points at the book it came from');
+  assert.ok(mine.some(e=>e.kind==='spell'&&e.name==='Wail of the Banshee'));
+  assert.ok(mine.some(e=>e.kind==='spell'&&e.name==='Illusory Dragon'));
+  assert.ok(mine.some(e=>e.kind==='item'),'its magic items too');
+  assert.ok(mine.some(e=>e.kind==='feat'),'and its subclasses and feats');
+  assert.equal(dndBookLabel('dnd-arcana-unleashed'),'Arcana Unleashed');
+  // Nobody who does not own it sees any of it, and nothing of the book's own text is carried.
+  assert.equal(addDndBookEntries(mine,()=>false),0);
+  assert.ok(mine.every(e=>!('descriptionText' in e)&&!('description' in e)&&!('sourceURL' in e)));
+  // Every one of them builds into a recipe that validates, which is what playing it does.
+  assert.ok(addDndBookEntries(mine,id=>id==='dnd-arcana-unleashed')>0);
+  for(const e of mine)for(const v of e.variants)assert.ok(build(dndEntry(e.id),v.id).stages.length>0,`${e.name} / ${v.label}`);
+});
 // Ground marks: thrown flasks name the mark their contents leave on the floor (engines/marks/ground-marks.mjs).
 test('D&D thrown flasks carry their markElement',()=>{
  const item=(name,edition)=>find(name,'item',edition);

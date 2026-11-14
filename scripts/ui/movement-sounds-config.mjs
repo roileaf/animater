@@ -4,7 +4,7 @@ import { movementSoundMix, resolveMovementSound } from '../engines/motion/moveme
 
 const LABELS = { boots: 'Boots / shoes', paws: 'Paws', padded: 'Padded feet (elephant)', webbed: 'Webbed feet (frog)',
   talons: 'Bird talons', dragon: 'Dragon tread', hooves: 'Hooves', claws: 'Reptile claws', slither: 'Slither',
-  ooze: 'Ooze', legs: 'Many legs', unknown: 'Ordinary fallback', none: 'None',
+  ooze: 'Ooze', legs: 'Many legs', hull: 'Hull (floats, leaves a wake)', unknown: 'Ordinary fallback', none: 'None',
   bone: 'Bone', metal: 'Metal', stone: 'Stone', plant: 'Woody body (creaking)', foliage: 'Soft plant / vegetable rustle', water: 'Water', fire: 'Fire', air: 'Air',
   wing: 'Wingbeats', flight: 'Wingless air movement' };
 const label = (key) => LABELS[key] ?? key.charAt(0).toUpperCase() + key.slice(1);

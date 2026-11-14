@@ -23,7 +23,7 @@ await catalogData('dnd5e','entries',async()=>{
  loaded=true;
 });
 export const dndEntries=kind=>kind?DND5E_ENTRIES.filter(e=>e.kind===kind):DND5E_ENTRIES;
-const BOOK_LABELS={'dnd-players-handbook':'PHB','dnd-dungeon-masters-guide':'DMG','dnd-monster-manual':'MM','dnd-heroes-borderlands':'Borderlands'};
+const BOOK_LABELS={'dnd-players-handbook':'PHB','dnd-dungeon-masters-guide':'DMG','dnd-monster-manual':'MM','dnd-heroes-borderlands':'Borderlands','dnd-arcana-unleashed':'Arcana Unleashed'};
 export const dndBookLabel=id=>BOOK_LABELS[id]??globalThis.game?.modules?.get?.(id)?.title??id;
 // Official-book content the SRD lacks (data/dnd5e-book-catalog.mjs) joins the catalog
 // only for book modules active in this world (entry.requires).

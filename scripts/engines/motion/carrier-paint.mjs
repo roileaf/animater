@@ -142,10 +142,10 @@ const PAINTERS = {
     const deck = boxAt(0, half * 0.05, wideHalf * 0.84, half * 0.78, 0);
     painted(g, rng, deck, pick(rng, PLANK), o, { sharp: true, grain: 0, lines: 6, hatch: 0.45, band: 0.4, lit: 0.08, ink: 1.6 });
     for (let i = -3; i <= 3; i++) { const y = half * 0.05 + (i / 3.4) * half * 0.78; line(g, [[-wideHalf * 0.84, y], [wideHalf * 0.84, y]], 'rgba(26,14,4,0.5)', Math.max(0.6, o.ink * 0.8)); }
-    // The curl of the runners at the nose, and the rope.
+    // The curl of the runners at the nose. The sled used to carry a painted bridle here, a V meeting at a point
+    // ahead of it, from when nothing pulled it; now that its pack is drawn, the traces are run from the deck's own
+    // front corners to each animal (main.mjs paintCarrierRope), so a painted one would only double the line.
     for (const side of [-1, 1]) { g.beginPath(); g.arc(side * wideHalf * 0.92, -half, wideHalf * 0.1, 0, 3.1416, true); g.strokeStyle = INKD; g.lineWidth = Math.max(1.4, o.ink * 3); g.stroke(); g.strokeStyle = '#6a5440'; g.lineWidth = Math.max(1, o.ink * 1.8); g.stroke(); }
-    const rope = [[-wideHalf * 0.5, -half * 1.02], [0, -half * 1.2], [wideHalf * 0.5, -half * 1.02]];
-    line(g, rope, INKD, Math.max(1, o.ink * 2.2)); line(g, rope, '#b8a070', Math.max(0.8, o.ink * 1.2));
     return [deck];
   },
 };

@@ -1576,7 +1576,7 @@ test('the ruts run on unbroken from stride to stride, wandering and biting as th
 // Roi's mock: a wagon is pulled, so its track is two ruts with the team's hoofprints down the middle — ruts on their own
 // read as a thing that moves itself. A hand cart has a person between its shafts instead, and a sled has nobody in its
 // grooves at all.
-test('a wagon leaves its team between the ruts; a hand cart a person; a sled nobody', async () => {
+test('a wagon leaves its team between the ruts; a hand cart a person; a sled its wolves', async () => {
   const { tracksFor, TRACKS: T } = await import('../../../scripts/engines/motion/movement-feel.mjs');
   const grid = 100, width = 200, part = { color: 0x55443a, alpha: 1 };
   const at = { x: 0, y: 0, heading: 0, index: 1 };
@@ -1593,9 +1593,12 @@ test('a wagon leaves its team between the ruts; a hand cart a person; a sled nob
   assert.ok(cart.filter((m) => m.kind !== 'rut').every((m) => m.gait === 'boots'), 'somebody pulls a hand cart');
   assert.ok(Math.abs(cart.find((m) => m.kind === 'rut').y) < Math.abs(wagon.find((m) => m.kind === 'rut').y), 'narrower than a wagon');
 
+  // A sled's pack prints between its grooves as a wagon's team does (Roi: "give it 2-4 wolves that pull?").
   const sled = tracksFor('runners', part, {}, at, { grid, width });
-  assert.equal(sled.length, 2, 'two grooves and nothing else');
-  assert.ok(sled.every((m) => m.kind === 'rut'));
+  assert.equal(sled.filter((m) => m.kind === 'rut').length, 2, 'two broad grooves');
+  const pack = sled.filter((m) => m.kind !== 'rut');
+  assert.ok(pack.length > 0 && pack.every((m) => m.gait === 'paws'), 'and wolves running between them');
+  assert.ok(pack.every((m) => Math.abs(m.y) < T.runners.spread * width), 'inside the grooves, never outside them');
   // Both are clamped at the widest a rut may be drawn, so compare them on a token small enough to be under that.
   const thin = (gait) => tracksFor(gait, part, {}, at, { grid, width: 50 }).find((m) => m.kind === 'rut').thick;
   assert.ok(thin('runners') > thin('wheels'), 'a runner presses broader than a rim');
@@ -1604,6 +1607,23 @@ test('a wagon leaves its team between the ruts; a hand cart a person; a sled nob
 // Roi, of the team under a wagon: "the horse footprints are too small for it's size". The team is handed a narrowed
 // width so it walks a thin line between the ruts, and the print was sized by that same number — shrunk twice, so a
 // harnessed horse pressed half the hoof it presses walking on its own. Hitching a horse does not shrink its feet.
+// Roi: "rowboat and sled also missing footprints when they move (the carriers)". A boat was given the incorporeal
+// gait to keep it from printing boots on the waves, which left it marking nothing anywhere, wake included.
+test('a boat leaves its wake and nothing else', async () => {
+  const { puffsFor, swimWake, gaitStep, WAKE_LOOK } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const at = { x: 0, y: 0, heading: 0, index: 1 };
+  for (const floor of ['snow', 'mud', 'sand', 'dirt', 'grass', 'stone', 'water']) {
+    assert.deepEqual(puffsFor(floor, at, { gait: 'hull', grid: 100, width: 200, seed: 'b' }), [],
+      `a hull presses nothing into ${floor}: no dust, no prints, no trampled grass`);
+  }
+  assert.equal(gaitStep('hull', 'water', 1, { seed: 'b' }), null, 'and it has no footfall to sound');
+  // What it does leave is the wake a swimmer leaves: two lines opening behind it.
+  const wake = swimWake(at, { grid: 100, width: 200 });
+  assert.equal(wake.length, 2);
+  assert.ok(wake.every((w) => w.kind === 'wake' && w.life === WAKE_LOOK.life));
+  assert.ok(wake[0].side !== wake[1].side, 'one to each side');
+});
+
 test('a harnessed horse leaves the same hoof as one walking on its own', async () => {
   const { tracksFor, TRACKS: T } = await import('../../../scripts/engines/motion/movement-feel.mjs');
   const grid = 100, width = 200, part = { color: 0x55443a, alpha: 1, size: 0.11 };

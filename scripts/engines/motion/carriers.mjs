@@ -49,6 +49,27 @@ export const CAPACITY = Object.freeze({ wagon: 6, cart: 2, sled: 2, boat: 4, mou
 export const capacityOf = (kind) => CAPACITY[carrierKind(kind)] ?? Infinity;
 /** How many more than it holds `n` aboard would be; 0 when it fits. */
 export const overCapacity = (kind, n = 0) => Math.max(0, n - capacityOf(kind));
+// A limit the GM has set on this one token, in passengers (Roi: "make the number of passengers limit as a setting on
+// the token"). Absent or 0 is off, which is the default: with no limit set nothing is ever refused, and the kinds'
+// figures above stay what they have always been, a remark and not a wall. Set, it is the GM's own decision about this
+// wagon, so it is kept: the carrier takes who it has room for and the rest stay where they are.
+export const SEATS = "carrierSeats";
+/** The limit set on a carrier, as a whole number of passengers; 0 for off, which is anything but a positive number. */
+export const seatsOf = (flag) => {
+  const n = Math.floor(Number(flag));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+/** How many of `n` would have to stay behind; 0 when the limit is off, or when they all fit. */
+export const overSeats = (flag, n = 0) => {
+  const seats = seatsOf(flag);
+  return seats ? Math.max(0, Math.max(0, Number(n) || 0) - seats) : 0;
+};
+/** How many more this carrier will take, with `aboard` in it already; Infinity when no limit is set. */
+export const seatsLeft = (flag, aboard = 0) => {
+  const seats = seatsOf(flag);
+  return seats ? Math.max(0, seats - Math.max(0, Number(aboard) || 0)) : Infinity;
+};
+
 /**
  * Whether a passenger is plainly too big for the carrier: wider or longer than the ground the carrier itself covers.
  * A horse does not get into a hand cart, and an ogre does not get onto a sled.

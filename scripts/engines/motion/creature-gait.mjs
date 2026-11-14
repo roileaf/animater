@@ -21,7 +21,7 @@
 //   runners  two broad smooth grooves and no prints between them, pressed by a sled's runners (sleds, sledges, travois)
 //   unknown  dust and footsteps but no prints: anything Animater cannot place
 //   none     nothing at all, not even dust or footsteps: incorporeal creatures (ghosts, wraiths, wisps)
-export const GAITS = Object.freeze(['boots', 'paws', 'padded', 'webbed', 'talons', 'dragon', 'hooves', 'claws', 'slither', 'ooze', 'legs', 'roots', 'wheels', 'barrow', 'runners', 'unknown', 'none']);
+export const GAITS = Object.freeze(['boots', 'paws', 'padded', 'webbed', 'talons', 'dragon', 'hooves', 'claws', 'slither', 'ooze', 'legs', 'roots', 'wheels', 'barrow', 'runners', 'hull', 'unknown', 'none']);
 
 // Short stems only match a whole word (plural allowed): "cat" never matches "catapult", "ant" never "giant".
 const words = (list) => new RegExp(`\\b(?:${list.split(/\s+/).filter(Boolean).join('|')})(?:s|es)?\\b`, 'i');

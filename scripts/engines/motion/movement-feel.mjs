@@ -443,8 +443,8 @@ export const TRACKS = Object.freeze({
   // ruts and leaves its own prints there (a wagon's track is two ruts with hoofprints down the middle, never ruts alone).
   wheels: { feet: 'ruts', spread: 0.33, thick: 0.055, team: 'hooves' },
   barrow: { feet: 'ruts', spread: 0.19, thick: 0.045, team: 'boots' },
-  // A sled has no wheels to cut in: two broad smooth grooves, and whatever pulls it walks ahead of them.
-  runners: { feet: 'ruts', spread: 0.24, thick: 0.11 },
+  // A sled has no wheels to cut in: two broad smooth grooves, with the pack that pulls it printing between them.
+  runners: { feet: 'ruts', spread: 0.24, thick: 0.11, team: 'paws' },
 });
 // What a walking plant sheds (the 'roots' gait): a leaf every other stride, on any floor but water, in its own colour
 // (green to dry brown) whatever the ground, turned every which way; it lasts as a print does.
@@ -550,7 +550,9 @@ export function tracksFor(gait, part, base, at, { grid, width, printWidth = widt
 // grass) but leaves no tracks; 'none' (incorporeal) leaves nothing at all, not even dust.
 export function puffsFor(floor, at, { seed = '', grid = 100, density = 1, width = grid, gait = 'boots', amount = 1, shape = gait } = {}) {
   const look = FLOOR_LOOK[floor] ?? FLOOR_LOOK.stone;
-  if (!(density > 0) || gait === 'none') return [];
+  // 'hull' is a boat: it kicks up no dust and presses nothing, because what it leaves is its wake on the water, laid
+  // where the stride is (swimWake), not here.
+  if (!(density > 0) || gait === 'none' || gait === 'hull') return [];
   const index = at.index ?? 0, heading = at.heading ?? 0, back = heading + Math.PI, out = [];
   if (gait === 'roots') { const leaf = shedLeaf(floor, at, { width }); if (leaf) out.push(leaf); }
   // The creature's size: its floor marks grow with it (a Huge splash, a Tiny one's little puff) and its spray flies a
@@ -754,7 +756,7 @@ export const MIN_FAMILY_FILES = 3;
 const GAIT_FAMILY = { dragon: 'dragon', claws: 'paws', paws: 'paws', padded: 'padded', webbed: 'webbed', hooves: 'hooves', talons: 'talons', ooze: 'ooze', legs: 'legs', slither: 'slither' };
 // The pulled things are silent until their own sounds are recorded: a wagon that sounds like boots is worse than a quiet
 // one. (The team pulling it is drawn into the tracks, not into the sound: its hooves come with the wagon's own recording.)
-const SILENT_GAITS = new Set(['none', 'wheels', 'barrow', 'runners']);
+const SILENT_GAITS = new Set(['none', 'wheels', 'barrow', 'runners', 'hull']);
 const FOREST_FLOORS = new Set(['dirt', 'grass']);
 const HARD_FLOORS = new Set(['stone', 'pebbles', 'wood', 'ice', 'glass', 'metal', 'lava']);
 const WET_FLOORS = new Set(['mud', 'water']);
@@ -1520,6 +1522,18 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     let specs;
     const medium=movementEnvironment(token,floor);
     let trailKind=null;
+    // A hull is neither walking nor swimming: a boat sits on the water and what it leaves behind is its wake (Roi:
+    // "rowboat and sled also missing footprints when they move" — a boat left nothing at all, because it was treated
+    // as incorporeal to keep it from printing boots on the waves). Anywhere but water it still leaves nothing: a
+    // rowboat on a road is being carried, not driven.
+    if (token.gait === 'hull') {
+      // On water the hull drives the water's own ripples, the way a duck paddling does (main.mjs swimRipples →
+      // wake-ripples.mjs): real rings let go behind it, opening into a V as it outruns them, added into the surface
+      // and clipped to the water. Only where that engine is not running does it fall back to the drawn wake.
+      if (token.visible && floor === 'water' && !swimRipples?.(token)) lay(swimWake(at, opts), time, floor, 'swim');
+      move.index = at.index ?? 0; move.heading = at.heading ?? 0;
+      return;
+    }
     if (kind === 'burrow') {
       const raw = Number(burrowDepth()), cutoff=Number.isFinite(raw)?Math.min(0,raw):-10;
       specs = medium.underground && medium.relative <= cutoff ? [] : burrowTrail(feet, opts);
