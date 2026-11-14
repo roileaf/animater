@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { THICK, THIN, DROP_FLOOR, smokeStep, smokeTier } from "../../../scripts/engines/props/smoke-field.mjs";
+import { THICK, THIN, DROP_FLOOR, DENSITY_CAP, smokeStep, smokeTier } from "../../../scripts/engines/props/smoke-field.mjs";
 
 const at = (r, i) => r.cells.find((c) => c.i === i)?.v;
 const mass = (cells) => cells.reduce((s, c) => s + c.v, 0);
@@ -114,4 +114,25 @@ test("the tiers are by density, and nothing below thin counts", () => {
   assert.equal(smokeTier(0.1), null);
   assert.equal(smokeTier(THICK), "thick");
   assert.equal(smokeTier(THIN), "thin");
+});
+
+test("a sealed source crosses thick, then plateaus at the cap instead of growing", () => {
+  const blocked = [{ from: 11, to: 12 }, { from: 12, to: 13 }, { from: 7, to: 12 }, { from: 12, to: 17 }];
+  let cells = [], crossed = null;
+  for (let n = 1; n <= 80; n++) {
+    cells = smokeStep({ cells, sources: [{ i: 12, rate: 1 }], cols: 5, rows: 5, blocked }).cells;
+    if (crossed === null && cells[0].v > THICK) crossed = n;
+  }
+  assert.ok(crossed !== null && crossed <= 3, `thick at ${crossed}`);
+  assert.equal(cells[0].v, DENSITY_CAP);
+  assert.ok(cells.every((c) => c.v <= DENSITY_CAP));
+});
+
+test("a smaller cap is honoured, and a capped room with one opening still empties", () => {
+  const small = smokeStep({ cells: [{ i: 12, v: 3 }], sources: [{ i: 12, rate: 5 }], cols: 5, rows: 5, cap: 2 });
+  assert.ok(small.cells.every((c) => c.v <= 2));
+  let cells = room(DENSITY_CAP), n = 0;
+  while (cells.length && n < 60) { n++; cells = smokeStep({ cells, sources: [], cols: 5, rows: 5, openings: [12] }).cells; }
+  assert.equal(cells.length, 0);
+  assert.ok(n <= 12, `emptied in ${n}`);
 });

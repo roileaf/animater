@@ -23,6 +23,9 @@ const SOURCE = 2;
 // How much a unit wind speeds flow along it and slows flow against it.
 const WIND_LEAN = 0.5;
 
+// No cell holds more than this, so a room that burned a long time does not take proportionally for ever to clear.
+export const DENSITY_CAP = 4;
+
 const STEPS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 export function smokeTier(v) {
@@ -32,9 +35,9 @@ export function smokeTier(v) {
 }
 
 // cells: [{i, v}] with i = row * cols + col. sources: [{i, rate}]. openings: [i]. blocked: [{from, to}] cell pairs a wall
-// separates (smoke does not cross either way). wind: {x, y} with length up to 1. dt: rounds, default 1.
+// separates (smoke does not cross either way). wind: {x, y} with length up to 1. dt: rounds, default 1. cap: the most any cell holds (default DENSITY_CAP), applied last.
 // Returns {cells} sorted by i, with every cell at or below DROP_FLOOR left out.
-export function smokeStep({ cells = [], sources = [], cols, rows, openings = [], blocked = [], wind = null, dt = 1 } = {}) {
+export function smokeStep({ cells = [], sources = [], cols, rows, openings = [], blocked = [], wind = null, dt = 1, cap = DENSITY_CAP } = {}) {
   const total = cols * rows;
   const inGrid = (i) => Number.isInteger(i) && i >= 0 && i < total;
   const step = Number.isFinite(dt) ? Math.max(0, Math.min(dt, 10)) : 1;
@@ -75,12 +78,12 @@ export function smokeStep({ cells = [], sources = [], cols, rows, openings = [],
   const out = [];
   for (const [i, vi] of v) {
     const next = (vi + (delta.get(i) ?? 0)) * (open.has(i) ? staysAtOpening : stays);
-    if (next > DROP_FLOOR) out.push({ i, v: next });
+    if (next > DROP_FLOOR) out.push({ i, v: Math.min(cap, next) });
   }
   for (const [i, d] of delta) {
     if (v.has(i)) continue;
     const next = d * (open.has(i) ? staysAtOpening : stays);
-    if (next > DROP_FLOOR) out.push({ i, v: next });
+    if (next > DROP_FLOOR) out.push({ i, v: Math.min(cap, next) });
   }
   out.sort((a, b) => a.i - b.i);
   return { cells: out };
