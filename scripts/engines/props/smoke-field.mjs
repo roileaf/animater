@@ -1,6 +1,7 @@
 // Smoke that fills a room: the pure simulation. One call is one round of the GM's tick (dt = 1).
 // No Foundry globals, no clock, no randomness; it runs under plain node and gives the same answer every time.
 import { closesWindow } from "../motion/window-state.mjs";
+import { blockingWalls } from "./prop-walls.mjs";
 
 // Density tiers. Thick blocks sight, thin only conceals; anything at or under the floor is gone.
 export const THICK = 1.1;
@@ -104,6 +105,30 @@ export function wallStandsOpen(wall) {
   // An empty frame (what a break leaves of a window that does not open), or one the GM has swung open.
   if (kind === "open") return true;
   return closesWindow(kind) && own?.windowOpen === true;
+}
+
+// ---- The walls that hold smoke in. ----
+// Smoke's own wall list, and the ONE place it differs from everything else's.
+//
+// prop-walls' blockingWalls answers "what stops a thing": a wall that stops movement or sight, less an open door. That
+// is the right answer for fire, for thrown wreckage, for light, sight and sound — and it is the SAME answer whether a
+// window is shut or standing wide open, because Animater never writes a window's state onto the wall document. The
+// kind and `windowOpen` live in its flags; opening it reshapes the live EDGE (window-state.mjs applyWindowEdge, which
+// sets light, sight and sound, and never `move`); and smashing it writes sight, light and sound but deliberately
+// leaves `move` alone, because a broken window still stops a body climbing through (wall-break.mjs wallBreakUpdate).
+// So `move` stays above zero through every one of those states and blockingWalls keeps the wall in all of them.
+//
+// A body cannot get through an open window. Smoke can. That is the whole of the difference, so this is smoke's list
+// and nobody else's: blockingWalls, less the walls that stand open (wallStandsOpen — an open door, a window swung
+// open, an empty frame, a hole battered through). blockingWalls itself is untouched and still answers exactly as it
+// did, so fire, wreckage, light, sight and sound are unmoved.
+//
+// This changes no agreed figure: a sealed room has no opening to drop, and an open inside door was already dropped by
+// blockingWalls, so dropping it again is the same list.
+// `walls` are wall views ({c, door, ds, move, sight, flags}); `excludeIds` is blockingWalls' own (ids, array or Set).
+// Pure: no Foundry, no clock.
+export function smokeWalls(walls, excludeIds = []) {
+  return blockingWalls(walls, excludeIds).filter((w) => !wallStandsOpen(w));
 }
 
 // The cells of the smoke grid an opening stands on: every cell each open wall runs through, and the cells half a cell

@@ -1,6 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { THICK, THIN, DROP_FLOOR, DENSITY_CAP, smokeStep, smokeTier, smokeUpdatesFor, smokeCellsOf, smokeOpeningsOf, wallStandsOpen } from "../../../scripts/engines/props/smoke-field.mjs";
+import { THICK, THIN, DROP_FLOOR, DENSITY_CAP, smokeStep, smokeTier, smokeUpdatesFor, smokeCellsOf, smokeOpeningsOf, wallStandsOpen, smokeWalls } from "../../../scripts/engines/props/smoke-field.mjs";
+import { blockingWalls } from "../../../scripts/engines/props/prop-walls.mjs";
+import { CLOSING_WINDOWS, windowSenses } from "../../../scripts/engines/motion/window-state.mjs";
+import { wallBreakUpdate } from "../../../scripts/engines/props/wall-break.mjs";
+import { wallBetween } from "../../../scripts/engines/props/fire-rounds.mjs";
 
 const at = (r, i) => r.cells.find((c) => c.i === i)?.v;
 const mass = (cells) => cells.reduce((s, c) => s + c.v, 0);
@@ -411,4 +415,126 @@ test("underground, a door in the map's bottom edge vents like the other three", 
   for (const bad of [0, -1, 2.5, null, undefined]) {
     assert.deepEqual(smokeOpeningsOf({ walls: door([100, 1000, 200, 1000]), ...deep, rows: bad }), [], JSON.stringify(bad));
   }
+});
+
+// ---- Smoke's own wall list: a closed window holds smoke in, an open one does not. ----
+// The author's report: "when animater window is closed it should know that". It did not know EITHER state, because
+// Animater never writes a window's openness onto the wall document, so prop-walls' blockingWalls — which judges a
+// wall by its `move` and `sight` — gives smoke the identical list whether the window is shut, swung open, an empty
+// frame or smashed. A shut window came out right by luck; the open ones came out wrong.
+// These are driven through the REAL writers (wall-break.mjs for a smashed window, window-state.mjs for the kinds), so
+// they cannot pass by agreeing with a literal copied out of the source.
+
+// A window wall as a GM leaves it: an ordinary wall given an Animater window kind. Nothing about `move` or `sight`
+// says anything about the window at all, and that is the point.
+const WINDOW_WALL = { id: "win", c: [300, 200, 300, 300], door: 0, ds: 0, move: 20, sight: 20, light: 20, sound: 20 };
+const windowWall = (animater) => ({ ...WINDOW_WALL, flags: { animater } });
+const ids = (walls) => walls.map((w) => w.id);
+
+// A smashed glass window built by the code that really smashes one, never by hand.
+const brokenWindowDoc = () => {
+  const up = wallBreakUpdate(windowWall({ window: "glassWindow" }), { kind: "window", material: "glass" });
+  const flags = { window: "glassWindow" };
+  for (const [k, v] of Object.entries(up)) {
+    if (k === "flags.animater.windowOpen") flags.windowOpen = v;
+    else if (k === "flags.animater.breakWall.broken") flags.breakWall = { broken: v };
+    else if (k === "flags.animater.window") flags.window = v;
+  }
+  const doc = { ...WINDOW_WALL, flags: { animater: flags } };
+  for (const k of ["move", "sight", "light", "sound"]) if (up[k] !== undefined) doc[k] = up[k];
+  return doc;
+};
+
+test("a CLOSED window stands as a wall for smoke, exactly as the wall does", () => {
+  // Every kind that shuts, shut: each holds the smoke in. This is the case the report was about.
+  for (const kind of Object.keys(CLOSING_WINDOWS)) {
+    assert.equal(wallStandsOpen(windowWall({ window: kind })), false, `${kind} shut is not an opening`);
+    assert.deepEqual(ids(smokeWalls([windowWall({ window: kind })])), ["win"], `${kind} shut still walls smoke`);
+    // Said outright: shut, and with the GM's openness flag explicitly false.
+    assert.deepEqual(ids(smokeWalls([windowWall({ window: kind, windowOpen: false })])), ["win"]);
+  }
+  // A plain wall and a shut door are unchanged too, so nothing was loosened to let the windows through.
+  assert.deepEqual(ids(smokeWalls([{ ...WINDOW_WALL, id: "plain", flags: {} }])), ["plain"]);
+  assert.deepEqual(ids(smokeWalls([{ ...WINDOW_WALL, id: "shut", door: 1, ds: 0, flags: {} }])), ["shut"]);
+  assert.deepEqual(ids(smokeWalls([{ ...WINDOW_WALL, id: "locked", door: 1, ds: 2, flags: {} }])), ["locked"]);
+});
+
+test("an OPEN window, an empty frame and a SMASHED one let smoke through", () => {
+  // Swung open: every kind that opens.
+  for (const kind of Object.keys(CLOSING_WINDOWS)) {
+    assert.deepEqual(smokeWalls([windowWall({ window: kind, windowOpen: true })]), [], `${kind} open lets smoke by`);
+  }
+  // An empty frame, which a break leaves of a window that does not open.
+  assert.deepEqual(smokeWalls([windowWall({ window: "open" })]), []);
+  // Smashed, as wall-break.mjs really writes it. It keeps `move` deliberately — a body cannot climb through a broken
+  // window — which is precisely why blockingWalls could not tell it from a whole one.
+  const smashed = brokenWindowDoc();
+  assert.ok(smashed.move > 0, "a smashed window still stops a body");
+  assert.equal(wallStandsOpen(smashed), true);
+  assert.deepEqual(smokeWalls([smashed]), []);
+  // An open door was already let through, and still is.
+  assert.deepEqual(smokeWalls([{ ...WINDOW_WALL, id: "door", door: 1, ds: 1, flags: {} }]), []);
+});
+
+test("the bug itself: blockingWalls cannot tell a window's state, so smoke needed its own list", () => {
+  // The same wall in four states. blockingWalls keeps it in ALL of them: that is the defect, and it is why a shut
+  // window was right only by accident. If this ever stops holding, the wall document has started carrying the
+  // window's state and smokeWalls can be reconsidered.
+  const states = [windowWall({ window: "glassWindow" }), windowWall({ window: "glassWindow", windowOpen: true }),
+    windowWall({ window: "open" }), brokenWindowDoc()];
+  for (const w of states) assert.deepEqual(ids(blockingWalls([w])), ["win"], "blockingWalls keeps every window state");
+  // Smoke's list tells them apart: shut held, the other three let through.
+  assert.deepEqual(states.map((w) => smokeWalls([w]).length), [1, 0, 0, 0]);
+});
+
+test("blockingWalls is left exactly as it was, so fire, wreckage, light, sight and sound do not move", () => {
+  // smokeWalls is a narrowing of blockingWalls, never a change to it: for every wall that does NOT stand open the two
+  // agree, and smokeWalls never returns a wall blockingWalls rejected.
+  const walls = [
+    { id: "solid", c: [0, 0, 1, 1], move: 20, sight: 20 },
+    { id: "moveOnly", c: [0, 0, 1, 1], move: 20, sight: 0 },
+    { id: "sightOnly", c: [0, 0, 1, 1], move: 0, sight: 20 },
+    { id: "nothing", c: [0, 0, 1, 1], move: 0, sight: 0 },
+    { id: "openDoor", c: [0, 0, 1, 1], move: 20, sight: 20, door: 1, ds: 1 },
+    { id: "shutDoor", c: [0, 0, 1, 1], move: 20, sight: 20, door: 1, ds: 0 },
+    windowWall({ window: "glassWindow" }),
+    windowWall({ window: "glassWindow", windowOpen: true }),
+  ];
+  assert.deepEqual(ids(blockingWalls(walls)), ["solid", "moveOnly", "sightOnly", "shutDoor", "win", "win"]);
+  // Smoke's list is that, less only the window standing open.
+  assert.deepEqual(ids(smokeWalls(walls)), ["solid", "moveOnly", "sightOnly", "shutDoor", "win"]);
+  const kept = new Set(ids(blockingWalls(walls)));
+  for (const id of ids(smokeWalls(walls))) assert.ok(kept.has(id), `${id} was already a blocking wall`);
+  // The prop's own walls are still excluded, by array or Set, as blockingWalls takes them.
+  assert.deepEqual(ids(smokeWalls(walls, ["solid"])), ["moveOnly", "sightOnly", "shutDoor", "win"]);
+  assert.deepEqual(ids(smokeWalls(walls, new Set(["solid", "moveOnly"]))), ["sightOnly", "shutDoor", "win"]);
+  assert.deepEqual(smokeWalls(undefined), []);
+});
+
+test("shutters with only their slats open still hold the smoke: slats pass light, not air", () => {
+  const slats = windowWall({ window: "shutterWindow", windowSlats: true });
+  assert.equal(wallStandsOpen(slats), false);
+  assert.deepEqual(ids(smokeWalls([slats])), ["win"]);
+  // window-state agrees: shut with slats open, the wall still stops sound, and so it stops air.
+  assert.ok(windowSenses("shutterWindow", false, true).sound > 0);
+});
+
+test("end to end: smoke crosses an open window and is held by a shut one", () => {
+  // A 5x5 grid of 100px cells. Cells 12 and 13 sit either side of x = 300; the window wall runs down it.
+  const COLS = 5, ROWS = 5, CELL = 100;
+  const centre = (i) => ({ x: (i % COLS) * CELL + CELL / 2, y: Math.floor(i / COLS) * CELL + CELL / 2 });
+  // Wired exactly as main.mjs does it: the wall list decides, and wallBetween asks whether one lies between the pair.
+  const blockedFor = (walls) => (wallBetween(centre(12), centre(13), smokeWalls(walls)) ? [{ from: 12, to: 13 }] : []);
+  const spread = (walls) => {
+    const r = smokeStep({ cells: [{ i: 12, v: 3 }], sources: [], cols: COLS, rows: ROWS, blocked: blockedFor(walls) });
+    return r.cells.find((c) => c.i === 13)?.v ?? 0;
+  };
+  // Shut: nothing reaches the far side.
+  assert.equal(spread([windowWall({ window: "glassWindow" })]), 0);
+  // Open, an empty frame, and smashed: smoke gets through.
+  assert.ok(spread([windowWall({ window: "glassWindow", windowOpen: true })]) > 0);
+  assert.ok(spread([windowWall({ window: "open" })]) > 0);
+  assert.ok(spread([brokenWindowDoc()]) > 0);
+  // And opening the window is the ONLY difference: with no wall at all the open window matches it.
+  assert.equal(spread([windowWall({ window: "glassWindow", windowOpen: true })]), spread([]));
 });
