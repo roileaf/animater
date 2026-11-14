@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { THICK, THIN, DROP_FLOOR, DENSITY_CAP, smokeStep, smokeTier } from "../../../scripts/engines/props/smoke-field.mjs";
+import { THICK, THIN, DROP_FLOOR, DENSITY_CAP, smokeStep, smokeTier, smokeUpdatesFor, smokeCellsOf } from "../../../scripts/engines/props/smoke-field.mjs";
 
 const at = (r, i) => r.cells.find((c) => c.i === i)?.v;
 const mass = (cells) => cells.reduce((s, c) => s + c.v, 0);
@@ -135,4 +135,67 @@ test("a smaller cap is honoured, and a capped room with one opening still emptie
   while (cells.length && n < 60) { n++; cells = smokeStep({ cells, sources: [], cols: 5, rows: 5, openings: [12] }).cells; }
   assert.equal(cells.length, 0);
   assert.ok(n <= 12, `emptied in ${n}`);
+});
+
+const sceneWith = (smoke) => ({ flags: { animater: { smoke } } });
+
+test("changed cells are written by key and cleared ones deleted by key", () => {
+  const u = smokeUpdatesFor({ cells: [{ i: 3, v: 1.4 }] }, { scene: sceneWith({ 3: 0.2, 9: 1 }) });
+  assert.equal(u.length, 1);
+  assert.equal(u[0]["flags.animater.smoke.3"], 1.4);
+  assert.ok("flags.animater.smoke.-=9" in u[0], "the cleared cell must be an explicit delete, not merely absent");
+  assert.equal(u[0]["flags.animater.smoke.-=9"], null);
+});
+
+test("an update never writes the whole flag next to a keyed delete", () => {
+  const u = smokeUpdatesFor({ cells: [{ i: 3, v: 1.4 }] }, { scene: sceneWith({ 3: 0.2, 9: 1 }) });
+  assert.ok(!("flags.animater.smoke" in u[0]));
+  for (const k of Object.keys(u[0])) assert.ok(k.startsWith("flags.animater.smoke."), k);
+});
+
+test("a step that empties the room deletes every stored cell", () => {
+  const u = smokeUpdatesFor({ cells: [] }, { scene: sceneWith({ 1: 0.5, 2: 0.4 }) });
+  assert.deepEqual(u, [{ "flags.animater.smoke.-=1": null, "flags.animater.smoke.-=2": null }]);
+});
+
+test("nothing changed writes nothing", () => {
+  assert.deepEqual(smokeUpdatesFor({ cells: [{ i: 3, v: 1 }] }, { scene: sceneWith({ 3: 1 }) }), []);
+  assert.deepEqual(smokeUpdatesFor({ cells: [] }, { scene: {} }), []);
+});
+
+test("a density that barely moves writes nothing, a visible move does", () => {
+  assert.deepEqual(smokeUpdatesFor({ cells: [{ i: 3, v: 1.0004 }] }, { scene: sceneWith({ 3: 1 }) }), []);
+  assert.equal(smokeUpdatesFor({ cells: [{ i: 3, v: 1.03 }] }, { scene: sceneWith({ 3: 1 }) })[0]["flags.animater.smoke.3"], 1.03);
+});
+
+test("stored densities are rounded", () => {
+  const u = smokeUpdatesFor({ cells: [{ i: 4, v: 1.23456789 }] }, { scene: {} });
+  assert.equal(u[0]["flags.animater.smoke.4"], 1.23);
+});
+
+test("a cell that rounds to nothing is not stored, and is deleted if it was", () => {
+  assert.deepEqual(smokeUpdatesFor({ cells: [{ i: 4, v: 0.001 }] }, { scene: {} }), []);
+  assert.deepEqual(smokeUpdatesFor({ cells: [{ i: 4, v: 0.001 }] }, { scene: sceneWith({ 4: 0.5 }) }), [{ "flags.animater.smoke.-=4": null }]);
+});
+
+test("smokeCellsOf reads an empty or missing flag as an empty room", () => {
+  assert.deepEqual(smokeCellsOf({}), {});
+  assert.deepEqual(smokeCellsOf(null), {});
+  assert.deepEqual(smokeCellsOf({ flags: { animater: { smoke: {} } } }), {});
+  assert.deepEqual(smokeCellsOf({ flags: { animater: { smoke: [1, 2] } } }), {});
+});
+
+test("smokeCellsOf returns a copy keyed by cell index, dropping junk values", () => {
+  const doc = sceneWith({ 3: 1.2, 7: "x", 8: -1, 9: null });
+  const got = smokeCellsOf(doc);
+  assert.deepEqual(got, { 3: 1.2 });
+  got[3] = 9;
+  assert.equal(doc.flags.animater.smoke[3], 1.2);
+});
+
+test("what the GM writes round-trips through smokeCellsOf", () => {
+  const u = smokeUpdatesFor({ cells: [{ i: 2, v: 0.5 }, { i: 6, v: 2 }] }, { scene: {} })[0];
+  const stored = {};
+  for (const [k, v] of Object.entries(u)) stored[k.split(".").pop()] = v;
+  assert.deepEqual(smokeCellsOf(sceneWith(stored)), { 2: 0.5, 6: 2 });
 });

@@ -88,3 +88,39 @@ export function smokeStep({ cells = [], sources = [], cols, rows, openings = [],
   out.sort((a, b) => a.i - b.i);
   return { cells: out };
 }
+
+// What the GM stores. The smoke lives on the scene at flags.animater.smoke as an object keyed by cell index ({[i]: density}),
+// a keyed flag like feature 1's fireCells. Densities are stored to this many places, so a cell that barely moves writes nothing.
+const STORE_PLACES = 100;
+const SMOKE_FLAG = "flags.animater.smoke";
+const stored = (v) => Math.round(v * STORE_PLACES) / STORE_PLACES;
+
+// The saved smoke of a scene (or any document holding the flag), keyed by cell index. A missing, empty or malformed flag is
+// an empty room; entries that are not a positive number are dropped. Always a fresh object. (smokeEdges wants [{i, v}]:
+// convert at the one place the two meet, never here.)
+export function smokeCellsOf(doc) {
+  const raw = doc?.flags?.animater?.smoke;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [k, v] of Object.entries(raw)) if (Number.isFinite(v) && v > 0) out[k] = v;
+  return out;
+}
+
+// A round's result as scene updates (plain objects, nothing applied): [] when nothing changed, else one update.
+// Foundry MERGES an object-valued flag, so a cell that has cleared must be deleted by name: `flags.animater.smoke.-=<i>` with
+// null. Never write the whole flag, and never beside a keyed delete. A cell is written at its own path
+// (`flags.animater.smoke.<i>`) only when its rounded density differs from the stored one; a cell whose rounded density is
+// zero counts as gone. A stored cell the step no longer holds is deleted.
+export function smokeUpdatesFor(step, { scene } = {}) {
+  const saved = smokeCellsOf(scene);
+  const next = new Map();
+  for (const c of step?.cells ?? []) {
+    if (!Number.isInteger(c?.i) || !Number.isFinite(c.v)) continue;
+    const v = stored(c.v);
+    if (v > 0) next.set(String(c.i), v);
+  }
+  const fields = {};
+  for (const [key, v] of next) if (stored(saved[key] ?? 0) !== v) fields[`${SMOKE_FLAG}.${key}`] = v;
+  for (const key of Object.keys(saved)) if (!next.has(key)) fields[`${SMOKE_FLAG}.-=${key}`] = null;
+  return Object.keys(fields).length ? [fields] : [];
+}
