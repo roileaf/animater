@@ -14,16 +14,11 @@ test("the region carries visioner's concealment behaviour, tagged smoke", () => 
   assert.equal(b.system.enabled, true);
 });
 
-test("the region is clipped to sight-blocking walls by core", () => {
-  const d = smokeRegionData(TRI, { levels: ["abcdEFGH12345678"], origin: O, visioner: true });
-  assert.equal(d.restriction.enabled, true);
-  assert.equal(d.restriction.type, "sight");
-});
-
-test("the restriction is there even without visioner, so the shape still fences to walls", () => {
-  const d = smokeRegionData(TRI, { levels: ["abcdEFGH12345678"], origin: O, visioner: false });
-  assert.equal(d.restriction.enabled, true);
-  assert.equal(d.restriction.type, "sight");
+test("core's sight clip is off, with or without visioner: the smoke's own fence would clip the halo away", () => {
+  for (const visioner of [true, false]) {
+    const d = smokeRegionData(TRI, { levels: ["abcdEFGH12345678"], origin: O, visioner });
+    assert.equal(d.restriction.enabled, false);
+  }
 });
 
 test("it is flagged as ours so Repair can find it", () => {
@@ -78,16 +73,16 @@ test("every shape carries the fire's origin explicitly, not the centroid", () =>
   assert.deepEqual(TRI[0].origin, undefined, "input is not mutated");
 });
 
-test("an origin is required and must be finite", () => {
-  assert.throws(() => smokeRegionData(TRI, { levels: ["abcdEFGH12345678"], visioner: true }), /origin/);
+test("an origin is optional, but when given it must be finite", () => {
+  assert.equal(smokeRegionData(TRI, { levels: ["abcdEFGH12345678"], visioner: true }).shapes[0].origin, undefined);
   assert.throws(() => smokeRegionData(TRI, { levels: ["abcdEFGH12345678"], origin: { x: NaN, y: 1 } }), /origin/);
+  assert.throws(() => smokeRegionData(TRI, { levels: ["abcdEFGH12345678"], origin: null }), /origin/);
 });
 
-test("exactly one level, or it throws (core skips the clip otherwise)", () => {
-  assert.throws(() => smokeRegionData(TRI, { levels: [], origin: O }), /one level/);
-  assert.throws(() => smokeRegionData(TRI, { levels: ["abcdEFGH12345678", "bbcdEFGH12345678"], origin: O }), /one level/);
-  assert.throws(() => smokeRegionData(TRI, { origin: O }), /one level/);
-  assert.equal(smokeRegionData(TRI, { levels: ["abcdEFGH12345678"], origin: O }).levels.length, 1);
+test("any number of levels is fine, since there is no clip to skip", () => {
+  assert.deepEqual(smokeRegionData(TRI, { levels: [], origin: O }).levels, []);
+  assert.deepEqual(smokeRegionData(TRI, { origin: O }).levels, []);
+  assert.equal(smokeRegionData(TRI, { levels: ["abcdEFGH12345678", "bbcdEFGH12345678"], origin: O }).levels.length, 2);
 });
 
 test("visioner must be exactly true; strings and objects get no behaviour", () => {
@@ -97,19 +92,15 @@ test("visioner must be exactly true; strings and objects get no behaviour", () =
   for (const v of ["false", "x", {}, 1]) assert.equal(concealmentPlan({ visionerActive: v }).how, "none");
 });
 
-test("null options throw only for the missing level, and the plan never throws", () => {
-  assert.throws(() => smokeRegionData([], null), /one level/);
+test("null options make a bare region, and the plan never throws", () => {
+  assert.deepEqual(smokeRegionData([], null).levels, []);
   assert.equal(concealmentPlan(null).how, "none");
 });
 
-test("priority is set deliberately and high", () => {
-  const d = smokeRegionData(TRI, { levels: ["abcdEFGH12345678"], origin: O });
-  assert.ok(d.restriction.priority >= 1000);
-});
-
-test("the single level must be a valid 16-character document id", () => {
+test("every level must be a valid 16-character document id", () => {
   for (const bad of [null, undefined, "", 0, "L1", "abcdEFGH1234567", "abcdEFGH123456789", "abcdEFGH1234567-", {}]) {
     assert.throws(() => smokeRegionData(TRI, { levels: [bad], origin: O }), /document id/, String(bad));
   }
+  assert.throws(() => smokeRegionData(TRI, { levels: "abcdEFGH12345678" }), /array/);
   assert.doesNotThrow(() => smokeRegionData(TRI, { levels: ["0123456789abcdef"], origin: O }));
 });
