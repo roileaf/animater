@@ -74,11 +74,31 @@ export function storedSmokeGrid(scene, cells) {
 // smokeCellsOf gives a map with STRING keys; smokeEdges wants [{i, v}] with numeric i. This is the one place they meet.
 export const smokeCellList = (cells) => Object.entries(cells ?? {}).map(([i, v]) => ({ i: Number(i), v }));
 
-// The level the smoke is on: the stored one, else the scene's first level (smoke written before levels were stored), else null.
+// THE one rule about the level, shared by the writer (smoke-round.mjs smokeLevelFor) and every reader (smokeLevelOf
+// below, and through it the fence and the cloud): a level only counts while the SCENE STILL HAS IT. An id that is not
+// a document id, or that names a level the scene no longer holds, names nothing — and neither side will ever answer
+// with one. (A scene that lists no levels at all cannot contradict anything, so there any document id passes.)
+//
+// They disagreed before, and the disagreement was the worst of both: delete the level the smoke was stored on and the
+// writer moved the field to a live one, while every reader kept handing back the dead id. smokeFenceLevels found no
+// level matching it and returned [], so thick smoke stopped blocking sight, and the cloud was drawn on nothing —
+// smoke stored, nothing drawn, nothing blocking, and no way to tell from the flag that anything was wrong.
+const LEVEL_ID = /^[a-zA-Z0-9]{16}$/;
+export function smokeLevelReal(scene, id) {
+  if (typeof id !== "string" || !LEVEL_ID.test(id)) return false;
+  const order = [...(scene?.levels ?? [])].map((l) => l?.id).filter((own) => typeof own === "string");
+  return !order.length || order.includes(id);
+}
+
+// The level the smoke is on, as a READER sees it: the stored one while the scene still has it, else the scene's own
+// first level (smoke written before levels were stored), else null. The writer has one more step than this — it can
+// look at where this round's sources stand, which a reader has no way to know — but it obeys the same rule, so
+// neither of them ever names a level that is gone.
 export function smokeLevelOf(scene) {
   const stored = scene?.flags?.animater?.[SMOKE_GRID_FLAG]?.level;
-  if (typeof stored === "string" && stored) return stored;
-  return scene?.firstLevel?.id ?? null;
+  if (smokeLevelReal(scene, stored)) return stored;
+  const first = scene?.initialLevel?.id ?? scene?.firstLevel?.id ?? null;
+  return smokeLevelReal(scene, first) ? first : null;
 }
 
 // The levels of the scene that hold the fence: just the smoke's own. None when that level is gone or unknown.

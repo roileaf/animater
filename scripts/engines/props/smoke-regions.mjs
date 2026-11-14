@@ -1,4 +1,9 @@
 // The Region the smoke lives in, and how tokens inside it become concealed.
+// (SMOKE_MARK comes from smoke-round.mjs, where it lives beside the stamp itself and beside the scene write's own
+// reader: there is ONE marker for every write the round makes, and no copy of it anywhere. smoke-round does not
+// import this module, so this is not a circle — and if it ever needs to, the marker moves to smoke-edges.mjs, which
+// both already import, rather than being copied.)
+import { SMOKE_MARK } from "./smoke-round.mjs";
 // Pure: plain objects in, plain objects out. No Foundry globals, no document writes; the caller (the active GM) writes.
 //
 // Animater NEVER writes the PF2e `concealed` condition. pf2e-visioner owns concealment, models it per observer-and-target
@@ -11,13 +16,12 @@
 export const CONCEALMENT_BEHAVIOUR = "pf2e-visioner.Pf2eVisionerConcealment";
 export const SMOKE_TAG = "smoke";
 
-// Which route gives concealment. Order of preference: visioner's region behaviour, its public API, nothing.
-// `visionerActive` is "the module is active and registered the behaviour"; `visionerApi` is "its API object is reachable".
+// Which route gives concealment: visioner's own region behaviour, or nothing at all.
+// `visionerActive` is "the module is active and registered the behaviour". There was a second route here, through
+// visioner's public API, which nothing ever asked for: the region carries the behaviour or it carries nothing, and a
+// module-to-module API call would be a different mechanism with a different lifetime. Gone rather than left bare.
 export function concealmentPlan(options) {
-  const { visionerActive, visionerApi } = options ?? {};
-  if (visionerActive === true) return { how: "behaviour" };
-  if (visionerApi === true) return { how: "api" };
-  return { how: "none" };
+  return { how: options?.visionerActive === true ? "behaviour" : "none" };
 }
 
 // The region's `restriction` is OFF. Core's restriction clips a region's shape to sight-blocking edges from the shape's
@@ -27,6 +31,35 @@ export function concealmentPlan(options) {
 // With no clip there is no one-level rule, no darkness-priority caveat and no need for an explicit origin.
 
 const DOCUMENT_ID = /^[a-zA-Z0-9]{16}$/;
+
+// The fields the round itself writes on its own region: the footprint, and the level it is on. Nothing else.
+const OWN_FIELDS = new Set(["shapes", "levels"]);
+/**
+ * A region write that is only this round putting its own concealment region back (pure): written with the round's
+ * own SMOKE_NOTE, changing nothing but the region's shapes and levels — or creating or deleting a region that carries
+ * our own flag. The region rebuilds (floors, canopy, sky, air, life, wall shadows, trunks, heights,
+ * movement views...) and the round's own room cache skip it, as they skip a clock save and a decoration break.
+ *
+ * This matters as much as the scene case does, and was missed when that one was fixed: the footprint changes on almost
+ * every round of a fire — the whole fill-up and the whole clear-down — so without this, fifteen to thirty rounds of a
+ * fire each looked to every client like a GM redrawing a region by hand. The flood fill ran again every tick and
+ * seventeen unrelated rebuilds fired on every screen, so the foliage, the sky, the shadows and the floors rebuilt
+ * every few seconds for as long as anything burned. A GM REALLY redrawing a region must still rebuild all of it.
+ *
+ * Two shapes, because Foundry hands them over differently: an update gives (document, changed, options), while a
+ * create or a delete gives (document, options, userId) — so for those the options arrive in `changes`. The create and
+ * delete cases are told by our own flag ON THE DOCUMENT, which nothing else writes; neither can change a room, since
+ * our region keeps no weather out and is not open to the sky.
+ */
+export function smokeRegionSave(region, changes, options) {
+  if (options?.animater?.[SMOKE_MARK] === true) {
+    const keys = Object.keys(changes ?? {}).filter((k) => k !== "_id" && k !== "_stats");
+    return keys.length > 0 && keys.every((k) => OWN_FIELDS.has(k));
+  }
+  // A create or a delete: the options sit where an update's changes would, and the document itself says it is ours.
+  return changes?.animater?.[SMOKE_MARK] === true && region?.flags?.animater?.smokeRegion === true;
+}
+
 
 // ---- Picking regions out of a scene the canvas has NOT drawn. ----
 // The round runs on every scene that has a fire on it, so most of the time it is looking at a scene nobody is standing

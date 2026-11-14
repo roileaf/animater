@@ -46,10 +46,11 @@ test("never writes the concealed condition anywhere", () => {
   }
 });
 
-test("concealmentPlan prefers the behaviour, then the api, then nothing", () => {
+test("concealmentPlan gives the behaviour, or nothing at all", () => {
   assert.equal(concealmentPlan({ visionerActive: true }).how, "behaviour");
-  assert.equal(concealmentPlan({ visionerActive: true, visionerApi: true }).how, "behaviour");
-  assert.equal(concealmentPlan({ visionerActive: false, visionerApi: true }).how, "api");
+  // There is no second route any more: the region carries visioner's behaviour or it carries none. The old "api"
+  // route, through visioner's public API, was reachable from nothing but this test.
+  assert.equal(concealmentPlan({ visionerActive: false, visionerApi: true }).how, "none");
   assert.equal(concealmentPlan({ visionerActive: false }).how, "none");
   assert.equal(concealmentPlan({}).how, "none");
   assert.equal(concealmentPlan().how, "none");

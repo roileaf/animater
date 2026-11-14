@@ -6,10 +6,9 @@
 // scene's keyed flag writes (its own `-=` deletes included), and smokeGridOf is the one grid the cells are indexed
 // with, which the sight-blocking fence reads them back against.
 import { smokeStep, smokeUpdatesFor, smokeCellsOf, smokeKeysOf, THIN } from "./smoke-field.mjs";
-import { smokeGridOf, smokeCellList, storedSmokeGrid, SMOKE_GRID_FLAG } from "./smoke-edges.mjs";
+import { smokeGridOf, smokeCellList, storedSmokeGrid, smokeLevelReal, SMOKE_GRID_FLAG } from "./smoke-edges.mjs";
 
 const FLAG = "flags.animater";
-const LEVEL_ID = /^[a-zA-Z0-9]{16}$/;
 
 // The four cells touching this one, inside the grid.
 export function smokeNeighbours(i, cols, rows) {
@@ -84,7 +83,8 @@ export function smokeShapes(cells, { cols, cell, origin }) {
 // then to the id, so the same scene always picks the same floor. Null when nothing names a real document id.
 export function smokeLevelFor(scene, sources = []) {
   const order = [...(scene?.levels ?? [])].map((l) => l?.id).filter((id) => typeof id === "string");
-  const real = (id) => typeof id === "string" && LEVEL_ID.test(id) && (!order.length || order.includes(id));
+  // The one shared rule (smoke-edges.mjs smokeLevelReal): a level counts only while the scene still has it.
+  const real = (id) => smokeLevelReal(scene, id);
   const stored = scene?.flags?.animater?.[SMOKE_GRID_FLAG]?.level;
   if (real(stored)) return stored;
   const counts = new Map();
@@ -161,7 +161,8 @@ export const smokeHeldBy = (scene) => smokeKeysOf(scene).length > 0 || scene?.fl
 // sight-blocking fence standing — and the fence is rebuilt from the stored flag alone, inside Foundry's own
 // initializeEdges, referring to no switch at all, so it survived a reload on every client and blinded the players in
 // a room with no smoke drawn in it, with nothing short of editing flags by hand to undo it.
-// Only the active GM writes, so nobody else is given a list.
+// `activeGM` is the same gate every writer in this file has, and the one caller is already behind it: it is here so
+// that this function cannot be the one that hands a list to a client that must not write, whatever is added later.
 export function smokeLeftovers(scenes, { activeGM = false } = {}) {
   if (activeGM !== true) return [];
   return (scenes ?? []).filter((s) => !smokeRunsOn(s) && smokeHeldBy(s));

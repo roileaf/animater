@@ -78,6 +78,9 @@ export function smokeSourcesOf({ fires = [], lights = [], grid = 100, cell = 100
   }
   for (const l of lights ?? []) {
     if (l?.smokes !== true) continue;
+    // A light may name its own `rate`, as a fire may. Nothing does yet — main.mjs sends every smoking light at 1 —
+    // but it is the seam a per-light "how much it smokes" would arrive through, so a hearth and a burning barn
+    // need not be the same. One is the right answer for a light until a GM is given that choice.
     put(Number(l.x), Number(l.y), Number(l.rate) > 0 ? Number(l.rate) : 1, l?.levels);
   }
   return [...totals].map(([i, own]) => ({ i, rate: own.rate, levels: [...own.levels].sort() })).sort((a, b) => a.i - b.i);
@@ -118,8 +121,7 @@ export function wallStandsOpen(wall) {
 // `sky` predicate for it.)
 //
 // `walls` are the scene's walls ({c: [x1, y1, x2, y2], door, ds, flags}); `cell`, `origin`, `cols` and `rows` are the
-// smoke grid the indices are read against (the same smokeGridOf the cells are stored with), and `grid` is the scene's
-// own square, which stands in for `cell` when none is given — the same shape smokeSourcesOf takes.
+// smoke grid the indices are read against (the same smokeGridOf the cells are stored with).
 // `rows` is what tells the map's BOTTOM edge from a row inside it. Without it the row is bounded only above, so a cell
 // below the map reads as an ordinary cell and `indoors` is asked about it: underground, where every cell is indoors,
 // that made a door in the bottom edge the one edge of four that did not vent. Left out, the bottom edge simply never
@@ -130,9 +132,8 @@ export function wallStandsOpen(wall) {
 // right where nothing at all is known of the rooms. It is deliberately not the silent default: as that, it quietly
 // vented every room an inn had and the smoke never built.
 // Returns [i], sorted, each cell once, nothing off the grid. Pure: no Foundry, no clock.
-export function smokeOpeningsOf({ walls = [], grid = 100, cell = null, origin = { x: 0, y: 0 }, cols = 1, rows = null, indoors = null } = {}) {
-  const square = Number(grid) > 0 ? Number(grid) : 100;
-  const size = Number(cell) > 0 ? Number(cell) : square;
+export function smokeOpeningsOf({ walls = [], cell = 100, origin = { x: 0, y: 0 }, cols = 1, rows = null, indoors = null } = {}) {
+  const size = Number(cell) > 0 ? Number(cell) : 100;
   const ox = Number(origin?.x) || 0, oy = Number(origin?.y) || 0;
   const wide = Number.isInteger(Number(cols)) && Number(cols) > 0 ? Number(cols) : 1;
   const tall = Number.isInteger(Number(rows)) && Number(rows) > 0 ? Number(rows) : Infinity;
@@ -170,7 +171,14 @@ export function smokeOpeningsOf({ walls = [], grid = 100, cell = null, origin = 
 }
 
 // cells: [{i, v}] with i = row * cols + col. sources: [{i, rate}]. openings: [i]. blocked: [{from, to}] cell pairs a wall
-// separates (smoke does not cross either way). wind: {x, y} with length up to 1. dt: rounds, default 1. cap: the most any cell holds (default DENSITY_CAP), applied last.
+// separates (smoke does not cross either way).
+// `wind` is {x, y} with length up to 1, and NOTHING PASSES IT, deliberately: this is the smoke standing in a closed
+// room, and the scene's outdoor wind has no business in it. What moves the smoke toward a way out is the draught the
+// openings already make (PULL, LEAK and the room-wide venting), which is the right model for a doorway and does not
+// need the weather. The term stays because a future draught field of its own would use it unchanged.
+// `dt` (rounds, default 1) and `cap` (the most any cell holds, default DENSITY_CAP, applied last) are likewise seams
+// the round does not use: one round is one step, and the cap is the agreed one. Both are exercised by their own tests,
+// because a caller that needs to run the field faster or hold it lower should find them working.
 // room: how many cells the room holds, which the openings are measured against (default the whole grid).
 // Returns {cells} sorted by i, with every cell at or below DROP_FLOOR left out.
 export function smokeStep({ cells = [], sources = [], cols, rows, openings = [], blocked = [], wind = null, dt = 1, cap = DENSITY_CAP, room = null } = {}) {

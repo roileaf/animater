@@ -87,7 +87,10 @@ test("the wreck sync computes no placements for a region with nothing stored", (
   assert.ok(guard < sync.indexOf("decorRegionOf(doc)") && guard < sync.indexOf("decorIndex(region, grid)"), "before regionAreas and the scatter");
 });
 test("break and decoration repair writes skip the generic region rebuilds", () => {
-  assert.match(main, /const quietSave = \(first, changes, options\) => isClockSave\(first\) \|\| \(first\?\.documentName === "Region" && decorOnlySave\(changes, options\)\)/);
+  // A Region write is quiet when it is a decoration break OR the smoke round's own region (smoke-regions.mjs
+  // smokeRegionSave); either way the generic rebuilds skip it, and anything else still wakes all of them.
+  assert.match(main, /const quietSave = \(first, changes, options\) => isClockSave\(first\)/);
+  assert.match(main, /\(first\?\.documentName === "Region" && \(decorOnlySave\(changes, options\) \|\| smokeRegionSave\(first, changes, options\)\)\)/);
   const lines = main.split(/\r?\n/).filter((l) => /for \(const hook of \[[^\]]*"updateRegion"/i.test(l) || /'updateRegion'/.test(l));
   assert.ok(lines.length >= 11, `the rebuild listeners (${lines.length})`);
   const next = (l) => main.split(/\r?\n/)[main.split(/\r?\n/).indexOf(l) + 1];

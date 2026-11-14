@@ -2,9 +2,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { smokeRoundPlan, smokeLevelFor, smokeShapes, smokeNeighbours, smokeOnlySave, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, ROOM_CAP } from "../../../scripts/engines/props/smoke-round.mjs";
+import { smokeRoundPlan, smokeLevelFor, smokeShapes, smokeNeighbours, smokeOnlySave, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, SMOKE_NOTE, ROOM_CAP } from "../../../scripts/engines/props/smoke-round.mjs";
 import { THICK, THIN, smokeOpeningsOf } from "../../../scripts/engines/props/smoke-field.mjs";
-import { smokeRegionPlan } from "../../../scripts/engines/props/smoke-regions.mjs";
+import { smokeRegionPlan, smokeRegionSave } from "../../../scripts/engines/props/smoke-regions.mjs";
 import { viewedRegions } from "../../../scripts/core/viewed-regions.mjs";
 import { propSceneFieldsHTML, smokeLightFieldHTML } from "../../../scripts/ui/prop-config.mjs";
 
@@ -108,9 +108,12 @@ test("an outdoor fire fills nothing", () => {
   assert.deepEqual(p.fields, {});
 });
 
+// THE agreed figure for a sealed room, pinned to the number and not to "at least": a 5x5 room with one burning square
+// gives FIVE thick cells at fifteen rounds. It is the shape of the fill (the fire's own cell and the four it touches)
+// as much as a count, and if a change moves it somebody should have to come and look at this line deliberately.
 test("a sealed room fills with thick smoke; a doorway drains it", () => {
   const shut = burn(15);
-  assert.ok(shut.cells.filter((c) => c.v >= THICK).length >= 5, `${shut.cells.filter((c) => c.v >= THICK).length} thick`);
+  assert.equal(shut.cells.filter((c) => c.v >= THICK).length, 5, "five thick cells at fifteen rounds");
   assert.deepEqual(shut.openings, [], "a sealed room has no opening");
   // 35 is the room's east edge and 36 is out of doors: with no wall between them that is the doorway.
   const open = burn(15, { walled: walledWith([35, 36]) });
@@ -498,7 +501,7 @@ test("a scene is held by its geometry alone, or by a stored zero, as surely as b
 test("main.mjs wires its four call sites to the pure decisions, and to nothing else", () => {
   // The round: all three switches as its gate, the openings told which side is a room, the sky and the openings in.
   assert.match(main, /on = smokeRunsOn\(scene\)/);
-  assert.match(main, /smokeOpeningsOf\(\{ walls: scene\.walls\?\.contents \?\? \[\], grid: propGrid\(scene\), cell, origin, cols, rows, indoors \}\)/);
+  assert.match(main, /smokeOpeningsOf\(\{ walls: scene\.walls\?\.contents \?\? \[\], cell, origin, cols, rows, indoors \}\)/);
   assert.match(main, /smokeRoundPlan\(\{ activeGM, on, scene, sources, indoors, walled, openings, sky,/);
   // The leftover pass, on the same tick, so a scene the fire round has dropped is still cleared.
   assert.match(main, /for \(const scene of smokeLeftovers\(game\.scenes\?\.contents \?\? \[\], \{ activeGM: true \}\)\)/);
@@ -551,7 +554,12 @@ test("an inn with its inside door open fills with smoke instead of staying clear
   const inert = burn(15, { sources: TAP_FIRE, walled: innWalled, openings: wrong });
   const thick = (p) => p.cells.filter((c) => c.v >= THICK).length;
   const mass = (p) => p.cells.reduce((sum, c) => sum + c.v, 0);
-  assert.ok(thick(filled) >= 3, `the inn fills: ${thick(filled)} thick`);
+  // THE agreed figures for the inn, pinned to the number: five thick cells and 12.7698 of smoke in all at fifteen
+  // rounds, against one thick and 5.2568 when that inside doorway was vented as though it led outside.
+  assert.equal(thick(filled), 5, "the inn fills");
+  assert.equal(Math.round(mass(filled) * 10000) / 10000, 12.7698, "and holds exactly this much smoke");
+  assert.equal(thick(inert), 1, "the bug's own answer, kept so the difference cannot quietly close");
+  assert.equal(Math.round(mass(inert) * 10000) / 10000, 5.2568);
   assert.ok(thick(filled) > thick(inert), `${thick(filled)} thick against ${thick(inert)} when the doorway vented`);
   assert.ok(mass(filled) > mass(inert) * 1.3, `${mass(filled)} against ${mass(inert)}`);
   // And the smoke still gets next door through the open doorway, which is what a doorway is for: the back room is
@@ -594,4 +602,58 @@ test("a non-active scene with a switch off loses its region along with its cells
   assert.deepEqual(region.steps, [{ kind: "remove", ids: ["mine"] }]);
   // So after that pass the scene holds nothing of ours, and smokeHeldBy agrees it need not be visited again.
   assert.equal(smokeHeldBy({ flags: { animater: { smokeFills: true, breakableProps: true, fireSpreads: false } } }), false);
+});
+
+// ---- The round's own writes wake nothing, including the region one. ----
+// quietSave composes three pure predicates; this is that composition, so what main.mjs decides can be driven here.
+// The room cache (and with it the whole working set: the indoor answers, the wall answers, the sky answers) is emptied
+// whenever this says a write was a real edit.
+const asQuietSave = (first, changes, options) => (first?.documentName === "Region" && smokeRegionSave(first, changes, options))
+  || (first?.documentName === "Scene" && smokeOnlySave(changes, options));
+// The round's OWN note, imported and never rebuilt here: a test that wrote its own copy would go on passing if the
+// marker moved, which is the very fault SMOKE_MARK and smokeOnlySave are kept side by side to prevent.
+const NOTE = SMOKE_NOTE;
+const OURS = { documentName: "Region", id: "mine", flags: { animater: { smokeRegion: true } } };
+
+test("the round's own region write is not a GM redrawing a region", () => {
+  // What smokeRegionPlan really asks for, round after round, as the footprint grows and shrinks.
+  assert.equal(asQuietSave(OURS, { _id: "mine", shapes: [{ type: "rectangle", x: 0, y: 0, width: 100, height: 100 }], levels: [] }, NOTE), true);
+  assert.equal(asQuietSave(OURS, { _id: "mine", shapes: [] }, NOTE), true, "shapes alone");
+  assert.equal(asQuietSave(OURS, { _id: "mine", levels: [A] }, NOTE), true, "levels alone");
+  assert.equal(asQuietSave(OURS, { _id: "mine", shapes: [], levels: [], _stats: {} }, NOTE), true, "_id and _stats ride along");
+  // Creating and deleting our own region: Foundry hands those over as (document, options, userId), so the options
+  // arrive where an update's changes would, and the document's own flag says it is ours.
+  assert.equal(asQuietSave(OURS, NOTE, "user000000000000"), true, "created, or deleted");
+});
+
+test("a GM really redrawing a region still wakes everything", () => {
+  // Our own note, but a field the round never writes: a real edit riding along must not be forgiven.
+  assert.equal(asQuietSave(OURS, { _id: "mine", shapes: [], name: "Smoke?" }, NOTE), false, "a renamed region");
+  assert.equal(asQuietSave(OURS, { _id: "mine", behaviors: [] }, NOTE), false, "its behaviours changed");
+  assert.equal(asQuietSave(OURS, { _id: "mine", visibility: 2, shapes: [] }, NOTE), false);
+  assert.equal(asQuietSave(OURS, { _id: "mine" }, NOTE), false, "nothing of ours changed at all");
+  // Somebody else's write, whatever it touches, and somebody else's region under our note.
+  assert.equal(asQuietSave(OURS, { _id: "mine", shapes: [] }, {}), false, "no note");
+  assert.equal(asQuietSave(OURS, { _id: "mine", shapes: [] }, { animater: { decorBreak: true } }), false, "another feature's note");
+  const theirs = { documentName: "Region", id: "theirs", flags: {} };
+  assert.equal(asQuietSave(theirs, NOTE, "user000000000000"), false, "a region of theirs created under our note");
+  // And a Region write is never read as a Scene one, nor the other way about.
+  assert.equal(asQuietSave({ documentName: "Scene" }, { _id: "mine", shapes: [] }, NOTE), false);
+});
+
+test("the room cache and the whole working set live through a round, and go on a real edit", () => {
+  // Stand in for main.mjs's hook: anything that is not one of the round's own writes empties the lot.
+  let work = new Map([["sceneA", { key: "x", rooms: new Map([[0, { id: "r", size: 25 }]]), walled: new Map([[0, true]]) }]]);
+  const sawWrite = (first, changes, options) => { if (!asQuietSave(first, changes, options)) work = new Map(); };
+  // Fifteen rounds of a fire: the cells on the scene and the region beside them, over and over.
+  for (let round = 0; round < 15; round++) {
+    sawWrite({ documentName: "Scene" }, { "flags.animater.smoke.33": 1.08, "flags.animater.smokeGrid.cols": COLS }, NOTE);
+    sawWrite(OURS, { _id: "mine", shapes: [{ type: "rectangle", x: round * 100, y: 0, width: 100, height: 100 }], levels: [] }, NOTE);
+  }
+  assert.equal(work.size, 1, "the flood fill is not re-run every tick");
+  assert.equal(work.get("sceneA").rooms.size, 1);
+  assert.equal(work.get("sceneA").walled.size, 1, "nor are the wall answers thrown away");
+  // A GM moving a wall, or redrawing a region by hand: now it all goes.
+  sawWrite({ documentName: "Wall" }, {}, {});
+  assert.equal(work.size, 0);
 });

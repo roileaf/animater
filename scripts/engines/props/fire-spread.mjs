@@ -1,5 +1,5 @@
 // How fast a prop catches fire, read from its material and what it holds. Pure: no Foundry, no PIXI.
-import { smokeCellsOf, smokeKeysOf, smokeUpdatesFor, DROP_FLOOR } from "./smoke-field.mjs";
+import { smokeCellsOf, smokeUpdatesFor, DROP_FLOOR } from "./smoke-field.mjs";
 
 // A material's burn rate: how fast fire takes the prop itself (plants go quick, wood slower, stone and metal not at all).
 export const MATERIAL_RATE = { plant: 2, wood: 1, glass: 0, clay: 0, stone: 0, metal: 0, none: 0 };
@@ -372,8 +372,8 @@ export function quenchSmokeUpdate(scene, inArea, geo, left = QUENCH_SMOKE_LEFT) 
   // The last cell takes the geometry beside it with it, by name: Foundry merges an object flag, so a replacement object
   // would strand what was there. (The same key the round's own clearing writes.)
   if (!cells.length && scene?.flags?.animater?.smokeGrid !== undefined) fields["flags.animater.-=smokeGrid"] = null;
-  // A stored zero or a junk entry is a key that is really there: it goes too, or the flag is never empty.
-  for (const key of smokeKeysOf(scene)) if (!cells.some((c) => String(c.i) === key)) fields[`flags.animater.smoke.-=${key}`] = null;
+  // (A stored zero or a junk entry needs no loop of its own: smokeUpdatesFor deletes every key the scene really
+  // holds that it was not handed, reading the raw flag rather than the densities, which is where that belongs.)
   return { fields, cells };
 }
 

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { smokeEdges, smokeEdgeSpecs, smokeGridOf, smokeCellList, syncSmokeEdges, smokeFenceLevels, storedSmokeGrid } from "../../../scripts/engines/props/smoke-edges.mjs";
+import { smokeEdges, smokeEdgeSpecs, smokeGridOf, smokeCellList, syncSmokeEdges, smokeFenceLevels, smokeLevelOf, smokeLevelReal, storedSmokeGrid } from "../../../scripts/engines/props/smoke-edges.mjs";
+import { smokeLevelFor } from "../../../scripts/engines/props/smoke-round.mjs";
 import { smokeCellsOf } from "../../../scripts/engines/props/smoke-field.mjs";
 import { registerSmokeFence, smokeEdgeMaker } from "../../../scripts/engines/props/smoke-fence.mjs";
 
@@ -111,7 +112,9 @@ test("cell indices outside the grid are ignored", () => {
 
 // ---- the Foundry-facing half: stored grid -> fence, and surviving a reset ----
 
-const L1 = "levelAAAAAAAAAAAA", L2 = "levelBBBBBBBBBBBB";
+// Sixteen characters each, as a real Foundry document id is: the smoke only ever names a level the scene still has
+// AND whose id is a document id (smoke-edges.mjs smokeLevelReal), which is also what smokeRegionData demands.
+const L1 = "levelAAAAAAAAAAA", L2 = "levelBBBBBBBBBBB";
 const mkLevel = (id) => ({ id, edges: new Map() });
 // A scene shaped like Foundry's: dimensions, a flags bag, levels, an initializedEdges switch.
 const scene = (cells, { grid, levels = [mkLevel(L1)], ready = true, flags = {} } = {}) => ({
@@ -162,7 +165,47 @@ test("only the smoke's own level is fenced; with none stored, the scene's first 
   const a = mkLevel(L1), b = mkLevel(L2);
   assert.deepEqual(smokeFenceLevels(scene({ 9: 2 }, { levels: [a, b], grid: { cols: 8, cell: 100, level: L2 } })).map((l) => l.id), [L2]);
   assert.deepEqual(smokeFenceLevels(scene({ 9: 2 }, { levels: [a, b] })).map((l) => l.id), [L1]);
-  assert.deepEqual(smokeFenceLevels(scene({ 9: 2 }, { levels: [a, b], grid: { cols: 8, cell: 100, level: "gone" } })), [], "a vanished level holds nothing");
+});
+
+// ---- THE one rule: a level counts only while the scene still has it, and nothing ever names one that is gone. ----
+
+test("a level the scene no longer has names nothing, by either side", () => {
+  const a = mkLevel(L1), b = mkLevel(L2);
+  assert.equal(smokeLevelReal(scene({}, { levels: [a, b] }), L2), true);
+  assert.equal(smokeLevelReal(scene({}, { levels: [a] }), L2), false, "the scene does not hold it");
+  // Not a document id at all: sixteen characters is what Foundry writes, and what smokeRegionData accepts.
+  for (const bad of ["gone", "", null, undefined, 7, L1 + "x"]) assert.equal(smokeLevelReal(scene({}, { levels: [a] }), bad), false, JSON.stringify(bad));
+  // A scene that lists no levels cannot contradict anything, so there a document id passes and junk still does not.
+  assert.equal(smokeLevelReal({ levels: [] }, L1), true);
+  assert.equal(smokeLevelReal({ levels: [] }, "gone"), false);
+});
+
+test("deleting the level the smoke was stored on leaves the reader and the writer agreeing", () => {
+  const a = mkLevel(L1), b = mkLevel(L2);
+  // Stored on the upper floor while it exists: both sides say so, and the fence is on it.
+  const both = scene({ 9: 2 }, { levels: [a, b], grid: { cols: 8, cell: 100, level: L2 } });
+  assert.equal(smokeLevelOf(both), L2);
+  assert.equal(smokeLevelFor(both, []), L2);
+  assert.deepEqual(smokeFenceLevels(both).map((l) => l.id), [L2]);
+  // That level is now deleted. Neither side may go on naming it: this was the bug, where the writer moved the field
+  // to a live level while every reader kept the dead id, so smokeFenceLevels returned [] and thick smoke stopped
+  // blocking sight while the smoke was still stored and still drawn.
+  const dead = scene({ 9: 2 }, { levels: [a], grid: { cols: 8, cell: 100, level: L2 } });
+  assert.notEqual(smokeLevelOf(dead), L2, "the reader does not hand back a dead level");
+  assert.notEqual(smokeLevelFor(dead, []), L2, "nor does the writer");
+  assert.equal(smokeLevelOf(dead), L1, "both fall back to the scene's own level");
+  assert.equal(smokeLevelFor(dead, []), L1);
+  assert.deepEqual(smokeFenceLevels(dead).map((l) => l.id), [L1], "and the fence is somewhere, not nowhere");
+  // A scene listing NO levels at all cannot contradict a stored id, so both sides go on naming it and agree; the
+  // fence then holds nothing, because there is no level to hold it, which is the truth rather than a disagreement.
+  const bare = scene({ 9: 2 }, { levels: [], grid: { cols: 8, cell: 100, level: L2 } });
+  assert.equal(smokeLevelOf(bare), L2);
+  assert.equal(smokeLevelFor(bare, []), L2);
+  assert.deepEqual(smokeFenceLevels(bare), []);
+  // And junk stored on such a scene names nothing on either side, so smokeRegionData is never handed it.
+  const junk = scene({ 9: 2 }, { levels: [], grid: { cols: 8, cell: 100, level: "gone" } });
+  assert.equal(smokeLevelOf(junk), null);
+  assert.equal(smokeLevelFor(junk, []), null);
 });
 
 test("syncSmokeEdges adds to the target level only and removes the old fence from every level", () => {
