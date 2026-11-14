@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { smokeRoundPlan, smokeLevelFor, smokeShapes, smokeNeighbours, smokeOnlySave, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, SMOKE_NOTE, ROOM_CAP } from "../../../scripts/engines/props/smoke-round.mjs";
+import { smokeRoundPlan, smokeLevelFor, smokeShapes, smokeNeighbours, smokeOnlySave, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, createSmokeAlarm, SMOKE_NOTE, ROOM_CAP } from "../../../scripts/engines/props/smoke-round.mjs";
 import { THICK, THIN, smokeOpeningsOf } from "../../../scripts/engines/props/smoke-field.mjs";
 import { smokeRegionPlan, smokeRegionSave } from "../../../scripts/engines/props/smoke-regions.mjs";
 import { quietSave } from "../../../scripts/engines/props/quiet-writes.mjs";
@@ -332,8 +332,10 @@ test("the smoke picks regions by their flag and their level, never by whether a 
   // The gathering itself moved to smoke-gather.mjs, where smoke-gather.test.mjs drives the real thing over a fake
   // scene; what is left here is the Foundry looking-up it is handed, and every region read still goes through the
   // level filter and is chosen by a flag.
-  assert.match(smoke, /indoorPolygonsOf\(regionsOnLevel\(scene\.regions, level\), regionAreas\)/);
-  assert.match(smoke, /skyRegionsOf\(regionsOnLevel\(scene\.regions, level\)\)/);
+  // Both lists go through the level filter, which is now worked out once for the two of them (onLevel).
+  assert.match(smoke, /const onLevel = \(\) => \(here \?\?= regionsOnLevel\(scene\.regions, level\)\);/);
+  assert.match(smoke, /indoorPolygonsOf\(onLevel\(\), regionAreas\)/);
+  assert.match(smoke, /skyRegionsOf\(onLevel\(\)\)/);
   assert.match(smoke, /const work = smokeShapeOf\(scene, geo, level, deep\);/);
   assert.match(smoke, /smokeRegionPlan\(scene\.regions, shapes, \{ level, visioner: smokeConceals\(\) \}\)/);
   // The order of the region writes is the plan's, applied by one loop, so there is nothing here to put the wrong way
@@ -499,11 +501,12 @@ test("a scene is held by its geometry alone, or by a stored zero, as surely as b
   assert.equal(smokeHeldBy(null), false);
 });
 
-// ---- The one thing no pure test can reach. ----
+// ---- The one thing no CHEAP test reaches. ----
 // Everything else about main.mjs's smoke is now tested through the pure modules above (the plan, the openings, the
-// clear, the thinning). What is left is only WHICH pure call main.mjs makes at each of its four call sites, and that
-// has no pure surface at all: the call sites live inside Foundry hooks, take live documents, and write through
-// scene.update. One test, by its source text, and nothing in it that the pure tests already cover.
+// clear, the thinning). What is left is only WHICH pure call main.mjs makes at each of its four call sites. That is
+// not beyond testing — tests/project/integration.test.mjs imports main.mjs for real — but it needs that file's heavy
+// fake-Foundry harness, and that file is one of the two slow ones. So this is read off the source as a cost trade,
+// and holds nothing the pure tests already cover.
 test("main.mjs wires its four call sites to the pure decisions, and to nothing else", () => {
   // The round: all three switches as its gate, the openings told which side is a room, the sky and the openings in.
   assert.match(main, /on = smokeRunsOn\(scene\)/);
@@ -662,4 +665,70 @@ test("the room cache and the whole working set live through a round, and go on a
   // A GM moving a wall, or redrawing a region by hand: now it all goes.
   sawWrite({ documentName: "Wall" }, {}, {});
   assert.equal(work.size, 0);
+});
+
+// ---- What the round says when it cannot run: once per scene, and nothing at all when it works. ----
+// smokeThrew had no test. The code was right, but moving `told.add` after the warning would have restored per-round
+// notification spam with the whole suite green — and a feature that throws every few seconds for twenty rounds would
+// have given the GM twenty notifications.
+
+test("a throwing round is said out loud once per scene, however many rounds throw", () => {
+  const said = [], told = [], traced = [];
+  const alarm = createSmokeAlarm({ trace: (m) => traced.push(m), warn: (m, e) => said.push([m, e]), notify: (m) => told.push(m) });
+  const ship = { id: "scene0000000000z", name: "Ship Crash" };
+  const boom = new TypeError("Cannot add property parent, object is not extensible");
+  for (let round = 0; round < 20; round++) alarm(ship, "smoke round", boom);
+  // ONE warning and ONE notification, for twenty throwing rounds.
+  assert.equal(said.length, 1, `${said.length} warnings for twenty rounds`);
+  assert.equal(told.length, 1, `${told.length} notifications for twenty rounds`);
+  assert.match(said[0][0], /Ship Crash/, "the scene is named, so the GM knows where to look");
+  assert.equal(said[0][1], boom, "and the error itself goes to the console");
+  assert.match(told[0], /Ship Crash/);
+  // But traced every time: a log is for reading afterwards.
+  assert.equal(traced.length, 20);
+  assert.match(traced[0], /smoke round: Cannot add property parent/);
+});
+
+test("a second scene gets its own warning, and a scene with no name is named by its id", () => {
+  const said = [], told = [];
+  const alarm = createSmokeAlarm({ warn: (m) => said.push(m), notify: (m) => told.push(m) });
+  alarm({ id: "aaaaaaaaaaaaaaaa", name: "Ship Crash" }, "smoke round", new Error("one"));
+  alarm({ id: "bbbbbbbbbbbbbbbb", name: "The Inn" }, "smoke round", new Error("two"));
+  alarm({ id: "aaaaaaaaaaaaaaaa", name: "Ship Crash" }, "smoke round", new Error("again"));
+  assert.equal(said.length, 2, "one each, and no more");
+  assert.match(said[0], /Ship Crash/);
+  assert.match(said[1], /The Inn/);
+  assert.equal(told.length, 2);
+  // No name: the id, so there is always something to go on. And two nameless scenes are still two scenes.
+  const bare = [];
+  const quiet = createSmokeAlarm({ warn: (m) => bare.push(m) });
+  quiet({ id: "cccccccccccccccc" }, "smoke left behind", new Error("x"));
+  quiet({ id: "dddddddddddddddd" }, "smoke left behind", new Error("x"));
+  quiet({ id: "cccccccccccccccc" }, "smoke left behind", new Error("x"));
+  assert.equal(bare.length, 2);
+  assert.match(bare[0], /cccccccccccccccc/);
+});
+
+test("a round that works says nothing at all, and an alarm with no voices breaks nothing", () => {
+  let spoke = 0;
+  createSmokeAlarm({ warn: () => spoke++, notify: () => spoke++, trace: () => spoke++ });
+  assert.equal(spoke, 0, "making one says nothing; only a throw does");
+  // Every voice is optional, because a reporter nobody passed loses a MESSAGE, not the feature.
+  assert.doesNotThrow(() => createSmokeAlarm()({ id: "s" }, "smoke round", new Error("x")));
+  assert.doesNotThrow(() => createSmokeAlarm({})(null, "smoke round", new Error("x")), "even with no scene at all");
+  // A notification that itself throws (no interface yet, early in the load) must not take the round down with it.
+  const traced = [];
+  const brittle = createSmokeAlarm({ trace: (m) => traced.push(m), notify: () => { throw new Error("no ui"); } });
+  assert.doesNotThrow(() => brittle({ id: "s", name: "Hall" }, "smoke round", new Error("x")));
+  assert.equal(traced.length, 1);
+});
+
+test("main.mjs builds the alarm from this client's three voices and keeps no counting of its own", () => {
+  assert.match(main, /const smokeThrew = createSmokeAlarm\(\{/);
+  assert.match(main, /trace: \(message\) => runtime\?\.trace\("props", message\),/);
+  assert.match(main, /notify: \(message\) => ui\?\.notifications\?\.warn\(message\),/);
+  assert.ok(!/const smokeBroke = /.test(main), "the remembering is the alarm's, not main.mjs's");
+  // Both round loops report through it.
+  assert.match(main, /catch \(e\) \{ smokeThrew\(scene, "smoke round", e\); \}/);
+  assert.match(main, /catch \(e\) \{ smokeThrew\(scene, "smoke left behind", e\); \}/);
 });

@@ -554,7 +554,11 @@ test("the scene's switch and the light's are two distinct names, and neither is 
 });
 
 // ---- The ONE source test that is kept, narrowed in fix round 3 to what has no pure surface at all. ----
-// main.mjs is Foundry's entry point: it cannot be imported under node. Everything that COULD be lifted out of it
+// main.mjs is Foundry's entry point. It CAN be imported under node — tests/project/integration.test.mjs does, with a
+// query string to dodge the module cache — but only on top of the heavy fake-Foundry harness that file stands up, and
+// that file is one of the two slow ones. So a cheap test cannot import it and a source guard here is a cost trade,
+// not an impossibility: what is below could be exercised for real, in the integration harness, if it earned the time.
+// Everything that COULD be lifted out of it
 // has been — the layer depth and the tiers are exported constants, the haze rule is airHazeFor (which derives
 // `runs` from the scene itself, so the wiring that once carried the bug cannot be got wrong), the marker is
 // SMOKE_NOTE, the scene's field and the light's are functions in ui/prop-config.mjs, and all of them are run above.

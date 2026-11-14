@@ -27,8 +27,8 @@ import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf } from "./engines/props/s
 import { registerSmokeFence } from "./engines/props/smoke-fence.mjs";
 import { smokeGridOf, storedSmokeGrid, smokeCellList, smokeLevelOf } from "./engines/props/smoke-edges.mjs";
 import { createSmokeLooks, smokePuffs, smokeSheets, smokeSeedOf, airHazeFor, SMOKE_SORT_LAYER } from "./engines/props/smoke-look.mjs";
-import { CONCEALMENT_BEHAVIOUR, smokeRegionPlan, smokeRegionSave, skyRegionsOf, regionsOnLevel } from "./engines/props/smoke-regions.mjs";
-import { smokeRoundPlan, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, smokeLevelFor, SMOKE_NOTE } from "./engines/props/smoke-round.mjs";
+import { CONCEALMENT_BEHAVIOUR, smokeRegionPlan, skyRegionsOf, regionsOnLevel } from "./engines/props/smoke-regions.mjs";
+import { smokeRoundPlan, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, smokeLevelFor, createSmokeAlarm, smokeNote } from "./engines/props/smoke-round.mjs";
 import { smokeGathering } from "./engines/props/smoke-gather.mjs";
 import { quietSave, isClockSave } from "./engines/props/quiet-writes.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
@@ -10425,10 +10425,12 @@ async function fireRound(scene) {
 // (The scene flag is smokeFills and a light's own is smokeSource. NEITHER is the settings pair "Smoke in the air"
 // (skyPair("roomSmoke", "roomSmokeLocal")), which is a different, older, purely visual haze: three things shared the
 // name roomSmoke before any of this shipped, and the two new ones were renamed so the next reader is not caught.)
-// The marker every scene write of this round's is stamped with is SMOKE_NOTE, imported above: it is declared beside
+// The marker every write of this round's is stamped with comes from smokeNote(), imported above: it is declared beside
 // the smokeOnlySave that reads it, in smoke-round.mjs, and never copied here, so the stamp and its reader cannot
 // drift apart. (Drift them and the round mistakes its own write back for a GM's map edit and throws the room cache
-// away every single tick.)
+// away every single tick.) It is a MAKER, not the constant: Foundry writes to an options object it is given
+// (createEmbeddedDocuments sets options.parent), so handing it the frozen SMOKE_NOTE threw on every region write and
+// the concealment region never once appeared. Every document call below gets its own fresh note.
 // Which lights make smoke: a fire light (a torch, flame, fire, candle or flicker) the GM ticked "Fills the room with
 // smoke" on. Off by default, so a lit hearth or brazier does not fog the inn. Each keeps its levels, so a light on
 // the cellar floor records its smoke there and not on whatever floor the scene opens on.
@@ -10457,14 +10459,23 @@ for (const hook of ["canvasReady", "createWall", "updateWall", "deleteWall", "cr
 // Each is a thunk, so a scene with no smoke to decide about pays for none of them (smokeGathering asks at most
 // once per record), and so a test can drive the real gathering with fakes — which is the point: it lived here,
 // where no test could import it, and two of its keys collided unseen.
-const smokeShapeOf = (scene, geo, level, deep) => smokeGathering({
-  cache: smokeRooms, sceneId: scene.id, geo, level, deep,
-  polygons: () => (deep ? [] : indoorPolygonsOf(regionsOnLevel(scene.regions, level), regionAreas)),
-  shafts: () => skyRegionsOf(regionsOnLevel(scene.regions, level))
-    .flatMap((r) => { try { return regionAreas(r) ?? []; } catch { return []; } }),
-  walls: () => blockingWalls((scene.walls?.contents ?? []).map(wallView)),
-  inside: pointInPolygon, crosses: wallBetween,
-});
+const smokeShapeOf = (scene, geo, level, deep) => {
+  // The regions that count for the smoke's level, worked out ONCE for both lists below: they are two thunks and
+  // each is asked at most once per record, but both wanted the same filter, so both ran it.
+  let here = null;
+  const onLevel = () => (here ??= regionsOnLevel(scene.regions, level));
+  return smokeGathering({
+    cache: smokeRooms, sceneId: scene.id, geo, level, deep,
+    polygons: () => (deep ? [] : indoorPolygonsOf(onLevel(), regionAreas)),
+    // One malformed region is skipped, so it cannot stop a whole map's smoke; a broken helper is not caught here,
+    // and reaches smokeThrew, which tells the GM once. (smoke-gather.mjs says the same in full.)
+    shafts: () => skyRegionsOf(onLevel()).flatMap((r) => { try { return regionAreas(r) ?? []; } catch { return []; } }),
+    walls: () => blockingWalls((scene.walls?.contents ?? []).map(wallView)),
+    // Both REQUIRED by smokeGathering, which throws without them rather than quietly answering "nothing": this
+    // one line going missing left the whole feature dead with 850 tests passing.
+    inside: pointInPolygon, crosses: wallBetween,
+  });
+};
 // One round of smoke on one scene, run by the active GM on the fire's own tick, straight after fireRound, with what
 // fireRound found alight. Switched off, or with nothing stored, nothing burning and no light set to smoke, it costs
 // a flag read and a pass over the scene's lights — and nothing of the scene's shape is looked at at all.
@@ -10512,8 +10523,13 @@ async function smokeRound(scene, burning = []) {
   }
   if (!plan) return;
   if (Object.keys(plan.fields).length) {
-    await scene.update(withDeletes(plan.fields, propDel()), SMOKE_NOTE)
-      .catch((e) => runtime?.trace("props", `smoke not written: ${e?.message ?? e}`));
+    // Told, not merely traced. This write failing is the user's whole symptom: no cells means no stored flag,
+    // so no sight-blocking fence and no drawn cloud — "I see no smoke in a closed room" — and it was swallowed
+    // into a trace line while the region write beside it threw loudly. Both were the same frozen-options bug.
+    // The alarm is the one the round already uses, so the two of them cannot between them spam a GM: whichever
+    // speaks first speaks, once for that scene, and every failure after it is traced as before.
+    await scene.update(withDeletes(plan.fields, propDel()), smokeNote())
+      .catch((e) => smokeThrew(scene, "smoke not written", e));
   }
   await smokeRegionNow(scene, plan.shapes, plan.level);
 }
@@ -10530,9 +10546,9 @@ async function smokeRound(scene, burning = []) {
 async function smokeRegionNow(scene, shapes, level) {
   const plan = smokeRegionPlan(scene.regions, shapes, { level, visioner: smokeConceals() });
   for (const step of plan.steps) {
-    if (step.kind === "remove") await scene.deleteEmbeddedDocuments("Region", step.ids, SMOKE_NOTE);
-    else if (step.kind === "create") await scene.createEmbeddedDocuments("Region", step.data, SMOKE_NOTE);
-    else await scene.updateEmbeddedDocuments("Region", step.data, SMOKE_NOTE);
+    if (step.kind === "remove") await scene.deleteEmbeddedDocuments("Region", step.ids, smokeNote());
+    else if (step.kind === "create") await scene.createEmbeddedDocuments("Region", step.data, smokeNote());
+    else await scene.updateEmbeddedDocuments("Region", step.data, smokeNote());
   }
 }
 // A fire round still writing would put back whatever is cleared or thinned while it is in flight. One wait, used by
@@ -10557,26 +10573,20 @@ async function clearSmokeNow(scene) {
   try {
     const plan = smokeClearPlan(scene);
     if (Object.keys(plan.fields).length) {
-      await scene.update(withDeletes(plan.fields, propDel()), SMOKE_NOTE)
-        .catch((e) => runtime?.trace("props", `smoke not cleared: ${e?.message ?? e}`));
+      await scene.update(withDeletes(plan.fields, propDel()), smokeNote())
+        .catch((e) => smokeThrew(scene, "smoke not cleared", e));
     }
-    await smokeRegionNow(scene, [], null).catch((e) => runtime?.trace("props", `smoke region not cleared: ${e?.message ?? e}`));
+    await smokeRegionNow(scene, [], null).catch((e) => smokeThrew(scene, "smoke region not cleared", e));
   } finally { fireRunning.delete(scene.id); }
 }
-// A round of smoke that threw: traced as everything here is, and ALSO said once to the GM, per scene, per session.
-// This is the lesson of the key collision: the round threw on its first indoor cell, every round, on every scene,
-// and the only sign of it was a trace line nobody reads — the smoke simply never appeared, and a GM would have
-// called that "the feature does not work" with nothing to go on. Once is the whole point: a fire throwing every
-// few seconds for twenty rounds must not become twenty notifications, so the scene is remembered and never
-// warned about again while this client lives. Nothing is said when it works, which is almost always.
-const smokeBroke = new Set();
-const smokeThrew = (scene, where, e) => {
-  runtime?.trace("props", `${where}: ${e?.message ?? e}`);
-  if (smokeBroke.has(scene.id)) return;
-  smokeBroke.add(scene.id);
-  console.warn(`Animater | the room smoke could not run on "${scene.name ?? scene.id}"`, e);
-  try { ui?.notifications?.warn(`Animater: the smoke could not fill the rooms on "${scene.name ?? scene.id}". See the console for why.`); } catch { /* no interface yet */ }
-};
+// A round of smoke that threw: traced as everything here is, and ALSO said once to the GM, per scene, per session
+// (smoke-round.mjs createSmokeAlarm, which holds the counting and is tested there). All that is here is this
+// client's three ways of speaking.
+const smokeThrew = createSmokeAlarm({
+  trace: (message) => runtime?.trace("props", message),
+  warn: (message, error) => console.warn(message, error),
+  notify: (message) => ui?.notifications?.warn(message),
+});
 // The ticker: every scene with both switches on, each keeping its own count, on the active GM alone. Then any scene
 // still carrying smoke whose switches have since gone off, to take it away.
 async function fireRoundsNow() {
@@ -10865,9 +10875,9 @@ async function quenchWrite(scene, area) {
   const thinned = quenchSmokeUpdate(scene, area.testPoint, storedSmokeGrid(scene, smokeCellsOf(scene)) ?? smokeGridOf(scene.dimensions));
   const thinnedAny = Object.keys(thinned.fields).length > 0;
   if (thinnedAny) {
-    await scene.update(withDeletes(thinned.fields, del), SMOKE_NOTE)
-      .catch((e) => runtime?.trace("props", `smoke not thinned: ${e?.message ?? e}`));
-    if (!thinned.cells.length) await smokeRegionNow(scene, [], null).catch((e) => runtime?.trace("props", `smoke region not thinned away: ${e?.message ?? e}`));
+    await scene.update(withDeletes(thinned.fields, del), smokeNote())
+      .catch((e) => smokeThrew(scene, "smoke not thinned", e));
+    if (!thinned.cells.length) await smokeRegionNow(scene, [], null).catch((e) => smokeThrew(scene, "smoke region not thinned away", e));
   }
   if (!out.put.length) return thinnedAny;
   if (out.tiles.length) await scene.updateEmbeddedDocuments("Tile", out.tiles.map((u) => withDeletes(u, del)), { animater: { propFire: true } })

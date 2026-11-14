@@ -108,7 +108,17 @@ const SMOKE_OWN = new Set(["smoke", "smokeGrid", "-=smoke", "-=smokeGrid"]);
 // the room cache away every single tick — a fault that cost a whole fix round to find. main.mjs imports this; it
 // does not keep a copy, and no test may build its own, or neither would notice the marker moving.
 export const SMOKE_MARK = "smokeFills";
+// The canonical marker, frozen: for IDENTITY and for smokeOnlySave and smokeRegionSave to read. It is a value to
+// compare and to look inside, and nothing may change it.
 export const SMOKE_NOTE = Object.freeze({ animater: Object.freeze({ [SMOKE_MARK]: true }) });
+// ...and the one to actually HAND TO FOUNDRY, fresh every time. Foundry treats an options object as its own scratch
+// space and writes to it — createEmbeddedDocuments sets options.parent — so handing it the frozen constant threw
+// "Cannot add property parent, object is not extensible" and EVERY region write failed, on every scene, every round:
+// the cells and the fence landed, the concealment region never did, and thin smoke concealed nothing in the real
+// application while every test passed, because the test doubles took the options and ignored them.
+// Never pass SMOKE_NOTE itself to a document call. Pass this. A shared mutable object would be no better: Foundry
+// would write one call's leavings into the next.
+export const smokeNote = () => ({ animater: { [SMOKE_MARK]: true } });
 
 /**
  * A scene update that is only this round putting its own smoke back (pure): written with SMOKE_NOTE (above),
@@ -139,6 +149,33 @@ const clearPlan = (scene) => {
   if (scene?.flags?.animater?.[SMOKE_GRID_FLAG] !== undefined) fields[`${FLAG}.-=${SMOKE_GRID_FLAG}`] = null;
   return { fields, cells: [], shapes: [], level: null, grid: null, openings: [], rooms: [] };
 };
+
+// What the round says when it cannot run at all. Pure: the three ways of speaking come in, so a test can watch what
+// is said and how often.
+//
+// Traced every time, because a trace is for reading a log afterwards. Said OUT LOUD once per scene, for as long as
+// this client lives, because a round that throws throws every few seconds for as long as something burns, and twenty
+// rounds must not become twenty notifications. The order below is the whole of it and is load-bearing: asked, then
+// remembered, then spoken. Remember it after speaking instead and every round speaks again.
+//
+// It exists because of what silence cost. A collision between two keys made the round throw on its first indoor cell,
+// every round, on every scene; the throw was traced and nothing else, so the smoke simply never appeared and a GM
+// would have had nothing to go on but "it does not work". One sentence naming the scene is the difference.
+//
+// `trace`, `warn` and `notify` each default to saying nothing, and that default is honest in a way the gathering's
+// was not: a reporter nobody passed loses a MESSAGE, not the feature. Nothing here decides anything.
+export function createSmokeAlarm({ trace = () => {}, warn = () => {}, notify = () => {} } = {}) {
+  const told = new Set();
+  return (scene, where, error) => {
+    trace(`${where}: ${error?.message ?? error}`);
+    const id = scene?.id ?? "";
+    if (told.has(id)) return;
+    told.add(id);
+    const name = scene?.name ?? id;
+    warn(`Animater | the room smoke could not run on "${name}"`, error);
+    try { notify(`Animater: the smoke could not fill the rooms on "${name}". See the console for why.`); } catch { /* no interface yet */ }
+  };
+}
 
 // ---- Which scenes the smoke round must visit, and whether it may run on them. ----
 // The round rides the FIRE round's tick, and the fire round visits only scenes with Breakable props AND Fire spreads
