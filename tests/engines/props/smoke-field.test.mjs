@@ -37,7 +37,30 @@ test("a filled room clears strictly faster with two openings than one, and than 
   const none = stepsToClear([]), one = stepsToClear([12]), two = stepsToClear([12, 0]);
   assert.ok(two < one, `two ${two} < one ${one}`);
   assert.ok(one < none, `one ${one} < none ${none}`);
-  assert.ok(one <= 8, `one opening clears in ${one} rounds`);
+  // Breaking one window into a full room must be plain to watch, not a rounding difference.
+  assert.ok(one <= none * 0.75, `one opening clears in ${one} of the ${none} a sealed room takes`);
+});
+
+test("the venting goes by how far the room stands open, not by how many openings there are", () => {
+  // One opening on a room of 25 vents far harder than the same opening on a room of 400: a doorway on a closet is a
+  // gale, the same doorway on a great hall is a draught.
+  const closet = smokeStep({ cells: [{ i: 12, v: 2 }], sources: [], cols: 5, rows: 5, openings: [0], room: 25 });
+  const hall = smokeStep({ cells: [{ i: 12, v: 2 }], sources: [], cols: 5, rows: 5, openings: [0], room: 400 });
+  assert.ok(at(hall, 12) > at(closet, 12), `hall ${at(hall, 12)} > closet ${at(closet, 12)}`);
+  // With no room given the whole grid is the room, as a room exactly filling the grid would say itself.
+  assert.equal(at(smokeStep({ cells: [{ i: 12, v: 2 }], sources: [], cols: 5, rows: 5, openings: [0] }), 12), at(closet, 12));
+});
+
+test("the vent is taken once a round, so a door and a window do not compound into an empty room", () => {
+  // Under the old rule each opening took its own share of every cell, and a room with two could hold no smoke at all.
+  const lit = (openings) => { let cells = []; for (let n = 0; n < 20; n++) cells = smokeStep({ cells, sources: [{ i: 12, rate: 1 }], cols: 5, rows: 5, openings, room: 25 }).cells; return cells; };
+  const two = lit([2, 10]);
+  assert.ok(two.some((c) => smokeTier(c.v)), "a fire still smokes a room with a door and a window");
+  // More openings still vent more: the rule saturates, it never reverses.
+  const peak = (cells) => Math.max(0, ...cells.map((c) => c.v));
+  assert.ok(peak(lit([2])) > peak(two), `one ${peak(lit([2]))} > two ${peak(two)}`);
+  assert.ok(peak(two) > peak(lit([2, 10, 22])), "three vent more than two");
+  assert.ok(peak(lit([])) > peak(lit([2])), "sealed holds more than one opening");
 });
 
 test("with no source the room clears, and a cleared cell is dropped", () => {
@@ -134,7 +157,7 @@ test("a smaller cap is honoured, and a capped room with one opening still emptie
   let cells = room(DENSITY_CAP), n = 0;
   while (cells.length && n < 60) { n++; cells = smokeStep({ cells, sources: [], cols: 5, rows: 5, openings: [12] }).cells; }
   assert.equal(cells.length, 0);
-  assert.ok(n <= 12, `emptied in ${n}`);
+  assert.ok(n <= 40, `emptied in ${n}`);
 });
 
 const sceneWith = (smoke) => ({ flags: { animater: { smoke } } });

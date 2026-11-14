@@ -23,10 +23,11 @@ import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
 import { BURN_MS, burnLightData, fireTimers, unhideLights, firesOf } from "./engines/props/prop-lights.mjs";
 import { propMaterial, canBreak } from "./engines/props/prop-material.mjs";
-import { smokeCellsOf, smokeStep, smokeUpdatesFor, smokeSourcesOf, THIN } from "./engines/props/smoke-field.mjs";
+import { smokeCellsOf, smokeSourcesOf } from "./engines/props/smoke-field.mjs";
 import { registerSmokeFence } from "./engines/props/smoke-fence.mjs";
-import { smokeGridOf, smokeCellList, storedSmokeGrid, SMOKE_GRID_FLAG } from "./engines/props/smoke-edges.mjs";
+import { smokeGridOf } from "./engines/props/smoke-edges.mjs";
 import { smokeRegionData, CONCEALMENT_BEHAVIOUR } from "./engines/props/smoke-regions.mjs";
+import { smokeRoundPlan, smokeNeighbours } from "./engines/props/smoke-round.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls, blockingWalls, wallStop } from "./engines/props/prop-walls.mjs";
@@ -10267,147 +10268,88 @@ async function fireRound(scene) {
   for (const t of things) if (!t.fire && !step.heat.some((h) => h.id === t.id)) fireWarned.delete(`${scene.id}:${t.id}`);
   return burningNow;
 }
-// ---- The smoke a fire fills its room with, round by round (engines/props/smoke-field.mjs). ----
+// ---- The smoke a fire fills its room with, round by round (engines/props/smoke-round.mjs). ----
 // The GM's switch is the scene's "Fires fill rooms with smoke" (flags.animater.roomSmoke), off by default: it suits a
-// closed inn or a mine, not an open market. Every write here is the active GM's; each screen draws its own view of
-// what is written (the fence, registerSmokeFence, and the region's concealment).
-const LEVEL_ID = /^[a-zA-Z0-9]{16}$/;
+// closed inn or a mine, not an open market. The round's whole decision is pure and lives in smoke-round.mjs; all that
+// is here is looking the scene up, saying what is indoors and where the walls are, and writing what comes back.
+// Every write is the active GM's; each screen draws its own view of what is written (the fence, registerSmokeFence,
+// and the region's concealment).
 const SMOKE_NOTE = { animater: { roomSmoke: true } };
-// The four cells touching this one, inside the grid.
-function smokeNeighbours(i, cols, rows) {
-  const col = i % cols, row = (i - col) / cols, out = [];
-  if (col > 0) out.push(i - 1);
-  if (col + 1 < cols) out.push(i + 1);
-  if (row > 0) out.push(i - cols);
-  if (row + 1 < rows) out.push(i + cols);
-  return out;
-}
-// The smoke as the fewest rectangles: each row's run of touching cells is one. Thin smoke counts, since thin smoke is
-// what the concealment region is for; thick smoke is thin smoke and more.
-function smokeShapes(cells, { cols, cell, origin }) {
-  const byRow = new Map();
-  for (const c of cells) {
-    if (!(c.v >= THIN)) continue;
-    const col = c.i % cols, row = (c.i - col) / cols;
-    if (!byRow.has(row)) byRow.set(row, []);
-    byRow.get(row).push(col);
-  }
-  const out = [];
-  for (const [row, cols_] of [...byRow].sort((a, b) => a[0] - b[0])) {
-    cols_.sort((a, b) => a - b);
-    let from = cols_[0], prev = cols_[0];
-    for (let k = 1; k <= cols_.length; k++) {
-      const col = cols_[k];
-      if (col === prev + 1) { prev = col; continue; }
-      out.push({ type: "rectangle", x: origin.x + from * cell, y: origin.y + row * cell, width: (prev - from + 1) * cell, height: cell });
-      from = col; prev = col;
-    }
-  }
-  return out;
-}
 // Which lights make smoke: a fire light (a torch, flame, fire, candle or flicker) the GM ticked "Fills the room with
-// smoke" on. Off by default, so a lit hearth or brazier does not fog the inn.
+// smoke" on. Off by default, so a lit hearth or brazier does not fog the inn. Each keeps its levels, so a light on
+// the cellar floor records its smoke there and not on whatever floor the scene opens on.
 const smokeLightsOf = (scene) => (scene?.lights?.contents ?? [])
   .filter((d) => d.hidden !== true && d.flags?.[ID]?.roomSmoke === true && isFireLight(d.config ?? {}))
-  .map((d) => ({ x: d.x, y: d.y, smokes: true }));
+  .map((d) => ({ x: d.x, y: d.y, smokes: true, levels: [...(d.levels ?? [])] }));
 // Whether a token in the smoke is concealed: only through pf2e-visioner's own region behaviour, and only when that
 // behaviour type is really registered. Installed is not enough.
 const smokeConceals = () => {
   try { return game.modules?.get("pf2e-visioner")?.active === true && !!CONFIG.RegionBehavior?.dataModels?.[CONCEALMENT_BEHAVIOUR]; }
   catch { return false; }
 };
-// The level the smoke sits on: the one it was written with while that level is still there, else the level of the
-// first thing alight, else the scene's own first. Null when none of those is a real document id.
-function smokeLevelFor(scene, burning) {
-  const levels = [...(scene?.levels ?? [])].map((l) => l?.id);
-  const real = (id) => typeof id === "string" && LEVEL_ID.test(id) && (!levels.length || levels.includes(id));
-  const stored = scene?.flags?.[ID]?.[SMOKE_GRID_FLAG]?.level;
-  if (real(stored)) return stored;
-  for (const b of burning ?? []) for (const id of b?.levels ?? []) if (real(id)) return id;
-  const first = scene?.initialLevel?.id ?? scene?.firstLevel?.id ?? null;
-  return real(first) ? first : null;
+// How big the room holding a cell is, in cells: everything reachable from it without crossing a wall and without
+// stepping outside. The venting is a share of this, so one doorway on a closet is a gale and the same doorway on a
+// great hall is a draught. Held per scene and thrown away whenever the walls, the regions or the scene change, since
+// a walk over a whole cave is far too much to do every few seconds.
+const ROOM_CAP = 1200;
+let smokeRooms = new Map();
+for (const hook of ["canvasReady", "createWall", "updateWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion", "updateScene"]) {
+  Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) smokeRooms = new Map(); });
 }
-// Everything the smoke left behind, taken off the scene: the cells, the geometry beside them and the region.
-async function smokeClear(scene, saved) {
-  const fields = {};
-  for (const key of Object.keys(saved ?? {})) fields[`flags.${ID}.smoke.-=${key}`] = null;
-  if (scene.flags?.[ID]?.[SMOKE_GRID_FLAG]) fields[`flags.${ID}.-=${SMOKE_GRID_FLAG}`] = null;
-  const region = viewedRegions(scene.regions).find((r) => r.flags?.[ID]?.smokeRegion === true) ?? null;
-  if (Object.keys(fields).length) await scene.update(fields, SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke not cleared: ${e?.message ?? e}`));
-  if (region) await scene.deleteEmbeddedDocuments("Region", [region.id], SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke region not removed: ${e?.message ?? e}`));
+function smokeRoomSize(scene, from, { cols, rows }, indoors, walled) {
+  const key = `${scene.id}:${cols}:${from}`;
+  const kept = smokeRooms.get(key);
+  if (kept !== undefined) return kept;
+  const seen = new Set([from]), queue = [from];
+  while (queue.length && seen.size < ROOM_CAP) {
+    const i = queue.pop();
+    for (const n of smokeNeighbours(i, cols, rows)) {
+      if (seen.has(n) || !indoors(n) || walled(i, n)) continue;
+      seen.add(n);
+      queue.push(n);
+    }
+  }
+  smokeRooms.set(key, seen.size);
+  return seen.size;
 }
 // One round of smoke on one scene, run by the active GM on the fire's own tick, straight after fireRound, with what
 // fireRound found alight. Switched off, or with nothing stored and nothing burning, it costs a flag read.
-//
-// Indoors is a cell whose middle lies in a region that keeps the weather out (indoorPolygons' own test), or every cell
-// of an underground scene: smoke only exists there, so a fire out of doors fills nothing. A cell indoors that touches
-// one that is not is an opening, where the room breathes out; smoke never crosses into the open, because those pairs
-// are blocked, so a room with a hole in it drains instead of smoking across the map. A wall between two indoor cells
-// blocks them the same way, so the smoke stops at the walls and the stored grid is the authority on where it is.
 async function smokeRound(scene, burning = []) {
-  if (!game.users?.activeGM?.isSelf || !scene) return;
-  const saved = smokeCellsOf(scene);
-  if (scene.flags?.[ID]?.roomSmoke !== true) { await smokeClear(scene, saved); return; }
-  const geo = smokeGridOf(scene.dimensions);
-  if (!geo) return;
-  const { cols, rows, cell, origin } = geo, total = cols * rows;
-  // The stored cells only mean something against the geometry they were written with: a resized scene or a changed
-  // grid starts the room clear rather than sliding the old smoke under the new squares.
-  const was = storedSmokeGrid(scene, saved);
-  const kept = !was || (was.cols === cols && was.cell === cell) ? saved : {};
-  const stale = kept !== saved;
-  const sourcesAll = smokeSourcesOf({ fires: burning, lights: smokeLightsOf(scene), grid: propGrid(scene), cell, origin, cols });
-  const cellsIn = smokeCellList(kept).filter((c) => Number.isInteger(c.i) && c.i >= 0 && c.i < total);
-  if (!cellsIn.length && !sourcesAll.length) { if (Object.keys(saved).length || scene.flags?.[ID]?.[SMOKE_GRID_FLAG]) await smokeClear(scene, saved); return; }
-  // Only the cells that hold smoke or make it, and the ring they could reach this round, are ever asked about: the
-  // room test is a polygon walk, and a whole canvas of them every few seconds would be the round's whole cost.
-  const seed = new Set([...cellsIn.map((c) => c.i), ...sourcesAll.map((s) => s.i)]);
-  const look = new Set(seed);
-  for (const i of seed) for (const n of smokeNeighbours(i, cols, rows)) look.add(n);
-  const deep = undergroundOf(scene.flags?.[ID], null);
-  const rooms = deep ? [] : indoorPolygonsOf(viewedRegions(scene.regions), regionAreas);
-  const mid = (i) => ({ x: origin.x + ((i % cols) + 0.5) * cell, y: origin.y + (Math.floor(i / cols) + 0.5) * cell });
-  const known = new Map();
-  const indoors = (i) => {
-    let v = known.get(i);
-    if (v === undefined) { try { v = deep || rooms.some((p) => pointInPolygon(mid(i), p)); } catch { v = false; } known.set(i, v); }
-    return v;
-  };
-  const walls = blockingWalls((scene.walls?.contents ?? []).map(wallView));
-  const openings = [], blocked = [];
-  for (const i of look) {
-    if (!indoors(i)) continue;
-    let breathes = false;
-    for (const n of smokeNeighbours(i, cols, rows)) {
-      const wall = wallBetween(mid(i), mid(n), walls);
-      // Out of the room: the smoke never goes that way, but where no wall stands between them the room breathes out
-      // there — an open door, a smashed window, the mouth of a cave. A sealed room has no opening and fills right up.
-      if (!indoors(n)) { blocked.push({ from: i, to: n }); if (!wall) breathes = true; continue; }
-      if (n > i && wall) blocked.push({ from: i, to: n });
-    }
-    if (breathes) openings.push(i);
+  if (!scene) return;
+  const activeGM = game.users?.activeGM?.isSelf === true, on = scene.flags?.[ID]?.roomSmoke === true;
+  const geo = activeGM && on ? smokeGridOf(scene.dimensions) : null;
+  let plan;
+  if (!geo) plan = smokeRoundPlan({ activeGM, on, scene });
+  else {
+    const { cols, rows, cell, origin } = geo;
+    const sources = smokeSourcesOf({ fires: burning, lights: smokeLightsOf(scene), grid: propGrid(scene), cell, origin, cols });
+    // Indoors is a cell whose middle lies in a region that keeps the weather out, or every cell of an underground
+    // scene. Each answer is worked out once a round, because it is a walk over polygons.
+    const deep = undergroundOf(scene.flags?.[ID], null);
+    const rooms = deep ? [] : indoorPolygonsOf(viewedRegions(scene.regions), regionAreas);
+    const mid = (i) => ({ x: origin.x + ((i % cols) + 0.5) * cell, y: origin.y + (Math.floor(i / cols) + 0.5) * cell });
+    const known = new Map();
+    const indoors = (i) => {
+      let v = known.get(i);
+      if (v === undefined) { try { v = deep || rooms.some((p) => pointInPolygon(mid(i), p)); } catch { v = false; } known.set(i, v); }
+      return v;
+    };
+    const walls = blockingWalls((scene.walls?.contents ?? []).map(wallView));
+    const walled = (i, n) => wallBetween(mid(i), mid(n), walls);
+    plan = smokeRoundPlan({ activeGM, on, scene, sources, indoors, walled, roomOf: (i) => smokeRoomSize(scene, i, geo, indoors, walled) });
   }
-  const step = smokeStep({ cells: cellsIn.filter((c) => indoors(c.i)), sources: sourcesAll.filter((s) => indoors(s.i)), cols, rows, openings, blocked });
-  const next = { cells: step.cells.filter((c) => indoors(c.i)) };
-  const fields = smokeUpdatesFor(next, { scene })[0] ?? {};
-  // The geometry goes BESIDE the cells, key by key so Foundry merges it and nothing old is stranded: without it the
-  // fence would read the scene's grid size and its first level instead of the ones the cells were written with.
-  const grid = scene.flags?.[ID]?.[SMOKE_GRID_FLAG] ?? {};
-  const level = smokeLevelFor(scene, burning);
-  if (next.cells.length) {
-    const want = { cols, cell, ...(level ? { level } : {}) };
-    for (const [key, value] of Object.entries(want)) if (grid[key] !== value) fields[`flags.${ID}.${SMOKE_GRID_FLAG}.${key}`] = value;
-  } else if (Object.keys(grid).length) fields[`flags.${ID}.-=${SMOKE_GRID_FLAG}`] = null;
-  // A grid the stored cells no longer fit was dropped above: their keys go too, whatever this round wrote.
-  if (stale) for (const key of Object.keys(saved)) if (!(`flags.${ID}.smoke.${key}` in fields)) fields[`flags.${ID}.smoke.-=${key}`] = null;
-  if (Object.keys(fields).length) await scene.update(fields, SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke not written: ${e?.message ?? e}`));
-  await smokeRegionNow(scene, next.cells, geo, level);
+  if (!plan) return;
+  if (Object.keys(plan.fields).length) {
+    await scene.update(withDeletes(plan.fields, propDel()), SMOKE_NOTE)
+      .catch((e) => runtime?.trace("props", `smoke not written: ${e?.message ?? e}`));
+  }
+  await smokeRegionNow(scene, plan.shapes, plan.level);
 }
-// The region the smoke conceals in: one region per scene, flagged as ours, grown or shrunk to the smoke and taken away
-// with it. pf2e-visioner owns concealment; without its behaviour the region carries none and nothing is concealed.
-async function smokeRegionNow(scene, cells, geo, level) {
+// The region the smoke conceals in: one region per scene, flagged as ours, grown or shrunk to the smoke and taken
+// away with it. pf2e-visioner owns concealment; without its behaviour the region carries none and nothing is
+// concealed.
+async function smokeRegionNow(scene, shapes, level) {
   const region = viewedRegions(scene.regions).find((r) => r.flags?.[ID]?.smokeRegion === true) ?? null;
-  const shapes = smokeShapes(cells, geo);
   if (!shapes.length) {
     if (region) await scene.deleteEmbeddedDocuments("Region", [region.id], SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke region not removed: ${e?.message ?? e}`));
     return;

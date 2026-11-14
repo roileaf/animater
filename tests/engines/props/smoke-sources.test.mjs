@@ -19,7 +19,15 @@ test("a source sits in the cell its middle falls in, and the list is sorted by i
 
 test("the grid's origin is taken off before the cell is worked out", () => {
   const s = smokeSourcesOf({ lights: [{ x: 320, y: 220, smokes: true }], cell: 100, origin: { x: 300, y: 200 }, cols: 4 });
-  assert.deepEqual(s, [{ i: 0, rate: 1 }]);
+  assert.deepEqual(s, [{ i: 0, rate: 1, levels: [] }]);
+});
+
+test("a source's levels come through on its cell, sorted and without repeats", () => {
+  const s = smokeSourcesOf({ fires: [{ rect: { x: 0, y: 0, w: 100, h: 100 }, levels: ["bbbbbbbbbbbbbbbb"] }],
+    lights: [{ x: 50, y: 50, smokes: true, levels: ["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"] }, { x: 250, y: 50, smokes: true }],
+    grid: 100, cell: 100, cols: 4 });
+  assert.deepEqual(s[0].levels, ["aaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbb"]);
+  assert.deepEqual(s[1].levels, [], "a light on no named level names none");
 });
 
 test("two sources in one cell add up to one entry", () => {

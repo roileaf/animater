@@ -16,8 +16,13 @@ const EDGE_MAX = 0.2;
 const FADE = 0.1;
 // The share lost every round from a cell that is an opening (an open door, a broken window).
 const LEAK = 0.35;
-// Each opening also lets the whole room breathe out: this share more is lost from every cell, per opening.
-const VENT = 0.4;
+// The openings also let the whole room breathe out. How much is a share of how far the room stands open
+// (openings / cells in the room), not a count: a doorway on a closet is a gale, the same doorway on a great hall is
+// a draught. It saturates, because two doors never clear a room twice as fast — the air can only move so quickly —
+// and it is taken ONCE a round, never once per opening, or a hall with a door and a window would hold no smoke.
+// VENT_MAX is the most a round's venting can ever take; VENT_HALF is the open share that takes half of it.
+const VENT_MAX = 0.9;
+const VENT_HALF = 0.45;
 // Density a source with rate 1 adds to its own cell each round.
 const SOURCE = 2;
 // How much a unit wind speeds flow along it and slows flow against it.
@@ -45,37 +50,43 @@ const SOURCE_MAX = 4;
 // `lights` are the scene's lights ({x, y, smokes}): only a light the GM marked (`smokes === true`) is a source, so a
 // lit hearth does not fog the inn. `cell`, `origin` and `cols` are the smoke grid the indices are read against (the
 // same smokeGridOf the cells are stored with). Rates add up where two sources share a cell; anything off the grid is
-// left out. Returns [{i, rate}] sorted by i. Pure: no Foundry, no clock.
+// left out. Each source's own `levels` come through on the cell it lands in (sorted, no repeats), because the round
+// records the smoke on one level and has to know which levels its sources really stand on.
+// Returns [{i, rate, levels}] sorted by i. Pure: no Foundry, no clock.
 export function smokeSourcesOf({ fires = [], lights = [], grid = 100, cell = 100, origin = { x: 0, y: 0 }, cols = 1 } = {}) {
   const size = Number(cell) > 0 ? Number(cell) : 100;
   const square = Number(grid) > 0 ? Number(grid) : size;
   const ox = Number(origin?.x) || 0, oy = Number(origin?.y) || 0;
   const wide = Number.isInteger(Number(cols)) && Number(cols) > 0 ? Number(cols) : 1;
   const totals = new Map();
-  const put = (x, y, rate) => {
+  const put = (x, y, rate, levels) => {
     if (!Number.isFinite(x) || !Number.isFinite(y) || !(rate > 0)) return;
     const col = Math.floor((x - ox) / size), row = Math.floor((y - oy) / size);
     if (col < 0 || col >= wide || row < 0) return;
     const i = row * wide + col;
-    totals.set(i, (totals.get(i) ?? 0) + rate);
+    const own = totals.get(i) ?? { rate: 0, levels: new Set() };
+    own.rate += rate;
+    for (const id of levels ?? []) if (typeof id === "string" && id) own.levels.add(id);
+    totals.set(i, own);
   };
   for (const f of fires ?? []) {
     const r = f?.rect ?? f, w = Number(r?.w), h = Number(r?.h), own = Number(f?.rate);
     if (!Number.isFinite(Number(r?.x)) || !Number.isFinite(Number(r?.y)) || !(w > 0) || !(h > 0)) continue;
     const rate = own > 0 ? own : Math.min(SOURCE_MAX, Math.max(SOURCE_MIN, (w * h) / (square * square)));
-    put(Number(r.x) + w / 2, Number(r.y) + h / 2, rate);
+    put(Number(r.x) + w / 2, Number(r.y) + h / 2, rate, f?.levels);
   }
   for (const l of lights ?? []) {
     if (l?.smokes !== true) continue;
-    put(Number(l.x), Number(l.y), Number(l.rate) > 0 ? Number(l.rate) : 1);
+    put(Number(l.x), Number(l.y), Number(l.rate) > 0 ? Number(l.rate) : 1, l?.levels);
   }
-  return [...totals].map(([i, rate]) => ({ i, rate })).sort((a, b) => a.i - b.i);
+  return [...totals].map(([i, own]) => ({ i, rate: own.rate, levels: [...own.levels].sort() })).sort((a, b) => a.i - b.i);
 }
 
 // cells: [{i, v}] with i = row * cols + col. sources: [{i, rate}]. openings: [i]. blocked: [{from, to}] cell pairs a wall
 // separates (smoke does not cross either way). wind: {x, y} with length up to 1. dt: rounds, default 1. cap: the most any cell holds (default DENSITY_CAP), applied last.
+// room: how many cells the room holds, which the openings are measured against (default the whole grid).
 // Returns {cells} sorted by i, with every cell at or below DROP_FLOOR left out.
-export function smokeStep({ cells = [], sources = [], cols, rows, openings = [], blocked = [], wind = null, dt = 1, cap = DENSITY_CAP } = {}) {
+export function smokeStep({ cells = [], sources = [], cols, rows, openings = [], blocked = [], wind = null, dt = 1, cap = DENSITY_CAP, room = null } = {}) {
   const total = cols * rows;
   const inGrid = (i) => Number.isInteger(i) && i >= 0 && i < total;
   const step = Number.isFinite(dt) ? Math.max(0, Math.min(dt, 10)) : 1;
@@ -112,7 +123,10 @@ export function smokeStep({ cells = [], sources = [], cols, rows, openings = [],
   }
 
   // What is left of a cell's smoke after the round's fade, the room-wide venting, and, at an opening, the local leak.
-  const stays = Math.pow((1 - FADE) * Math.pow(1 - VENT, open.size), step), staysAtOpening = stays * Math.pow(1 - LEAK, step);
+  const held = Number.isFinite(room) && room > 0 ? room : total;
+  const share = Math.min(1, open.size / Math.max(1, held));
+  const vent = share > 0 ? (VENT_MAX * share) / (share + VENT_HALF) : 0;
+  const stays = Math.pow((1 - FADE) * (1 - vent), step), staysAtOpening = stays * Math.pow(1 - LEAK, step);
   const out = [];
   for (const [i, vi] of v) {
     const next = (vi + (delta.get(i) ?? 0)) * (open.has(i) ? staysAtOpening : stays);
