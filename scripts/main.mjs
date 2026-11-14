@@ -23,7 +23,7 @@ import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
 import { BURN_MS, burnLightData, fireTimers, unhideLights, firesOf } from "./engines/props/prop-lights.mjs";
 import { propMaterial, canBreak } from "./engines/props/prop-material.mjs";
-import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf } from "./engines/props/smoke-field.mjs";
+import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf, smokeWalls } from "./engines/props/smoke-field.mjs";
 import { registerSmokeFence } from "./engines/props/smoke-fence.mjs";
 import { smokeGridOf, storedSmokeGrid, smokeCellList, smokeLevelOf } from "./engines/props/smoke-edges.mjs";
 import { createSmokeLooks, smokePuffs, smokeSheets, smokeSeedOf, airHazeFor, SMOKE_SORT_LAYER } from "./engines/props/smoke-look.mjs";
@@ -10503,7 +10503,12 @@ const smokeShapeOf = (scene, geo, level, deep) => {
     // One malformed region is skipped, so it cannot stop a whole map's smoke; a broken helper is not caught here,
     // and reaches smokeThrew, which tells the GM once. (smoke-gather.mjs says the same in full.)
     shafts: () => skyRegionsOf(onLevel()).flatMap((r) => { try { return regionAreas(r) ?? []; } catch { return []; } }),
-    walls: () => blockingWalls((scene.walls?.contents ?? []).map(wallView)),
+    // smokeWalls, not blockingWalls: the walls that stop SMOKE. A window's state never reaches the wall document —
+    // opening one reshapes the live edge's light, sight and sound but never its `move`, and a smashed one keeps
+    // `move` on purpose, since a broken window still stops a body — so blockingWalls answers the same for a window
+    // shut, swung open or smashed. Smoke crossed none of them, while an open one was still counted an opening, so
+    // the smoke left the model instead of drifting into the next room.
+    walls: () => smokeWalls((scene.walls?.contents ?? []).map(wallView)),
     // Both REQUIRED by smokeGathering, which throws without them rather than quietly answering "nothing": this
     // one line going missing left the whole feature dead with 850 tests passing.
     inside: pointInPolygon, crosses: wallBetween,
