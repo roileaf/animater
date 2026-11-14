@@ -1,6 +1,7 @@
 // Smoke that fills a room: the pure simulation. One call is one round of the GM's tick (dt = 1).
 // No Foundry globals, no clock, no randomness; it runs under plain node and gives the same answer every time.
 import { closesWindow } from "../motion/window-state.mjs";
+import { blockingWalls } from "./prop-walls.mjs";
 
 // Density tiers. Thick blocks sight, thin only conceals; anything at or under the floor is gone.
 export const THICK = 1.1;
@@ -94,6 +95,28 @@ export function smokeSourcesOf({ fires = [], lights = [], grid = 100, cell = 100
 // outdoor one with no wall between them is an opening by that alone. This list is the walls' own.)
 // Foundry's door state for OPEN (hard-coded to keep this module pure, as wall-break.mjs does): 0 shut, 1 open, 2 locked.
 const OPEN_DOOR = 1;
+
+// The window kinds that NEVER close, which the wall configuration says of each in so many words: an empty frame
+// ("Empty frame: always open"), a wooden lattice ("always open, light in small squares") and iron bars ("always open,
+// light in stripes"). Nothing fills them — at most open-work a draught passes between — so they are holes in the wall
+// and always were, with no state to read. An empty frame is one case of this, not the whole of it; it was the whole of
+// it, which is why a lattice and a grate held smoke like glass.
+//
+// This is deliberately NOT the complement of CLOSING_WINDOWS. "A kind that does not shut" sounds like the general rule
+// and is wrong: the same vocabulary holds "" (Auto — not a window at all, or Foundry's glass), the legacy fixed
+// `glass` and `shuttered`, and `curtained`. Those are a pane, boards and hanging cloth; each FILLS its frame and none
+// of them opens, so the complement would blow every glazed window on the map wide open. The question is not "does it
+// open?" but "is anything in it?", and nothing on the kind itself answers that — hence a named set.
+//
+// `slit` (an arrow slit) is left out on purpose, unglazed though it is. The field has no notion of how BIG an opening
+// is: an opening cell loses LEAK every round and vents its room exactly as a full doorway does, so counting a
+// hand's-breadth of stone as a doorway would empty a room through it. Left out it errs toward keeping the smoke in,
+// which is the way this module leans elsewhere (see `rows` in smokeOpeningsOf).
+const OPEN_FRAMES = Object.freeze(new Set(["open", "lattice", "bars"]));
+// Whether a window kind is a frame with nothing in it (pure). Smoke's own reading of the kinds, and only smoke's:
+// light, sight, sound and fire each have their own and none of them asks this.
+export const frameStandsOpen = (kind) => OPEN_FRAMES.has(kind ?? "");
+
 export function wallStandsOpen(wall) {
   const own = wall?.flags?.animater;
   // Broken through: the note the break wrote is on the wall whatever its door type now says.
@@ -101,9 +124,33 @@ export function wallStandsOpen(wall) {
   if (hole && typeof hole === "object") return true;
   if (Number(wall?.door) > 0) return Number(wall?.ds) === OPEN_DOOR;
   const kind = own?.window;
-  // An empty frame (what a break leaves of a window that does not open), or one the GM has swung open.
-  if (kind === "open") return true;
+  // A frame nothing fills (an empty frame, a lattice, a grate), or a window the GM has swung open.
+  if (frameStandsOpen(kind)) return true;
   return closesWindow(kind) && own?.windowOpen === true;
+}
+
+// ---- The walls that hold smoke in. ----
+// Smoke's own wall list, and the ONE place it differs from everything else's.
+//
+// prop-walls' blockingWalls answers "what stops a thing": a wall that stops movement or sight, less an open door. That
+// is the right answer for fire, for thrown wreckage, for light, sight and sound — and it is the SAME answer whether a
+// window is shut or standing wide open, because Animater never writes a window's state onto the wall document. The
+// kind and `windowOpen` live in its flags; opening it reshapes the live EDGE (window-state.mjs applyWindowEdge, which
+// sets light, sight and sound, and never `move`); and smashing it writes sight, light and sound but deliberately
+// leaves `move` alone, because a broken window still stops a body climbing through (wall-break.mjs wallBreakUpdate).
+// So `move` stays above zero through every one of those states and blockingWalls keeps the wall in all of them.
+//
+// A body cannot get through an open window. Smoke can. That is the whole of the difference, so this is smoke's list
+// and nobody else's: blockingWalls, less the walls that stand open (wallStandsOpen — an open door, a window swung
+// open, an empty frame, a hole battered through). blockingWalls itself is untouched and still answers exactly as it
+// did, so fire, wreckage, light, sight and sound are unmoved.
+//
+// This changes no agreed figure: a sealed room has no opening to drop, and an open inside door was already dropped by
+// blockingWalls, so dropping it again is the same list.
+// `walls` are wall views ({c, door, ds, move, sight, flags}); `excludeIds` is blockingWalls' own (ids, array or Set).
+// Pure: no Foundry, no clock.
+export function smokeWalls(walls, excludeIds = []) {
+  return blockingWalls(walls, excludeIds).filter((w) => !wallStandsOpen(w));
 }
 
 // The cells of the smoke grid an opening stands on: every cell each open wall runs through, and the cells half a cell
