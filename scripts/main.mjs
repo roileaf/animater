@@ -26,7 +26,7 @@ import { propMaterial, canBreak } from "./engines/props/prop-material.mjs";
 import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf } from "./engines/props/smoke-field.mjs";
 import { registerSmokeFence } from "./engines/props/smoke-fence.mjs";
 import { smokeGridOf, storedSmokeGrid, smokeCellList, smokeLevelOf } from "./engines/props/smoke-edges.mjs";
-import { createSmokeLooks, smokePuffs, smokeSheets, smokeSeedOf, airHazeShows, SMOKE_SORT_LAYER } from "./engines/props/smoke-look.mjs";
+import { createSmokeLooks, smokePuffs, smokeSheets, smokeSeedOf, airHazeFor, SMOKE_SORT_LAYER } from "./engines/props/smoke-look.mjs";
 import { CONCEALMENT_BEHAVIOUR, smokeRegionPlan, skyRegionsOf, regionsOnLevel } from "./engines/props/smoke-regions.mjs";
 import { smokeRoundPlan, smokeRoomAt, smokeOnlySave, smokeClearPlan, smokeRunsOn, smokeLeftovers, smokeLevelFor, SMOKE_NOTE } from "./engines/props/smoke-round.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
@@ -50,7 +50,7 @@ import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCe
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
 import { DECOR_BREAK_MESSAGE, DECOR_NAMES, decorPlaceOf, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
-import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
+import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML, smokeLightFieldHTML, SMOKE_LIGHT_FLAG } from "./ui/prop-config.mjs";
 import { bulkBreakableUpdates, windowLike } from "./engines/props/wall-break-bulk.mjs";
 import { damageTypesOfItem, areaIdOf, areaOriginRefOf, placedRecordOf, typesBreaking, rollDamageTypes } from "./engines/props/area-damage.mjs";
 import { createPlayWatch, strikeMoment, momentWait } from "./engines/props/play-moments.mjs";
@@ -2005,8 +2005,11 @@ const rebuildLampAir = () => {
   } catch { lampAir.clear(); }
 };
 // (updateScene is in the list because the scene's own switches decide whether the old haze stands down for the
-// simulated smoke: without it smokeAir went on stepping every frame, unseen, after the switch was ticked.)
-for (const hook of ["canvasReady", "createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "createWall", "updateWall", "deleteWall", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) lampSoon(); });
+// simulated smoke: without it smokeAir went on stepping every frame, unseen, after the switch was ticked. It is
+// filtered through quietSave, not isClockSave alone, because the smoke round writes the scene every few seconds:
+// on isClockSave alone that write scheduled a whole light scan and lampAir.build on every smoking scene, which is
+// the opposite of what adding the hook was for. A real GM edit is not quiet and still rebuilds.)
+for (const hook of ["canvasReady", "createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "createWall", "updateWall", "deleteWall", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) lampSoon(); });
 Hooks.on("canvasTearDown", () => { clearTimeout(lampTimer); lampTimer = null; lampAir.clear(); lampLights = []; lampLightsKey = ""; });
 // What a token sees changing: the sparks of the fires it now sees (or no longer does) at once.
 Hooks.on("sightRefresh", () => { lampLookAt = 0; });
@@ -2015,16 +2018,13 @@ Hooks.on("sightRefresh", () => { lampLookAt = 0; });
 // out again when a door opens or shuts, or the walls or regions change.
 const draftsOn = () => bothSettingsOn("drafts"), roomSmokeOn = () => bothSettingsOn("roomSmoke");
 const undergroundScene = () => undergroundOf(canvas?.scene?.flags?.[ID], canvas?.level?.flags?.[ID]);
-// Whether the simulated smoke really runs on the viewed scene: the SAME question the drawing asks (smokeRunsOn, all
-// three switches), not the scene's own switch alone. The two must agree, or a scene with "Fires fill rooms with
-// smoke" ticked and Breakable props or Fire spreads off is left with no smoke drawn and no haze either.
-const smokeRunsHere = () => smokeRunsOn(canvas?.scene);
 // Whether the OLD rolling haze ("Smoke in the air") shows here. One smoke per scene, not two layered: the haze
 // stands down exactly where the simulation takes over, and nowhere else — cells the round really worked out instead
 // of a wash over the whole map. Anywhere the simulation is not running, including a scene that has the switch on but
-// not the two the round rides on, this is exactly the answer it has always given. (smoke-look.mjs airHazeShows holds
-// the rule, so the places it is asked cannot drift apart.)
-const hazeSmokeOn = () => airHazeShows({ on: roomSmokeOn(), underground: undergroundScene(), runs: smokeRunsHere() });
+// not the two the round rides on, this is exactly the answer it has always given.
+// The whole rule, including whether the simulation runs here, is smoke-look.mjs's airHazeFor: it is handed the scene
+// and asks smokeRunsOn itself, so this cannot hand it the wrong question — which is precisely what it once did.
+const hazeSmokeOn = () => airHazeFor({ on: roomSmokeOn(), underground: undergroundScene() }, canvas?.scene);
 let draftTimer = null, gustAt = -Infinity, gustFrom = null, airLive = false, previewOpenings = [], airField = null;
 // How the air moves at a point now (0 still – 1 the fastest streams in a gust): how fast it runs there (a doorway on the
 // way out fast, a room's corner barely), and the gust once it has swept that far from the door that opened.
@@ -10301,7 +10301,7 @@ async function fireRound(scene) {
 // smoke" on. Off by default, so a lit hearth or brazier does not fog the inn. Each keeps its levels, so a light on
 // the cellar floor records its smoke there and not on whatever floor the scene opens on.
 const smokeLightsOf = (scene) => (scene?.lights?.contents ?? [])
-  .filter((d) => d.hidden !== true && d.flags?.[ID]?.smokeSource === true && isFireLight(d.config ?? {}))
+  .filter((d) => d.hidden !== true && d.flags?.[ID]?.[SMOKE_LIGHT_FLAG] === true && isFireLight(d.config ?? {}))
   .map((d) => ({ x: d.x, y: d.y, smokes: true, levels: [...(d.levels ?? [])] }));
 // Whether a token in the smoke is concealed: only through pf2e-visioner's own region behaviour, and only when that
 // behaviour type is really registered. Installed is not enough.
@@ -14324,7 +14324,7 @@ Hooks.on("renderAmbientLightConfig", (app, html) => {
     ${autoOnOff("sparks", "Sparks", "Sparks and embers rising from this light (\"Sparks from fires\").")}
     ${autoOnOff("fireSound", "Sound", "This fire heard close by (\"Fire sounds\"): crackling, or a pot bubbling, by its Fire kind.")}
     ${autoOnOff("chimney", "Chimney smoke", "A hearth in a room smokes from the roof above it while the roof is drawn (Auto). On: always smokes above the roofs (a forge). Off: never.", "A hearth in a room")}
-    <div class="form-group"><label data-tooltip="${esc("With the scene's Fires fill rooms with smoke on, this light's fire fills the room it stands in: thick smoke blocks sight, thin smoke conceals. Off for a hearth or a brazier, so a lit fireplace does not fog the inn; tick it for a fire that really is smoking the place out.")}">Fills the room with smoke</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.smokeSource"${flags.smokeSource === true ? " checked" : ""}></div></div>
+    ${smokeLightFieldHTML({ on: flags[SMOKE_LIGHT_FLAG] === true })}
     <p class="hint">Auto follows the light's animation: a torch, flame, fire, candle or flicker light is a fire. Each switch is its own: turning Heat haze off leaves the flame, smoke and sparks. Hover a name or a button for more.</p>`;
   // A click sets the hidden field and tells the form, so Foundry's live preview of the light follows.
   set.addEventListener("click", (event) => {

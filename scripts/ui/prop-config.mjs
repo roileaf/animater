@@ -75,6 +75,17 @@ function forceDCField({ own, mat, system, disabled }) {
   return `<div class="form-group"><label>Force open ${w.dc}</label><div class="form-fields"><input type="number" name="flags.${ID}.breakWall.forceDC" min="1" max="60" step="1" value="${value}" placeholder="Automatic (${auto})" ${data}${disabled ? " disabled" : ""}></div><p class="hint">Blank goes by material. A roll from the sheet is checked against the closest door's ${w.dc}.</p></div>`;
 }
 
+// A fire light's own "Fills the room with smoke" (flags.animater.smokeSource), for the light configuration's Animater
+// tab. It lives here beside the scene's own switch, not inline in main.mjs, so the two halves of one GM-facing
+// decision are written and read in one place — and so the flag name is checkable without reading main.mjs's text.
+// NOTE the three names that are deliberately NOT each other: the scene's switch is smokeFills, a light's own is
+// smokeSource, and the old settings pair "Smoke in the air" keeps roomSmoke. None of them is a spelling of another.
+export const SMOKE_LIGHT_FLAG = "smokeSource";
+export function smokeLightFieldHTML({ on = false } = {}) {
+  const tip = "With the scene's Fires fill rooms with smoke on, this light's fire fills the room it stands in: thick smoke blocks sight, thin smoke conceals. Off for a hearth or a brazier, so a lit fireplace does not fog the inn; tick it for a fire that really is smoking the place out.";
+  return `<div class="form-group"><label data-tooltip="${esc(tip)}">Fills the room with smoke</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.${SMOKE_LIGHT_FLAG}"${on === true ? " checked" : ""}></div></div>`;
+}
+
 export function propSceneFieldsHTML({ on = false, chance = 25, breakWalls, rubble = false, fireSpreads = false, smokeFills = false } = {}) {
   const n = Number(chance), pct = Number.isFinite(n) && n >= 0 && n <= 100 ? n : 25;
   return `<div class="form-group"><label>Breakable props</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.breakableProps"${on === true ? " checked" : ""}></div><p class="hint">Prop tiles (barrels, crates, pots) break from spells, shoves and missed swings and leave wreckage.</p></div>

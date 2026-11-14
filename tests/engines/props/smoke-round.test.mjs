@@ -6,7 +6,7 @@ import { smokeRoundPlan, smokeLevelFor, smokeShapes, smokeNeighbours, smokeOnlyS
 import { THICK, THIN, smokeOpeningsOf } from "../../../scripts/engines/props/smoke-field.mjs";
 import { smokeRegionPlan } from "../../../scripts/engines/props/smoke-regions.mjs";
 import { viewedRegions } from "../../../scripts/core/viewed-regions.mjs";
-import { propSceneFieldsHTML } from "../../../scripts/ui/prop-config.mjs";
+import { propSceneFieldsHTML, smokeLightFieldHTML } from "../../../scripts/ui/prop-config.mjs";
 
 const A = "aaaaaaaaaaaaaaaa", B = "bbbbbbbbbbbbbbbb";
 // A 10x10 scene of 100px squares. The room is columns 1-5, rows 1-5; everything else is out of doors.
@@ -342,10 +342,13 @@ test("both switches are off by default and the scene's says what the smoke does"
   assert.match(off, /[Tt]hick smoke blocks sight/);
   assert.match(off, /thin smoke conceals/);
   assert.match(propSceneFieldsHTML({ smokeFills: true }), /smokeFills"[^>]*checked/);
-  // A fire light's own, likewise unticked.
-  assert.match(main, /Fills the room with smoke/);
-  // A light's own switch is a THIRD thing with its own name (smokeSource), never the scene's and never the settings pair's.
-  assert.match(main, /name="flags\.\$\{ID\}\.smokeSource"\$\{flags\.smokeSource === true \? " checked" : ""\}/);
+  // A fire light's own, likewise unticked, and a THIRD name again (smokeSource): never the scene's, never the
+  // settings pair's. It is a function in ui/ beside the scene's field, so this is run, not read out of main.mjs.
+  const light = smokeLightFieldHTML();
+  assert.match(light, /Fills the room with smoke/);
+  assert.match(light, /name="flags\.animater\.smokeSource"/);
+  assert.doesNotMatch(light, /smokeSource"[^>]*checked/);
+  assert.match(smokeLightFieldHTML({ on: true }), /smokeSource"[^>]*checked/);
 });
 
 // ---- Clearing: every path by which the smoke must stop existing. ----

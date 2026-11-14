@@ -18,6 +18,7 @@
 // client's vision every frame. The cloud drifts; what it blocks does not.
 import { seededRandom } from "../fragments/fragments.mjs";
 import { smokeTier, THICK, THIN, DENSITY_CAP } from "./smoke-field.mjs";
+import { smokeRunsOn } from "./smoke-round.mjs";
 
 // How many steps of grey the smoke is painted in. Stepped, because this project's map visuals match the battlemap's
 // painted look — brush steps under an ink outline — never a smooth photographic gradient.
@@ -258,6 +259,17 @@ export function smokeSway(puff, ms, amount = SMOKE_SWAY) {
  */
 export const airHazeShows = ({ on = false, underground = false, runs = false } = {}) =>
   on === true && underground === true && runs !== true;
+
+/**
+ * The same question asked of a SCENE, which is how main.mjs asks it: `runs` is worked out here, from the scene
+ * itself, through smoke-round.mjs's own smokeRunsOn.
+ * This exists because handing `runs` in by hand is exactly where the bug was: the caller passed the scene's own
+ * switch while the drawing gated on all three, and a scene with the switch ticked and Fire spreads off got no smoke
+ * and no haze. Nobody can get that wrong now — the one question has one answer, and it is derived, not supplied.
+ * `settings` is {on, underground}: the world/client pair, and whether the scene is underground. Pure.
+ */
+export const airHazeFor = ({ on = false, underground = false } = {}, scene = null) =>
+  airHazeShows({ on, underground, runs: smokeRunsOn(scene) });
 
 // ---- The painted look. Only this part touches PIXI. ----
 
