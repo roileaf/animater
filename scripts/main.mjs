@@ -10539,7 +10539,7 @@ const decorArtLook = (settings) => ({ ...decorLook(settings), snow: 0 });
 // What a decoration held, to spill from its wreck (grain from torn sacks and urns, water from a trough).
 const decorContents = (view) => view?.flags?.animater?.prop?.contents ?? "none";
 // A decoration's wreck as a tile, cut from that picture; null while it has none (art() gives null, decorWreckTile throws).
-const decorWreckOf = (view, settings) => { try { return decorWreckTile(view, decorations.art(view.decor.d, decorArtLook(settings))); } catch { return null; } };
+const decorWreckOf = (view, settings) => { try { return decorWreckTile(view, decorations.art(view.decor.d, decorArtLook(settings)), { grid: propGrid(canvas?.scene) }); } catch { return null; } };
 // The walls a decoration's wreckage stops at: those on its level that stop movement or sight, less open doors. A
 // decoration owns no walls.
 const decorStopWalls = (d) => {

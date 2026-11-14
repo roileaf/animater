@@ -33,6 +33,10 @@ const ms = (v) => v / FLIGHT_MS; // a share of the wreck's timeline
 const fin = (v, or) => (Number.isFinite(v) ? v : or);
 // A tile-local point (origin at the tile's top-left, unturned) in world px: turned about the tile's anchor at its x/y,
 // as Foundry (and the wreck's stand sprite) draws the tile.
+/** A tree's tile is its whole crown; what it leaves is its stump (tile.stump, decorations.decorWreckTile): the same tile shrunk to that footprint about the same centre (pure). */
+export const stumpTile = (tile, d) => (tile?.stump > 0 ? { ...d, width: tile.stump, height: tile.stump } : d);
+/** Whether a wreck is drawn as bare cut stump wood (pure): a tree broken any way but by fire (a fire's ash burns the crown away, a burnt-out dead trunk is charred). */
+export const bareStump = (tile, style) => tile?.stump > 0 && style !== "burn" && style !== "char";
 export function tileToWorld(d, centre, { x, y }) {
   const ax = fin(d.texture?.anchorX, 0.5), ay = fin(d.texture?.anchorY, 0.5), turn = ((Number(d.rotation) || 0) * Math.PI) / 180;
   const px = fin(Number(d.x), centre.x), py = fin(Number(d.y), centre.y), dx = x - ax * d.width, dy = y - ay * d.height;
@@ -739,15 +743,13 @@ void main() {
   // the cracks and going cold over EMBER_MS, a soot mark round it and a thin wisp of smoke from the hottest seams while
   // it is warm. Painted (ink outline, a stepped lighter face), seeded from the note alone. Drawn on load (animate: false)
   // it is settled: cold, no smoke. (Named apart from charred(art), the bush's charred heart.)
-  const CHAR_WOOD = [0x4a3a2e, 0x0e0a08], EMBER_HOT = 0xff7a28, EMBER_CORE = 0xffc060, WISP_TONES = [0x3a3633, 0x524c47];
-  // A tree's tile is its whole crown; what a fire leaves is its stump (tile.stump, decorations.decorWreckTile): the same tile, shrunk to that footprint about the same centre.
-  const stumpTile = (tile, d) => (tile?.stump > 0 ? { ...d, width: tile.stump, height: tile.stump } : d);
-  function charredWreck({ d, note, entry, box, centre, animate }) {
+  const FRESH_WOOD = [0x8a6a44, 0x4e3a26], CHAR_WOOD = [0x4a3a2e, 0x0e0a08], EMBER_HOT = 0xff7a28, EMBER_CORE = 0xffc060, WISP_TONES = [0x3a3633, 0x524c47];
+  function charredWreck({ d, note, entry, box, centre, animate, fresh = false }) {
     const w = d.width, h = d.height, side = Math.max(w, h), L = charLayout(note, { width: w, height: h, grid: grid() || 100 });
     const at = tileToWorld(d, centre, { x: w / 2, y: h / 2 }), turn = ((d.rotation ?? 0) * Math.PI) / 180;
     // On the floor: the soot mark, then the seams, the pieces' shadows and the pieces in the tile's own frame.
     const marks = new PIXI.Container(); marks.zIndex = -1; box.addChild(marks);
-    marks.addChild(groundMark(flatMark("scorch", { x: at.x, y: at.y, r: L.scorch.rx, squash: L.scorch.ry / L.scorch.rx, angle: turn }, seededRandom((note.seed >>> 0) * 71 + 5)), entry.textures));
+    if (!fresh) marks.addChild(groundMark(flatMark("scorch", { x: at.x, y: at.y, r: L.scorch.rx, squash: L.scorch.ry / L.scorch.rx, angle: turn }, seededRandom((note.seed >>> 0) * 71 + 5)), entry.textures));
     const floor = frameOf(d, centre, 0); box.addChild(floor);
     const seams = new PIXI.Graphics(), shadows = new PIXI.Graphics(), body = new PIXI.Graphics();
     shadows.alpha = 0.35; floor.addChild(seams, shadows, body);
@@ -755,7 +757,7 @@ void main() {
     for (const p of L.pieces) {
       const pts = flat(p.pts), n = p.pts.length;
       const cx = pts.filter((_, i) => i % 2 === 0).reduce((a, b) => a + b, 0) / n, cy = pts.filter((_, i) => i % 2).reduce((a, b) => a + b, 0) / n;
-      const colour = mix(CHAR_WOOD[0], CHAR_WOOD[1], p.dark);
+      const colour = mix(...(fresh ? FRESH_WOOD : CHAR_WOOD), p.dark);
       paintShard(shadows, pts.map((v, i) => v + (i % 2 ? 2.5 : 1.5)), 0, 1, true);
       paintShard(body, pts, colour, 1);
       body.lineStyle(1.2, INK, 0.9).drawPolygon(pts); // the ink outline, over paintShard's glass edge
@@ -776,6 +778,7 @@ void main() {
       }
     };
     entry.handle = { update() {}, destroy() {} };
+    if (fresh) return; // broken, not burnt: bare wood, no glowing seams, no smoke
     // Drawn as it stands (a reload, another screen coming in): the seams are as far through their fade as the time
     // since the fire went out (note.burnedAt), and go on cooling from there. A wreck whose note carries no such time
     // is settled cold, as every charred wreck was before the time was written.
@@ -1016,6 +1019,8 @@ void main() {
     const src = d.texture?.src, art = tile.art ?? null;
     const [texture, tones] = art ? [art.texture ?? null, artTones(art)] : await Promise.all([textureOf(tile, src).catch(() => null), src ? sample(src) : FALLBACK]);
     if (wrecks.get(id) !== entry) return; // hidden or redrawn while loading
+    // A tree, however it broke (a blade, force, a slam), leaves its stump, never a pile cut from its crown: only a fire's own ash (burn) has the crown to burn away.
+    if (bareStump(tile, note.style)) { dropPrior(entry); charredWreck({ d: stumpTile(tile, d), note, entry, box, centre, animate: false, fresh: true }); return; }
     if (note.style === "tip") { dropPrior(entry); tipped({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
     if (note.style === "topple") { dropPrior(entry); toppled({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate }); return; }
     if (note.style === "burn") { dropPrior(entry); burned({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
