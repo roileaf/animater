@@ -3,7 +3,7 @@ import { guessLight } from "./prop-lights.mjs";
 import { MATERIALS, FURNITURE, CUTTABLE, nameTokens, guessMaterial, propMaterial } from "./prop-material.mjs";
 import { DECOR_RULES, decorRuleStyle } from "./decor-rules.mjs";
 
-export const STYLES = ["shatter", "collapse", "topple", "tip", "burn", "split"];
+export const STYLES = ["shatter", "collapse", "topple", "tip", "burn", "split", "char"]; // "char" is never a choice: it is what a fire that burns out leaves
 export const STYLE_CHOICES = ["shatter", "collapse", "topple", "burn"]; // what the "Breaks as" setting offers
 export const CONTENTS = ["none", "water", "wine", "oil", "grain", "goods", "books", "potions", "lampoil", "powder"];
 export const BURST_DEFAULT = 2; // a powder keg's burst, in squares (the tile's "Burst (squares)" 1-4)
@@ -61,6 +61,7 @@ export function propTraits(tile, grid, scene = {}) {
 // set (or guessed) to it; otherwise it shatters.
 export function breakStyle(traits, cause) {
   if (traits?.tips && cause?.slam) return "tip";
+  if (cause?.burnedOut) return traits?.material === "plant" || traits?.style === "burn" ? "burn" : "char"; // a fire that ran its rounds (wins over a decoration's rule): ash, or a charred wreck
   const ruled = traits?.rule ? decorRuleStyle(traits.rule, cause) : null; // a decoration's own (a torn sack splits)
   if (ruled) return ruled;
   const fire = cause?.damageType === "fire" || cause?.blast === true;

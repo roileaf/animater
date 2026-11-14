@@ -426,7 +426,70 @@ test("M1: Repair's wall batch names each wall once, its door note's restore over
   assert.deepEqual(mergeWallFixes([{ move: 1 }], [{ _id: "c", move: 2 }]), [{ _id: "c", move: 2 }]); // an update without an id is dropped
 });
 
+test("with Fire spreads on a fire area lights a prop instead of breaking it", () => {
+  const lit = validBreakRequest(areaReq(), ctx({ scene: scene({ fireSpreads: true }) }));
+  assert.equal(lit.catches, true);
+  assert.deepEqual(lit.fire, { heat: 100, burning: true, roundsLeft: 3 });
+  assert.deepEqual(lit.wallUpdates, []); // nothing is broken: no wall opened, no light put out
+  assert.deepEqual(lit.lightUpdates, []);
+  // The same request with the switch off breaks it exactly as it always has.
+  const broke = validBreakRequest(areaReq(), ctx());
+  assert.equal(broke.catches, undefined);
+  assert.equal(broke.ok, true);
+  assert.ok(broke.wallUpdates.length);
+  // It is still checked as a break is: a forged area and a tile already broken are refused, switch on or not.
+  assert.deepEqual(validBreakRequest(areaReq(), ctx({ scene: scene({ fireSpreads: true }), area: covering({ testPoint: () => false }) })), { ok: false, why: "area" });
+  const note = noteFor();
+  assert.deepEqual(validBreakRequest(areaReq(note), ctx({ scene: scene({ fireSpreads: true }), tile: barrel({ flags: { animater: { prop: { broken: note } } } }) })), { ok: false, why: "broken" });
+  // One already alight breaks as before (the area cannot light it twice).
+  const burning = barrel({ flags: { animater: { prop: { fire: { heat: 100, burning: true, roundsLeft: 2 } } } } });
+  assert.equal(validBreakRequest(areaReq(), ctx({ scene: scene({ fireSpreads: true }), tile: burning })).catches, undefined);
+});
+
+test("a fire that burnt out breaks the prop it was burning, on the GM's word alone", () => {
+  // The round ticker's own cause: an ignite that names no area and no powder, which the GM makes on any of its scenes.
+  const cause = { kind: "ignite", damageType: "fire", burnedOut: true, at: { x: 250, y: 250 } };
+  const gm = { id: "gm", isGM: true, viewedScene: "other" };
+  const note = noteFor(barrel(), cause, { extra: { burnedAt: 4000 } });
+  const r = validBreakRequest({ cause, note }, ctx({ sender: gm, area: undefined }));
+  assert.equal(r.ok, true);
+  assert.equal(r.note.style, "char"); // a charred wreck, not a shattered one
+  assert.equal(r.note.burnedAt, 4000); // the time it went out, for the ember seams to fade from
+  // A plant burns away to ash instead, and a web with it.
+  const hedge = barrel({ id: "hedge", texture: { src: "props/hedge.webp" } });
+  const burnt = validBreakRequest({ cause, note: noteFor(hedge, cause) }, ctx({ sender: gm, tile: hedge, area: undefined }));
+  assert.equal(burnt.note.style, "burn");
+  assert.equal(burnt.note.mark, "ash");
+  // Only the GM's: a player claiming its own prop burnt out is refused, and the cause survives the socket as it is.
+  assert.deepEqual(validBreakRequest({ cause, note }, ctx()), { ok: false, why: "sender" });
+  assert.equal(cleanCause(cause).burnedOut, true);
+  assert.equal(cleanCause({ kind: "ignite", burnedOut: "yes" }).burnedOut, undefined);
+});
+
 test("an area cause keeps the damage roll it names (a spell whose damage type is chosen at cast)", () => {
   assert.equal(cleanCause({ kind: "area", areaUuid: "Scene.s.Region.r", messageId: "m1" }).messageId, "m1");
   assert.equal(cleanCause({ kind: "area", messageId: 5 }).messageId, undefined);
+});
+
+test("Repair clears a prop's fire as well as its break", () => {
+  const r = repairUpdates([{ id: "t1", flags: { animater: { prop: { broken: {}, fire: { burning: true } } } } }], [], {});
+  const u = r.tiles.find((x) => x._id === "t1");
+  assert.equal(u["flags.animater.prop.-=broken"], null);
+  assert.equal(u["flags.animater.prop.-=fire"], null);
+});
+
+test("Repair makes a prop that is burning right now whole: only its fire cleared, a plain prop left alone", () => {
+  const r = repairUpdates([
+    { id: "live", flags: { animater: { prop: { fire: { heat: 100, burning: true, roundsLeft: 2 } } } } },
+    { id: "plain", flags: { animater: { prop: {} } } },
+  ], [], {});
+  assert.deepEqual(r.tiles, [{ _id: "live", "flags.animater.prop.-=fire": null }]);
+});
+
+test("undoing one prop's break clears its fire too, as Repair does; with no fire it writes none", () => {
+  const withFire = undoUpdates({ id: "t", x: 0, y: 0, width: 100, height: 100, flags: { animater: { prop: { broken: {}, fire: { heat: 0, burning: true, roundsLeft: 1 } } } } }, []);
+  assert.equal(withFire.tile["flags.animater.prop.-=fire"], null);
+  assert.equal(withFire.tile["flags.animater.prop.-=broken"], null);
+  const none = undoUpdates({ id: "t", x: 0, y: 0, width: 100, height: 100, flags: { animater: { prop: { broken: {} } } } }, []);
+  assert.equal("flags.animater.prop.-=fire" in none.tile, false);
 });

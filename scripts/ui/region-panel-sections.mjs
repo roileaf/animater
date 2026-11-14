@@ -9,6 +9,7 @@ import { WATER_DEPTHS, WATER_TOWARD, waterFlows, waterKindFlags, waterKindOf, DO
 import { REGION_ANIMAL_GROUPS, ANIMAL_SIZE, animalSizeOf, MOST_HAWKS, MOST_COUNT, regionAnimalCounts } from '../engines/motion/region-animals.mjs';
 import { SKY_WINDOWS, skyWindowOf, WINDOW_PATTERN, patternScaleOf } from '../engines/motion/wall-shadows.mjs';
 import { keepsOut } from '../engines/motion/wildlife.mjs';
+import { regionBurns } from '../engines/props/fire-spread.mjs';
 import { REGION_LOOK_FLAG } from '../engines/playback/region-looks.mjs';
 import { choice } from './region-steps-ui.mjs';
 import { ROOM_DRESSING, kindFlags } from './region-panel-model.mjs';
@@ -184,6 +185,8 @@ export const SECTIONS = {
     const parts = [row('Floor', choice(withFloor(GROUND_FLOORS, own.floor), own.floor || '', 'Floor', (v) => c.toFloor({ floor: v })), 'What creatures walk on here: their footsteps, sounds and prints. From the scene: whatever the scene\'s floor is.')];
     parts.push(toggle('Over water', false, (on) => { if (on) c.toFloor(kindFlags('deck', own)); }, OVER_WATER_TIP));
     if (stepMenu(own, floor).grassy) parts.push(toggle('Changes with the seasons', c.season(own), (on) => act({ season: on ? 'on' : 'off' })));
+    // Only when the scene has Fire spreads on: grass and field floors burn unless this says otherwise.
+    if (c.fireSpreads?.()) parts.push(toggle('Burns', regionBurns(own, own.floor || floor), (on) => act({ burns: on }), 'Fire runs through the grass here, square by square.'));
     parts.push(toggle('Floor texture', textured, (on) => act({ texture: on ? 'on' : 'off' }), 'Paint the floor here, over the map.'));
     if (textured) parts.push(styleRow(c), opacityRow(c));
     if (scaleShown(c)) parts.push(scaleRow(c));

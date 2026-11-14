@@ -8,10 +8,12 @@ import { segRectDist, headsInto, onLevel, tipsOver } from "./prop-pick.mjs";
 import { explodes, blastFrom, inBurst } from "./prop-blast.mjs";
 import { toppleStrip } from "./prop-topple.mjs";
 import { areaCauseRefusal } from "./prop-areas.mjs";
+import { areaCatch } from "./fire-rounds.mjs";
+import { readFire } from "./fire-spread.mjs";
 
 export const PROP_BREAK_MESSAGE = "prop-break";
 const KINDS = ["area", "miss", "path", "blast", "ignite"];
-const GM_STYLES = new Set(["tip", "topple", "burn", "split"]); // styles only the GM decides (validBreakRequest)
+const GM_STYLES = new Set(["tip", "topple", "burn", "split", "char"]); // styles only the GM decides (validBreakRequest)
 const MISS_CHANCE = 25;
 export const PATH_SQUARES = 12; // the longest planned path a slam may claim
 
@@ -20,7 +22,16 @@ const centre = (t) => ({ x: t.x + t.width / 2, y: t.y + t.height / 2 });
 const finite = (p) => Number.isFinite(p?.x) && Number.isFinite(p?.y);
 export const sizeOf = (s) => (Number.isFinite(s) && s > 0 ? Math.min(s, 10) : 1);
 // what canBreak is asked: the slam uses the mover's own size when the GM knows it; a blast breaks any prop
-const breakCause = (cause, mover) => (cause.kind === "path" ? { slam: { size: sizeOf(mover?.size ?? cause.slam?.size) } } : cause.kind === "blast" ? { blast: true } : { damageType: cause.damageType });
+const breakCause = (cause, mover) => (cause.kind === "path" ? { slam: { size: sizeOf(mover?.size ?? cause.slam?.size) } } : cause.kind === "blast" ? { blast: true }
+  : { damageType: cause.damageType, ...(cause.burnedOut === true ? { burnedOut: true } : {}) });
+// A fire that ran its rounds: the GM's own cause {kind: "ignite", burnedOut: true}, which breaks the burning prop into
+// a charred wreck. It is nothing to do with spilled powder (igniteCheck): it names no area and only the GM makes it.
+export const burntOutCause = (cause) => cause?.kind === "ignite" && cause.burnedOut === true;
+// A spreading fire reached it: the GM's own {kind: "ignite", caught: true}, which breaks what catching breaks at
+// once instead of leaving it to smoulder (a powder keg goes off the round it catches). It breaks in its own style.
+export const caughtFireCause = (cause) => cause?.kind === "ignite" && cause.caught === true;
+// The two causes the round ticker makes: the GM's own word, with no placed area behind them and no scene to view.
+export const gmFireCause = (cause) => burntOutCause(cause) || caughtFireCause(cause);
 
 // A cause as sent over the socket: only its known fields, each well-formed.
 export function cleanCause(c) {
@@ -29,6 +40,8 @@ export function cleanCause(c) {
   if (typeof c.damageType === "string") out.damageType = c.damageType.slice(0, 40);
   if (Number.isFinite(c.slam?.size)) out.slam = { size: c.slam.size };
   if (typeof c.outcome === "string") out.outcome = c.outcome.slice(0, 40);
+  if (c.burnedOut === true) out.burnedOut = true;
+  if (c.caught === true) out.caught = true;
   if (finite(c.at)) out.at = { x: c.at.x, y: c.at.y };
   if (finite(c.path?.from) && finite(c.path?.to)) out.path = { from: { x: c.path.from.x, y: c.path.from.y }, to: { x: c.path.to.x, y: c.path.to.y } };
   for (const k of ["targetUuid", "moverUuid", "sourceId", "areaUuid", "messageId"]) if (typeof c[k] === "string") out[k] = c[k].slice(0, 200);
@@ -37,7 +50,7 @@ export function cleanCause(c) {
 
 // An area or ignite cause: the placed area it names holds the tile's centre, on the tile's level, and the sender may
 // name it (prop-areas.mjs). Null for any other cause.
-const areaWhy = (cause, tile, grid, ctx) => (cause.kind === "area" || cause.kind === "ignite"
+const areaWhy = (cause, tile, grid, ctx) => (cause.kind === "area" || (cause.kind === "ignite" && !gmFireCause(cause))
   ? areaCauseRefusal(cause, centre(tile), tile.levels, { area: ctx.area, sceneId: ctx.scene?.id, sender: ctx.sender, now: ctx.now, grid }) : null);
 
 // The cause has to fit where things stand on the GM's screen.
@@ -86,17 +99,24 @@ export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, se
   if (!sender) return no("sender");
   const cause = req?.cause ?? {}, gmBlast = cause.kind === "blast" && sender.isGM === true;
   if (cause.kind === "blast" && !gmBlast) return no("sender");
-  // the GM's blast may run on a scene the GM is not viewing (a player's break set it off)
-  if (!gmBlast && sender.viewedScene !== scene.id) return no("scene");
+  // A fire that burnt out is the GM's own ruling (the round ticker), never a requester's.
+  const burntOut = gmFireCause(cause);
+  if (burntOut && sender.isGM !== true) return no("sender");
+  // the GM's blast (and its round of fire) may run on a scene the GM is not viewing (a player's break set it off)
+  if (!gmBlast && !burntOut && sender.viewedScene !== scene.id) return no("scene");
   if (!tile) return no("missing");
-  if (cause.kind === "ignite") return igniteCheck(cause, tile, grid, { area, scene, sender, now });
+  if (cause.kind === "ignite" && !burntOut) return igniteCheck(cause, tile, grid, { area, scene, sender, now });
   if (propOf(tile).broken) return no("broken");
   if (tile.hidden) return no("hidden");
   if (!KINDS.includes(cause.kind)) return no("cause");
   // A prop that tips over is knocked down by a slam of any size (any path slam); damage still follows its material.
   const asked = breakCause(cause, mover), tips = cause.kind === "path" && tipsOver(tile, grid, asked);
   const traits = propTraits(tile, grid, scene);
-  if (!tips && !canBreak(propMaterial(tile, grid), asked, { cuttable: traits.cuttable, rule: traits.rule })) return no("material");
+  // With Fire spreads on, a fire area sets this alight instead of breaking it (fire-rounds areaCatch). It is still
+  // checked exactly as a break is (the note, the area it names, how far it is) before anything is written, and a
+  // thing that only catches by what it holds skips the material refusal: its own material is not what is burning.
+  const lit = areaCatch({ fireSpreads: own.fireSpreads === true, kind: cause.kind, damageType: cause.damageType, traits, fire: readFire(tile) });
+  if (!lit && !tips && !canBreak(propMaterial(tile, grid), asked, { cuttable: traits.cuttable, rule: traits.rule })) return no("material");
   const note = readNote(req.note);
   if (!note) return no("note");
   const mine = ownWalls(tile, walls, grid), ids = new Set(mine.map((w) => w.id));
@@ -106,6 +126,9 @@ export function validBreakRequest(req, { tile, walls = [], scene, grid = 100, se
   if (!plausible(cause, tile, grid, { target, mover, source, levels })) return no("far");
   const chance = Number(own.propMissChance ?? MISS_CHANCE); // a form may save it as text
   if (cause.kind === "miss" && !missBreaks(cause.outcome, Number.isFinite(chance) ? chance : MISS_CHANCE, roll)) return no("lucky");
+  // It catches instead of breaking: nothing of it is broken, no wall opened and no light put out. The fire is the
+  // whole write, and the round ticker takes it from there.
+  if (lit) return { ok: true, catches: true, fire: lit, note, wallUpdates: [], lightUpdates: [] };
   // The GM decides the walls and the lights: all of the tile's own walls open, the lit lights on it go out, and the note names them.
   // Lamp oil catches when the break is fire or put a lit light out (the GM's own judgement; a requester's fire is dropped).
   const out = traits.light ? lightsOfProp(tile, lights, grid, tile.levels) : [];
@@ -141,12 +164,13 @@ function igniteCheck(cause, tile, grid, ctx) {
 }
 
 // The requester's note: the tile's own walls, its larger side in squares, cut along the line from the cause.
-export function breakNoteFor({ tile, walls = [], grid = 100, cause = {}, seed, from, scene = {} }) {
+// `extra` is written into the note as it stands (the burnt-out time of a charred wreck, which only the GM knows).
+export function breakNoteFor({ tile, walls = [], grid = 100, cause = {}, seed, from, scene = {}, extra = {} }) {
   const c = centre(tile), at = finite(from) ? from : c;
   const style = breakStyle(propTraits(tile, grid, scene), cause);
   const look = breakLook({ material: propMaterial(tile, grid), shape: propShape(tile.texture?.src), damageType: cause.damageType, slam: cause.slam, style });
   return brokenNote({ seed, cutAngle: Math.atan2(c.y - at.y, c.x - at.x), look, from: at,
-    walls: ownWalls(tile, walls, grid).map((w) => w.id), size: Math.max(tile.width, tile.height) / grid, style });
+    walls: ownWalls(tile, walls, grid).map((w) => w.id), size: Math.max(tile.width, tile.height) / grid, style, extra });
 }
 
 const namedLights = (tile) => readNote(propOf(tile).broken)?.lights ?? [];
@@ -167,16 +191,19 @@ const regionOf = (tile) => readNote(propOf(tile).broken)?.region;
 const ownRegion = (tile, regions) => { const id = regionOf(tile); return id && (regions ?? []).some((r) => r?.id === id && r.flags?.animater?.propRubble === tile.id) ? [id] : []; };
 const ownNamedLights = (tile, lights, grid) => { const reach = new Set(lightsInReach(tile, lights, grid, tile.levels).map((l) => l.id)); return namedLights(tile).filter((id) => reach.has(id)); };
 export function undoUpdates(tile, walls, { tiles = [], grid = 100, lights = [], regions = [] } = {}) {
-  return { tile: { _id: tile.id, "flags.animater.prop.-=broken": null }, walls: restoreUpdates(wallsToRestore(tile, tiles, walls, grid)), lights: unhideLights(ownNamedLights(tile, lights, grid), lights),
+  return { tile: { _id: tile.id, "flags.animater.prop.-=broken": null, ...(propOf(tile).fire !== undefined ? { "flags.animater.prop.-=fire": null } : {}) }, walls: restoreUpdates(wallsToRestore(tile, tiles, walls, grid)), lights: unhideLights(ownNamedLights(tile, lights, grid), lights),
     deleteLights: firesOf(tile.id, lights), deleteRegions: ownRegion(tile, regions) };
 }
 
-// Every broken tile unhidden and cleared in one batch. No broken tile is left, so every opened wall comes back,
+// Every broken tile unhidden and cleared in one batch (and every tile with a fire put out, burning or not). No broken tile is left, so every opened wall comes back,
 // including any a deleted or copied tile left open. Every burning-oil light goes too, whoever's tile it was,
 // and every rubble region (orphans too).
 export function repairUpdates(tiles, walls, { lights = [], regions = [], grid = 100 } = {}) {
   const broken = (tiles ?? []).filter((t) => propOf(t).broken);
-  return { tiles: broken.map((t) => ({ _id: t.id, hidden: false, "flags.animater.prop.-=broken": null })), walls: restoreUpdates(walls ?? []), lights: unhideLights(broken.flatMap((t) => ownNamedLights(t, lights, grid)), lights),
+  // A fire is cleared whether or not the prop is broken: one burning right now (whole, smouldering or alight) is made whole too.
+  const burnt = (t) => propOf(t).fire !== undefined;
+  const fixed = (tiles ?? []).filter((t) => propOf(t).broken || burnt(t));
+  return { tiles: fixed.map((t) => ({ _id: t.id, ...(propOf(t).broken ? { hidden: false, "flags.animater.prop.-=broken": null } : {}), ...(burnt(t) ? { "flags.animater.prop.-=fire": null } : {}) })), walls: restoreUpdates(walls ?? []), lights: unhideLights(broken.flatMap((t) => ownNamedLights(t, lights, grid)), lights),
     deleteLights: allFires(lights), deleteRegions: (regions ?? []).filter((r) => r?.flags?.animater?.propRubble).map((r) => r.id) };
 }
 

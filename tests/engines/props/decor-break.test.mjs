@@ -190,3 +190,31 @@ test("the placements memo forgets a deleted region, and everything when the canv
   index.clear();
   assert.notEqual(index(r("B"), 100), b);
 });
+
+// ---- where a decoration stands, for anything placed on it (the live run's missing fire lights) ----
+import { decorKeyPlace, decorPlaceOf } from "../../../scripts/engines/props/decor-break.mjs";
+test("a key spells out a place", () => {
+  assert.deepEqual(decorKeyPlace("bush:412:907:1tkdhnn"), { x: 412, y: 907 });
+  assert.deepEqual(decorKeyPlace("crate:-300:-25:h"), { x: -300, y: -25 });
+  assert.equal(decorKeyPlace("crate:h"), null);
+  assert.equal(decorKeyPlace("crate:12.5:7:h"), null, "a key holds whole pixels");
+  assert.equal(decorKeyPlace(undefined), null);
+});
+test("a view's place: its placement first, then its key, then its box", () => {
+  const views = decorTargets([region({ canBreak: true })], grid, createDecorIndex()), one = views[0];
+  assert.deepEqual(decorPlaceOf(one), { x: one.decor.d.x, y: one.decor.d.y }, "the placement is the one true answer");
+  const lost = { ...one, decor: { ...one.decor, d: { kind: one.decor.kind } } };
+  assert.deepEqual(decorPlaceOf(lost), decorKeyPlace(one.decor.key), "its key stands in");
+  const noKey = { x: 200, y: 400, width: 100, height: 50, decor: { d: {}, key: "crate" } };
+  assert.deepEqual(decorPlaceOf(noKey), { x: 250, y: 425 }, "the middle of its box");
+  assert.equal(decorPlaceOf({ decor: { d: {}, key: "crate" } }), null, "nowhere is null, never NaN");
+  assert.equal(decorPlaceOf(null), null);
+});
+test("every decoration a region shows has a place", () => {
+  const views = decorTargets([region({ canBreak: true })], grid, createDecorIndex());
+  assert.ok(views.length);
+  for (const v of views) {
+    const at = decorPlaceOf(v);
+    assert.ok(at && Number.isFinite(at.x) && Number.isFinite(at.y), `${v.decor.key} stands somewhere`);
+  }
+});

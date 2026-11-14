@@ -21,8 +21,8 @@ import { createFragmentRenderer } from "./engines/fragments/fragment-render.mjs"
 import { createPropWreckage, WALL_GAP } from "./engines/props/prop-wreck.mjs";
 import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
-import { BURN_MS, burnLightData, fireTimers, unhideLights } from "./engines/props/prop-lights.mjs";
-import { propMaterial } from "./engines/props/prop-material.mjs";
+import { BURN_MS, burnLightData, fireTimers, unhideLights, firesOf } from "./engines/props/prop-lights.mjs";
+import { propMaterial, canBreak } from "./engines/props/prop-material.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls, blockingWalls, wallStop } from "./engines/props/prop-walls.mjs";
@@ -37,8 +37,12 @@ import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt
 import { DOOR_ATTACK_SYSTEMS, doorStats, doorCracked, doorHpLine, strikeReaches, strikeIdentifier, doorAttackOf, doorAttackCheck, doorAttackRoller, doorHitUpdate, strikeHasAmmo, pickDoorStamp } from "./engines/props/door-attack.mjs";
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
+import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsOf, dropLostDecorFire, regionBurns, createQuenchGate, quenchedBy, quenchUpdates, repairFireUpdates } from "./engines/props/fire-spread.mjs";
+import { areaRefusal } from "./engines/props/prop-areas.mjs";
+import { createFireLooks, warmEdges, charredCells, litCells } from "./engines/props/fire-looks.mjs";
+import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
-import { DECOR_BREAK_MESSAGE, DECOR_NAMES, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
+import { DECOR_BREAK_MESSAGE, DECOR_NAMES, decorPlaceOf, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
 import { bulkBreakableUpdates, windowLike } from "./engines/props/wall-break-bulk.mjs";
@@ -4613,7 +4617,7 @@ const outlinePanelRegion = (doc) => {
   g.eventMode = "none"; canvas.interface.addChild(g); panelOutline = g;
 };
 Hooks.on("canvasTearDown", () => { panelOutline = null; });
-const regionPanel = createRegionPanel({ brush: (doc) => startDecorBrush(doc), repairDecor: (doc) => repairDecorRegionAsk(doc), cliffWalls: { get: () => heightsSceneOn("walls"), set: (on) => void canvas.scene?.update({ [`flags.${ID}.cliffWalls`]: on }) }, addCrossing: (kind) => { startDecorBrush(); decorBrushing?.bar?.setCrossing?.(kind); }, cliffView: { get: () => (cliffsTopDown() ? "topdown" : "side"), set: (v) => void canvas.scene?.update({ [`flags.${ID}.cliffView`]: v === "topdown" ? "topdown" : "side" }) }, shows: outlinePanelRegion, flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]), configure: (doc) => doc.sheet?.render({ force: true }), remove: (doc) => doc.deleteDialog?.(), confirm: (text) => foundry.applications.api.DialogV2.confirm({ window: { title: "Animater: None" }, content: `<p>${foundry.utils.escapeHTML?.(text) ?? text}</p>`, rejectClose: false }).then((yes) => yes === true) });
+const regionPanel = createRegionPanel({ brush: (doc) => startDecorBrush(doc), repairDecor: (doc) => repairDecorRegionAsk(doc), cliffWalls: { get: () => heightsSceneOn("walls"), set: (on) => void canvas.scene?.update({ [`flags.${ID}.cliffWalls`]: on }) }, addCrossing: (kind) => { startDecorBrush(); decorBrushing?.bar?.setCrossing?.(kind); }, cliffView: { get: () => (cliffsTopDown() ? "topdown" : "side"), set: (v) => void canvas.scene?.update({ [`flags.${ID}.cliffView`]: v === "topdown" ? "topdown" : "side" }) }, shows: outlinePanelRegion, flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, fireSpreads: () => canvas.scene?.flags?.[ID]?.fireSpreads === true, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]), configure: (doc) => doc.sheet?.render({ force: true }), remove: (doc) => doc.deleteDialog?.(), confirm: (text) => foundry.applications.api.DialogV2.confirm({ window: { title: "Animater: None" }, content: `<p>${foundry.utils.escapeHTML?.(text) ?? text}</p>`, rejectClose: false }).then((yes) => yes === true) });
 Hooks.on("updateRegion", (doc, change) => { const flags = change?.flags?.[ID]; if (flags && "step" in flags) refreshStepsWindow(doc.id); });
 // With a region's panel open, a left-drag inside that region moves it: its outline follows the pointer, and on letting go the
 // region is moved by as much (its decorations, heights and crossings go with it, by their own hooks). Shift lays it off the grid.
@@ -9741,7 +9745,9 @@ const propWreckage = createPropWreckage({ PIXI: globalThis.PIXI, layer: () => ca
   fireRoot: () => (canvas?.ready ? torchLightRootOf() : null), fireSeen: fireSeenHere, fireLean: (key, at) => fireLeanAt(key, at.x, at.y),
   fireTongues: () => qualityRank(localQuality()) >= 2, fireForget: (key) => forgetFlame(key),
   // Its pieces, spills and burning oil stop short of the walls round it: the same walls on every screen.
-  wallsFor: (doc) => propStopWalls(doc) });
+  wallsFor: (doc) => propStopWalls(doc),
+  // A charred wreck's ember seams fade on the server's clock, so a reload picks the fade up where it stands.
+  now: () => fireNow() });
 const PROP_REFUSED_MS = 3000, PROP_LATE_MS = 30000;
 const propPending = new Map(), propWriting = new Set(); // broken on this screen, waiting on the GM; being written by the GM
 const propLate = new Map(); // shown again after PROP_REFUSED_MS: a GM write that still comes is drawn without playing again
@@ -9813,14 +9819,15 @@ function settlePropHere(id, refused) {
 }
 // Breaks a prop tile for a cause {kind: "area"|"miss"|"path", damageType?, slam?: {size}, outcome?, at?, targetUuid?, moverUuid?};
 // from: where the blow came from (the area's centre by default). True once it is asked of (or written by) the GM.
-async function requestPropBreak(tile, cause, { from } = {}) {
+// extra: fields written into the note as they stand (the time a fire burnt out, which only the GM knows).
+async function requestPropBreak(tile, cause, { from, extra } = {}) {
   const doc = tile?.document ?? tile, scene = doc?.parent;
   if (doc?.documentName !== "Tile" || scene?.flags?.[ID]?.breakableProps !== true) return false;
   const gm = game.users.activeGM;
   if (!gm) { if (!propNoGmTraced) { propNoGmTraced = true; runtime?.trace("props", "no GM connected"); } return false; }
   const clean = cleanCause(cause), grid = propGrid(scene), view = propTileView(doc), walls = scene.walls?.contents ?? [];
   const lights = sceneLights(scene);
-  const note = breakNoteFor({ tile: view, walls, grid, cause: clean, seed: Math.floor(Math.random() * 0x7fffffff), from: from ?? clean.at, scene });
+  const note = breakNoteFor({ tile: view, walls, grid, cause: clean, seed: Math.floor(Math.random() * 0x7fffffff), from: from ?? clean.at, scene, extra: extra ?? {} });
   if (gm.isSelf) return applyPropBreak(scene, doc, clean, note, game.user);
   // Checked here first, then again by the GM. A plain miss waits for the GM's roll; anything else shows at once.
   const here = validBreakRequest({ cause: clean, note }, { tile: view, walls, scene, grid, sender: game.user, lights, ...await propPlace(clean, scene, grid), ...areaPlace(clean, game.user), roll: 0 });
@@ -9829,7 +9836,8 @@ async function requestPropBreak(tile, cause, { from } = {}) {
   // changes an existing wreck's note: nothing to show here before the GM writes it. A powder keg shows here as the GM
   // will write it (exploded or spilled, its burst), so its explosion plays once, at once.
   const powder = here.note?.powder ? { powder: here.note.powder, burst: here.note.burst } : {};
-  if (scene === canvas?.scene && clean.kind !== "ignite" && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakPropHere(doc, { ...note, ...(here.fire ? { fire: true } : {}), ...powder });
+  // One that catches rather than breaks shows nothing here: the GM's write lights it on every screen at once.
+  if (scene === canvas?.scene && !here.catches && clean.kind !== "ignite" && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakPropHere(doc, { ...note, ...(here.fire ? { fire: true } : {}), ...powder });
   game.socket.emit(`module.${ID}`, { type: PROP_BREAK_MESSAGE, sender: clientId, sceneId: scene.id, tileId: doc.id, cause: clean, note });
   return true;
 }
@@ -9841,6 +9849,13 @@ async function applyPropBreak(scene, doc, cause, rawNote, user) {
     const check = validBreakRequest({ cause, note: rawNote }, { tile: propTileView(doc), walls, scene, grid, sender: user, lights: sceneLights(scene), ...await propPlace(cause, scene, grid),
       ...blastPlace(cause, scene), ...areaPlace(cause, user), roll: Math.random() });
     if (!check.ok) { runtime?.trace("props", `not broken: ${check.why}`); return false; }
+    // Caught fire instead of breaking (Fire spreads, a fire area): the heat is the whole write, its flames are lit,
+    // and the round ticker counts it down from here.
+    if (check.catches) {
+      await doc.update({ [`flags.${ID}.prop.fire`]: check.fire }, { animater: { propFire: true } });
+      await lightPropFire(scene, doc).catch((e) => runtime?.trace("props", `fire light: ${e?.message ?? e}`));
+      return true;
+    }
     // Spilled powder set off by a fire area: only its note changes (the wreck is already there), then its blast.
     if (check.ignite) {
       await doc.update({ [`flags.${ID}.prop.broken`]: check.note }, { animater: { propIgnite: true } });
@@ -9965,6 +9980,18 @@ function timePropFire(scene, id, tileId, ms) {
   clearTimeout(propFires.get(id)?.timer);
   propFires.set(id, { tileId, timer: setTimeout(() => { propFires.delete(id); if (game.users.activeGM?.isSelf) void deletePropFires(scene, [id]); }, Math.max(0, ms)) });
 }
+// A fire light is never asked for at a place that is not one: a light with a bad x or y is refused by the document and
+// would be asked for again every round for as long as the thing burns, which fills the console and lights nothing.
+// Each thing says so once (`fireLightNowhere`, by the id the light would have carried) and is then left alone.
+const fireLightNowhere = new Set();
+async function makeFireLight(scene, data, what) {
+  if (!Number.isFinite(data?.x) || !Number.isFinite(data?.y)) {
+    if (!fireLightNowhere.has(what)) { fireLightNowhere.add(what); runtime?.trace("props", `fire light has nowhere to go: ${what}`); }
+    return null;
+  }
+  const [light] = await scene.createEmbeddedDocuments("AmbientLight", [data]).catch((e) => { runtime?.trace("props", `fire light not made: ${e?.message ?? e}`); return []; });
+  return light ?? null;
+}
 async function lightPropFire(scene, doc) {
   // On the burning patch (where the spill stopped, walls and all), as every screen lays it out from the note.
   const r = tileRect(doc), centre = { x: r.x + r.width / 2, y: r.y + r.height / 2 }, note = readNote(doc.flags?.[ID]?.prop?.broken);
@@ -9975,7 +10002,7 @@ async function lightPropFire(scene, doc) {
   } catch { at = centre; }
   const data = burnLightData({ centre: at, distance: Number(scene.grid?.distance) || 5,
     levels: [...(doc.levels ?? [])], elevation: Number(doc.elevation) || 0, tileId: doc.id, now: fireNow() });
-  const [light] = await scene.createEmbeddedDocuments("AmbientLight", [data]).catch((e) => { runtime?.trace("props", `fire light not made: ${e?.message ?? e}`); return []; });
+  const light = await makeFireLight(scene, data, doc.id);
   if (light) timePropFire(scene, light.id, doc.id, BURN_MS);
 }
 function sweepPropFires(scenes) {
@@ -10001,6 +10028,471 @@ const propFireHandover = () => setTimeout(() => {
 Hooks.once("ready", () => { propFireGm = !!game.users?.activeGM?.isSelf; });
 Hooks.on("userConnected", propFireHandover);
 Hooks.on("updateUser", (user, changes) => { if ("role" in (changes ?? {})) propFireHandover(); });
+// Fire that spreads (engines/props/fire-spread.mjs and fire-rounds.mjs): with Breakable props and Fire spreads on, a
+// burning prop heats what stands beside it round by round until that catches too, and fire runs through the grass of a
+// region that burns. Only the active GM runs the rounds and writes them; every other screen draws what is written.
+// A round comes from the combat tracker while a combat runs, else from the clock (FIRE_PERIOD), read from the server's
+// time so two GMs agree. Each fire's state lives on its own document (a tile's flags.animater.prop.fire, a region's
+// decorFire by decoration key and fireCells by grass square), so a reload keeps every fire's count and the sweep that
+// already runs on ready re-times its light.
+const fireLast = new Map(); // scene id -> { round, at }: the round (or the time) that scene's fire last ran on
+const fireWarned = new Set(); // "<scene id>:<thing id>": the GM has already been whispered about this one
+const fireGrass = new Map(); // region id -> the grass squares laid out for it, kept while its shape and the grid hold
+const fireRunning = new Set(); // scene ids whose round is still being written
+let fireTimer = 0;
+// The combat a scene's rounds come from: one that has begun, on that scene or on no scene at all.
+const fireCombatOf = (scene) => (game.combats?.contents ?? []).find((c) => c.started === true && (!c.scene || c.scene.id === scene.id)) ?? null;
+// The wind the fire reads: the sky's own, out of doors only where this screen can tell there is no ceiling over the
+// fire (underCeiling answers for the viewed scene alone; another scene's fire burns windless rather than guessing).
+function fireWindOf(scene, at) {
+  const strength = Number(skyWindNow) || 0;
+  if (!(strength > 0) || !at || scene?.id !== canvas?.scene?.id) return null;
+  let outdoor = false;
+  try { outdoor = !underCeiling(at); } catch { outdoor = false; }
+  return { outdoor, angle: Number(skyWindAngle) || 0, strength };
+}
+const fireRect = (v) => ({ x: v.x, y: v.y, w: v.width, h: v.height });
+const fireMid = (rect) => ({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 });
+// A word to the GMs alone; never a change to any creature.
+const whisperGMs = (line) => ChatMessage.create({ whisper: game.users.filter((u) => u.isGM).map((u) => u.id), speaker: { alias: "Animater" }, content: `<p>${line}</p>` })
+  .catch((e) => runtime?.trace("props", `fire whisper: ${e?.message ?? e}`));
+// Burnt ground where a fire ended on something it could not break: the same mark a fire area leaves (areaMark),
+// landed here and sent to every screen, as a placed area's mark is.
+function fireScorch(scene, at, size) {
+  const viewed = scene?.id === canvas?.scene?.id;
+  const tag = areaMark({ type: "circle", center: at, diameter: Math.max(Number(size) || 0, propGrid(scene)) },
+    { element: "fire", sceneId: scene?.id, level: viewed ? canvas?.level?.id : undefined, seed: Math.floor(Math.random() * 2 ** 32) });
+  if (!tag) return;
+  if (viewed) propSafe("fire scorch", () => markLayer.land(tag));
+  game.socket?.emit(`module.${ID}`, { type: AREA_MARK_MESSAGE, tag, sender: clientId });
+}
+// A region as the fire reads it: its live decoration keys with the fire they carry (stale keys dropped), and whether
+// fire runs through its grass (its own Burns toggle, else its floor).
+function fireRegionsOf(scene, grid) {
+  const out = [];
+  for (const doc of scene.regions?.contents ?? []) {
+    const region = propSafe("fire region", () => decorRegionOf(doc));
+    const keys = region ? propSafe("fire region keys", () => [...decorIndex(region, grid).keys]) ?? [] : [];
+    out.push({ id: doc.id, doc, keys, levels: [...(doc.levels ?? [])], flags: doc.flags ?? {},
+      decorFire: dropLostDecorFire(decorFireOf(doc), keys), burns: regionBurns(doc.flags?.[ID] ?? {}, propSafe("fire floor", () => plainFloorOf(doc))) });
+  }
+  return out;
+}
+// A region's grass squares (fire-rounds grassCells), laid out once and kept while its shape and the grid hold: the
+// index of a square is the key its fire is saved under, so the grid must line up again every time it is rebuilt.
+function fireGrassOf(doc, cell) {
+  const areas = propSafe("fire grass", () => regionAreas(doc)) ?? [];
+  if (!areas.length) return null;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const a of areas) for (let i = 0; i + 1 < a.length; i += 2) { x0 = Math.min(x0, a[i]); x1 = Math.max(x1, a[i]); y0 = Math.min(y0, a[i + 1]); y1 = Math.max(y1, a[i + 1]); }
+  if (!(x1 > x0) || !(y1 > y0)) return null;
+  const stamp = `${cell}|${x0}|${y0}|${x1}|${y1}|${areas.length}`, kept = fireGrass.get(doc.id);
+  if (kept?.stamp === stamp) return kept;
+  const inside = (p) => areas.some((a) => pointInPolygon(p, a) && !(a.holes ?? []).some((h) => pointInPolygon(p, h)));
+  const laid = { stamp, ...grassCells({ bounds: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, cell, inside }) };
+  fireGrass.set(doc.id, laid);
+  return laid;
+}
+// Everything on the scene a fire can take: its prop tiles (not broken, not hidden) and its painted decorations, each
+// with what it is made of and the fire it carries now. A decoration is named by its own key, as its region saves it.
+function fireThingsOf(scene, grid, regions) {
+  const things = [], tiles = [], docs = new Map(), decor = new Map(), byRegion = new Map(regions.map((r) => [r.id, r]));
+  for (const doc of scene.tiles?.contents ?? []) {
+    if (doc.hidden === true || doc.flags?.[ID]?.prop?.broken) continue;
+    const view = propTileView(doc);
+    tiles.push({ id: doc.id });
+    docs.set(doc.id, doc);
+    things.push({ id: doc.id, kind: "tile", rect: fireRect(view), levels: [...(doc.levels ?? [])], traits: propTraits(view, grid, scene), fire: readFire(doc), name: doc.name || "prop" });
+  }
+  for (const view of propSafe("fire decorations", () => decorViews(scene, null)) ?? []) {
+    const region = byRegion.get(view.decor?.regionId), key = view.decor?.key;
+    if (!region || typeof key !== "string" || decor.has(key)) continue;
+    decor.set(key, view);
+    things.push({ id: key, kind: "decor", rect: fireRect(view), levels: [...(view.levels ?? [])], traits: propTraits(view, grid, scene), fire: readFire(region.decorFire[key]), name: DECOR_NAMES[view.decor.d.kind] || "decoration" });
+  }
+  return { things, tiles, docs, decor };
+}
+// Broken props whose spilled lamp oil is still burning: by the rules a burning lamp-oil spill IS a burning prop, so
+// it heats what stands beside it and sets the grass round it going. It is only ever a source: the prop is already
+// wrecked, so nothing heats it, nothing catches on it and the round never counts it down — its own minute (BURN_MS,
+// the fire light's `until`) is what ends it. Read from the fire lights the GM already keeps, so a scene with none
+// costs a walk over its lights and nothing else.
+function fireSpillsOf(scene, lights) {
+  const out = [], seen = new Set();
+  for (const { tileId } of fireTimers(lights, fireNow()).later) {
+    if (typeof tileId !== "string" || seen.has(tileId)) continue;
+    seen.add(tileId);
+    const doc = scene.tiles?.get(tileId);
+    if (!doc || doc.hidden === true || !doc.flags?.[ID]?.prop?.broken) continue;
+    const view = propSafe("fire spill", () => propTileView(doc));
+    if (view) out.push({ id: `spill:${tileId}`, rect: fireRect(view), levels: [...(doc.levels ?? [])] });
+  }
+  return out;
+}
+// One round of fire on one scene (the active GM alone). Nothing is burning: the stored fires are looked over
+// (fireAwake: the tiles' own flags, the regions' decorations and grass, the burning spills) and the round stops
+// there — no decoration views, no prop traits, no grass grids and no writes. Every scene that is switched on is
+// looked at every few seconds for as long as the world runs, so that look must stay this cheap.
+async function fireRound(scene) {
+  if (!game.users.activeGM?.isSelf || !propsOn(scene)) return;
+  const lights = sceneLights(scene), spills = fireSpillsOf(scene, lights);
+  if (!fireAwake({ tiles: scene.tiles?.contents ?? [], regions: scene.regions?.contents ?? [], spills: spills.length })) return;
+  const grid = propGrid(scene), regions = fireRegionsOf(scene, grid);
+  const { things, tiles, docs, decor } = fireThingsOf(scene, grid, regions);
+  const alight = things.filter((t) => t.fire?.burning);
+  const grassLit = regions.some((r) => Object.values(fireCellsOf(r.doc)).some((c) => c?.burning === true && c?.charred !== true));
+  if (!alight.length && !grassLit && !spills.length) return;
+  const walls = blockingWalls((scene.walls?.contents ?? []).map(wallView));
+  // The grass of every region that burns, each on its own grid, with the fire it has saved.
+  for (const r of regions) {
+    r.grass = r.burns ? fireGrassOf(r.doc, grid) : null;
+    if (!r.grass) { r.cells = []; r.squares = []; continue; }
+    const saved = fireCellsOf(r.doc);
+    r.cells = r.grass.indices;
+    r.squares = r.grass.indices.map((i) => ({ i, id: `cell:${r.id}:${i}`, levels: r.levels, ...(saved[String(i)] ?? {}) }));
+  }
+  const squareRect = (r, i) => ({ x: r.grass.origin.x + (i % r.grass.cols) * grid, y: r.grass.origin.y + Math.floor(i / r.grass.cols) * grid, w: grid, h: grid });
+  // Every burning grass square of the scene, as one source list for the props: each named by its own id (never by a
+  // bare index, which means something different in every region) and placed on a grid wide enough to hold them all.
+  const litSquares = regions.flatMap((r) => (r.grass ? r.squares.filter((c) => c.burning && !c.charred).map((c) => ({ ...c, rect: squareRect(r, c.i) })) : []));
+  const sceneCols = Math.max(1, ...litSquares.map((c) => Math.floor(c.rect.x / grid) + 1));
+  const sceneCells = litSquares.map((c) => ({ i: Math.floor(c.rect.y / grid) * sceneCols + Math.floor(c.rect.x / grid), id: c.id, levels: c.levels, burning: true }));
+  // The wind where the fire is: at a burning prop, else at a burning oil spill, else at a burning grass square (a
+  // field with no props on it at all is a fire all the same), else nowhere, which is no wind.
+  const first = alight[0]?.rect ?? spills[0]?.rect ?? litSquares[0]?.rect ?? null;
+  const wind = fireWindOf(scene, first ? fireMid(first) : null);
+  // Which sources a wall cuts each thing off from (prop to prop, grass to prop, prop to grass and grass to grass).
+  const sources = [...alight.map((t) => ({ id: t.id, rect: t.rect })), ...spills.map((s) => ({ id: s.id, rect: s.rect })), ...litSquares.map((c) => ({ id: c.id, rect: c.rect }))];
+  const propBlocked = blockedLists({ targets: things.map((t) => ({ key: t.id, rect: t.rect })), sources, walls, reach: grid });
+  for (const t of things) t.blocked = propBlocked.get(t.id) ?? [];
+  for (const r of regions) {
+    if (!r.grass) continue;
+    const own = blockedLists({ targets: r.squares.map((c) => ({ key: c.id, rect: squareRect(r, c.i) })), sources, walls, reach: grid });
+    for (const c of r.squares) c.blocked = own.get(c.id) ?? [];
+  }
+  const step = spreadStep({ things, wind, grid, cells: sceneCells, cols: sceneCols, origin: { x: 0, y: 0 }, cell: grid, spills });
+  const cellSteps = {};
+  for (const r of regions) if (r.grass) cellSteps[r.id] = cellStep({ cells: r.squares, things, spills, cols: r.grass.cols, rows: r.grass.rows, origin: r.grass.origin, cell: grid, wind });
+  const updates = fireUpdatesFor(step, { tiles, cellSteps, regions: regions.map((r) => ({ id: r.id, keys: r.keys, cells: r.cells ?? [], flags: r.flags })) });
+  const del = propDel();
+  if (updates.tiles.length) await scene.updateEmbeddedDocuments("Tile", updates.tiles.map((u) => withDeletes(u, del)), { animater: { propFire: true } })
+    .catch((e) => runtime?.trace("props", `fire not written: ${e?.message ?? e}`));
+  if (updates.regions.length) await scene.updateEmbeddedDocuments("Region", updates.regions.map((u) => withDeletes(u, del)), { animater: { propFire: true } })
+    .catch((e) => runtime?.trace("props", `region fire not written: ${e?.message ?? e}`));
+  const byId = new Map(things.map((t) => [t.id, t]));
+  const burnedAt = fireNow();
+  const lightThing = (thing) => (thing.kind === "tile"
+    ? (docs.get(thing.id) ? lightPropFire(scene, docs.get(thing.id)) : Promise.resolve())
+    : (decor.get(thing.id) ? lightDecorFire(scene, decor.get(thing.id), null) : Promise.resolve())).catch((e) => runtime?.trace("props", `fire light: ${e?.message ?? e}`));
+  const lightIdOf = (thing) => (thing.kind === "tile" ? thing.id : decor.get(thing.id)?.id);
+  // What caught this round is alight: its own fire light, as a broken lamp's burning oil has one. One still burning
+  // whose light has gone out (a round longer than a light's minute, or a sweep that put a stale one out) is lit again,
+  // so the flames last exactly as long as the fire does.
+  // Black powder is the exception: a keg the fire reaches goes off the round it catches, it does not sit and burn.
+  for (const id of step.caught) {
+    const thing = byId.get(id);
+    if (!thing) continue;
+    if (thing.traits?.contents === "powder") {
+      const at = fireMid(thing.rect), cause = { kind: "ignite", damageType: "fire", caught: true, at };
+      if (thing.kind === "tile") {
+        await askProp(scene, id, cause, at);
+        await scene.updateEmbeddedDocuments("Tile", [withDeletes({ _id: id, "flags.animater.prop.-=fire": null }, del)]).catch((e) => runtime?.trace("props", `keg fire not cleared: ${e?.message ?? e}`));
+      } else if (decor.get(id)) {
+        await askDecor(scene, decor.get(id), cause, at);
+        await scene.updateEmbeddedDocuments("Region", [withDeletes({ _id: decor.get(id).decor.regionId, [`flags.animater.decorFire.-=${id}`]: null }, del)]).catch((e) => runtime?.trace("props", `keg fire not cleared: ${e?.message ?? e}`));
+      }
+      continue;
+    }
+    await lightThing(thing);
+  }
+  for (const { id } of step.burning) {
+    const thing = byId.get(id), lightOf = thing ? lightIdOf(thing) : null;
+    if (thing && lightOf && !firesOf(lightOf, lights).length) await lightThing(thing);
+  }
+  // What ran out of rounds goes: its light out, its timer forgotten, and the prop itself broken into a charred wreck
+  // (the note carries the time it burnt out, so its ember seams go on fading from there after a reload).
+  for (const id of step.out) {
+    const thing = byId.get(id);
+    if (!thing) continue;
+    const at = fireMid(thing.rect), cause = { kind: "ignite", damageType: "fire", burnedOut: true, at };
+    const lightOf = lightIdOf(thing);
+    forgetPropFire(lightOf);
+    const out = firesOf(lightOf, lights);
+    if (out.length) await deletePropFires(scene, out);
+    fireWarned.delete(`${scene.id}:${id}`);
+    const broke = thing.kind === "tile" ? await askProp(scene, id, cause, at, { burnedAt })
+      : decor.get(id) ? await askDecor(scene, decor.get(id), cause, at, { burnedAt }) : false;
+    // Nothing the flames could break (a stone chest whose books burned): the fire still ends where every screen can
+    // see it, with the burnt ground a fire area leaves and a word to the GMs, instead of just going out in silence.
+    // Only that case: any other refusal (one already wrecked, one gone) is none of the fire's business and is silent.
+    const canChar = canBreak(thing.traits?.material, { damageType: "fire", burnedOut: true }, { cuttable: thing.traits?.cuttable, rule: thing.traits?.rule });
+    if (broke !== true && !canChar) {
+      fireScorch(scene, at, Math.max(thing.rect.w, thing.rect.h));
+      await whisperGMs(fireBurnedOut(thing.name));
+    }
+  }
+  // The GMs are told once about each thing that starts to smoulder; nothing is ever done to a creature.
+  for (const id of step.warn) {
+    const mark = `${scene.id}:${id}`;
+    if (fireWarned.has(mark)) continue;
+    fireWarned.add(mark);
+    await whisperGMs(fireWarning(byId.get(id)?.name));
+  }
+  // Cooled right down or gone: it may be warned about again.
+  for (const t of things) if (!t.fire && !step.heat.some((h) => h.id === t.id)) fireWarned.delete(`${scene.id}:${t.id}`);
+}
+// The ticker: every scene with both switches on, each keeping its own count, on the active GM alone.
+async function fireRoundsNow() {
+  if (!game.users?.activeGM?.isSelf) return;
+  const now = fireNow();
+  for (const scene of fireScenesOf(game.scenes?.contents ?? [], { activeGM: true })) {
+    if (fireRunning.has(scene.id)) continue;
+    const combat = fireCombatOf(scene), last = fireLast.get(scene.id) ?? null;
+    // Not followed yet (this screen just loaded, or just became the active GM, or the scene was only now switched
+    // on): the count is seeded where it stands and nothing is run, so a reload or a handover never costs a round.
+    if (!last) { fireLast.set(scene.id, fireNextLast({ combat, now })); continue; }
+    if (!fireRoundDue({ combat, now, last, period: FIRE_PERIOD })) continue;
+    // The round is remembered only while that combat runs; out of combat it is forgotten, so the next combat's
+    // round 1 is a round of its own and not one already run.
+    fireLast.set(scene.id, fireNextLast({ combat, now }));
+    fireRunning.add(scene.id);
+    try { await fireRound(scene); } catch (e) { runtime?.trace("props", `fire round: ${e?.message ?? e}`); }
+    finally { fireRunning.delete(scene.id); }
+  }
+}
+const fireTick = () => { void fireRoundsNow().catch((e) => runtime?.trace("props", `fire tick: ${e?.message ?? e}`)); };
+// A new round in the tracker runs one at once; out of combat the clock does, looked at every second so a round is
+// never late by more than that.
+Hooks.on("updateCombat", (combat, changes) => { if ("round" in (changes ?? {})) fireTick(); });
+Hooks.once("ready", () => { clearInterval(fireTimer); fireTimer = setInterval(fireTick, Math.max(500, FIRE_PERIOD / 6)); });
+// A combat beginning or ending anywhere: every scene is re-seeded from its OWN combat (fireReseed), so the scene
+// whose combat ended forgets that count and the clock takes over, while a scene in the middle of its own combat
+// keeps the round it stands on and is given no free round.
+const fireReseedRounds = () => {
+  const next = fireReseed(fireLast, { combatOf: (id) => { const scene = game.scenes?.get(id); return scene ? fireCombatOf(scene) : null; }, now: fireNow() });
+  for (const [id, last] of next) fireLast.set(id, last);
+};
+Hooks.on("combatStart", fireReseedRounds);
+Hooks.on("deleteCombat", fireReseedRounds);
+// What the fire leaves on the viewed map, for everyone (engines/props/fire-looks.mjs): the pulsing edge of anything
+// about to catch, and the scorched ground where grass has burnt out. Both are read from what the GM wrote on the
+// documents, so every screen shows the same, and both go when Repair clears the fires.
+// The edges are drawn over the decorations (657); the scorch lies on the floor (412, under the tiles at 500), so
+// burnt ground never paints over a prop standing on that square. The pulse is read from the server's clock.
+const fireLooks = createFireLooks({ PIXI: globalThis.PIXI, layer: floorLayer("fireLooks", 657), floor: floorLayer("fireScorch", 412),
+  grid: () => canvas?.grid?.size ?? 100, now: () => fireNow() });
+let fireLooksTimer = 0;
+// The square a burning decoration's warm edge is drawn round: the box it was dressed in while that is a box, else one
+// its own place makes, as wide as the view says or a square. Null when it stands nowhere: nothing is drawn at NaN.
+function decorEdgeRect(view) {
+  const w = Number(view?.width), h = Number(view?.height);
+  if (Number.isFinite(view?.x) && Number.isFinite(view?.y) && w > 0 && h > 0) return { x: view.x, y: view.y, w, h };
+  const at = decorPlaceOf(view), grid = propGrid(canvas?.scene);
+  if (!at) return null;
+  const wide = w > 0 ? w : grid, tall = h > 0 ? h : grid;
+  return { x: at.x - wide / 2, y: at.y - tall / 2, w: wide, h: tall };
+}
+function syncFireLooksNow() {
+  if (!canvas?.ready) return;
+  const scene = canvas.scene;
+  if (!scene || !propsOn(scene) || scene.flags?.[ID]?.fireSpreads !== true) { fireLooks.clear(); return; }
+  const grid = propGrid(scene), level = canvas?.level?.id, edges = [], flames = [], scorch = [];
+  const here = (levels) => onLevel(levels, level);
+  const rects = new Map();
+  const things = [];
+  for (const doc of scene.tiles?.contents ?? []) {
+    if (doc.hidden === true || doc.flags?.[ID]?.prop?.broken || !here(doc.levels)) continue;
+    const r = tileRect(doc);
+    rects.set(doc.id, { rect: { x: r.x, y: r.y, w: r.width, h: r.height }, rotation: doc.rotation ?? 0 });
+    things.push({ id: doc.id, fire: readFire(doc) });
+  }
+  for (const doc of scene.regions?.contents ?? []) {
+    if (!here(doc.levels)) continue;
+    // Decorations about to catch: their region's decorFire, by key, through the accessor.
+    const stored = decorFireOf(doc);
+    if (Object.keys(stored).length) {
+      const region = propSafe("fire looks region", () => decorRegionOf(doc));
+      for (const view of (region ? propSafe("fire looks views", () => decorIndex(region, grid).views) ?? [] : [])) {
+        const saved = stored[view.decor.key];
+        if (!saved) continue;
+        // The box its edge is drawn round: the view's own, else one its place (decorPlaceOf) makes; no place, no edge.
+        const rect = decorEdgeRect(view);
+        if (!rect) continue;
+        rects.set(view.decor.key, { rect, rotation: 0 });
+        things.push({ id: view.decor.key, fire: saved });
+      }
+    }
+    // Grass with fire on it: squares alight show their flames, squares only warming show the same ember edge a prop
+    // about to catch shows, and squares that have burnt out are scorched ground. All three stand on the very squares
+    // the rounds named, laid out on the same grid, so a mark never sits a square out.
+    const savedCells = fireCellsOf(doc), burnt = charredCells(savedCells), going = litCells(savedCells);
+    if (!burnt.length && !going.length) continue;
+    const laid = fireGrassOf(doc, grid);
+    if (!laid?.cols) continue;
+    const square = (i) => ({ x: laid.origin.x + (i % laid.cols) * grid, y: laid.origin.y + Math.floor(i / laid.cols) * grid, w: grid, h: grid });
+    const cellSeed = (i) => (i + 1) * 2654435761 % 0xffffffff;
+    for (const i of burnt) scorch.push({ id: `${doc.id}:${i}`, seed: cellSeed(i), rect: square(i) });
+    for (const c of going) {
+      if (c.burning) flames.push({ id: `${doc.id}:${c.i}`, seed: cellSeed(c.i), rect: square(c.i) });
+      else edges.push({ id: `${doc.id}:${c.i}`, heat: c.heat, rotation: 0, rect: square(c.i) });
+    }
+  }
+  for (const warm of warmEdges(things)) { const at = rects.get(warm.id); if (at) edges.push({ id: warm.id, heat: warm.heat, ...at }); }
+  fireLooks.sync({ edges, flames, scorch });
+}
+const syncFireLooks = () => { clearTimeout(fireLooksTimer); fireLooksTimer = setTimeout(() => propSafe("fire looks", syncFireLooksNow), 60); };
+for (const hook of ["canvasReady", "createTile", "updateTile", "deleteTile", "updateRegion", "createRegion", "deleteRegion", "updateScene"])
+  Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) syncFireLooks(); });
+Hooks.on("canvasTearDown", () => { clearTimeout(fireLooksTimer); fireLooks.clear(); });
+// A region repainted, reshaped or moved: its grass grid is laid out again next round, and its burning squares go
+// with the old grid. A square is saved by its index on the grid the shape had, so the same index names a different
+// patch of ground once the shape moves — keeping them would have the fire jump across the map on its own. The
+// active GM drops them (nobody else writes), and the grass is simply unburnt again where the region now lies.
+Hooks.on("updateRegion", (doc, changes) => {
+  if (!("shapes" in (changes ?? {})) && !("levels" in (changes ?? {}))) return;
+  fireGrass.delete(doc.id);
+  if (!game.users?.activeGM?.isSelf || !Object.keys(fireCellsOf(doc)).length) return;
+  void doc.update({ "flags.animater.-=fireCells": null }, { animater: { propFire: true } })
+    .catch((e) => runtime?.trace("props", `moved grass fire not dropped: ${e?.message ?? e}`));
+});
+Hooks.on("deleteRegion", (doc) => { fireGrass.delete(doc.id); });
+// A fire area setting the grass alight (engines/props/fire-rounds.mjs areaCellsLit). A fire area already sets every
+// flammable prop it covers alight instead of breaking it (areaCatch); this is the same thing for the ground, so a
+// fireball on an open meadow starts a grass fire with never a prop in sight. The screen that sees the area asks the
+// active GM once for the area (claimed, as a break and a quench are), who re-derives the area from its own copy —
+// who placed it, that its spell really deals fire, its age, its scene, its levels and its shape, square by square —
+// and writes. Only regions whose ground burns, only with Fire spreads on, and nothing is broken or damaged by it.
+const GRASS_FIRE_MESSAGE = "prop-grass-fire";
+// One ask per scene and area at a time, so a sustained flame cannot make the GM walk the grass over and over.
+const grassFireGate = createQuenchGate();
+// What this area's fire would light in the grass, on this screen's documents: every region that burns, laid out on
+// the very grid the rounds use (fireGrassOf), each square tested by the area's own shape.
+function grassCatchOf(scene, area) {
+  const grid = propGrid(scene), regions = [];
+  for (const doc of scene.regions?.contents ?? []) {
+    if (!regionBurns(doc.flags?.[ID] ?? {}, propSafe("grass fire floor", () => plainFloorOf(doc)))) continue;
+    const laid = fireGrassOf(doc, grid);
+    if (!laid?.cols || !laid.indices?.length) continue;
+    const saved = fireCellsOf(doc);
+    regions.push({ id: doc.id, burns: true, levels: [...(doc.levels ?? [])], cells: laid.indices.map((i) => ({ i, saved: saved[String(i)] ?? null,
+      point: { x: laid.origin.x + (i % laid.cols) * grid + grid / 2, y: laid.origin.y + Math.floor(i / laid.cols) * grid + grid / 2 } })) });
+  }
+  return areaCellsLit({ regions: tilesOnLevel(regions, area.levels), inArea: area.testPoint, fireSpreads: true, kind: "area", damageType: "fire" });
+}
+async function applyGrassCatch(scene, cause, user) {
+  if (!game.users.activeGM?.isSelf || !scene || !propsOn(scene) || scene.flags?.[ID]?.fireSpreads !== true) return false;
+  // messageId: the damage roll, for a spell whose item names no damage type (the GM reads the types off it itself).
+  const full = { kind: "area", damageType: "fire", areaUuid: cause?.areaUuid, ...(typeof cause?.messageId === "string" ? { messageId: cause.messageId } : {}) };
+  const { area, now } = areaPlace(full, user);
+  // The shape is asked square by square below; every other check (placer, the spell's own damage types, age, scene) is the break's.
+  const refused = areaRefusal(area ? { ...area, testPoint: () => true } : area, { cause: full, sceneId: scene.id, sender: user, point: { x: 0, y: 0 }, levels: area?.levels, now });
+  if (refused) { runtime?.trace("props", `grass not lit: ${refused}`); return false; }
+  return grassFireGate.run(`${scene.id}:${area.uuid}`, () => grassCatchWrite(scene, area));
+}
+async function grassCatchWrite(scene, area) {
+  // A fire round still writing holds the same flags: let it finish first, as a quench does.
+  for (let i = 0; i < 100 && fireRunning.has(scene.id); i++) await new Promise((done) => setTimeout(done, 50));
+  const lit = propSafe("grass fire", () => grassCatchOf(scene, area)) ?? { regions: [], lit: [] };
+  if (!lit.lit.length) return false;
+  await scene.updateEmbeddedDocuments("Region", lit.regions.map((u) => withDeletes(u, propDel())), { animater: { propFire: true } })
+    .catch((e) => runtime?.trace("props", `grass fire not written: ${e?.message ?? e}`));
+  return true;
+}
+// True once asked of (or started by) the GM; false with none connected.
+function askGrassCatch(area, messageId) {
+  const scene = area?.scene, gm = game.users.activeGM;
+  if (!scene || !gm) return false;
+  const cause = { areaUuid: area.templateId, ...(typeof messageId === "string" ? { messageId } : {}) };
+  if (gm.isSelf) { void applyGrassCatch(scene, cause, game.user).catch((e) => runtime?.trace("props", `grass fire: ${e?.message ?? e}`)); return true; }
+  game.socket.emit(`module.${ID}`, { type: GRASS_FIRE_MESSAGE, sender: clientId, sceneId: scene.id, cause });
+  return true;
+}
+async function receiveGrassCatch(data, senderId) {
+  if (data?.type !== GRASS_FIRE_MESSAGE || !game.users.activeGM?.isSelf) return;
+  const user = senderId ? game.users.get(senderId) : null, scene = game.scenes.get(String(data.sceneId ?? ""));
+  if (!user || !scene || typeof data.cause?.areaUuid !== "string") return;
+  await applyGrassCatch(scene, { areaUuid: data.cause.areaUuid, messageId: typeof data.cause.messageId === "string" ? data.cause.messageId : undefined }, user);
+}
+// Water and cold putting fires out (engines/props/fire-spread.mjs quenchUpdates). An area whose spell deals a quenching
+// damage type puts out every fire inside it: a prop's, a decoration's and a grass square's flags are cleared and their fire
+// lights deleted. The screen that sees the area asks the active GM (one ask per area, claimed), who checks the area as its
+// own copy holds it (who placed it, its spell's damage types, its age, its scene) exactly as for a break, then writes.
+// Nothing is broken and no creature is touched. A charred square stays charred.
+const QUENCH_MESSAGE = "prop-quench";
+// A quench in flight, by scene and area (fire-spread.mjs quenchGate): a second ask for the same area joins it, so a flood
+// cannot make the GM scan the scene over and over, while another area's ask (two spells in a row) runs on its own.
+const quenchGate = createQuenchGate();
+// What the area's quenching would put out on this screen's documents (quenchUpdates): the fires inside it, as they stand.
+function quenchPutOf(scene, area) {
+  const grid = propGrid(scene), things = [], mid = (view) => fireMid(fireRect(view));
+  for (const doc of scene.tiles?.contents ?? []) {
+    const fire = readFire(doc);
+    if (fire) things.push({ kind: "tile", id: doc.id, levels: [...(doc.levels ?? [])], point: mid(propTileView(doc)), fire, lightId: doc.id, warned: doc.id });
+  }
+  for (const view of propSafe("quench decorations", () => decorViews(scene, null)) ?? []) {
+    const regionId = view.decor?.regionId, key = view.decor?.key, fire = readFire(decorFireOf(scene.regions?.get(regionId))[key]);
+    if (fire && typeof key === "string") things.push({ kind: "decor", regionId, key, levels: [...(view.levels ?? [])], point: mid(view), fire, lightId: view.id, warned: key });
+  }
+  for (const doc of scene.regions?.contents ?? []) {
+    const saved = fireCellsOf(doc), keys = Object.keys(saved).filter((k) => readFire(saved[k]) && saved[k]?.charred !== true);
+    const grass = keys.length ? fireGrassOf(doc, grid) : null;
+    if (!grass) continue;
+    for (const key of keys) {
+      const i = Number(key);
+      if (Number.isInteger(i)) things.push({ kind: "cell", regionId: doc.id, key, levels: [...(doc.levels ?? [])], fire: saved[key],
+        point: { x: grass.origin.x + (i % grass.cols) * grid + grid / 2, y: grass.origin.y + Math.floor(i / grass.cols) * grid + grid / 2 } });
+    }
+  }
+  return quenchUpdates(tilesOnLevel(things, area.levels), area.testPoint);
+}
+async function applyQuench(scene, cause, user) {
+  if (!game.users.activeGM?.isSelf || !scene || !propsOn(scene) || !quenchedBy(cause?.damageType)) return false;
+  return runQuench(scene, cause, user);
+}
+async function runQuench(scene, cause, user) {
+  // messageId: the damage roll, for a spell whose item names no damage type (the GM reads it from that message, as for a break).
+  const full = { kind: "area", damageType: cause.damageType, areaUuid: cause.areaUuid, ...(typeof cause.messageId === "string" ? { messageId: cause.messageId } : {}) }, { area, now } = areaPlace(full, user);
+  // The shape is asked thing by thing (quenchPutOf); every other check (placer, spell types, age, scene) is the break's own.
+  const refused = areaRefusal(area ? { ...area, testPoint: () => true } : area, { cause: full, sceneId: scene.id, sender: user, point: { x: 0, y: 0 }, levels: area?.levels, now });
+  if (refused) { runtime?.trace("props", `not quenched: ${refused}`); return false; }
+  // Only an area that passed the checks above holds the gate, so a forged ask costs no scan.
+  return quenchGate.run(`${scene.id}:${area.uuid}`, () => quenchWrite(scene, area));
+}
+async function quenchWrite(scene, area) {
+  // A fire round still writing would put back what is cleared here: let it finish first.
+  for (let i = 0; i < 100 && fireRunning.has(scene.id); i++) await new Promise((done) => setTimeout(done, 50));
+  const out = quenchPutOf(scene, area);
+  if (!out.put.length) return false;
+  const del = propDel();
+  if (out.tiles.length) await scene.updateEmbeddedDocuments("Tile", out.tiles.map((u) => withDeletes(u, del)), { animater: { propFire: true } })
+    .catch((e) => runtime?.trace("props", `quench not written: ${e?.message ?? e}`));
+  if (out.regions.length) await scene.updateEmbeddedDocuments("Region", out.regions.map((u) => withDeletes(u, del)), { animater: { propFire: true } })
+    .catch((e) => runtime?.trace("props", `region quench not written: ${e?.message ?? e}`));
+  // Their fire lights go and their timers are forgotten; they may be warned about again.
+  for (const t of out.put) {
+    if (t.warned) fireWarned.delete(`${scene.id}:${t.warned}`);
+    if (!t.lightId) continue;
+    forgetPropFire(t.lightId);
+    const lit = firesOf(t.lightId, sceneLights(scene));
+    if (lit.length) await deletePropFires(scene, lit);
+  }
+  return true;
+}
+// True once asked of (or started by) the GM; false with none connected.
+function askQuench(area, damageType, messageId) {
+  const scene = area?.scene, gm = game.users.activeGM;
+  if (!scene || !gm) return false;
+  const cause = { areaUuid: area.templateId, damageType, ...(typeof messageId === "string" ? { messageId } : {}) };
+  if (gm.isSelf) { void applyQuench(scene, cause, game.user).catch((e) => runtime?.trace("props", `quench: ${e?.message ?? e}`)); return true; }
+  game.socket.emit(`module.${ID}`, { type: QUENCH_MESSAGE, sender: clientId, sceneId: scene.id, cause });
+  return true;
+}
+async function receiveQuench(data, senderId) {
+  if (data?.type !== QUENCH_MESSAGE || !game.users.activeGM?.isSelf) return;
+  const user = senderId ? game.users.get(senderId) : null, scene = game.scenes.get(String(data.sceneId ?? ""));
+  if (!user || !scene || typeof data.cause?.areaUuid !== "string" || typeof data.cause?.damageType !== "string") return;
+  await applyQuench(scene, { areaUuid: data.cause.areaUuid, damageType: data.cause.damageType, messageId: typeof data.cause.messageId === "string" ? data.cause.messageId : undefined }, user);
+}
 async function receivePropBreak(data, senderId) {
   if (data?.type !== PROP_BREAK_MESSAGE || !game.users.activeGM?.isSelf) return;
   const user = senderId ? game.users.get(senderId) : null, scene = game.scenes.get(String(data.sceneId ?? ""));
@@ -10016,7 +10508,8 @@ async function receivePropBreak(data, senderId) {
 // The region as decor-break.mjs reads it; null without decorations.
 const decorRegionOf = (doc) => {
   const settings = doc ? decorSettings(doc.flags?.[ID]?.decor) : null;
-  return settings ? { id: doc.id, levels: [...(doc.levels ?? [])], settings, areas: regionAreas(doc), broken: doc.flags?.[ID]?.decorBroken, doc } : null;
+  // fire: the decorations of this region that are alight, read through the accessor (an empty flag reads as {}).
+  return settings ? { id: doc.id, levels: [...(doc.levels ?? [])], settings, areas: regionAreas(doc), broken: doc.flags?.[ID]?.decorBroken, fire: decorFireOf(doc), doc } : null;
 };
 const decorRegionsOf = (scene, { breaking = false } = {}) => (scene?.regions?.contents ?? []).filter((doc) => !breaking || doc.flags?.[ID]?.decor?.canBreak === true).map((doc) => { try { return decorRegionOf(doc); } catch { return null; } }).filter(Boolean);
 // One memo of each region's placements and views, shared by the triggers, the GM and the wrecks.
@@ -10058,7 +10551,7 @@ const decorWreckage = createPropWreckage({ PIXI: globalThis.PIXI, layer: floorLa
   shake: (at, burst) => { cameraShake.tremor({ at, weight: 6, sceneId: canvas.scene?.id, level: canvas?.level?.id, seed: `keg:${Math.round(at.x)}:${Math.round(at.y)}`, scale: 0.8 + 0.2 * (Number(burst) || 2) }); },
   fireRoot: () => (canvas?.ready ? torchLightRootOf() : null), fireSeen: fireSeenHere, fireLean: (key, at) => fireLeanAt(key, at.x, at.y),
   fireTongues: () => qualityRank(localQuality()) >= 2, fireForget: (key) => forgetFlame(key),
-  wallsFor: (d) => decorStopWalls(d) });
+  wallsFor: (d) => decorStopWalls(d), now: () => fireNow() });
 // Wreck id ("decor:<regionId>:<key>") -> seed: drawn and stored; broken here, waiting on the GM; shown again after
 // PROP_REFUSED_MS (a GM write that still comes is drawn at rest). Named apart from decorations.mjs's decorShown.
 const decorWrecksShown = new Map(), decorPending = new Map(), decorLate = new Map();
@@ -10169,7 +10662,7 @@ const queueDecorWrite = (regionDoc, entry) => decorQueue.add(regionDoc.id, entry
 const queuedDecorKeys = (regionId) => decorQueue.keys(regionId);
 // Breaks a region's decoration (its key, decor-break.mjs decorKeyed) for a cause as requestPropBreak takes one. True once
 // it is asked of (or written by) the GM.
-async function requestDecorBreak(regionDoc, key, cause, { from } = {}) {
+async function requestDecorBreak(regionDoc, key, cause, { from, extra } = {}) {
   const scene = regionDoc?.parent;
   if (regionDoc?.documentName !== "Region" || !propsOn(scene) || typeof key !== "string") return false;
   const gm = game.users.activeGM;
@@ -10178,7 +10671,7 @@ async function requestDecorBreak(regionDoc, key, cause, { from } = {}) {
   if (!region) return false;
   const clean = cleanCause(cause), grid = propGrid(scene), view = decorIndex(region, grid).views.find((v) => v.decor.key === key);
   if (!view) return false;
-  const note = breakNoteFor({ tile: view, walls: [], grid, cause: clean, seed: Math.floor(Math.random() * 0x7fffffff), from: from ?? clean.at, scene });
+  const note = breakNoteFor({ tile: view, walls: [], grid, cause: clean, seed: Math.floor(Math.random() * 0x7fffffff), from: from ?? clean.at, scene, extra: extra ?? {} });
   if (gm.isSelf) return applyDecorBreak(scene, regionDoc, key, clean, note, game.user);
   // Checked here first (one already broken here counts as queued), then again by the GM. A plain miss waits for the
   // GM's roll; anything else shows at once.
@@ -10186,7 +10679,7 @@ async function requestDecorBreak(regionDoc, key, cause, { from } = {}) {
   const here = validDecorBreakRequest({ key, cause: clean, note }, { region, scene, grid, sender: game.user, lights: sceneLights(scene), ...await propPlace(clean, scene, grid), ...areaPlace(clean, game.user),
     roll: 0, queued: waiting, index: decorIndex, drawn: decorDrawnOn(scene) });
   if (!here.ok) return false;
-  if (scene === canvas?.scene && clean.kind !== "ignite" && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakDecorHere(regionDoc, view, here.entry.note);
+  if (scene === canvas?.scene && !here.catches && clean.kind !== "ignite" && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakDecorHere(regionDoc, view, here.entry.note);
   game.socket.emit(`module.${ID}`, { type: DECOR_BREAK_MESSAGE, sender: clientId, sceneId: scene.id, regionId: regionDoc.id, key, cause: clean, note });
   return true;
 }
@@ -10202,6 +10695,13 @@ async function applyDecorBreak(scene, regionDoc, key, cause, rawNote, user) {
     const check = validDecorBreakRequest({ key, cause, note: rawNote }, { region, scene, grid, sender: user, lights: sceneLights(scene), ...place, ...blastPlace(cause, scene), ...areaPlace(cause, user),
       roll: Math.random(), queued: queuedDecorKeys(regionDoc.id), index: decorIndex, drawn: decorDrawnOn(scene) });
     if (!check.ok) { runtime?.trace("props", `decoration not broken: ${check.why}`); return false; }
+    // Caught fire instead of breaking (Fire spreads): its region keeps the fire under its key, and its flames are lit.
+    if (check.catches) {
+      await regionDoc.update({ [`flags.${ID}.decorFire.${key}`]: check.fire }, { animater: { propFire: true } });
+      const lit = decorIndex(region, grid).views.find((v) => v.decor.key === key);
+      if (lit) await lightDecorFire(scene, lit, null).catch((e) => runtime?.trace("props", `fire light: ${e?.message ?? e}`));
+      return true;
+    }
     // A toppled stalagmite's rubble is made first, so the entry that names it is written with the break. A region that
     // cannot be made only costs the rubble.
     let entry = check.entry, rubble = null;
@@ -10221,7 +10721,7 @@ async function applyDecorBreak(scene, regionDoc, key, cause, rawNote, user) {
     if (check.lightUpdates?.length) await scene.updateEmbeddedDocuments("AmbientLight", check.lightUpdates).catch((e) => runtime?.trace("props", `lights not put out: ${e?.message ?? e}`));
     const view = decorIndex(region, grid).views.find((v) => v.decor.key === key);
     if (view && check.fire) await lightDecorFire(scene, view, entry.note);
-    if (view && check.explode) void runBlastAt(scene, { centre: { x: view.decor.d.x, y: view.decor.d.y }, burst: entry.note.burst ?? view.flags.animater.prop.burst, levels: [...region.levels], sourceId: view.id })
+    if (view && check.explode && decorPlaceOf(view)) void runBlastAt(scene, { centre: decorPlaceOf(view), burst: entry.note.burst ?? view.flags.animater.prop.burst, levels: [...region.levels], sourceId: view.id })
       .catch((e) => runtime?.trace("props", `decoration blast: ${e?.message ?? e}`));
     return true;
   } finally { decorWriting.delete(held); }
@@ -10229,11 +10729,17 @@ async function applyDecorBreak(scene, regionDoc, key, cause, rawNote, user) {
 // A decoration's burning lamp oil (GM): a tile's fire light (lightPropFire), on the patch where its oil stopped, named by the
 // decoration's view id so Repair finds it.
 async function lightDecorFire(scene, view, note) {
-  const grid = propGrid(scene), centre = { x: view.decor.d.x, y: view.decor.d.y };
+  // Where it stands (decorPlaceOf: its placement, then its key, then its box), never a bare reach into the placement.
+  const grid = propGrid(scene), centre = decorPlaceOf(view);
+  if (!centre) {
+    if (!fireLightNowhere.has(view?.id)) { fireLightNowhere.add(view?.id); runtime?.trace("props", `decoration has nowhere to burn: ${view?.id}`); }
+    return;
+  }
   let at = centre;
   try { at = firePatchAt(note, { centre, width: view.width, height: view.height, grid, contents: decorContents(view), rotation: 0, stop: wallStop(centre, decorStopWalls(view), WALL_GAP * grid) }); } catch { at = centre; }
+  if (!Number.isFinite(at?.x) || !Number.isFinite(at?.y)) at = centre;
   const data = burnLightData({ centre: at, distance: Number(scene.grid?.distance) || 5, levels: [...(view.levels ?? [])], elevation: 0, tileId: view.id, now: fireNow() });
-  const [light] = await scene.createEmbeddedDocuments("AmbientLight", [data]).catch((e) => { runtime?.trace("props", `fire light not made: ${e?.message ?? e}`); return []; });
+  const light = await makeFireLight(scene, data, view.id);
   if (light) timePropFire(scene, light.id, view.id, BURN_MS);
 }
 // Repair (GM): the lights these regions' stored breaks put out lit again, and their burning oil put out.
@@ -10458,6 +10964,8 @@ async function repairAllProps(scene = canvas?.scene) {
   // Every region's broken decorations too, in one region batch (their rubble goes with every prop's, below).
   await holdDecorWrites(async () => {
     const decorFixes = decorRepairUpdates(sceneRegions(scene));
+    // Each region's fire (decorations' and grass squares', whole flags) goes in the same update as its breaks.
+    for (const u of repairFireUpdates(sceneRegions(scene))) { const own = decorFixes.find((d) => d._id === u._id); if (own) Object.assign(own, u); else decorFixes.push(u); }
     await relightDecor(scene, (scene.regions?.contents ?? []).filter((r) => decorFixes.some((u) => u._id === r.id)));
     if (decorFixes.length) await scene.updateEmbeddedDocuments("Region", decorFixes.map((u) => withDeletes(u, del)), { animater: { decorRepair: true } });
   });
@@ -10465,7 +10973,8 @@ async function repairAllProps(scene = canvas?.scene) {
   if (breaches.deletes.length) await scene.deleteEmbeddedDocuments("Wall", breaches.deletes, { animater: { wallRepair: true } });
   if (wallFixes.length) await scene.updateEmbeddedDocuments("Wall", wallFixes.map((w) => withDeletes(w, del)), { animater: { wallRepair: true }, sound: false });
   if (r.lights.length) await scene.updateEmbeddedDocuments("AmbientLight", r.lights).catch((e) => runtime?.trace("props", `lights not relit: ${e?.message ?? e}`));
-  for (const t of r.tiles) forgetPropFire(t._id);
+  for (const t of r.tiles) { forgetPropFire(t._id); fireWarned.delete(`${scene.id}:${t._id}`); }
+  for (const mark of [...fireWarned]) if (mark.startsWith(`${scene.id}:`)) fireWarned.delete(mark);
   if (r.deleteLights?.length) await deletePropFires(scene, r.deleteLights);
   if (r.deleteRegions?.length) await deletePropRegions(scene, r.deleteRegions);
   return r.tiles.length;
@@ -10474,9 +10983,9 @@ async function repairAllProps(scene = canvas?.scene) {
 // The client that rolled or moved asks; the GM checks. A prop's error never breaks the play it rides on.
 const propSafe = (label, fn) => { try { return fn(); } catch (e) { runtime?.trace("props", `${label}: ${e?.message ?? e}`); return undefined; } };
 const propsOn = (scene) => scene?.flags?.[ID]?.breakableProps === true;
-const askProp = (scene, id, cause, from) => { const doc = scene.tiles.get(id); return doc ? requestPropBreak(doc, cause, { from }).catch((e) => { runtime?.trace("props", `ask: ${e?.message ?? e}`); return false; }) : Promise.resolve(false); };
+const askProp = (scene, id, cause, from, extra) => { const doc = scene.tiles.get(id); return doc ? requestPropBreak(doc, cause, { from, extra }).catch((e) => { runtime?.trace("props", `ask: ${e?.message ?? e}`); return false; }) : Promise.resolve(false); };
 // A decoration view (decorViews): asked of its region, by its key.
-const askDecor = (scene, view, cause, from) => { const doc = scene?.regions?.get(view?.decor?.regionId); return doc ? requestDecorBreak(doc, view.decor.key, cause, { from }).catch((e) => { runtime?.trace("props", `ask decoration: ${e?.message ?? e}`); return false; }) : Promise.resolve(false); };
+const askDecor = (scene, view, cause, from, extra) => { const doc = scene?.regions?.get(view?.decor?.regionId); return doc ? requestDecorBreak(doc, view.decor.key, cause, { from, extra }).catch((e) => { runtime?.trace("props", `ask decoration: ${e?.message ?? e}`); return false; }) : Promise.resolve(false); };
 const askWall = (scene, id, cause, from) => { const doc = scene.walls?.get(id); return doc ? requestWallBreak(doc, cause, { from }).catch((e) => { runtime?.trace("props", `ask door: ${e?.message ?? e}`); return false; }) : Promise.resolve(false); };
 // Placed areas wait for their spell's damage roll: every screen remembers them, the roller asks.
 const propAreas = createAreaWaits({ trace: (m) => runtime?.trace("props", m) });
@@ -10597,6 +11106,17 @@ const CLAIM_SETTLE_MS = PROP_REFUSED_MS + 1500;
 function breakAreaThings(area, types, { messageId } = {}) {
   const scene = area?.scene;
   if (!area || !types?.length || !propsOn(scene) || !game.scenes.get(scene.id)) return false;
+  // Water or cold puts out the fires inside the area (asked of the GM once per area), besides anything it breaks.
+  const quench = types.find(quenchedBy), quenching = !!quench && propAreas.claim(area.templateId, "quench");
+  // A refusal is the GM's silence, so the claim is given back unless the fires inside the area are gone after a wait; a later
+  // ask (the damage roll's, which names its message) can then still put them out.
+  if (quenching) void askClaimed({ ask: () => askQuench(area, quench, messageId), release: () => propAreas.release(area.templateId, "quench"), wait: CLAIM_SETTLE_MS,
+    written: () => { try { return quenchPutOf(scene, area).put.length === 0; } catch { return false; } } });
+  // With Fire spreads on, a fire area also sets the grass it covers alight (asked of the GM once per area), as it
+  // sets the flammable props in it alight. Nothing of this breaks anything; the ground simply starts to burn.
+  const lighting = types.includes("fire") && scene.flags?.[ID]?.fireSpreads === true && propAreas.claim(area.templateId, "grass");
+  if (lighting) void askClaimed({ ask: () => askGrassCatch(area, messageId), release: () => propAreas.release(area.templateId, "grass"), wait: CLAIM_SETTLE_MS,
+    written: () => { try { return grassCatchOf(scene, area).lit.length === 0; } catch { return false; } } });
   const grid = propGrid(scene), tiles = tilesOnLevel(scene.tiles.contents.map(propTileView), area.levels), walls = (scene.walls?.contents ?? []).map(wallView);
   const decor = propSafe("area decorations", () => decorViews(scene, area.levels)) ?? [], id = (t) => t.id;
   const hits = typesBreaking(types, (type) => propsInArea(tiles, area.testPoint, grid, type), id).filter(({ thing }) => propAreas.claim(area.templateId, thing.id));
@@ -10606,14 +11126,19 @@ function breakAreaThings(area, types, { messageId } = {}) {
   const decorHits = typesBreaking(types, (type) => propsInArea(decor, area.testPoint, grid, type), id).filter(({ thing }) => propAreas.claim(area.templateId, thing.id));
   // Decorations whose powder spilled earlier: a fire area sets them off, once, as it does a keg tile's.
   const decorSpills = !types.includes("fire") ? [] : (propSafe("area decoration powder", () => ignitableInArea(tilesOnLevel(decorSpilled(decorRegionsOf(scene, { breaking: true }), grid, decorIndex), area.levels), area.testPoint)) ?? []).filter((v) => propAreas.claim(area.templateId, `ignite:${v.id}`));
-  if (!hits.length && !doors.length && !spills.length && !decorHits.length && !decorSpills.length) return false;
+  if (!hits.length && !doors.length && !spills.length && !decorHits.length && !decorSpills.length) return quenching || lighting;
   const areaUuid = area.templateId, roll = typeof messageId === "string" ? { messageId } : {};
   const cause = (damageType) => ({ kind: "area", damageType, at: area.at, areaUuid, ...roll });
   const held = (claimId, ask, written) => void askClaimed({ ask, written, release: () => propAreas.release(areaUuid, claimId), wait: CLAIM_SETTLE_MS });
   const flagsOf = (doc) => doc?.flags?.[ID];
-  for (const { thing, type } of hits) held(thing.id, () => askProp(scene, thing.id, cause(type), area.at), () => !!flagsOf(scene.tiles.get(thing.id))?.prop?.broken);
+  // The GM wrote it: broken, or (Fire spreads) set ALIGHT, which is just as done. A claim given back over a thing
+  // that caught would let a second pass over the same area break the fire already burning on it. Merely warm is not
+  // done: a thing the round only heated, whose break the GM refused, must be free for this area to try again.
+  for (const { thing, type } of hits) held(thing.id, () => askProp(scene, thing.id, cause(type), area.at),
+    () => !!flagsOf(scene.tiles.get(thing.id))?.prop?.broken || readFire(scene.tiles.get(thing.id))?.burning === true);
   for (const { thing, type } of decorHits) held(thing.id, () => askDecor(scene, thing, cause(type), area.at),
-    () => (flagsOf(scene.regions?.get(thing.decor?.regionId))?.decorBroken ?? []).some((e) => e?.key === thing.decor?.key));
+    () => (flagsOf(scene.regions?.get(thing.decor?.regionId))?.decorBroken ?? []).some((e) => e?.key === thing.decor?.key)
+      || readFire(decorFireOf(scene.regions?.get(thing.decor?.regionId))[thing.decor?.key])?.burning === true);
   for (const { thing, type } of doors) held(`wall:${thing.id}`, () => askWall(scene, thing.id, cause(type), area.at), () => !!flagsOf(scene.walls?.get(thing.id))?.breakWall?.broken);
   for (const t of spills) held(`ignite:${t.id}`, () => askProp(scene, t.id, { kind: "ignite", damageType: "fire", at: area.at, areaUuid, ...roll }, area.at),
     () => flagsOf(scene.tiles.get(t.id))?.prop?.broken?.powder !== "spilled");
@@ -11132,6 +11657,14 @@ Hooks.on("createTile", (doc) => { if (doc.parent === canvas?.scene) drawPropWrec
 Hooks.on("deleteTile", (doc) => {
   settlePropHere(doc.id, false); propWreckage.hide(doc.id);
   if (game.users.activeGM?.isSelf && doc.flags?.[ID]?.prop?.broken) void undoPropBreak(doc, { deleted: true }).catch((e) => console.warn("Animater props: walls of a deleted prop", e));
+  // A burning tile deleted takes its fire with it: its heat is gone with the tile, and its light and timer go now, so
+  // no fire is left burning over nothing (the GM alone deletes the light).
+  forgetPropFire(doc.id);
+  fireWarned.delete(`${doc.parent?.id}:${doc.id}`);
+  if (game.users.activeGM?.isSelf) {
+    const out = firesOf(doc.id, sceneLights(doc.parent));
+    if (out.length) void deletePropFires(doc.parent, out).catch((e) => runtime?.trace("props", `fire light of a deleted prop: ${e?.message ?? e}`));
+  }
 });
 // A level change redraws the canvas: the wrecks are cleared, then drawn again for the tiles of the viewed level.
 Hooks.on("canvasReady", () => { propWreckage.sync((canvas.tiles?.placeables ?? []).filter((t) => propViewed(t.document))); });
@@ -13306,7 +13839,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
   // Breakable props: the GM's switch for this scene, the miss chance, and Repair (GM only).
   if (!root.querySelector(`[name="flags.${ID}.breakableProps"]`)) {
     const flags = app.document?.flags?.[ID] ?? {}, props = document.createElement("div");
-    props.innerHTML = propSceneFieldsHTML({ on: flags.breakableProps === true, chance: flags.propMissChance, breakWalls: flags.breakWalls, rubble: flags.rubbleDifficult === true });
+    props.innerHTML = propSceneFieldsHTML({ on: flags.breakableProps === true, chance: flags.propMissChance, breakWalls: flags.breakWalls, rubble: flags.rubbleDifficult === true, fireSpreads: flags.fireSpreads === true });
     const repair = props.querySelector('[data-action="animater-repair-props"]');
     repair.disabled = !game.user?.isGM;
     repair.addEventListener("click", async (event) => {
@@ -14093,6 +14626,8 @@ Hooks.once("ready", () => {
   game.socket?.on(`module.${ID}`, (data, senderId) => {
     if (data?.type === WINDOW_MESSAGE) { const asked = game.users.get(senderId); const wall = canvas?.scene?.walls?.get(data.wallId); if (game.users.activeGM?.isSelf && data.sceneId === canvas?.scene?.id && wall && asked && mayUseWindow({ canDoors: asked.can("WALL_DOORS"), paused: game.paused, inReach: windowReachedBy(asked, wall) }) && windowClick({ locked: wall.flags?.[ID]?.windowLocked === true }) === "toggle") void toggleWindow(wall); return; }
     if (data?.type === PROP_BREAK_MESSAGE) { void receivePropBreak(data, senderId).catch((e) => console.warn("Animater props:", e?.message ?? e)); return; }
+    if (data?.type === QUENCH_MESSAGE) { void receiveQuench(data, senderId).catch((e) => console.warn("Animater props (quench):", e?.message ?? e)); return; }
+    if (data?.type === GRASS_FIRE_MESSAGE) { void receiveGrassCatch(data, senderId).catch((e) => console.warn("Animater props (grass fire):", e?.message ?? e)); return; }
     if (data?.type === DECOR_BREAK_MESSAGE) { void receiveDecorBreak(data, senderId).catch((e) => console.warn("Animater props (decoration):", e?.message ?? e)); return; }
     if (data?.type === WALL_BREAK_MESSAGE) { void receiveWallBreak(data, senderId).catch((e) => console.warn("Animater props (door):", e?.message ?? e)); return; }
     if (data?.type === BLAST_MESSAGE) { if (data.blast?.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) playBlast(data.blast); return; }
@@ -14519,13 +15054,14 @@ Hooks.once("ready", () => {
       breakDecor: (regionId, key, cause = {}) => {
         const doc = canvas?.scene?.regions?.get(regionId), region = doc ? decorRegionOf(doc) : null;
         const view = region ? decorIndex(region, propGrid(canvas.scene)).views.find((v) => v.decor.key === key) : null;
-        if (!view) return false;
-        return requestDecorBreak(doc, key, { kind: "area", damageType: "bludgeoning", at: { x: view.decor.d.x, y: view.decor.d.y }, ...cause });
+        const at = view ? decorPlaceOf(view) : null;
+        if (!at) return false;
+        return requestDecorBreak(doc, key, { kind: "area", damageType: "bludgeoning", at, ...cause });
       },
       decorKeys: (regionId) => {
         const doc = canvas?.scene?.regions?.get(regionId), region = doc ? decorRegionOf(doc) : null;
         if (!region) return [];
-        return decorIndex(region, propGrid(canvas.scene)).views.map((v) => ({ key: v.decor.key, kind: v.decor.kind, x: Math.round(v.decor.d.x), y: Math.round(v.decor.d.y) }));
+        return decorIndex(region, propGrid(canvas.scene)).views.map((v) => { const at = decorPlaceOf(v) ?? { x: NaN, y: NaN }; return { key: v.decor.key, kind: v.decor.kind, x: Math.round(at.x), y: Math.round(at.y) }; });
       },
       decorBreakable: (regionId) => {
         const doc = canvas?.scene?.regions?.get(regionId), region = doc ? decorRegionOf(doc) : null, scene = canvas?.scene;

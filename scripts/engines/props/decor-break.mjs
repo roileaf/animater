@@ -6,7 +6,7 @@ import { CAVERN_KINDS, decorPlacements, DECOR_MOST } from "../motion/decor-regio
 import { DECOR_KINDS, hashText, paintedMaterial, paintSeedOf } from "../motion/decor-paint.mjs";
 import { webCorners } from "../motion/webs.mjs";
 import { readNote } from "./prop-break.mjs";
-import { validBreakRequest } from "./prop-requests.mjs";
+import { validBreakRequest, gmFireCause } from "./prop-requests.mjs";
 import { resolveDecorProp, decorPropFlags, decorPropDefaults } from "./decor-options.mjs";
 
 // Each kind that breaks: its material and style as the prop rules read them, and where the rules need more than the kind's
@@ -101,6 +101,30 @@ export function decorView({ d, key }, region, grid) {
     flags: { animater: { prop } },
     decor: { regionId: region.id, key, kind: d.kind, d, where: region.where ?? "surface", ...(r.rule ? { rule: r.rule } : {}) },
   };
+}
+
+/**
+ * The place a decoration's key spells out (pure): a key is `kind:x:y:fingerprint` (decorKeyed), rounded scene pixels.
+ * Null for anything else. It is the stand-in for a view whose placement has lost its place, never the first answer:
+ * the key is rounded, the placement is not.
+ */
+export function decorKeyPlace(key) {
+  const m = /^[^:]+:(-?\d+):(-?\d+):/.exec(String(key ?? ""));
+  return m ? { x: Number(m[1]), y: Number(m[2]) } : null;
+}
+/**
+ * Where a decoration view stands (pure), for anything placed on it: a light, a blast, a mark. Its placement's own x and y
+ * (decorView keeps the placement as `decor.d`: that is what the painter drew it from, so it is the one true answer),
+ * failing that the place its key spells out, failing that the middle of the box the view was dressed in. Null when not
+ * one of the three is a pair of numbers — then nothing is placed, rather than placed nowhere.
+ */
+export function decorPlaceOf(view) {
+  const d = view?.decor?.d;
+  if (Number.isFinite(d?.x) && Number.isFinite(d?.y)) return { x: d.x, y: d.y };
+  const keyed = decorKeyPlace(view?.decor?.key);
+  if (keyed) return keyed;
+  const x = Number(view?.x) + Number(view?.width) / 2, y = Number(view?.y) + Number(view?.height) / 2;
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
 }
 
 // The round area a decoration underground hands the cavern or the webs (as decorations.cavern() draws it), as a polygon.
@@ -242,14 +266,20 @@ export function validDecorBreakRequest({ key, cause, note } = {}, { region, scen
   const no = (why) => ({ ok: false, why });
   if (scene?.flags?.animater?.breakableProps !== true) return no("off");
   if (region?.settings?.canBreak !== true) return no("off");
-  if (cause?.kind === "ignite") return decorIgniteCheck({ key, cause, note }, { region, scene, grid, sender, area, now, index });
+  // Spilled powder set off by a fire area; a decoration the spreading fire caught or burnt out (gmFireCause) breaks as any other does.
+  if (cause?.kind === "ignite" && !gmFireCause(cause)) return decorIgniteCheck({ key, cause, note }, { region, scene, grid, sender, area, now, index });
   const { keys, views } = index(region, grid), view = views.find((v) => v.decor.key === key);
   if (!view) return no("missing");
   if (drawn && !drawn(view)) return no("undrawn");
   if (liveBroken(readDecorBroken(region.broken), keys).some((e) => e.key === key) || (queued ?? []).includes(key)) return no("broken");
-  const out = validBreakRequest({ cause, note }, { tile: view, walls: [], scene, grid, sender, target, mover, roll, lights, source, levels, area, now });
+  // The fire this decoration already carries (its region's decorFire, read through the accessor by the caller), so a
+  // fire area knows not to light one that is burning.
+  const alight = region?.fire && typeof region.fire === "object" ? region.fire[key] ?? null : null;
+  const out = validBreakRequest({ cause, note }, { tile: alight ? { ...view, fire: alight } : view, walls: [], scene, grid, sender, target, mover, roll, lights, source, levels, area, now });
   if (!out.ok) return out;
   const { d } = view.decor;
+  // Caught rather than broken (Fire spreads): the fire to save under this key, and nothing broken at all.
+  if (out.catches) return { ok: true, catches: true, fire: out.fire, entry: { key, kind: d.kind, x: Math.round(d.x), y: Math.round(d.y), note: out.note } };
   return { ok: true, entry: { key, kind: d.kind, x: Math.round(d.x), y: Math.round(d.y), note: out.note }, rubble: out.rubble, fall: out.fall,
     explode: out.explode === true, fire: out.fire === true, lightUpdates: out.lightUpdates ?? [] };
 }

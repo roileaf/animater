@@ -335,8 +335,11 @@ export function wreckTargets(tiles) {
 
 // Where burning lamp oil burns (the patch's middle, after the walls stopped its spill): the GM's fire light goes there,
 // so its glow sits on the flames. The tile's centre when the note lays out no patch. opts: as wreckLayout's.
+// A thing alight with no note of its own (nothing broke: a fire that spread to it) has no seed and no cut angle to lay a
+// spill out from, so a liquid's patch comes back as not-a-number. The centre answers for any patch that is not a place.
 export function firePatchAt(note, opts) {
-  return wreckLayout({ ...note, fire: true }, opts).fire?.at ?? { x: opts.centre.x, y: opts.centre.y };
+  const at = wreckLayout({ ...note, fire: true }, opts).fire?.at;
+  return Number.isFinite(at?.x) && Number.isFinite(at?.y) ? at : { x: opts.centre.x, y: opts.centre.y };
 }
 
 /**

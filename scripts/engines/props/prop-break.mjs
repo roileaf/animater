@@ -52,7 +52,9 @@ export function readNote(raw) {
   const lights = Array.isArray(raw.lights) ? raw.lights.filter((w) => typeof w === "string" && w.length <= 32).slice(0, 16) : [];
   return { seed, cutAngle, pattern, pieces: Math.round(clamp(pieces, lo, hi)), spread: clamp(spread, 0, 3), spin: clamp(spin, 0, 720), tint, mark, from: { x: from.x, y: from.y }, walls: ids, style, lights, ...(raw.fire === true ? { fire: true } : {}),
     ...(POWDER.includes(raw.powder) ? { powder: raw.powder } : {}), ...(Number.isInteger(raw.burst) && raw.burst >= 1 && raw.burst <= 4 ? { burst: raw.burst } : {}),
-    ...(typeof raw.region === "string" && raw.region && raw.region.length <= 32 ? { region: raw.region } : {}) };
+    ...(typeof raw.region === "string" && raw.region && raw.region.length <= 32 ? { region: raw.region } : {}),
+    // when the fire that charred it went out (the server's clock): its ember seams go on fading from there after a reload
+    ...(Number.isFinite(raw.burnedAt) && raw.burnedAt > 0 ? { burnedAt: raw.burnedAt } : {}) };
 }
 
 // A missed swing breaks the prop beside it: always on a critical failure, else by the chance (percent).
