@@ -248,13 +248,16 @@ export function smokeSway(puff, ms, amount = SMOKE_SWAY) {
 
 /**
  * Whether the OLD rolling haze ("Smoke in the air", a world/client settings pair, visual only) shows on a scene.
- * One smoke per scene, not two layered: where the GM has ticked the scene's own "Fires fill rooms with smoke", the
- * simulated smoke is the scene's smoke and the haze stands down entirely. A scene that wants only the atmosphere
- * leaves that switch off and loses nothing — this is exactly today's answer with `fills` false.
- * `on` is the settings pair, `underground` whether the scene is one, `fills` the scene's own new switch. Pure.
+ * One smoke per scene, not two layered: the haze stands down exactly where the simulation takes over, and NOWHERE
+ * ELSE. `runs` is smoke-round.mjs's own smokeRunsOn — all three switches, the very question the drawing asks — and
+ * not the scene's switch alone. Gating on the switch alone left the hole this was written to close: a scene with
+ * "Fires fill rooms with smoke" ticked but Breakable props or Fire spreads off got no simulated smoke (the drawing
+ * never runs) AND no haze (it had stood down), so the GM lost the atmosphere and got nothing in its place.
+ * The other half state is not a fault: with the feature not actually running, the haze SHOULD still roll.
+ * `on` is the settings pair, `underground` whether the scene is one, `runs` whether the simulation runs here. Pure.
  */
-export const airHazeShows = ({ on = false, underground = false, fills = false } = {}) =>
-  on === true && underground === true && fills !== true;
+export const airHazeShows = ({ on = false, underground = false, runs = false } = {}) =>
+  on === true && underground === true && runs !== true;
 
 // ---- The painted look. Only this part touches PIXI. ----
 
@@ -269,6 +272,13 @@ export const CORE_ALPHA = 0.82, CORE_ALPHA_TOP = 0.92;
 // At most this often, however fast the screen runs. The cloud drifts slowly, so twelve frames a second is smoke and
 // not a cost; a room full of smoke is hundreds of cells and hundreds of brush patches.
 export const SMOKE_FRAME_MS = 80;
+// Where the cloud sits among the map's layers. Over Foundry's creatures (it draws tokens at 700) and over the
+// treetops (decorCrowns, 740), because thick smoke hides what stands in it and must be painted over them; under the
+// birds and their shadows (1100), which fly above it. Not the fire's own 657, which lies UNDER the creatures, and
+// not the old rolling haze's 760. main.mjs reads this rather than keeping a number of its own.
+export const SMOKE_SORT_LAYER = 752;
+// The depths this one is chosen against, so the reasons above are checkable and not just a comment.
+export const TOKEN_SORT_LAYER = 700, BIRD_SORT_LAYER = 1100;
 // How many points a brush patch's ragged outline is drawn with. A painted patch, never a circle.
 const RAGS = 11;
 

@@ -4,9 +4,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { smokePuffs, smokeSheets, smokeSheetAt, smokeTone, smokeBetween, smokeSway, smokeSeedOf, airHazeShows,
-  TONE_STEPS, THIN_TOP, SMOKE_DRIFT_MS, HAZE_ALPHA, CORE_ALPHA, CORE_ALPHA_TOP } from "../../../scripts/engines/props/smoke-look.mjs";
+import { createSmokeLooks, smokePuffs, smokeSheets, smokeSheetAt, smokeTone, smokeBetween, smokeSway, smokeSeedOf,
+  airHazeShows, TONE_STEPS, THIN_TOP, SMOKE_DRIFT_MS, HAZE_ALPHA, CORE_ALPHA, CORE_ALPHA_TOP,
+  SMOKE_SORT_LAYER, TOKEN_SORT_LAYER, BIRD_SORT_LAYER } from "../../../scripts/engines/props/smoke-look.mjs";
 import { THICK, THIN, DENSITY_CAP } from "../../../scripts/engines/props/smoke-field.mjs";
+import { smokeOnlySave, smokeRunsOn, SMOKE_NOTE, SMOKE_MARK } from "../../../scripts/engines/props/smoke-round.mjs";
+import { propSceneFieldsHTML } from "../../../scripts/ui/prop-config.mjs";
 
 const geo = { cols: 4, origin: { x: 0, y: 0 }, cell: 50, seed: 7 };
 
@@ -299,84 +302,246 @@ test("a scene's seed is its own, and the same on every screen", () => {
   for (const id of ["", null, undefined, "x"]) assert.ok(Number.isInteger(smokeSeedOf(id)) && smokeSeedOf(id) > 0);
 });
 
-// ---- Roi's decision: one smoke per scene. The old rolling haze stands down where the new one runs. ----
+// ---- What used to be five source-text guards, now driven through the code itself. ----
+// Fix round 2: a regex over main.mjs can say that two lines exist; it cannot say that a THIRD one does not, and it
+// never once ran the code. Everything below that has a pure surface is now exercised instead. One source test is
+// kept at the very end, and says why.
 
-test("the scene's switch sends the old haze away, and leaves it alone when it is off", () => {
-  // The switch on: no haze at all, whatever the setting and however deep the scene.
-  assert.equal(airHazeShows({ on: true, underground: true, fills: true }), false);
-  assert.equal(airHazeShows({ on: true, underground: false, fills: true }), false);
-  // The switch off: exactly today's answer — the setting pair on, and an underground scene.
-  assert.equal(airHazeShows({ on: true, underground: true, fills: false }), true);
-  assert.equal(airHazeShows({ on: true, underground: false, fills: false }), false);
-  assert.equal(airHazeShows({ on: false, underground: true, fills: false }), false);
-  assert.equal(airHazeShows({ on: false, underground: false, fills: false }), false);
-  // Nothing given is nothing shown.
+// A PIXI stand-in that records what was painted, and a frame clock, so the drawing can really be run under node.
+const fakePixi = () => {
+  const calls = [];
+  class Graphics {
+    constructor() { this.destroyed = false; }
+    clear() { calls.push(["clear"]); return this; }
+    beginFill(colour, alpha) { calls.push(["fill", colour, alpha]); return this; }
+    endFill() { return this; }
+    // The points themselves, rounded, so a test can see the cloud MOVE and not merely be painted.
+    drawPolygon(p) { calls.push(["poly", p.map((n) => Math.round(n * 100) / 100).join(",")]); return this; }
+    lineStyle(w, c, a) { calls.push(["line", w, c, a]); return this; }
+    moveTo() { return this; }
+    lineTo() { return this; }
+    destroy() { this.destroyed = true; }
+  }
+  class Container {
+    constructor() { this.children = []; this.parent = null; this.destroyed = false; }
+    addChild(c) { this.children.push(c); c.parent = this; return c; }
+    destroy() { this.destroyed = true; for (const c of this.children) c.destroy?.(); }
+  }
+  return { PIXI: { Graphics, Container }, calls };
+};
+// requestAnimationFrame does not exist under node; this stands in for it and lets a test step the frames by hand.
+const withFrames = (body) => {
+  const had = [globalThis.requestAnimationFrame, globalThis.cancelAnimationFrame];
+  const pending = new Map(), cancelled = [];
+  let id = 0;
+  globalThis.requestAnimationFrame = (fn) => { pending.set(++id, fn); return id; };
+  globalThis.cancelAnimationFrame = (n) => { cancelled.push(n); pending.delete(n); };
+  const frame = () => { const [[n, fn]] = pending.size ? [...pending] : [[0, null]]; pending.delete(n); fn?.(); };
+  try { return body({ frame, cancelled, pending }); }
+  finally { [globalThis.requestAnimationFrame, globalThis.cancelAnimationFrame] = had; }
+};
+const field = [{ i: 5, v: 2 }, { i: 6, v: 2 }, { i: 9, v: 0.5 }];
+const drawn = (cells, geometry = geo) => ({ sheets: smokeSheets(cells, geometry), puffs: smokePuffs(cells, geometry) });
+
+test("the drawing runs off the clock it is handed and never reaches for one of its own", () => {
+  withFrames(({ frame }) => {
+    const { PIXI, calls } = fakePixi();
+    const root = new PIXI.Container();
+    let ms = 0, asked = 0;
+    const looks = createSmokeLooks({ PIXI, layer: () => root, grid: () => 100, now: () => { asked++; return ms; } });
+    // Every clock a module could reach for instead is made to throw for the whole run: if any line of the picking,
+    // the drift, the sway or the painting touches one, this test fails where a regex could only have guessed.
+    const real = [Date.now, Math.random, globalThis.performance?.now];
+    const bang = () => { throw new Error("the smoke read a clock or a die of its own"); };
+    Date.now = bang; Math.random = bang;
+    if (globalThis.performance) globalThis.performance.now = bang;
+    try {
+      looks.sync(drawn(field));
+      for (ms = 0; ms <= SMOKE_DRIFT_MS * 2; ms += 100) frame();
+    } finally {
+      Date.now = real[0]; Math.random = real[1];
+      if (globalThis.performance && real[2]) globalThis.performance.now = real[2];
+    }
+    assert.ok(asked > 0, "it does ask the clock it was given");
+    assert.ok(calls.some((c) => c[0] === "poly"), "and it really painted");
+  });
+});
+
+test("the same clock paints the same frame, and a later one a different frame: the drift is real", () => {
+  const run = (at) => withFrames(({ frame }) => {
+    const { PIXI, calls } = fakePixi();
+    const root = new PIXI.Container();
+    let ms = 0;
+    const looks = createSmokeLooks({ PIXI, layer: () => root, grid: () => 100, now: () => ms });
+    looks.sync(drawn(field));
+    ms = at; frame();
+    return JSON.stringify(calls);
+  });
+  assert.equal(run(SMOKE_DRIFT_MS), run(SMOKE_DRIFT_MS));
+  // Part way through the drift the cloud is lighter than at the end of it: the bodies really walk their weight in.
+  assert.notEqual(run(Math.round(SMOKE_DRIFT_MS / 3)), run(SMOKE_DRIFT_MS));
+  // And well after the drift the sway still moves it, so a settled room keeps breathing.
+  assert.notEqual(run(SMOKE_DRIFT_MS * 2), run(SMOKE_DRIFT_MS * 2 + 2000));
+});
+
+test("thick smoke is painted over a wider span of alpha than thin, and the darkest fill really is near solid", () => {
+  const fills = (cells) => withFrames(({ frame }) => {
+    const { PIXI, calls } = fakePixi();
+    const root = new PIXI.Container();
+    let ms = 0;
+    const looks = createSmokeLooks({ PIXI, layer: () => root, grid: () => 100, now: () => ms });
+    looks.sync(drawn(cells));
+    ms = SMOKE_DRIFT_MS; frame();
+    return calls.filter((c) => c[0] === "fill").map((c) => c[2]);
+  });
+  const thin = fills([{ i: 5, v: 0.5 }]), thick = fills([{ i: 5, v: DENSITY_CAP }]);
+  assert.ok(Math.max(...thick) >= CORE_ALPHA, `a thick square is painted near solid: ${Math.max(...thick)}`);
+  assert.ok(Math.max(...thin) <= HAZE_ALPHA + 1e-9, `a thin square never is: ${Math.max(...thin)}`);
+});
+
+test("teardown cancels the frame loop and destroys what it made", () => {
+  withFrames(({ frame, cancelled, pending }) => {
+    const { PIXI } = fakePixi();
+    const root = new PIXI.Container();
+    const looks = createSmokeLooks({ PIXI, layer: () => root, grid: () => 100, now: () => 0 });
+    looks.sync(drawn(field));
+    assert.equal(root.children.length, 1, "it put its container on the layer");
+    const box = root.children[0];
+    looks.clear();
+    assert.ok(cancelled.length > 0, "the frame loop is cancelled");
+    assert.equal(box.destroyed, true, "and the container destroyed with its children");
+    // Nothing of the last cloud is kept: a sync after a clear starts over on a fresh container.
+    looks.sync(drawn(field));
+    assert.equal(root.children.length, 2);
+    assert.notEqual(root.children[1], box);
+    looks.clear();
+    frame(); pending.clear();
+  });
+});
+
+test("the drawing is safe before there is a layer to draw on, and on nothing at all", () => {
+  withFrames(() => {
+    const { PIXI, calls } = fakePixi();
+    const looks = createSmokeLooks({ PIXI, layer: () => null, now: () => 0 });
+    looks.sync(drawn(field));
+    assert.deepEqual(calls, [], "no layer, nothing painted and nothing thrown");
+    looks.clear();
+    const root = new PIXI.Container();
+    const live = createSmokeLooks({ PIXI, layer: () => root, now: () => 0 });
+    live.sync();
+    live.sync({ sheets: null, puffs: null });
+    live.sync({ sheets: [{ pts: [0, 0, 1] }, null, { pts: [NaN, 0, 1, 1, 2, 2], tone: 1 }], puffs: [null, { x: NaN, y: 0, r: 1, tone: 1 }] });
+    live.clear();
+  });
+});
+
+test("the cloud's depth sits over the creatures it hides and under the birds", () => {
+  assert.ok(SMOKE_SORT_LAYER > TOKEN_SORT_LAYER, "thick smoke must be painted over a creature standing in it");
+  assert.ok(SMOKE_SORT_LAYER < BIRD_SORT_LAYER, "birds fly above the smoke");
+  assert.notEqual(SMOKE_SORT_LAYER, 657, "not the fire's layer, which lies under the creatures");
+  assert.notEqual(SMOKE_SORT_LAYER, 760, "not the old rolling haze's");
+});
+
+test("the haze stands down exactly where the simulation takes over, and nowhere else", () => {
+  const scene = (own) => ({ flags: { animater: own } });
+  const ALL = { smokeFills: true, breakableProps: true, fireSpreads: true };
+  const haze = (own, { on = true, underground = true } = {}) =>
+    airHazeShows({ on, underground, runs: smokeRunsOn(scene(own)) });
+  // Everything on: the simulation runs, so the haze goes.
+  assert.equal(haze(ALL), false);
+  // THE CASE THAT WAS WRONG. The scene's own switch on but Fire spreads off: the drawing's gate is smokeRunsOn, so
+  // no simulated smoke is drawn here — and the GM must therefore keep the haze they always had, not lose both.
+  assert.equal(haze({ ...ALL, fireSpreads: false }), true, "smokeFills on, fireSpreads off: the haze still rolls");
+  assert.equal(haze({ ...ALL, breakableProps: false }), true, "and with Breakable props off too");
+  // The switch off: exactly today's answer, on every combination of the other two.
+  for (const breakableProps of [true, false]) for (const fireSpreads of [true, false]) {
+    assert.equal(haze({ smokeFills: false, breakableProps, fireSpreads }), true);
+  }
+  // Nothing can show a haze that the settings pair or the scene's depth rules out.
+  assert.equal(haze({ smokeFills: false }, { on: false }), false);
+  assert.equal(haze({ smokeFills: false }, { underground: false }), false);
+  // There is never both at once, on any combination at all: that is the whole of Roi's decision.
+  for (const smokeFills of [true, false]) for (const breakableProps of [true, false]) for (const fireSpreads of [true, false]) {
+    const own = { smokeFills, breakableProps, fireSpreads };
+    const draws = smokeRunsOn(scene(own));
+    assert.equal(draws && haze(own), false, `both at once: ${JSON.stringify(own)}`);
+    // And underground, with the pair on, the GM is never left with neither.
+    assert.ok(draws || haze(own), `neither one: ${JSON.stringify(own)}`);
+  }
   assert.equal(airHazeShows(), false);
-  assert.equal(airHazeShows({}), false);
-  // Only a real true counts, on any of the three.
-  assert.equal(airHazeShows({ on: "true", underground: true, fills: false }), false);
-  assert.equal(airHazeShows({ on: true, underground: "true", fills: false }), false);
-  assert.equal(airHazeShows({ on: true, underground: true, fills: "true" }), true);
+  assert.equal(airHazeShows({ on: "true", underground: true, runs: false }), false);
 });
 
-// ---- The guards that are about main.mjs's own text. ----
-
-const main = readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8");
-const looks = main.slice(main.indexOf("// ---- What the room smoke looks like"), main.indexOf("// A region repainted, reshaped or moved"));
-
-test("the drawing is wired as the fire's is: its own layer, an injected clock, cleared on teardown", () => {
-  assert.ok(looks.length > 200, "the smoke drawing block is where its guards expect it");
-  // Its own depth, over the creatures it hides and under the birds; not the fire's 657, not the old haze's 760.
-  const layer = looks.match(/floorLayer\("smokeLooks", (\d+)\)/);
-  assert.ok(layer, "its own named layer");
-  assert.ok(Number(layer[1]) > 700 && Number(layer[1]) < 1100, `over the creatures, under the birds: ${layer[1]}`);
-  assert.notEqual(layer[1], "657");
-  assert.notEqual(layer[1], "760");
-  // The clock is injected, as createFireLooks takes it: nothing inside the drawing reads one.
-  assert.match(looks, /now: \(\) => fireNow\(\)/);
-  assert.match(looks, /Hooks\.on\("canvasTearDown", \(\) => \{[^\n]*smokeLooks\.clear\(\)/);
-  // Debounced through propSafe, as the fire looks are.
-  assert.match(looks, /setTimeout\(\(\) => propSafe\("smoke looks", syncSmokeLooksNow\), 60\)/);
-});
-
-test("the drawing writes nothing at all", () => {
-  for (const write of ["update(", "updateEmbeddedDocuments", "createEmbeddedDocuments", "deleteEmbeddedDocuments", "setFlag", "unsetFlag"]) {
-    assert.ok(!looks.includes(write), `the drawing must not ${write}`);
+test("the round's own marker and the reader that knows it are one constant", () => {
+  // The test does not build a note of its own: it uses the very object main.mjs stamps its writes with, so moving
+  // the marker without moving the reader fails HERE, in behaviour, and not only in a regex.
+  assert.equal(smokeOnlySave({ "flags.animater.smoke.33": 1.08 }, SMOKE_NOTE), true);
+  assert.equal(smokeOnlySave({ flags: { animater: { smoke: { 33: 1 }, smokeGrid: { cols: 10 } } } }, SMOKE_NOTE), true);
+  assert.equal(smokeOnlySave({ "flags.animater.smoke.-=33": null, "flags.animater.-=smokeGrid": null }, SMOKE_NOTE), true);
+  // A real edit riding along is still an edit, and somebody else's write is never ours.
+  assert.equal(smokeOnlySave({ "flags.animater.smoke.33": 1, width: 2000 }, SMOKE_NOTE), false);
+  assert.equal(smokeOnlySave({ "flags.animater.smoke.33": 1 }, {}), false);
+  assert.equal(smokeOnlySave({ "flags.animater.smoke.33": 1 }, { animater: { propFire: true } }), false);
+  // The marker is the one key the reader looks for, and it is the new name, not the settings pair's.
+  assert.deepEqual(Object.keys(SMOKE_NOTE.animater), [SMOKE_MARK]);
+  assert.equal(SMOKE_MARK, "smokeFills");
+  assert.notEqual(SMOKE_MARK, "roomSmoke");
+  assert.equal(SMOKE_NOTE.animater[SMOKE_MARK], true);
+  // A note built with any other marker is not ours, whatever it carries. This is the drift the coupling guards.
+  for (const other of ["roomSmoke", "smokeSource", "propFire"]) {
+    if (other === SMOKE_MARK) continue;
+    assert.equal(smokeOnlySave({ "flags.animater.smoke.33": 1 }, { animater: { [other]: true } }), false, other);
   }
 });
 
-test("no clock and no dice anywhere in the smoke's own code", () => {
-  const look = readFileSync(new URL("../../../scripts/engines/props/smoke-look.mjs", import.meta.url), "utf8");
-  assert.ok(!/Math\.random|Date\.now|performance\.now/.test(look));
-  assert.ok(!/Math\.random|Date\.now|performance\.now/.test(looks));
+test("the scene's switch and the light's are two distinct names, and neither is the settings pair's", () => {
+  const scene = (own) => ({ flags: { animater: own } });
+  const ALL = { breakableProps: true, fireSpreads: true };
+  // The round runs off smokeFills, and the old name means nothing to it at all.
+  assert.equal(smokeRunsOn(scene({ ...ALL, smokeFills: true })), true);
+  assert.equal(smokeRunsOn(scene({ ...ALL, roomSmoke: true })), false, "the settings pair's name is not a scene flag");
+  // The scene's checkbox carries the new name, and nothing carries the old one.
+  const html = propSceneFieldsHTML({ smokeFills: true });
+  assert.match(html, /name="flags\.animater\.smokeFills"/);
+  assert.ok(!html.includes("roomSmoke"), "no roomSmoke left in the scene's own fields");
+  assert.match(html, /smokeFills"[^>]*checked/);
+  assert.doesNotMatch(propSceneFieldsHTML({}), /smokeFills"[^>]*checked/);
+  // The light's flag is a third name again, so none of the three can be mistaken for another.
+  assert.notEqual(SMOKE_MARK, "smokeSource");
 });
 
-test("the old haze asks the one shared question, at both the places it shows", () => {
-  // The gate is the pure one, not a second copy of the rule.
-  assert.match(main, /const hazeSmokeOn = \(\) => airHazeShows\(\{ on: roomSmokeOn\(\), underground: undergroundScene\(\), fills: smokeFillsHere\(\) \}\);/);
-  // Where it stood down, it also lets the lamp air go: nothing of the old haze is left on the screen.
+// ---- The ONE source test that is kept, and why. ----
+// main.mjs is Foundry's entry point: it is not importable under node, and the three things below live only in it,
+// as wiring. There is no pure surface left to run them through — the layer depth, the haze rule, the marker, the
+// scene's fields and the tiers are all exported constants or pure functions now, and tested as such above. What is
+// left is whether main.mjs ASKS them, in the one place each, and whether the drawing block writes. A third haze
+// site, or a stray scene.update in the painter, can only be seen in the text.
+test("main.mjs's own wiring: the drawing writes nothing, and the haze is asked in one place only", () => {
+  const main = readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8");
+  const looks = main.slice(main.indexOf("// ---- What the room smoke looks like"), main.indexOf("// A region repainted, reshaped or moved"));
+  assert.ok(looks.length > 200, "the drawing block is where this expects it");
+  for (const write of ["update(", "updateEmbeddedDocuments", "createEmbeddedDocuments", "deleteEmbeddedDocuments", "setFlag", "unsetFlag"]) {
+    assert.ok(!looks.includes(write), `the drawing must not ${write}`);
+  }
+  // The haze rule is asked through the one helper. Counting every mention of the settings pair's reader is what a
+  // pure test cannot do: it is the only way to know that a THIRD place does not ask the question its own way.
+  const asks = [...main.matchAll(/roomSmokeOn\(\)/g)].length;
+  assert.equal(asks, 1, `roomSmokeOn is read once, inside hazeSmokeOn: found ${asks}`);
+  assert.match(main, /const hazeSmokeOn = \(\) => airHazeShows\(\{ on: roomSmokeOn\(\), underground: undergroundScene\(\), runs: smokeRunsHere\(\) \}\);/);
+  // Exactly the two places the haze shows ask it, and there is no third: the lamp air's fill and its strength.
+  assert.equal([...main.matchAll(/hazeSmokeOn\(\)/g)].length, 2, "the two places the haze is asked, and no third");
   assert.match(main, /if \(!airField \|\| !hazeSmokeOn\(\)\) \{ smokeAir = null; lampAir\.smokeFill\(null\); return; \}/);
   assert.match(main, /smoke: hazeSmokeOn\(\) \? 0\.85 : 0/);
-  // And the old settings pair itself is untouched: it is a third thing with the same old name, deliberately left.
+  // And the settings pair itself is deliberately left alone: it is the third thing that wore the old name.
   assert.match(main, /skyPair\("roomSmoke", "roomSmokeLocal", "Smoke in the air"/);
-});
-
-test("the new scene and light flags no longer share a name with the settings pair", () => {
-  // No DOCUMENT flag answers to roomSmoke any more: what is left of the name is the settings pair and the layer the
-  // old haze is drawn in, which are deliberately untouched.
+  // The marker is imported, never copied: a second literal here is the drift the coupling test cannot see.
+  assert.ok(!/SMOKE_NOTE\s*=/.test(main), "main.mjs keeps no marker of its own");
+  assert.match(main, /import \{[^}]*SMOKE_NOTE[^}]*\} from "\.\/engines\/props\/smoke-round\.mjs"/);
+  // The light's own flag, whose only home is this file's light-configuration HTML.
+  assert.match(main, /name="flags\.\$\{ID\}\.smokeSource"\$\{flags\.smokeSource === true \? " checked" : ""\}/);
+  // And no document flag anywhere still answers to the settings pair's old name.
   for (const line of main.split(/\r?\n/)) {
     if (!line.includes("roomSmoke")) continue;
     assert.doesNotMatch(line, /flags[^\n]*roomSmoke|roomSmoke:\s*(true|false|flags)/, `still a roomSmoke flag: ${line.trim()}`);
   }
-  // And the two modules the flags are read in have no trace of the old name at all.
-  for (const path of ["../../../scripts/engines/props/smoke-round.mjs", "../../../scripts/ui/prop-config.mjs"]) {
-    assert.ok(!readFileSync(new URL(path, import.meta.url), "utf8").includes("roomSmoke"), path);
-  }
-  // The marker the round stamps its own writes with, and the reader that tells them from a GM's edit, moved together.
-  assert.match(main, /const SMOKE_NOTE = \{ animater: \{ smokeFills: true \} \};/);
-  assert.match(readFileSync(new URL("../../../scripts/engines/props/smoke-round.mjs", import.meta.url), "utf8"),
-    /if \(options\?\.animater\?\.smokeFills !== true\) return false;/);
-  // The scene's switch and the light's are two distinct names, and both are the new ones.
-  assert.match(main, /smokeFills: flags\.smokeFills === true/);
-  assert.match(main, /name="flags\.\$\{ID\}\.smokeSource"/);
 });
