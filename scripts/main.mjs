@@ -39,7 +39,7 @@ import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsOf, dropLostDecorFire, regionBurns, createQuenchGate, quenchedBy, quenchUpdates, repairFireUpdates } from "./engines/props/fire-spread.mjs";
 import { areaRefusal } from "./engines/props/prop-areas.mjs";
-import { createFireLooks, warmEdges, charredCells, litCells } from "./engines/props/fire-looks.mjs";
+import { createFireLooks, thingFires, charredCells, litCells } from "./engines/props/fire-looks.mjs";
 import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
 import { DECOR_BREAK_MESSAGE, DECOR_NAMES, decorPlaceOf, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
@@ -287,7 +287,7 @@ import { createDecorLights } from "./engines/motion/decor-lights.mjs";
 import { colourAt as floorColourAt, dabCells as floorDabCells, planFloorStroke, floorRegionName, modelMaskFor, hoverLine as floorHoverLine } from "./engines/regions/floor-brush.mjs";
 import { toRegionData as floorRegionData, floorColour as floorTint, fitSize as floorFitSize, areaPixels as floorAreaPixels, toCaveRegionData, caveName, caveColour } from "./engines/regions/floor-detect.mjs";
 import { nearbyClicks as smartNearbyClicks, cleanSelection } from "./engines/regions/smart-select.mjs";
-import { decorSettings, strokeShapes, circleArea as decorCircle, decorPlacements, trunkWalls, carryDecor, shapesBox } from "./engines/motion/decor-regions.mjs";
+import { decorRole, decorSettings, strokeShapes, circleArea as decorCircle, decorPlacements, trunkWalls, carryDecor, shapesBox } from "./engines/motion/decor-regions.mjs";
 import { openBrushBar, brushChoices, BRUSH_EDGE } from "./ui/decor-brush-bar.mjs";
 import { readHeight, readRamp, readOpenEdges, edgeTouches, openAt as heightOpenAt, OPEN_EDGES_MOST, heightField, walkerPath, nextHeight, rampFromDrag, rampOutline, heightRegionData, rampRegionData, cliffEdges, cliffRuns, heightsHoverLine, heightName, HEIGHT_STEP, BRIDGE_REACH, refitHeights, simplifyLoop, inAreas as inHeightAreas } from "./engines/regions/heights.mjs";
 import { swayAt, bridgeWeight, ropeWeight, pieceFrame, BRIDGE_REST } from "./engines/regions/crossing-sway.mjs";
@@ -10280,7 +10280,9 @@ Hooks.on("deleteCombat", fireReseedRounds);
 // The edges are drawn over the decorations (657); the scorch lies on the floor (412, under the tiles at 500), so
 // burnt ground never paints over a prop standing on that square. The pulse is read from the server's clock.
 const fireLooks = createFireLooks({ PIXI: globalThis.PIXI, layer: floorLayer("fireLooks", 657), floor: floorLayer("fireScorch", 412),
-  grid: () => canvas?.grid?.size ?? 100, now: () => fireNow() });
+  grid: () => canvas?.grid?.size ?? 100, now: () => fireNow(),
+  // A tree's crown is drawn over everything at 740 (decorCrowns), so the flames of a burning tree are drawn just over it.
+  top: floorLayer("fireCrown", MAP_SORT.decorCrowns + 5) });
 let fireLooksTimer = 0;
 // The square a burning decoration's warm edge is drawn round: the box it was dressed in while that is a box, else one
 // its own place makes, as wide as the view says or a square. Null when it stands nowhere: nothing is drawn at NaN.
@@ -10298,13 +10300,11 @@ function syncFireLooksNow() {
   if (!scene || !propsOn(scene) || scene.flags?.[ID]?.fireSpreads !== true) { fireLooks.clear(); return; }
   const grid = propGrid(scene), level = canvas?.level?.id, edges = [], flames = [], scorch = [];
   const here = (levels) => onLevel(levels, level);
-  const rects = new Map();
   const things = [];
   for (const doc of scene.tiles?.contents ?? []) {
     if (doc.hidden === true || doc.flags?.[ID]?.prop?.broken || !here(doc.levels)) continue;
     const r = tileRect(doc);
-    rects.set(doc.id, { rect: { x: r.x, y: r.y, w: r.width, h: r.height }, rotation: doc.rotation ?? 0 });
-    things.push({ id: doc.id, fire: readFire(doc) });
+    things.push({ id: doc.id, fire: readFire(doc), rect: { x: r.x, y: r.y, w: r.width, h: r.height }, rotation: doc.rotation ?? 0 });
   }
   for (const doc of scene.regions?.contents ?? []) {
     if (!here(doc.levels)) continue;
@@ -10318,8 +10318,7 @@ function syncFireLooksNow() {
         // The box its edge is drawn round: the view's own, else one its place (decorPlaceOf) makes; no place, no edge.
         const rect = decorEdgeRect(view);
         if (!rect) continue;
-        rects.set(view.decor.key, { rect, rotation: 0 });
-        things.push({ id: view.decor.key, fire: saved });
+        things.push({ id: view.decor.key, fire: saved, rect, rotation: 0, high: decorRole(view.decor, view.decor.where) === "tree" });
       }
     }
     // Grass with fire on it: squares alight show their flames, squares only warming show the same ember edge a prop
@@ -10337,7 +10336,9 @@ function syncFireLooksNow() {
       else edges.push({ id: `${doc.id}:${c.i}`, heat: c.heat, rotation: 0, rect: square(c.i) });
     }
   }
-  for (const warm of warmEdges(things)) { const at = rects.get(warm.id); if (at) edges.push({ id: warm.id, heat: warm.heat, ...at }); }
+  // Every thing alight draws flames sized to its own rectangle; one only warming keeps its ember edge. Never both.
+  const lit = thingFires(things);
+  flames.push(...lit.flames); edges.push(...lit.edges);
   fireLooks.sync({ edges, flames, scorch });
 }
 const syncFireLooks = () => { clearTimeout(fireLooksTimer); fireLooksTimer = setTimeout(() => propSafe("fire looks", syncFireLooksNow), 60); };

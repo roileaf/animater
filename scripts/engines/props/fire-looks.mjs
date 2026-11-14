@@ -19,6 +19,50 @@ export function warmEdges(things) {
   return out;
 }
 
+// ---- things on fire: props and painted decorations ----
+// A thing has its own rectangle, so its flames are sized to it, not to a grid square. The baked tile is one square wide and
+// scales freely, so a thing is covered by n copies of the SOLO tile (both ends fall to the ground, so a thing is never
+// run on into its neighbour), each `unit` wide, centred on the thing. n follows the width, unit follows the size.
+export const THING_UNIT_MIN = 0.35, THING_UNIT_MAX = 1.5, THING_TILES_MAX = 6;
+// Every thing is a front of its own: two barrels side by side are two fires. Only squares of grass join up.
+const clampTo = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+export function thingSpread(rect, grid = 100) {
+  const g = grid > 0 ? grid : 100;
+  const size = clampTo(Math.sqrt(Math.max(0, rect.w) * Math.max(0, rect.h)), THING_UNIT_MIN * g, g); // the picture of one tile: a candle small, an oak a square
+  const n = clampTo(Math.round(rect.w / size), 1, THING_TILES_MAX);
+  const unit = clampTo(rect.w / n, THING_UNIT_MIN * g, THING_UNIT_MAX * g);
+  // The foot of the fire (FOOT of the way down the tile) lies just inside the bottom of the thing.
+  return { n, unit, x: rect.x + rect.w / 2 - (n * unit) / 2, y: rect.y + rect.h - unit };
+}
+// The tiles of a thing: solo ones at four ring places and three variants, so however many things burn, at any size,
+// they draw from 12 baked families at most.
+export const thingTiles = (seed, n) => Array.from({ length: n }, (_, i) => ({ kind: "solo", k: (((seed >>> 3) + i) % 4) * 2, variant: groundLook(seed + i * 7919).variant }));
+// The same hash on every screen: a thing's look comes from its own id.
+export function thingSeed(id) {
+  let h = 0x811c9dc5;
+  for (const ch of String(id ?? "")) { h = Math.imul(h ^ ch.codePointAt(0), 0x01000193) >>> 0; }
+  return h || 1;
+}
+// The box a turned rectangle fills. Flames rise upright whatever way the thing lies, so they are sized to this.
+export function turnedBox({ x, y, w, h }, rotation = 0) {
+  const a = ((Number(rotation) || 0) * Math.PI) / 180, c = Math.abs(Math.cos(a)), s = Math.abs(Math.sin(a));
+  const bw = w * c + h * s, bh = w * s + h * c;
+  return { x: x + w / 2 - bw / 2, y: y + h / 2 - bh / 2, w: bw, h: bh };
+}
+// What each thing shows: one that is alight gets flames (and no edge); one only warming gets the ember edge (and no
+// flames). Things are {id, fire, rect:{x,y,w,h}, rotation, high}; `high` marks one whose picture is drawn over the fire
+// layer (a tree's crown), so its flames must be drawn over it too. The two lists never share a thing.
+export function thingFires(things) {
+  const flames = [], edges = [], warm = new Map(warmEdges(things).map((e) => [e.id, e.heat]));
+  for (const t of things ?? []) {
+    if (!t?.rect) continue;
+    const fire = readFire(t.fire ?? null);
+    if (fire?.burning) flames.push({ id: t.id, seed: thingSeed(t.id), rect: turnedBox(t.rect, t.rotation), thing: true, high: t.high === true });
+    else if (warm.has(t.id)) edges.push({ id: t.id, heat: warm.get(t.id), rotation: t.rotation ?? 0, rect: t.rect });
+  }
+  return { flames, edges };
+}
+
 // The grass squares of a region that have burnt out: charred, and so scorched ground until Repair. The saved cells
 // are read through fireCellsOf by the caller; the keys are square indices.
 export function charredCells(saved) {
@@ -75,8 +119,8 @@ const INK = 0x1b1410, EMBER = 0xff8a30, EMBER_CORE = 0xffd08a, SOOT = [0x2a2420,
 // heat}, flames are the burning grass squares {id, rect, seed}, scorch are {id, rect, seed}. Anything left out goes.
 // The edges and the flames breathe while anything is changing and settle still when nothing is (the heat of a prop
 // warmed by a fire that is already out never changes again); the scorch is still from the first.
-export function createFireLooks({ PIXI, layer, floor = layer, grid = () => 100, now = () => 0, makeCanvas }) {
-  let box = null, under = null, edgeArt = null, flameArt = null, scorchArt = null, groundBox = null, flameBox = null, seatBox = null, raf = 0;
+export function createFireLooks({ PIXI, layer, floor = layer, top = null, grid = () => 100, now = () => 0, makeCanvas }) {
+  let box = null, crown = null, crownSeat = null, crownFlame = null, under = null, edgeArt = null, flameArt = null, scorchArt = null, groundBox = null, flameBox = null, seatBox = null, raf = 0;
   let bank = null, bankTried = false, fronts = [], grounds = [], flameKey = "";
   let edges = [], flames = [], scorched = "", shown = "", liveUntil = 0;
   const ensure = () => {
@@ -85,6 +129,12 @@ export function createFireLooks({ PIXI, layer, floor = layer, grid = () => 100, 
     if (!box || box.destroyed) { box = new PIXI.Container(); groundBox = new PIXI.Container(); flameBox = new PIXI.Container(); seatBox = new PIXI.Container(); flameArt = new PIXI.Graphics(); edgeArt = new PIXI.Graphics();
       box.addChild(groundBox); box.addChild(flameArt); box.addChild(flameBox); box.addChild(seatBox); box.addChild(edgeArt); fronts = []; grounds = []; flameKey = ""; }
     if (!under || under.destroyed) { under = new PIXI.Container(); scorchArt = new PIXI.Graphics(); under.addChild(scorchArt); }
+    // Flames of a thing drawn over the fire layer (a tree's crown) go in a layer of their own, over the crowns.
+    const roof = top?.();
+    if (roof) {
+      if (!crown || crown.destroyed) { crown = new PIXI.Container(); crownSeat = new PIXI.Container(); crownFlame = new PIXI.Container(); crown.addChild(crownSeat); crown.addChild(crownFlame); }
+      if (crown.parent !== roof) roof.addChild(crown);
+    }
     if (box.parent !== root) root.addChild(box);
     if (under.parent !== below) below.addChild(under);
     return box;
@@ -116,7 +166,7 @@ export function createFireLooks({ PIXI, layer, floor = layer, grid = () => 100, 
     return bank;
   };
   const dropSprites = () => {
-    for (const box of [groundBox, flameBox, seatBox]) {
+    for (const box of [groundBox, flameBox, seatBox, crownSeat, crownFlame]) {
       for (const child of box?.children?.slice?.() ?? []) { try { child.destroy(); } catch { /* gone */ } }
       if (box?.children) box.children.length = 0;
     }
@@ -126,9 +176,18 @@ export function createFireLooks({ PIXI, layer, floor = layer, grid = () => 100, 
     dropSprites();
     if (!flames.length || !groundBox) return;
     const b = flameBank();
-    const laid = frontsOf(flames).map((f) => ({ f, ...frontTiles(f) }));
+    // Grass joins into fronts; a thing is a front of its own, built from its own rectangle (thingSpread).
+    const grid_ = grid() || 100;
+    const grass = flames.filter((c) => !c.thing), things = flames.filter((c) => c.thing);
+    const laid = frontsOf(grass).map((f) => ({ f, ...frontTiles(f) }));
+    for (const c of things) {
+      const { n, unit, x, y } = thingSpread(c.rect, grid_), look = groundLook(c.seed);
+      // Solo tiles only, at four ring places: however many things burn, at any size, they draw from 12 families at most.
+      const tiles = thingTiles(c.seed, n);
+      laid.push({ f: { x, y, w: unit, h: unit, cells: tiles, high: c.high && !!crown }, look: { ...look, variant: tiles[0].variant }, tiles });
+    }
     if (!b) { fronts = laid.map(({ f, look }) => ({ f, look, tiles: [] })); return; }
-    b.hold(laid.flatMap(({ tiles, look }) => tiles.map((t) => ({ ...t, variant: look.variant })))); // nothing in use is evicted while these are laid
+    b.hold(laid.flatMap(({ tiles, look }) => tiles.map((t) => ({ ...t, variant: t.variant ?? look.variant })))); // nothing in use is evicted while these are laid
     const tile = tileSize(b.S), seat = seatSize(b.S), ground = groundPx(b.S);
     const clone = (sprite) => {
       const over = new PIXI.Sprite(sprite.texture);
@@ -145,7 +204,7 @@ export function createFireLooks({ PIXI, layer, floor = layer, grid = () => 100, 
         sprite.anchor.set(0, (ABOVE * b.S) / tile.h);
         sprite.position.set(f.x + i * f.w, f.y + FOOT * f.h);
         sprite.scale.set(scale, scale);
-        flameBox.addChild(sprite);
+        (f.high ? crownFlame : flameBox).addChild(sprite);
         // The next frame is faded in as this one fades out, so the 8 baked frames play as continuous motion.
         const over = clone(sprite);
         overs.push(over);
@@ -157,13 +216,13 @@ export function createFireLooks({ PIXI, layer, floor = layer, grid = () => 100, 
           glow.position.set(sprite.position.x, sprite.position.y);
           glow.scale.set(scale, scale);
           if (PIXI.BLEND_MODES) glow.blendMode = PIXI.BLEND_MODES.ADD;
-          seatBox.addChild(glow);
+          (f.high ? crownSeat : seatBox).addChild(glow);
         }
         return { sprite, over, tex, glow, light, shown: 0, next: -1 };
       }).filter(Boolean);
       fronts.push({ f, look, tiles });
     }
-    for (const over of overs) flameBox.addChild(over);
+    laid.forEach(({ f }, fi) => { for (const t of fronts[fi]?.tiles ?? []) (f.high ? crownFlame : flameBox).addChild(t.over); });
     const scorch = b.scorch();
     const place = (sprite, c) => {
       sprite.anchor.set(ground.ax / ground.w, ground.ay / ground.h);
@@ -171,9 +230,10 @@ export function createFireLooks({ PIXI, layer, floor = layer, grid = () => 100, 
       sprite.scale.set(c.rect.w / b.S);
       return sprite;
     };
-    if (scorch) for (const c of flames) groundBox.addChild(place(new PIXI.Sprite(scorch), c)); // the still dark under it, never faded
+    const onGround = grass; // a thing has no ground picture: a scorch under a barrel or a tree is not the grass's
+    if (scorch) for (const c of onGround) groundBox.addChild(place(new PIXI.Sprite(scorch), c)); // the still dark under it, never faded
     const groundOvers = [];
-    for (const c of flames) {
+    for (const c of onGround) {
       const look = groundLook(c.seed), tex = b.ground(look.variant);
       if (!tex.length) continue;
       const sprite = groundBox.addChild(place(new PIXI.Sprite(tex[0]), c));
@@ -244,7 +304,7 @@ export function createFireLooks({ PIXI, layer, floor = layer, grid = () => 100, 
       if (!ensure()) return;
       edges = warm.filter((e) => fireRectOk(e?.rect));
       flames = lit.filter((f) => fireRectOk(f?.rect));
-      const laid = flames.map((f) => `${f.id}@${f.rect.x},${f.rect.y},${f.rect.w},${f.rect.h}#${f.seed}`).join("|");
+      const laid = flames.map((f) => `${f.id}@${f.rect.x},${f.rect.y},${f.rect.w},${f.rect.h}#${f.seed}${f.thing ? (f.high ? "H" : "T") : ""}`).join("|");
       if (laid !== flameKey) { flameKey = laid; layoutFlames(); }
       const key = scorch.filter((s) => fireRectOk(s?.rect)).map((s) => s.id).join("|");
       if (key !== scorched) { scorched = key; drawScorch(scorch.filter((s) => fireRectOk(s?.rect))); }
@@ -261,8 +321,8 @@ export function createFireLooks({ PIXI, layer, floor = layer, grid = () => 100, 
       try { dropSprites(); } catch { /* gone */ }
       if (bank) { releaseFlameBank(); bank = null; }
       bankTried = false; flameKey = "";
-      try { edgeArt?.clear(); flameArt?.clear(); scorchArt?.clear(); box?.destroy({ children: true }); under?.destroy({ children: true }); } catch { /* gone */ }
-      box = null; under = null; edgeArt = null; flameArt = null; scorchArt = null; groundBox = null; flameBox = null; seatBox = null;
+      try { edgeArt?.clear(); flameArt?.clear(); scorchArt?.clear(); box?.destroy({ children: true }); crown?.destroy({ children: true }); under?.destroy({ children: true }); } catch { /* gone */ }
+      box = null; crown = null; crownSeat = null; crownFlame = null; under = null; edgeArt = null; flameArt = null; scorchArt = null; groundBox = null; flameBox = null; seatBox = null;
     },
   };
 }
