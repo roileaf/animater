@@ -2,20 +2,30 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Room Smoke</title>
+<title>Room Smoke: three candidates</title>
 <!-- PIXI from a pinned CDN build, so this page opens from ANY plain static file server with no Foundry and no dev
-     server: `python -m http.server` at the repository root, then /tools/fx-gallery/smoke-look-preview.html.
+     server: `python -m http.server 8742` at the repository root, then
+     http://localhost:8742/tools/fx-gallery/smoke-look-preview.html
      A classic script runs before the deferred module below, so globalThis.PIXI is ready by then. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.2/pixi.min.js"></script>
 <style>
   body { margin: 0; background: #16150f; font: 14px/1.5 system-ui, sans-serif; color: #ddd; }
-  canvas { display: block; width: 100%; height: auto; }
-  #bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; background: #211f17; }
+  /* The squares are 100 real pixels: nothing on this page is scaled, because the look that was rejected in play
+     looked fine on a 50px preview grid. What is on screen here is what a map's cell size really gives. */
+  canvas { display: block; }
+  #bar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+         padding: 10px 12px; background: #211f17; border-bottom: 1px solid #000; }
   button { font: inherit; padding: 4px 10px; background: #3a3627; color: #eee; border: 1px solid #555; border-radius: 4px; cursor: pointer; }
   button:hover { background: #4a4533; }
   input[type=range] { width: 320px; }
-  #say { padding: 4px 12px 12px; }
-  b { color: #fff; }
+  .panel { padding: 14px 12px 22px; border-bottom: 1px solid #2a281e; }
+  h2 { margin: 0 0 2px; font-size: 17px; color: #fff; }
+  h2 small { color: #9a9; font-weight: normal; font-size: 13px; }
+  p.why { margin: 0 0 10px; max-width: 1100px; color: #b9b9ad; }
+  .seen { margin: 8px 0 0; font-variant-numeric: tabular-nums; color: #cfcfc2; }
+  .seen b { color: #fff; }
+  code { background: #000; padding: 1px 4px; border-radius: 3px; }
+  #say { padding: 8px 12px; color: #cfcfc2; }
 </style>
 </head>
 <body>
@@ -27,78 +37,117 @@
   <span id="at"></span>
 </div>
 <div id="say"></div>
+<div id="panels"></div>
+<div style="padding: 0 12px 28px; max-width: 1100px; color: #9c9c90;">
+Opens from a plain static file server at the repository root &mdash; no Foundry, no dev server:
+<code>python -m http.server 8742</code>, then
+<code>http://localhost:8742/tools/fx-gallery/smoke-look-preview.html</code>.
+Every square is 100&nbsp;px and nothing is scaled. The field, the tones, the drift and the sway are all the shipped
+module's; only the clock is this page's, standing in for the server clock the module has injected.
+</div>
 <script type="module">
-// Check, not shipped: the module's own room smoke (smokeSheets + smokePuffs + createSmokeLooks), filling two rooms
-// the module's own round really worked out (smokeRoundPlan), round by round.
-// Nothing here is a stand-in for the module: the geometry, the tones and the drift are all the shipped code's. Only
-// the clock is this page's, standing in for the server clock the module has injected — the module reads none itself.
-import { createSmokeLooks, smokePuffs, smokeSheets, smokeSeedOf } from "../../scripts/engines/props/smoke-look.mjs";
+// Check, not shipped: the module's own room smoke, three candidate looks side by side, filling a room the module's
+// own round really worked out (smokeRoundPlan), round by round, at a real map's cell size.
+import { createSmokeLooks, smokeForms, smokeWash, smokeCover, smokeSeedOf, SMOKE_LOOKS, SMOKE_LOOK_NAMES }
+  from "../../scripts/engines/props/smoke-look.mjs";
 import { smokeRoundPlan } from "../../scripts/engines/props/smoke-round.mjs";
 import { smokeOpeningsOf, THICK, THIN } from "../../scripts/engines/props/smoke-field.mjs";
 
 const PIXI = globalThis.PIXI;
-const CELL = 70, COLS = 20, ROWS = 9, W = COLS * CELL, H = ROWS * CELL;
-const app = new PIXI.Application({ width: W, height: H, background: 0x2b2a26, antialias: true });
-document.body.prepend(app.view); globalThis.__PIXI_APP__ = app;
-
-// Two rooms on one grid: a sealed 5x5 on the left (columns 1-5), and an inn on the right whose taproom (columns
-// 11-12) and back room (columns 13-15) share one open inside door in row 3.
-const left = (i) => { const c = i % COLS, r = (i - c) / COLS; return c >= 1 && c <= 5 && r >= 1 && r <= 5; };
-const right = (i) => { const c = i % COLS, r = (i - c) / COLS; return c >= 11 && c <= 15 && r >= 1 && r <= 5; };
-const inRoom = (i) => left(i) || right(i);
-const DOOR = [3 * COLS + 12, 3 * COLS + 13];
-const walled = (i, n) => {
-  if (inRoom(i) !== inRoom(n)) return true;
-  if (left(i) !== left(n)) return true;
-  const ci = i % COLS, cn = n % COLS;
-  if (Math.min(ci, cn) === 12 && Math.max(ci, cn) === 13) return !(DOOR.includes(i) && DOOR.includes(n));
-  return false;
-};
-const openings = smokeOpeningsOf({ walls: [{ c: [13 * CELL, 3 * CELL, 13 * CELL, 4 * CELL], door: 1, ds: 1 }],
-  grid: CELL, cell: CELL, origin: { x: 0, y: 0 }, cols: COLS, rows: ROWS, indoors: inRoom });
-const SOURCES = [{ i: 3 * COLS + 3, rate: 1, levels: [] }, { i: 3 * COLS + 11, rate: 1, levels: [] }];
-const OUT_AT = 20; // the fire is put out at this round, and the rooms start to clear
+// A real map's square, a room of 9x6 squares, and a corridor through a doorway so the cloud's edge can be judged
+// where it meets open floor as well as where it meets a wall.
+const CELL = 100, COLS = 12, ROWS = 8, W = COLS * CELL, H = ROWS * CELL;
+const inRoom = (i) => { const c = i % COLS, r = (i - c) / COLS; return c >= 1 && c <= 9 && r >= 1 && r <= 6; };
+const inHall = (i) => { const c = i % COLS, r = (i - c) / COLS; return c === 10 && r >= 3 && r <= 4; };
+const indoors = (i) => inRoom(i) || inHall(i);
+// The room is sealed and the door to the corridor shut, which is the case the feature is for: a fire fills the
+// room it is in. The corridor beyond stays clear floor, for the third creature to stand on.
+const walled = (i, n) => indoors(i) !== indoors(n) || (i % COLS <= 9) !== (n % COLS <= 9);
+const openings = smokeOpeningsOf({ walls: [{ c: [10 * CELL, 3 * CELL, 10 * CELL, 5 * CELL], door: 1, ds: 0 }],
+  grid: CELL, cell: CELL, origin: { x: 0, y: 0 }, cols: COLS, rows: ROWS, indoors });
+const SOURCES = [{ i: 3 * COLS + 3, rate: 1, levels: [] }];
+const OUT_AT = 24; // the fire is put out at this round, and the room starts to clear
 const SCENE_ID = "preview00000000z";
 const sceneOf = (smoke) => ({ id: SCENE_ID, dimensions: { width: W, height: H, size: CELL }, levels: [],
   flags: { animater: { smokeFills: true, ...(smoke ? { smoke, smokeGrid: { cols: COLS, cell: CELL } } : {}) } } });
+const geo = { cols: COLS, origin: { x: 0, y: 0 }, cell: CELL, seed: smokeSeedOf(SCENE_ID) };
+
+// Three creatures: one in the thick middle, one out at the thin edge, one on clear floor in the corridor. The smoke
+// is painted OVER them (SMOKE_SORT_LAYER sits above the token layer), which is how thick smoke hides what stands in it.
+// Their squares are where the round really puts the two tiers: the fire at (3,3) fills a rough diamond, thick
+// over its middle and thin round its rim.
+const FOLK = [{ i: 3 * COLS + 3, what: "in the thick middle" }, { i: 2 * COLS + 4, what: "in thin smoke beside thick" },
+  { i: 3 * COLS + 8, what: "on clear floor" }];
 
 // The painted room: stepped floor, ink walls — the battlemap look the smoke has to sit on.
-const floor = new PIXI.Graphics();
-for (let i = 0; i < COLS * ROWS; i++) {
-  const x = (i % COLS) * CELL, y = Math.floor(i / COLS) * CELL;
-  floor.beginFill(inRoom(i) ? 0x4a4036 : 0x33302b).drawRect(x, y, CELL, CELL).endFill();
-  floor.lineStyle(1, 0x1b1812, 0.35).drawRect(x, y, CELL, CELL).lineStyle(0);
-}
-for (let i = 0; i < COLS * ROWS; i++) for (const [dc, dr] of [[1, 0], [0, 1]]) {
-  const c = i % COLS, r = Math.floor(i / COLS);
-  if (c + dc >= COLS || r + dr >= ROWS || !walled(i, (r + dr) * COLS + (c + dc))) continue;
-  floor.lineStyle(4, 0x151109, 0.9);
-  if (dc) floor.moveTo((c + 1) * CELL, r * CELL).lineTo((c + 1) * CELL, (r + 1) * CELL);
-  else floor.moveTo(c * CELL, (r + 1) * CELL).lineTo((c + 1) * CELL, (r + 1) * CELL);
-  floor.lineStyle(0);
-}
-app.stage.addChild(floor);
-// Stand-ins for creatures, so it is plain whether thick smoke really hides what stands in it: one in each room's
-// thick middle, one out at each room's thin edge, and one on clean floor for comparison.
-const FOLK = [3 * COLS + 3, 2 * COLS + 5, 3 * COLS + 11, 1 * COLS + 15, 7 * COLS + 8];
-const folk = new PIXI.Graphics();
-for (const i of FOLK) {
-  const x = (i % COLS) * CELL + CELL / 2, y = Math.floor(i / COLS) * CELL + CELL / 2;
-  folk.beginFill(0xe8c98a).drawCircle(x, y, CELL * 0.3).endFill();
-  folk.lineStyle(3, 0x1b1410, 0.95).drawCircle(x, y, CELL * 0.3).lineStyle(0);
-  folk.beginFill(0x1b1410, 0.9).drawCircle(x - CELL * 0.1, y - CELL * 0.06, CELL * 0.04).drawCircle(x + CELL * 0.1, y - CELL * 0.06, CELL * 0.04).endFill();
-}
-app.stage.addChild(folk);
+const paintFloor = (g) => {
+  for (let i = 0; i < COLS * ROWS; i++) {
+    const x = (i % COLS) * CELL, y = Math.floor(i / COLS) * CELL;
+    const shade = indoors(i) ? [0x4a4036, 0x443a31][(i + Math.floor(i / COLS)) % 2] : 0x33302b;
+    g.beginFill(shade).drawRect(x, y, CELL, CELL).endFill();
+    g.lineStyle(1, 0x1b1812, 0.3).drawRect(x, y, CELL, CELL).lineStyle(0);
+  }
+  // A few painted boards and a rug, so there is something under the smoke to judge the veiling against.
+  g.beginFill(0x6a4b32, 0.5).drawRect(4 * CELL, 2 * CELL, 3 * CELL, 2 * CELL).endFill();
+  g.lineStyle(3, 0x241709, 0.8).drawRect(4 * CELL, 2 * CELL, 3 * CELL, 2 * CELL).lineStyle(0);
+  for (let i = 0; i < COLS * ROWS; i++) for (const [dc, dr] of [[1, 0], [0, 1]]) {
+    const c = i % COLS, r = Math.floor(i / COLS);
+    if (c + dc >= COLS || r + dr >= ROWS || !walled(i, (r + dr) * COLS + (c + dc))) continue;
+    g.lineStyle(5, 0x151109, 0.95);
+    if (dc) g.moveTo((c + 1) * CELL, r * CELL).lineTo((c + 1) * CELL, (r + 1) * CELL);
+    else g.moveTo(c * CELL, (r + 1) * CELL).lineTo((c + 1) * CELL, (r + 1) * CELL);
+    g.lineStyle(0);
+  }
+};
+const paintFolk = (g) => {
+  for (const { i } of FOLK) {
+    const x = (i % COLS) * CELL + CELL / 2, y = Math.floor(i / COLS) * CELL + CELL / 2;
+    g.beginFill(0xe8c98a).drawCircle(x, y, CELL * 0.3).endFill();
+    g.lineStyle(3, 0x1b1410, 0.95).drawCircle(x, y, CELL * 0.3).lineStyle(0);
+    g.beginFill(0x1b1410, 0.9).drawCircle(x - CELL * 0.1, y - CELL * 0.07, CELL * 0.045)
+      .drawCircle(x + CELL * 0.1, y - CELL * 0.07, CELL * 0.045).endFill();
+    g.lineStyle(4, 0x7a2d1c, 0.9).moveTo(x - CELL * 0.12, y + CELL * 0.1).lineTo(x + CELL * 0.12, y + CELL * 0.1).lineStyle(0);
+  }
+};
 
-const cloud = new PIXI.Container(); app.stage.addChild(cloud);
-const looks = createSmokeLooks({ PIXI, layer: () => cloud, grid: () => CELL, now: () => performance.now() });
+const WHY = {
+  billow: "Overlapping painted billows at three sizes — a deep mass under the thick field, a mid body, a fine brush "
+    + "over both. The silhouette is the union of hundreds of ragged rims, so there is no straight run anywhere.",
+  drift: "The same field, but every form is stretched along a slow seeded current and nudged along it, so the room "
+    + "reads as streams of smoke crossing it rather than a mass of lumps.",
+  wash: "A painted brush-wash texture laid over the room and cut out by a soft density mask built from the field — "
+    + "warped and blurred, so its boundary knows nothing about the grid — one wash for thin, a darker one for thick.",
+};
+
+// One panel per candidate: its own canvas, its own drawing, the same field.
+const panels = SMOKE_LOOK_NAMES.map((look) => {
+  const wrap = document.createElement("div");
+  wrap.className = "panel";
+  wrap.innerHTML = `<h2>${look} <small>&mdash; ${SMOKE_LOOKS[look].wash ? "texture through a density mask"
+    : SMOKE_LOOKS[look].flow ? "forms stretched along a current" : "overlapping billows"}</small></h2>`
+    + `<p class="why">${WHY[look]}</p>`;
+  const app = new PIXI.Application({ width: W, height: H, background: 0x2b2a26, antialias: true });
+  const floor = new PIXI.Graphics(); paintFloor(floor); app.stage.addChild(floor);
+  const folk = new PIXI.Graphics(); paintFolk(folk); app.stage.addChild(folk);
+  const cloud = new PIXI.Container(); app.stage.addChild(cloud);
+  const looks = createSmokeLooks({ PIXI, layer: () => cloud, grid: () => CELL, now: () => performance.now(), look });
+  wrap.appendChild(app.view);
+  const seen = document.createElement("p");
+  seen.className = "seen";
+  wrap.appendChild(seen);
+  document.getElementById("panels").appendChild(wrap);
+  return { look, looks, seen, app, cloud };
+});
+
+// Handy when judging this page in a browser console: the three panels and their PIXI stages.
+globalThis.__smokePanels = panels;
 
 // The round, run from scratch up to `target`, so the slider can jump anywhere at once instead of waiting it out.
 const fieldAt = (target) => {
   let smoke = null;
   for (let n = 1; n <= target; n++) {
     const plan = smokeRoundPlan({ activeGM: true, on: true, scene: sceneOf(smoke), sources: n > OUT_AT ? [] : SOURCES,
-      indoors: inRoom, walled, openings, roomOf: () => ({ id: "room", size: 25 }) });
+      indoors, walled, openings, roomOf: () => ({ id: "room", size: 54 }) });
     smoke = Object.fromEntries((plan?.cells ?? []).map((c) => [String(c.i), Math.round(c.v * 10000) / 10000]));
   }
   return Object.entries(smoke ?? {}).map(([i, v]) => ({ i: Number(i), v }));
@@ -109,14 +158,24 @@ const say = document.getElementById("say"), playBtn = document.getElementById("p
 let round = 0, playing = true;
 const show = () => {
   const cells = fieldAt(round);
-  const geo = { cols: COLS, origin: { x: 0, y: 0 }, cell: CELL, seed: smokeSeedOf(SCENE_ID) };
-  looks.sync({ sheets: smokeSheets(cells, geo), puffs: smokePuffs(cells, geo) });
+  const wash = smokeWash(cells, geo);
+  for (const panel of panels) {
+    const forms = smokeForms(cells, { ...geo, look: panel.look });
+    const mine = SMOKE_LOOKS[panel.look].wash ? wash : null;
+    panel.looks.sync({ forms, wash });
+    // What each creature is seen through, straight out of the module's own smokeCover: 0 is plainly there, 1 gone.
+    const read = FOLK.map(({ i, what }) => {
+      const x = (i % COLS) * CELL + CELL / 2, y = Math.floor(i / COLS) * CELL + CELL / 2;
+      return `${what}: <b>${Math.round(smokeCover({ forms, wash: mine }, x, y) * 100)}%</b> hidden`;
+    });
+    panel.seen.innerHTML = `${forms.length} painted forms${mine ? " + two washes" : ""} &nbsp;&middot;&nbsp; ${read.join(" &nbsp;&middot;&nbsp; ")}`;
+  }
   const thick = cells.filter((c) => c.v >= THICK).length, thin = cells.filter((c) => c.v >= THIN && c.v < THICK).length;
   slider.value = String(round);
   at.textContent = `round ${round}`;
-  say.innerHTML = `<b>${thick}</b> thick (blocks sight &mdash; the dark mass) and <b>${thin}</b> thin (conceals &mdash; the light wash).`
-    + (round > OUT_AT ? " The fire is out; the rooms are clearing." : "")
-    + " Five stand-in creatures: two in the thick middles, two at the thin edges, one on clean floor.";
+  say.innerHTML = `<b>${thick}</b> squares thick (blocks sight) and <b>${thin}</b> thin (conceals).`
+    + (round > OUT_AT ? " The fire is out; the room is clearing." : "")
+    + " Three creatures in each panel: the thick middle, the thin edge, and clear floor in the corridor.";
 };
 const to = (n) => { round = Math.max(0, Math.min(Number(slider.max), n)); show(); };
 slider.addEventListener("input", () => to(Number(slider.value)));
@@ -126,11 +185,7 @@ playBtn.addEventListener("click", () => { playing = !playing; playBtn.textConten
 // A round is six seconds in play; here it is three, so the drift between rounds is easy to watch. Paused, or dragged
 // to a round by hand, the cloud still drifts and sways: that is the module's own loop, not this page's.
 setInterval(() => { if (playing) to(round >= Number(slider.max) ? 0 : round + 1); }, 3000);
-to(18); // where there is actually something to judge
+to(20); // where there is actually something to judge
 </script>
-<div id="say2" style="padding: 0 12px 16px; max-width: 1100px; color: #aaa;">
-Opens from a plain static file server at the repository root &mdash; no Foundry, no dev server:
-<code>python -m http.server</code>, then <code>/tools/fx-gallery/smoke-look-preview.html</code>.
-</div>
 </body>
 </html>
