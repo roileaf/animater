@@ -5,7 +5,7 @@
 // The pieces this leans on are already built: smokeStep is the simulation, smokeUpdatesFor turns a step into the
 // scene's keyed flag writes (its own `-=` deletes included), and smokeGridOf is the one grid the cells are indexed
 // with, which the sight-blocking fence reads them back against.
-import { smokeStep, smokeUpdatesFor, smokeCellsOf, THIN } from "./smoke-field.mjs";
+import { smokeStep, smokeUpdatesFor, smokeCellsOf, smokeKeysOf, THIN } from "./smoke-field.mjs";
 import { smokeGridOf, smokeCellList, storedSmokeGrid, SMOKE_GRID_FLAG } from "./smoke-edges.mjs";
 
 const FLAG = "flags.animater";
@@ -121,13 +121,22 @@ export function smokeOnlySave(changes, options) {
   return keys.every((k) => k.startsWith("flags.animater.") && SMOKE_OWN.has(k.slice("flags.animater.".length).split(".")[0]));
 }
 
-// Everything the smoke left behind, taken off the scene. The `-=` key form is the caller's to translate (withDeletes).
-const clearPlan = (saved, hadGrid) => {
+// Everything the smoke left behind, taken off the scene. Read from the scene's OWN keys (smokeKeysOf), not from the
+// densities: a stored zero or a hand-edited entry is a key that is really there and must go too, or the flag is never
+// empty and the smoke is never truly gone. The `-=` key form is the caller's to translate (withDeletes).
+const clearPlan = (scene) => {
   const fields = {};
-  for (const key of Object.keys(saved ?? {})) fields[`${FLAG}.smoke.-=${key}`] = null;
-  if (hadGrid) fields[`${FLAG}.-=${SMOKE_GRID_FLAG}`] = null;
+  for (const key of smokeKeysOf(scene)) fields[`${FLAG}.smoke.-=${key}`] = null;
+  if (scene?.flags?.animater?.[SMOKE_GRID_FLAG] !== undefined) fields[`${FLAG}.-=${SMOKE_GRID_FLAG}`] = null;
   return { fields, cells: [], shapes: [], level: null, grid: null, openings: [], rooms: [] };
 };
+
+// Everything the smoke left on a scene, taken off it: the cells deleted by name, the stored geometry removed by name,
+// and no shapes at all, so the caller takes the concealment region away with them. Repair asks for this, and so does a
+// scene whose grid has stopped making sense. The `-=` key form is the caller's to translate (withDeletes).
+export function smokeClearPlan(scene) {
+  return clearPlan(scene);
+}
 
 // The round's whole decision.
 //   activeGM  this client may write (only the active GM ever does).
@@ -138,7 +147,10 @@ const clearPlan = (saved, hadGrid) => {
 //   walled(i, n)    whether a sight- or move-blocking wall stands between two touching cells.
 //   roomOf(i)       the room cell i sits in, as {id, size}: a name that is the same for every cell of that room, and
 //                   how many cells it holds, for the venting. The whole grid as one room when not given.
-// Returns null when this client must not write or the scene has no usable geometry; otherwise
+//   openings  [i], the cells the scene's own walls stand open on (smoke-field.mjs smokeOpeningsOf): an open door, a
+//             window standing open, a smashed one, a hole battered through. Each room breathes out at the ones of its
+//             own, beside the ones it already has by standing open to the sky.
+// Returns null only when this client must not write; otherwise
 // {fields, cells, shapes, level, grid, openings, rooms}. `fields` may be empty: an unchanged round writes nothing.
 //
 // Indoors is where smoke lives: a fire out of doors fills nothing. Indoor-to-outdoor pairs are always blocked, so
@@ -149,13 +161,15 @@ const clearPlan = (saved, hadGrid) => {
 // another by the very walls the blocked pairs already encode, so this is not an approximation: it is the same answer,
 // worked out right. One room's openings must never vent another's, and a great hall must never be divided by the
 // cell count of the burning closet off it.
-export function smokeRoundPlan({ activeGM, on, scene, sources = [], indoors = () => true, walled = () => false, roomOf = null } = {}) {
+export function smokeRoundPlan({ activeGM, on, scene, sources = [], indoors = () => true, walled = () => false, roomOf = null, openings: standsOpen = [] } = {}) {
   if (activeGM !== true || !scene) return null;
   const saved = smokeCellsOf(scene);
-  const hadGrid = !!scene.flags?.animater?.[SMOKE_GRID_FLAG];
-  if (on !== true) return clearPlan(saved, hadGrid);
+  if (on !== true) return clearPlan(scene);
   const geo = smokeGridOf(scene.dimensions);
-  if (!geo) return null;
+  // No readable geometry (a scene whose size or grid has gone): the stored cells mean nothing against it and nothing
+  // can ever be worked out again, so everything the smoke left goes now — the cells, the geometry beside them and,
+  // with no shapes, the concealment region. Abandoning here left a scene fogged and fenced for ever.
+  if (!geo) return clearPlan(scene);
   const { cols, rows, cell, origin } = geo, total = cols * rows;
   // The stored cells only mean something against the geometry they were written with: a resized scene or a changed
   // grid starts the room clear rather than sliding the old smoke under the new squares.
@@ -164,7 +178,7 @@ export function smokeRoundPlan({ activeGM, on, scene, sources = [], indoors = ()
   const inGrid = (i) => Number.isInteger(i) && i >= 0 && i < total;
   const held = stale ? [] : smokeCellList(saved).filter((c) => inGrid(c.i) && indoors(c.i));
   const lit = (sources ?? []).filter((s) => inGrid(s?.i) && s.rate > 0 && indoors(s.i));
-  if (!held.length && !lit.length) return clearPlan(saved, hadGrid);
+  if (!held.length && !lit.length) return clearPlan(scene);
   // Only the cells that hold smoke or make it, and the one ring they can reach this round, are ever asked about: the
   // room test is a polygon walk, and a whole canvas of them every few seconds would be the round's entire cost.
   const seed = new Set([...held.map((c) => c.i), ...lit.map((s) => s.i)]);
@@ -185,6 +199,7 @@ export function smokeRoundPlan({ activeGM, on, scene, sources = [], indoors = ()
     owner.set(i, id);
   }
   const roomIdOf = (i) => (owner.has(i) ? owner.get(i) : (roomAt(i).id ?? ""));
+  const walls = new Set((standsOpen ?? []).filter(inGrid));
   for (const [i, id] of owner) {
     const group = rooms.get(id);
     let breathes = false;
@@ -196,7 +211,9 @@ export function smokeRoundPlan({ activeGM, on, scene, sources = [], indoors = ()
       if (roomIdOf(n) !== id) { group.blocked.push({ from: i, to: n }); continue; }
       if (n > i && wall) group.blocked.push({ from: i, to: n });
     }
-    if (breathes) group.openings.push(i);
+    // A wall of this room's own that stands open vents it too, wherever it stands: a window smashed deep inside a
+    // warren is an opening even though no cell of it touches the sky.
+    if (breathes || walls.has(i)) group.openings.push(i);
   }
   for (const c of held) rooms.get(owner.get(c.i))?.cells.push(c);
   for (const s of lit) rooms.get(owner.get(s.i))?.sources.push(s);

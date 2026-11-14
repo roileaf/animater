@@ -1,5 +1,6 @@
 // Smoke that fills a room: the pure simulation. One call is one round of the GM's tick (dt = 1).
 // No Foundry globals, no clock, no randomness; it runs under plain node and gives the same answer every time.
+import { closesWindow } from "../motion/window-state.mjs";
 
 // Density tiers. Thick blocks sight, thin only conceals; anything at or under the floor is gone.
 export const THICK = 1.1;
@@ -80,6 +81,62 @@ export function smokeSourcesOf({ fires = [], lights = [], grid = 100, cell = 100
     put(Number(l.x), Number(l.y), Number(l.rate) > 0 ? Number(l.rate) : 1, l?.levels);
   }
   return [...totals].map(([i, own]) => ({ i, rate: own.rate, levels: [...own.levels].sort() })).sort((a, b) => a.i - b.i);
+}
+
+// ---- Where the smoke gets out. ----
+// Smoke leaves a room wherever its wall does not hold: an open door, a window standing open, and any hole of ours — a
+// smashed window, a battered door, a breached wall all leave the room open to the air. A shut door, a shut window,
+// a locked one and a plain whole wall hold it in.
+// (A room open to the sky is not here: the round already knows which cells are indoors, and an indoor cell touching an
+// outdoor one with no wall between them is an opening by that alone. This list is the walls' own.)
+// Foundry's door state for OPEN (hard-coded to keep this module pure, as wall-break.mjs does): 0 shut, 1 open, 2 locked.
+const OPEN_DOOR = 1;
+export function wallStandsOpen(wall) {
+  const own = wall?.flags?.animater;
+  // Broken through: the note the break wrote is on the wall whatever its door type now says.
+  const hole = own?.breakWall?.broken;
+  if (hole && typeof hole === "object") return true;
+  if (Number(wall?.door) > 0) return Number(wall?.ds) === OPEN_DOOR;
+  const kind = own?.window;
+  // An empty frame (what a break leaves of a window that does not open), or one the GM has swung open.
+  if (kind === "open") return true;
+  return closesWindow(kind) && own?.windowOpen === true;
+}
+
+// The cells of the smoke grid an opening stands on: every cell each open wall runs through, and the cells half a cell
+// either side of it, because a wall is drawn along the line BETWEEN two squares and a doorway vents the rooms on both
+// of its sides. `walls` are the scene's walls ({c: [x1, y1, x2, y2], door, ds, flags}); `cell`, `origin` and `cols` are
+// the smoke grid the indices are read against (the same smokeGridOf the cells are stored with), and `grid` is the
+// scene's own square, which stands in for `cell` when none is given — the same shape smokeSourcesOf takes.
+// Returns [i], sorted, each cell once, nothing off the grid. Pure: no Foundry, no clock.
+export function smokeOpeningsOf({ walls = [], grid = 100, cell = null, origin = { x: 0, y: 0 }, cols = 1 } = {}) {
+  const square = Number(grid) > 0 ? Number(grid) : 100;
+  const size = Number(cell) > 0 ? Number(cell) : square;
+  const ox = Number(origin?.x) || 0, oy = Number(origin?.y) || 0;
+  const wide = Number.isInteger(Number(cols)) && Number(cols) > 0 ? Number(cols) : 1;
+  const out = new Set();
+  const put = (x, y) => {
+    const col = Math.floor((x - ox) / size), row = Math.floor((y - oy) / size);
+    if (col < 0 || col >= wide || row < 0) return;
+    out.add(row * wide + col);
+  };
+  for (const w of walls ?? []) {
+    const c = w?.c;
+    if (!Array.isArray(c) || c.length !== 4 || !c.every((n) => Number.isFinite(Number(n)))) continue;
+    if (!wallStandsOpen(w)) continue;
+    const [x1, y1, x2, y2] = c.map(Number);
+    const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+    // Walked at half a cell at a time, so a long window names every cell along it and never steps over one.
+    const steps = Math.max(1, Math.ceil((len * 2) / size));
+    // Half a cell across the wall, either way: the squares it stands between.
+    const nx = len > 0 ? (-dy / len) * (size / 2) : 0, ny = len > 0 ? (dx / len) * (size / 2) : 0;
+    for (let k = 0; k <= steps; k++) {
+      const t = k / steps, x = x1 + dx * t, y = y1 + dy * t;
+      put(x, y);
+      if (nx || ny) { put(x + nx, y + ny); put(x - nx, y - ny); }
+    }
+  }
+  return [...out].sort((a, b) => a - b);
 }
 
 // cells: [{i, v}] with i = row * cols + col. sources: [{i, rate}]. openings: [i]. blocked: [{from, to}] cell pairs a wall
@@ -164,6 +221,11 @@ export function smokeCellsOf(doc) {
   for (const [k, v] of Object.entries(raw)) if (Number.isFinite(v) && v > 0) out[k] = v;
   return out;
 }
+
+// Every key a scene really holds under the smoke flag, a zero or a hand-edited junk entry included. smokeCellsOf drops
+// what is not a density, but a key it dropped is still stored: anything that means to leave NOTHING behind has to delete
+// these, not those.
+export const smokeKeysOf = (doc) => Object.keys(rawSmokeOf(doc));
 
 // A round's result as scene updates (plain objects, nothing applied): [] when nothing changed, else one update.
 // Foundry MERGES an object-valued flag, so a cell that has cleared must be deleted by name: `flags.animater.smoke.-=<i>` with

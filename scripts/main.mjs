@@ -23,11 +23,11 @@ import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
 import { BURN_MS, burnLightData, fireTimers, unhideLights, firesOf } from "./engines/props/prop-lights.mjs";
 import { propMaterial, canBreak } from "./engines/props/prop-material.mjs";
-import { smokeCellsOf, smokeSourcesOf } from "./engines/props/smoke-field.mjs";
+import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf } from "./engines/props/smoke-field.mjs";
 import { registerSmokeFence } from "./engines/props/smoke-fence.mjs";
-import { smokeGridOf } from "./engines/props/smoke-edges.mjs";
+import { smokeGridOf, storedSmokeGrid } from "./engines/props/smoke-edges.mjs";
 import { smokeRegionData, CONCEALMENT_BEHAVIOUR } from "./engines/props/smoke-regions.mjs";
-import { smokeRoundPlan, smokeRoomAt, smokeOnlySave } from "./engines/props/smoke-round.mjs";
+import { smokeRoundPlan, smokeRoomAt, smokeOnlySave, smokeClearPlan } from "./engines/props/smoke-round.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls, blockingWalls, wallStop } from "./engines/props/prop-walls.mjs";
@@ -42,7 +42,7 @@ import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt
 import { DOOR_ATTACK_SYSTEMS, doorStats, doorCracked, doorHpLine, strikeReaches, strikeIdentifier, doorAttackOf, doorAttackCheck, doorAttackRoller, doorHitUpdate, strikeHasAmmo, pickDoorStamp } from "./engines/props/door-attack.mjs";
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
-import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsOf, dropLostDecorFire, regionBurns, createQuenchGate, quenchedBy, quenchUpdates, repairFireUpdates } from "./engines/props/fire-spread.mjs";
+import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsOf, dropLostDecorFire, regionBurns, createQuenchGate, quenchedBy, quenchUpdates, quenchSmokeUpdate, repairFireUpdates } from "./engines/props/fire-spread.mjs";
 import { areaRefusal } from "./engines/props/prop-areas.mjs";
 import { createFireLooks, warmEdges, charredCells, litCells } from "./engines/props/fire-looks.mjs";
 import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, wallBetween, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
@@ -10328,7 +10328,12 @@ async function smokeRound(scene, burning = []) {
     };
     const walls = blockingWalls((scene.walls?.contents ?? []).map(wallView));
     const walled = (i, n) => wallBetween(mid(i), mid(n), walls);
-    plan = smokeRoundPlan({ activeGM, on, scene, sources, indoors, walled,
+    // Where the room breathes out through its own walls (smoke-field.mjs smokeOpeningsOf): an open door, a window
+    // standing open, a smashed one, a hole battered through, each on the cells either side of it. indoor-air's own
+    // sceneOpenings is a different list for a different job (the drafts' way out, doors near the scene's edge only,
+    // never a window) and is deliberately not used here.
+    const openings = smokeOpeningsOf({ walls: scene.walls?.contents ?? [], grid: propGrid(scene), cell, origin, cols });
+    plan = smokeRoundPlan({ activeGM, on, scene, sources, indoors, walled, openings,
       roomOf: (i) => smokeRoomAt({ from: i, cols, rows, indoors, walled, cache: smokeRoomsOf(scene) }) });
   }
   if (!plan) return;
@@ -10365,6 +10370,21 @@ async function smokeRegionNow(scene, shapes, level) {
   if (sameLevels && JSON.stringify(now) === JSON.stringify(data.shapes)) return;
   await scene.updateEmbeddedDocuments("Region", [{ _id: region.id, shapes: data.shapes, levels: data.levels }], SMOKE_NOTE)
     .catch((e) => runtime?.trace("props", `smoke region not written: ${e?.message ?? e}`));
+}
+// Everything the smoke has left on a scene, taken off it at once (smoke-round.mjs smokeClearPlan): the cells by name,
+// the geometry stored beside them by name, the concealment region, and — the flag being gone — every client's
+// sight-blocking fence with them (smoke-fence.mjs rebuilds from the stored flag on this very update). Repair asks for
+// this, so a room that was smoked out is clear the moment the props are put back.
+// Only the active GM writes, as every other smoke write does. Another GM pressing Repair leaves the room to empty
+// itself over the next rounds instead, which it does: with nothing burning the fade clears it on its own.
+async function clearSmokeNow(scene) {
+  if (!scene || game.users?.activeGM?.isSelf !== true) return;
+  const plan = smokeClearPlan(scene);
+  if (Object.keys(plan.fields).length) {
+    await scene.update(withDeletes(plan.fields, propDel()), SMOKE_NOTE)
+      .catch((e) => runtime?.trace("props", `smoke not cleared: ${e?.message ?? e}`));
+  }
+  await smokeRegionNow(scene, [], null);
 }
 // The ticker: every scene with both switches on, each keeping its own count, on the active GM alone.
 async function fireRoundsNow() {
@@ -10590,8 +10610,19 @@ async function quenchWrite(scene, area) {
   // A fire round still writing would put back what is cleared here: let it finish first.
   for (let i = 0; i < 100 && fireRunning.has(scene.id); i++) await new Promise((done) => setTimeout(done, 50));
   const out = quenchPutOf(scene, area);
-  if (!out.put.length) return false;
   const del = propDel();
+  // The same water or cold thins the room smoke it falls through (fire-spread.mjs quenchSmokeUpdate), asked against
+  // the grid the cells were INDEXED with and not the scene's size now. A drenched room is left thinner, not scoured,
+  // so it still hangs and fades on from there; with the last cell gone the concealment region goes with it. This runs
+  // whether or not anything was alight: water on a room full of smoke clears the air even with the fire already out.
+  const thinned = quenchSmokeUpdate(scene, area.testPoint, storedSmokeGrid(scene, smokeCellsOf(scene)) ?? smokeGridOf(scene.dimensions));
+  const thinnedAny = Object.keys(thinned.fields).length > 0;
+  if (thinnedAny) {
+    await scene.update(withDeletes(thinned.fields, del), SMOKE_NOTE)
+      .catch((e) => runtime?.trace("props", `smoke not thinned: ${e?.message ?? e}`));
+    if (!thinned.cells.length) await smokeRegionNow(scene, [], null);
+  }
+  if (!out.put.length) return thinnedAny;
   if (out.tiles.length) await scene.updateEmbeddedDocuments("Tile", out.tiles.map((u) => withDeletes(u, del)), { animater: { propFire: true } })
     .catch((e) => runtime?.trace("props", `quench not written: ${e?.message ?? e}`));
   if (out.regions.length) await scene.updateEmbeddedDocuments("Region", out.regions.map((u) => withDeletes(u, del)), { animater: { propFire: true } })
@@ -11105,6 +11136,8 @@ async function repairAllProps(scene = canvas?.scene) {
   for (const mark of [...fireWarned]) if (mark.startsWith(`${scene.id}:`)) fireWarned.delete(mark);
   if (r.deleteLights?.length) await deletePropFires(scene, r.deleteLights);
   if (r.deleteRegions?.length) await deletePropRegions(scene, r.deleteRegions);
+  // The rooms the fires smoked out are clear again: the cells, their geometry, the concealment region and the fence.
+  await clearSmokeNow(scene);
   return r.tiles.length;
 }
 // What breaks props (engines/props/prop-triggers.mjs): an area's damage roll, a missed melee strike, a forced path.

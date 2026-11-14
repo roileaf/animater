@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { THICK, THIN, DROP_FLOOR, DENSITY_CAP, smokeStep, smokeTier, smokeUpdatesFor, smokeCellsOf } from "../../../scripts/engines/props/smoke-field.mjs";
+import { THICK, THIN, DROP_FLOOR, DENSITY_CAP, smokeStep, smokeTier, smokeUpdatesFor, smokeCellsOf, smokeOpeningsOf, wallStandsOpen } from "../../../scripts/engines/props/smoke-field.mjs";
 
 const at = (r, i) => r.cells.find((c) => c.i === i)?.v;
 const mass = (cells) => cells.reduce((s, c) => s + c.v, 0);
@@ -252,4 +252,92 @@ test("stored zero and junk keys are deleted, not left for ever", () => {
   const [u] = smokeUpdatesFor({ cells: [] }, { scene });
   assert.deepEqual(Object.keys(u).sort(), [1, 2, 3, 4, 5].map((k) => `flags.animater.smoke.-=${k}`));
   assert.deepEqual(applyTo(scene, [u]).flags.animater.smoke, {});
+});
+
+// ---- Where the smoke gets out: the openings of a scene's walls (smokeOpeningsOf). ----
+
+// A 10-wide grid of 50px cells over a scene whose own square is 100px.
+const G = { grid: 100, cell: 50, origin: { x: 0, y: 0 }, cols: 10 };
+
+test("an open door, and an open or broken window, are openings; a closed one is not", () => {
+  const g = { grid: 100, cell: 50, origin: { x: 0, y: 0 }, cols: 10 };
+  const open = { c: [100, 100, 200, 100], door: 1, ds: 1 };
+  const shut = { c: [300, 100, 400, 100], door: 1, ds: 0 };
+  const broken = { c: [500, 100, 600, 100], door: 0, flags: { animater: { breakWall: { windowKind: "glass", broken: {} } } } };
+  const o = smokeOpeningsOf({ walls: [open, shut, broken], ...g });
+  assert.ok(o.length >= 2);
+});
+
+test("only a wall that really stands open counts, and each kind is told apart", () => {
+  // A door: open (ds 1) yes, shut (0) and locked (2) no. A secret door counts as a door.
+  assert.equal(wallStandsOpen({ door: 1, ds: 1 }), true);
+  assert.equal(wallStandsOpen({ door: 2, ds: 1 }), true);
+  assert.equal(wallStandsOpen({ door: 1, ds: 0 }), false);
+  assert.equal(wallStandsOpen({ door: 1, ds: 2 }), false);
+  // A window that opens and closes: only while it stands open.
+  assert.equal(wallStandsOpen({ door: 0, flags: { animater: { window: "glassWindow", windowOpen: true } } }), true);
+  assert.equal(wallStandsOpen({ door: 0, flags: { animater: { window: "glassWindow" } } }), false);
+  assert.equal(wallStandsOpen({ door: 0, flags: { animater: { window: "glassWindow", windowOpen: false } } }), false);
+  // An empty frame, and anything of ours broken through: a smashed window, a battered door, a breached wall.
+  assert.equal(wallStandsOpen({ door: 0, flags: { animater: { window: "open" } } }), true);
+  assert.equal(wallStandsOpen({ door: 0, flags: { animater: { breakWall: { broken: { kind: "window" } } } } }), true);
+  assert.equal(wallStandsOpen({ door: 0, flags: { animater: { breakWall: { broken: { kind: "wall" } } } } }), true);
+  // A plain wall, a wall marked breakable but whole, and nothing at all.
+  assert.equal(wallStandsOpen({ door: 0 }), false);
+  assert.equal(wallStandsOpen({ door: 0, flags: { animater: { breakWall: { window: true } } } }), false);
+  assert.equal(wallStandsOpen(null), false);
+});
+
+test("an opening stands on the cells BOTH sides of its wall, since a doorway vents either room", () => {
+  // The wall runs along y = 100, the line between row 1 and row 2 of 50px cells, across columns 2 and 3.
+  const o = smokeOpeningsOf({ walls: [{ c: [100, 100, 200, 100], door: 1, ds: 1 }], ...G });
+  for (const i of [12, 13, 14, 22, 23, 24]) assert.ok(o.includes(i), `cell ${i} stands open`);
+  // Nothing a row further away.
+  assert.ok(!o.includes(32) && !o.includes(2));
+});
+
+test("a shut scene has no openings at all", () => {
+  assert.deepEqual(smokeOpeningsOf({ walls: [{ c: [100, 100, 200, 100], door: 1, ds: 0 }, { c: [0, 0, 0, 500] }], ...G }), []);
+  assert.deepEqual(smokeOpeningsOf({ walls: [], ...G }), []);
+  assert.deepEqual(smokeOpeningsOf(), []);
+});
+
+test("the openings are sorted, told once each, and never off the grid", () => {
+  const twice = { c: [100, 100, 200, 100], door: 1, ds: 1 };
+  const o = smokeOpeningsOf({ walls: [twice, { ...twice }], ...G });
+  assert.deepEqual(o, [...new Set(o)].sort((a, b) => a - b));
+  // Right of the grid (10 columns of 50px: 500px wide) and above its top, both dropped.
+  assert.deepEqual(smokeOpeningsOf({ walls: [{ c: [900, 100, 1000, 100], door: 1, ds: 1 }], ...G }), []);
+  assert.deepEqual(smokeOpeningsOf({ walls: [{ c: [100, -400, 200, -400], door: 1, ds: 1 }], ...G }), []);
+});
+
+test("a wall with no usable segment is left out", () => {
+  for (const c of [null, undefined, [1, 2], [1, 2, 3, "x"], [NaN, 0, 1, 1]]) {
+    assert.deepEqual(smokeOpeningsOf({ walls: [{ c, door: 1, ds: 1 }], ...G }), [], JSON.stringify(c));
+  }
+  // A wall of no length at all still names the cell it stands on.
+  assert.deepEqual(smokeOpeningsOf({ walls: [{ c: [125, 125, 125, 125], door: 1, ds: 1 }], ...G }), [22]);
+});
+
+test("the openings are pure: the walls are untouched and the answer is the same every time", () => {
+  const walls = [{ c: [100, 100, 200, 100], door: 1, ds: 1 }];
+  const before = JSON.stringify(walls);
+  const a = smokeOpeningsOf({ walls, ...G }), b = smokeOpeningsOf({ walls, ...G });
+  assert.deepEqual(a, b);
+  assert.equal(JSON.stringify(walls), before);
+});
+
+test("the scene's own square stands in for the cell size when none is given", () => {
+  // grid 100, no cell: the cells are 100px, so the wall along y = 100 stands on rows 0 and 1 of columns 1 and 2.
+  const o = smokeOpeningsOf({ walls: [{ c: [100, 100, 200, 100], door: 1, ds: 1 }], grid: 100, cols: 10 });
+  for (const i of [1, 2, 11, 12]) assert.ok(o.includes(i), `cell ${i}`);
+});
+
+test("an opening really does vent the room it stands in", () => {
+  const walls = [{ c: [0, 100, 100, 100], door: 1, ds: 1 }];
+  const openings = smokeOpeningsOf({ walls, grid: 100, cell: 100, origin: { x: 0, y: 0 }, cols: 5 });
+  assert.ok(openings.length, "the doorway names cells");
+  const shut = run({ cells: room(1.5), sources: [], cols: 5, rows: 5, openings: [], room: 25 }, 6);
+  const vented = run({ cells: room(1.5), sources: [], cols: 5, rows: 5, openings, room: 25 }, 6);
+  assert.ok(mass(vented) < mass(shut) * 0.9, `${mass(vented)} < ${mass(shut)}`);
 });

@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { smokeRoundPlan, smokeLevelFor, smokeShapes, smokeNeighbours, smokeOnlySave, smokeRoomAt, ROOM_CAP } from "../../../scripts/engines/props/smoke-round.mjs";
+import { smokeRoundPlan, smokeLevelFor, smokeShapes, smokeNeighbours, smokeOnlySave, smokeRoomAt, smokeClearPlan, ROOM_CAP } from "../../../scripts/engines/props/smoke-round.mjs";
 import { THICK, THIN } from "../../../scripts/engines/props/smoke-field.mjs";
 import { propSceneFieldsHTML } from "../../../scripts/ui/prop-config.mjs";
 
@@ -326,4 +326,116 @@ test("both switches are off by default and the scene's says what the smoke does"
   // A fire light's own, likewise unticked.
   assert.match(main, /Fills the room with smoke/);
   assert.match(main, /name="flags\.\$\{ID\}\.roomSmoke"\$\{flags\.roomSmoke === true \? " checked" : ""\}/);
+});
+
+// ---- Clearing: every path by which the smoke must stop existing. ----
+
+test("a scene whose grid has stopped making sense is cleared, not abandoned", () => {
+  const smoke = { 33: 2, 34: 1 }, grid = { cols: COLS, cell: CELL, level: A };
+  for (const dimensions of [null, {}, { width: 1000, height: 1000, size: 0 }, { width: 0, height: 1000, size: CELL }, { width: 1000, height: NaN, size: CELL }]) {
+    const broken = { ...scene({ smoke, grid }), dimensions };
+    const p = plan({ scene: broken, sources: FIRE });
+    assert.ok(p, "a plan, not an abandoned round: " + JSON.stringify(dimensions));
+    // The cells go by name, the geometry beside them goes by name, and with no shapes the region goes too.
+    assert.deepEqual(p.fields, { "flags.animater.smoke.-=33": null, "flags.animater.smoke.-=34": null, "flags.animater.-=smokeGrid": null });
+    assert.deepEqual(p.cells, []);
+    assert.deepEqual(p.shapes, []);
+    assert.equal(p.level, null);
+    // Nothing writes the whole flag: Foundry would merge it and strand what was there.
+    for (const key of Object.keys(p.fields)) assert.ok(!/\.smoke$|\.smokeGrid$/.test(key), key);
+  }
+});
+
+test("an unreadable grid still writes nothing for a scene that holds no smoke", () => {
+  const p = plan({ scene: { ...scene(), dimensions: null }, sources: FIRE });
+  assert.deepEqual(p.fields, {});
+  assert.deepEqual(p.shapes, []);
+});
+
+test("smokeClearPlan takes off whatever a scene holds, and nothing it does not", () => {
+  const both = smokeClearPlan(scene({ smoke: { 7: 1.5, 8: 0.4 }, grid: { cols: COLS, cell: CELL, level: A } }));
+  assert.deepEqual(both.fields, { "flags.animater.smoke.-=7": null, "flags.animater.smoke.-=8": null, "flags.animater.-=smokeGrid": null });
+  assert.deepEqual(both.shapes, []);
+  assert.equal(both.level, null);
+  // A stored zero or a junk entry is still a key on the scene and still has to go.
+  assert.deepEqual(smokeClearPlan(scene({ smoke: { 7: 0, 8: "x" } })).fields, { "flags.animater.smoke.-=7": null, "flags.animater.smoke.-=8": null });
+  // Geometry with no cells, and a scene with neither.
+  assert.deepEqual(smokeClearPlan(scene({ grid: { cols: COLS, cell: CELL } })).fields, { "flags.animater.-=smokeGrid": null });
+  assert.deepEqual(smokeClearPlan(scene()).fields, {});
+  assert.deepEqual(smokeClearPlan(null).fields, {});
+});
+
+test("a wall of the room's own that stands open vents it, wherever in the room it stands", () => {
+  // 33 is the middle of the sealed room: no cell of it touches the sky, so only the walls' own list can open it.
+  const shut = burn(10);
+  const held = Object.fromEntries(shut.cells.map((c) => [String(c.i), Math.round(c.v * 10000) / 10000]));
+  const quiet = plan({ scene: scene({ smoke: held, grid: { cols: COLS, cell: CELL } }), sources: [] });
+  const vented = plan({ scene: scene({ smoke: held, grid: { cols: COLS, cell: CELL } }), sources: [], openings: [33] });
+  assert.deepEqual(quiet.openings, [], "sealed, with nothing open");
+  assert.deepEqual(vented.openings, [33], "the smashed window inside the room");
+  const mass = (cells) => cells.reduce((sum, c) => sum + c.v, 0);
+  assert.ok(mass(vented.cells) < mass(quiet.cells) * 0.95, mass(vented.cells) + " < " + mass(quiet.cells));
+});
+
+test("an open wall of another room, or off the grid, never vents this one", () => {
+  const held = Object.fromEntries(burn(10).cells.map((c) => [String(c.i), Math.round(c.v * 10000) / 10000]));
+  const sc = () => scene({ smoke: held, grid: { cols: COLS, cell: CELL } });
+  // 88 is out of doors, 7 is in no room of ours, -1 and 100000 are not cells at all.
+  for (const openings of [[88], [7], [-1], [100000], ["33"], [null]]) {
+    assert.deepEqual(plan({ scene: sc(), sources: [], openings }).openings, [], JSON.stringify(openings));
+  }
+});
+
+test("a room with no source left empties on its own, cells, geometry and shapes", () => {
+  let smoke = Object.fromEntries(burn(20).cells.map((c) => [String(c.i), Math.round(c.v * 10000) / 10000]));
+  assert.ok(Object.keys(smoke).length, "the room is full");
+  let p = null, rounds = 0;
+  while (Object.keys(smoke).length && rounds < 120) {
+    rounds++;
+    p = plan({ scene: scene({ smoke, grid: { cols: COLS, cell: CELL, level: A }, levels: [{ id: A }] }), sources: [] });
+    smoke = Object.fromEntries(p.cells.map((c) => [String(c.i), Math.round(c.v * 10000) / 10000]));
+  }
+  assert.ok(rounds < 120, "emptied in " + rounds + " rounds");
+  assert.equal(p.fields["flags.animater.-=smokeGrid"], null, "the geometry goes with the last cell");
+  assert.deepEqual(p.shapes, [], "and the concealment region with it");
+  assert.equal(p.level, null);
+});
+
+// ---- The wiring in main.mjs that no pure test can see. ----
+
+test("the round feeds it the walls' own openings, and not the drafts' list", () => {
+  assert.match(main, /const openings = smokeOpeningsOf\(\{ walls: scene\.walls\?\.contents \?\? \[\], grid: propGrid\(scene\), cell, origin, cols \}\);/);
+  assert.match(main, /plan = smokeRoundPlan\(\{ activeGM, on, scene, sources, indoors, walled, openings,/);
+  // sceneOpenings counts open doors near the scene's edge for the drafts and never counts a window: it is not this list.
+  const from = main.indexOf("// ---- The smoke a fire fills"), to = main.indexOf("// The ticker: every scene with both switches on");
+  assert.ok(from >= 0 && to > from);
+  assert.doesNotMatch(main.slice(from, to), /sceneOpenings\(/);
+});
+
+test("Repair takes the smoke away with the props, and only the active GM writes it", () => {
+  assert.match(main, /await clearSmokeNow\(scene\);/);
+  const body = main.slice(main.indexOf("async function clearSmokeNow"), main.indexOf("// The ticker: every scene with both switches on"));
+  assert.match(body, /game\.users\?\.activeGM\?\.isSelf !== true\) return;/, "no other client writes");
+  assert.match(body, /smokeClearPlan\(scene\)/);
+  // Every `-=` write goes through withDeletes: the bare key form is deprecated in v14.
+  assert.match(body, /scene\.update\(withDeletes\(plan\.fields, propDel\(\)\), SMOKE_NOTE\)/);
+  assert.match(body, /await smokeRegionNow\(scene, \[\], null\);/, "the concealment region goes too");
+  // It is Repair that asks, after the props and their fires are back.
+  const repair = main.slice(main.indexOf("async function repairAllProps"));
+  assert.ok(repair.indexOf("await clearSmokeNow(scene);") < repair.indexOf("return r.tiles.length;"));
+});
+
+test("water and cold thin the smoke they cover, against the stored grid", () => {
+  const body = main.slice(main.indexOf("async function quenchWrite"), main.indexOf("async function receiveQuench"));
+  assert.match(body, /quenchSmokeUpdate\(scene, area\.testPoint, storedSmokeGrid\(scene, smokeCellsOf\(scene\)\) \?\? smokeGridOf\(scene\.dimensions\)\)/);
+  assert.match(body, /withDeletes\(thinned\.fields, del\)/, "the `-=` deletes go through withDeletes");
+  assert.match(body, /if \(!thinned\.cells\.length\) await smokeRegionNow\(scene, \[\], null\);/);
+  // The thinning happens whether or not anything was alight: the early return comes after it.
+  assert.ok(body.indexOf("const thinned =") < body.indexOf("if (!out.put.length) return thinnedAny;"));
+});
+
+test("no smoke write uses a clock or a coin of its own", () => {
+  const from = main.indexOf("// ---- The smoke a fire fills"), to = main.indexOf("// The ticker: every scene with both switches on");
+  const smoke = main.slice(from, to);
+  assert.doesNotMatch(smoke, /Math\.random\(|Date\.now\(/);
 });

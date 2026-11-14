@@ -1,4 +1,5 @@
 // How fast a prop catches fire, read from its material and what it holds. Pure: no Foundry, no PIXI.
+import { smokeCellsOf, smokeKeysOf, smokeUpdatesFor, DROP_FLOOR } from "./smoke-field.mjs";
 
 // A material's burn rate: how fast fire takes the prop itself (plants go quick, wood slower, stone and metal not at all).
 export const MATERIAL_RATE = { plant: 2, wood: 1, glass: 0, clay: 0, stone: 0, metal: 0, none: 0 };
@@ -334,6 +335,46 @@ export function quenchUpdates(things, inArea) {
     put.push(t);
   }
   return { tiles, regions: [...regions.values()], put };
+}
+
+// What a quenching area leaves of the room smoke it falls through. A drench or a cold snap knocks a room's smoke down,
+// it does not scour it: what is left still hangs, thinner, and fades on from there.
+export const QUENCH_SMOKE_LEFT = 0.35;
+
+// A water or cold area thinning the smoke it covers (pure), beside the fires it puts out. `scene` is the document holding
+// flags.animater.smoke, `inArea(point)` says whether the area covers a point, and `geo` ({cols, cell, origin}) is the grid
+// the cells were INDEXED with (the stored one, never the scene's current size, or the area would be asked about the wrong
+// squares). Each covered cell keeps `left` of itself and anything thinned past the drop floor is gone.
+// Returns { fields, cells }: the scene's update (through smokeUpdatesFor, so a cell that has gone is deleted by name and
+// the whole flag is never written) and what smoke is left, so the caller can take the concealment region with the last of
+// it. {} and [] when there is no smoke, no usable grid, or the area covers none of it.
+export function quenchSmokeUpdate(scene, inArea, geo, left = QUENCH_SMOKE_LEFT) {
+  const cols = Number(geo?.cols), cell = Number(geo?.cell);
+  const ox = Number(geo?.origin?.x) || 0, oy = Number(geo?.origin?.y) || 0;
+  const saved = smokeCellsOf(scene);
+  const keys = Object.keys(saved);
+  if (!keys.length || typeof inArea !== "function" || !(Number.isInteger(cols) && cols > 0) || !(cell > 0)) return { fields: {}, cells: [] };
+  const share = Number.isFinite(left) ? Math.min(1, Math.max(0, left)) : QUENCH_SMOKE_LEFT;
+  const cells = [];
+  let touched = false;
+  for (const key of keys) {
+    const i = Number(key);
+    if (!Number.isInteger(i) || i < 0) continue;
+    const point = { x: ox + ((i % cols) + 0.5) * cell, y: oy + (Math.floor(i / cols) + 0.5) * cell };
+    let inside = false;
+    try { inside = inArea(point) === true; } catch { inside = false; }
+    if (inside) touched = true;
+    const v = inside ? saved[key] * share : saved[key];
+    if (v > DROP_FLOOR) cells.push({ i, v });
+  }
+  if (!touched) return { fields: {}, cells };
+  const fields = smokeUpdatesFor({ cells }, { scene })[0] ?? {};
+  // The last cell takes the geometry beside it with it, by name: Foundry merges an object flag, so a replacement object
+  // would strand what was there. (The same key the round's own clearing writes.)
+  if (!cells.length && scene?.flags?.animater?.smokeGrid !== undefined) fields["flags.animater.-=smokeGrid"] = null;
+  // A stored zero or a junk entry is a key that is really there: it goes too, or the flag is never empty.
+  for (const key of smokeKeysOf(scene)) if (!cells.some((c) => String(c.i) === key)) fields[`flags.animater.smoke.-=${key}`] = null;
+  return { fields, cells };
 }
 
 // Repair's part for regions: one update per region that keeps any decoration fire or grass fire (burning, warm, charred,
