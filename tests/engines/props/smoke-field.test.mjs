@@ -163,19 +163,19 @@ test("nothing changed writes nothing", () => {
   assert.deepEqual(smokeUpdatesFor({ cells: [] }, { scene: {} }), []);
 });
 
-test("a density that barely moves writes nothing, a visible move does", () => {
-  assert.deepEqual(smokeUpdatesFor({ cells: [{ i: 3, v: 1.0004 }] }, { scene: sceneWith({ 3: 1 }) }), []);
+test("a density that moves less than a store unit writes nothing, a visible move does", () => {
+  assert.deepEqual(smokeUpdatesFor({ cells: [{ i: 3, v: 1.00004 }] }, { scene: sceneWith({ 3: 1 }) }), []);
   assert.equal(smokeUpdatesFor({ cells: [{ i: 3, v: 1.03 }] }, { scene: sceneWith({ 3: 1 }) })[0]["flags.animater.smoke.3"], 1.03);
 });
 
 test("stored densities are rounded", () => {
   const u = smokeUpdatesFor({ cells: [{ i: 4, v: 1.23456789 }] }, { scene: {} });
-  assert.equal(u[0]["flags.animater.smoke.4"], 1.23);
+  assert.equal(u[0]["flags.animater.smoke.4"], 1.2346);
 });
 
 test("a cell that rounds to nothing is not stored, and is deleted if it was", () => {
-  assert.deepEqual(smokeUpdatesFor({ cells: [{ i: 4, v: 0.001 }] }, { scene: {} }), []);
-  assert.deepEqual(smokeUpdatesFor({ cells: [{ i: 4, v: 0.001 }] }, { scene: sceneWith({ 4: 0.5 }) }), [{ "flags.animater.smoke.-=4": null }]);
+  assert.deepEqual(smokeUpdatesFor({ cells: [{ i: 4, v: 0.00001 }] }, { scene: {} }), []);
+  assert.deepEqual(smokeUpdatesFor({ cells: [{ i: 4, v: 0.00001 }] }, { scene: sceneWith({ 4: 0.5 }) }), [{ "flags.animater.smoke.-=4": null }]);
 });
 
 test("smokeCellsOf reads an empty or missing flag as an empty room", () => {
@@ -198,4 +198,35 @@ test("what the GM writes round-trips through smokeCellsOf", () => {
   const stored = {};
   for (const [k, v] of Object.entries(u)) stored[k.split(".").pop()] = v;
   assert.deepEqual(smokeCellsOf(sceneWith(stored)), { 2: 0.5, 6: 2 });
+});
+
+// Apply an update the way Foundry merges flags: a keyed write sets, a `-=` delete removes.
+const applyTo = (scene, updates) => {
+  const smoke = { ...(scene.flags?.animater?.smoke ?? {}) };
+  for (const u of updates) for (const [k, v] of Object.entries(u)) {
+    const key = k.split(".").pop();
+    if (key.startsWith("-=")) delete smoke[key.slice(2)]; else smoke[key] = v;
+  }
+  return sceneWith(smoke);
+};
+const toCells = (m) => Object.entries(m).map(([i, v]) => ({ i: Number(i), v }));
+
+test("closed loop: a uniform thin room written, read and stepped actually clears", () => {
+  for (const start of [0.03, 0.05, 0.2, 1.5]) {
+    let scene = sceneWith(Object.fromEntries(Array.from({ length: 25 }, (_, i) => [i, start])));
+    let rounds = 0;
+    for (; rounds < 200 && Object.keys(smokeCellsOf(scene)).length; rounds++) {
+      const step = smokeStep({ cells: toCells(smokeCellsOf(scene)), sources: [], cols: 5, rows: 5 });
+      scene = applyTo(scene, smokeUpdatesFor(step, { scene }));
+    }
+    assert.ok(rounds < 200, `room at ${start} never cleared`);
+    assert.deepEqual(scene.flags.animater.smoke, {}, `room at ${start} left keys stored`);
+  }
+});
+
+test("stored zero and junk keys are deleted, not left for ever", () => {
+  const scene = sceneWith({ 1: 0, 2: "x", 3: null, 4: NaN, 5: 0.5 });
+  const [u] = smokeUpdatesFor({ cells: [] }, { scene });
+  assert.deepEqual(Object.keys(u).sort(), [1, 2, 3, 4, 5].map((k) => `flags.animater.smoke.-=${k}`));
+  assert.deepEqual(applyTo(scene, [u]).flags.animater.smoke, {});
 });

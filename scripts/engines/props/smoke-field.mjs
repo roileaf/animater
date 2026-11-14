@@ -90,17 +90,24 @@ export function smokeStep({ cells = [], sources = [], cols, rows, openings = [],
 }
 
 // What the GM stores. The smoke lives on the scene at flags.animater.smoke as an object keyed by cell index ({[i]: density}),
-// a keyed flag like feature 1's fireCells. Densities are stored to this many places, so a cell that barely moves writes nothing.
-const STORE_PLACES = 100;
+// a keyed flag like feature 1's fireCells. Densities are stored to 4 decimals. The rounding gate (an unchanged rounded value writes nothing)
+// must never stall decay: a cell loses at least FADE (10%) a round, so it stalls only when 10% of it is under half a store
+// unit, i.e. below 0.0005, far under DROP_FLOOR (0.02), where smokeStep has already dropped it. At 2 decimals a cell near
+// 0.03 rounded back to itself for ever and its smoke was never cleared.
+const STORE_PLACES = 10000;
 const SMOKE_FLAG = "flags.animater.smoke";
 const stored = (v) => Math.round(v * STORE_PLACES) / STORE_PLACES;
+
+const rawSmokeOf = (doc) => {
+  const raw = doc?.flags?.animater?.smoke;
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+};
 
 // The saved smoke of a scene (or any document holding the flag), keyed by cell index. A missing, empty or malformed flag is
 // an empty room; entries that are not a positive number are dropped. Always a fresh object. (smokeEdges wants [{i, v}]:
 // convert at the one place the two meet, never here.)
 export function smokeCellsOf(doc) {
-  const raw = doc?.flags?.animater?.smoke;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const raw = rawSmokeOf(doc);
   const out = {};
   for (const [k, v] of Object.entries(raw)) if (Number.isFinite(v) && v > 0) out[k] = v;
   return out;
@@ -121,6 +128,7 @@ export function smokeUpdatesFor(step, { scene } = {}) {
   }
   const fields = {};
   for (const [key, v] of next) if (stored(saved[key] ?? 0) !== v) fields[`${SMOKE_FLAG}.${key}`] = v;
-  for (const key of Object.keys(saved)) if (!next.has(key)) fields[`${SMOKE_FLAG}.-=${key}`] = null;
+  // Delete from the RAW keys: a zero or junk entry (old or hand-edited data) is not in `saved` but must still go.
+  for (const key of Object.keys(rawSmokeOf(scene))) if (!next.has(key)) fields[`${SMOKE_FLAG}.-=${key}`] = null;
   return Object.keys(fields).length ? [fields] : [];
 }
