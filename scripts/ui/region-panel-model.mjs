@@ -56,7 +56,9 @@ export function kindFlags(kind, own = {}) {
   // None takes every Animater setting off the region (Foundry's way to delete a key).
   if (kind === 'none') return Object.fromEntries(Object.keys(own ?? {}).map((k) => [`-=${k}`, null]));
   const f = own?.floor, leavesCave = kind !== 'cave' && own?.cavern && regionKindOf(own, f) === 'cave';
-  const out = { ...(kind !== 'indoors' ? { indoors: false } : {}), ...(leavesCave ? { cavern: '' } : {}) };
+  // Thin ice is water frozen thinly, and its switch lives among the water controls alone: leaving water takes it off, or
+  // the region would go on walking as ice with nowhere on screen to turn it off again.
+  const out = { ...(kind !== 'indoors' ? { indoors: false } : {}), ...(leavesCave ? { cavern: '' } : {}), ...(kind !== 'water' && own?.iceThin === true ? { iceThin: false } : {}) };
   switch (kind) {
     case 'water': return { ...out, floor: 'water', overWater: false };
     case 'indoors': return { ...out, floor: f && !NOT_INDOORS.includes(f) ? f : 'wood', indoors: true, overWater: false };

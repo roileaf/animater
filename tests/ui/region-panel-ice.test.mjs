@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SECTIONS } from '../../scripts/ui/region-panel-sections.mjs';
-import { panelSections, summaryOf } from '../../scripts/ui/region-panel-model.mjs';
+import { panelSections, summaryOf, kindFlags } from '../../scripts/ui/region-panel-model.mjs';
 import { iceSettingsOf } from '../../scripts/engines/regions/thin-ice.mjs';
+import { activeStep } from '../../scripts/engines/motion/region-steps.mjs';
 
 // Thin ice in the region panel: the GM turns it on for one water region, says what it holds, and puts it back whole.
 // The controls are built and clicked here; nothing reads the panel's source text.
@@ -124,4 +125,26 @@ test('the Thin ice tooltip says fire melts it, and that the melt waits on Breaka
   assert.match(said, /fire area melts/i, 'a GM reads what fire does to it');
   assert.match(said, /Breakable props/, 'and that the melt waits on that scene setting');
   assert.match(said, /steps are not used/, 'and that it takes the region over from its own steps');
+});
+
+test('taking a region out of the water takes its thin ice with it', () => {
+  // The switch lives among the water controls alone. Left on, the region would go on walking as ice, drawing cracks and
+  // holes of dark water on grass, with nothing on screen to turn it off again.
+  for (const kind of ['ground', 'indoors', 'cave', 'lava', 'deck']) {
+    assert.equal(kindFlags(kind, { floor: 'water', iceThin: true }).iceThin, false, `${kind} leaves the water`);
+  }
+  assert.equal(kindFlags('water', { floor: 'grass', iceThin: true }).iceThin, undefined, 'coming back to water leaves it as it was');
+  assert.equal(kindFlags('ground', { floor: 'water' }).iceThin, undefined, 'a region that never had it is not written to');
+  assert.ok('-=iceThin' in kindFlags('none', { floor: 'water', iceThin: true }), 'and None takes every Animater flag off, this one with them');
+});
+
+test('a region given another floor stops being thin ice, flag or no flag', () => {
+  // Defence behind the save above, for a flag set by hand or left by an older world: the behaviour goes with the water.
+  assert.equal(iceSettingsOf({ flags: { animater: { iceThin: true, floor: 'water' } } }).thin, true);
+  assert.equal(iceSettingsOf({ flags: { animater: { iceThin: true, floor: 'grass' } } }).thin, false);
+  assert.equal(activeStep({ iceThin: true, floor: 'water' })?.look, 'frozen', 'water: the frozen step takes the region over');
+  assert.equal(activeStep({ iceThin: true, floor: 'grass' }), null, 'grass: its own steps again, and no step saved means none');
+  const grassy = { iceThin: true, floor: 'grass', steps: [{ name: 'Fresh', look: 'none', walks: 'grass' }, { name: 'Burnt', look: 'burnt', walks: 'dirt' }], stepsFloor: 'grass', step: 1 };
+  assert.equal(activeStep(grassy)?.name, 'Burnt', 'and a list it does have is its own again');
+  assert.match(summaryOf('steps', grassy, 'grass'), /^Burnt/, 'the heading names that step, not a frozen one');
 });
