@@ -10264,7 +10264,9 @@ const fireTick = () => { void fireRoundsNow().catch((e) => runtime?.trace("props
 // A new round in the tracker runs one at once; out of combat the clock does, looked at every second so a round is
 // never late by more than that.
 Hooks.on("updateCombat", (combat, changes) => { if ("round" in (changes ?? {})) fireTick(); });
-Hooks.once("ready", () => { clearInterval(fireTimer); fireTimer = setInterval(fireTick, Math.max(500, FIRE_PERIOD / 6)); });
+// unref so the timer never holds a process open: under node (the tests import this file) an un-unref'd interval keeps the
+// event loop alive for ever, which hangs the run. In a browser unref is absent and the call is a no-op, as with pruneFx.
+Hooks.once("ready", () => { clearInterval(fireTimer); fireTimer = setInterval(fireTick, Math.max(500, FIRE_PERIOD / 6)); fireTimer?.unref?.(); });
 // A combat beginning or ending anywhere: every scene is re-seeded from its OWN combat (fireReseed), so the scene
 // whose combat ended forgets that count and the clock takes over, while a scene in the middle of its own combat
 // keeps the round it stands on and is given no free round.
