@@ -1,9 +1,10 @@
 // What a spreading fire leaves on the map for everyone to see: the pulsing edge of something about to catch, and the
 // scorched ground a burnt grass square becomes. Both are read from what is stored on the documents, so every screen
 // draws the same thing, and both are painted (ink outline, stepped tones), never a glow filter.
-// The picking and the pulse are pure; only createFireLooks touches PIXI.
+// The picking and the pulse are pure; only createFireLooks touches PIXI. The flames are baked pictures (fire-bake.mjs) placed as sprites.
 import { seededRandom } from "../fragments/fragments.mjs";
 import { readFire, HEAT_WARN, HEAT_CATCH } from "./fire-spread.mjs";
+import { frontsOf, frontLook, groundLook, tilePlan, frameAt, leanAt, topAt, liftAt, acquireFlameBank, releaseFlameBank, tileSize, seatSize, groundPx, FRAMES, ABOVE, FOOT } from "./fire-bake.mjs";
 
 // The things that are smouldering: at or over the warning heat and not yet alight. `heat` is how far they are from
 // the warning heat to catching (0-1), which is how hard the edge pulses. Things are {id, fire} (a tile's flag, a
@@ -74,13 +75,15 @@ const INK = 0x1b1410, EMBER = 0xff8a30, EMBER_CORE = 0xffd08a, SOOT = [0x2a2420,
 // heat}, flames are the burning grass squares {id, rect, seed}, scorch are {id, rect, seed}. Anything left out goes.
 // The edges and the flames breathe while anything is changing and settle still when nothing is (the heat of a prop
 // warmed by a fire that is already out never changes again); the scorch is still from the first.
-export function createFireLooks({ PIXI, layer, floor = layer, grid = () => 100, now = () => 0 }) {
-  let box = null, under = null, edgeArt = null, flameArt = null, scorchArt = null, raf = 0;
+export function createFireLooks({ PIXI, layer, floor = layer, grid = () => 100, now = () => 0, makeCanvas }) {
+  let box = null, under = null, edgeArt = null, flameArt = null, scorchArt = null, groundBox = null, flameBox = null, seatBox = null, raf = 0;
+  let bank = null, bankTried = false, fronts = [], grounds = [], flameKey = "";
   let edges = [], flames = [], scorched = "", shown = "", liveUntil = 0;
   const ensure = () => {
     const root = layer?.(), below = floor?.();
     if (!root || !below) return null;
-    if (!box || box.destroyed) { box = new PIXI.Container(); flameArt = new PIXI.Graphics(); edgeArt = new PIXI.Graphics(); box.addChild(flameArt); box.addChild(edgeArt); }
+    if (!box || box.destroyed) { box = new PIXI.Container(); groundBox = new PIXI.Container(); flameBox = new PIXI.Container(); seatBox = new PIXI.Container(); flameArt = new PIXI.Graphics(); edgeArt = new PIXI.Graphics();
+      box.addChild(groundBox); box.addChild(flameArt); box.addChild(flameBox); box.addChild(seatBox); box.addChild(edgeArt); fronts = []; grounds = []; flameKey = ""; }
     if (!under || under.destroyed) { under = new PIXI.Container(); scorchArt = new PIXI.Graphics(); under.addChild(scorchArt); }
     if (box.parent !== root) root.addChild(box);
     if (under.parent !== below) below.addChild(under);
@@ -102,30 +105,89 @@ export function createFireLooks({ PIXI, layer, floor = layer, grid = () => 100, 
       edgeArt.lineStyle(1.1 * k, INK, 0.5).drawPolygon(pts);
     }
   };
-  // A burning square of grass: a few painted tongues of flame leaning out of the square, each a stepped shape (a
-  // wide ember one with a hot core inside it) under a thin ink outline, as a burning prop's flames are drawn. Their
-  // number, their feet and their lean are seeded from the square's own index, so the same square burns the same way
-  // on every screen; the swell is the shared clock's, so they lean together too.
+  // Burning grass. A row of burning squares is ONE front: one body with a boiling top edge across the whole row, lit from
+  // within, with no outline and no bottom edge; squares that touch only at a corner are separate fronts. The pictures are
+  // baked once (fire-bake.mjs: canvas gradients and additive light that PIXI.Graphics cannot draw) and here only placed: a
+  // sprite per square, cut from one endless strip so the edge runs on from square to square, all leaning together, plus a
+  // ground picture per square (scorch, glow, smoke). Which frame of the loop shows is read off the shared clock, so every
+  // screen is at the same point in it; the front's look is seeded from its first square, so every screen draws the same.
+  const flameBank = () => {
+    if (!bankTried) { bankTried = true; bank = acquireFlameBank(PIXI, makeCanvas); }
+    return bank;
+  };
+  const dropSprites = () => {
+    for (const box of [groundBox, flameBox, seatBox]) {
+      for (const child of box?.children?.slice?.() ?? []) { try { child.destroy(); } catch { /* gone */ } }
+      if (box?.children) box.children.length = 0;
+    }
+    fronts = []; grounds = [];
+  };
+  const layoutFlames = () => {
+    dropSprites();
+    if (!flames.length || !groundBox) return;
+    const b = flameBank();
+    if (!b) { fronts = frontsOf(flames).map((f) => ({ f, look: frontLook(f.cells[0].seed), tiles: [] })); return; }
+    const tile = tileSize(b.S), seat = seatSize(b.S), ground = groundPx(b.S);
+    for (const f of frontsOf(flames)) {
+      const look = frontLook(f.cells[0].seed), n = f.cells.length, scale = f.w / b.S;
+      const tiles = tilePlan(n).map((spec, i) => {
+        const tex = b.tile({ variant: look.variant, ...spec });
+        if (!tex.length) return null;
+        const sprite = new PIXI.Sprite(tex[0]);
+        sprite.anchor.set(0, (ABOVE * b.S) / tile.h);
+        // Mirrored fronts run their strip from the right, so a front is not always the same way round.
+        const at = look.mirror ? n - 1 - i : i;
+        sprite.position.set(f.x + at * f.w + (look.mirror ? f.w : 0), f.y + FOOT * f.h);
+        sprite.scale.set(look.mirror ? -scale : scale, scale);
+        flameBox.addChild(sprite);
+        // The heat put back at the foot is added to the ground, not laid over it: its own sprite, blended additively.
+        const light = b.seats({ variant: look.variant, ...spec });
+        let glow = null;
+        if (light.length) {
+          glow = new PIXI.Sprite(light[0]);
+          glow.anchor.set(0, seat.ay / seat.h);
+          glow.position.set(sprite.position.x, sprite.position.y);
+          glow.scale.set(sprite.scale.x, sprite.scale.y);
+          if (PIXI.BLEND_MODES) glow.blendMode = PIXI.BLEND_MODES.ADD;
+          seatBox.addChild(glow);
+        }
+        return { sprite, tex, glow, light, shown: 0 };
+      }).filter(Boolean);
+      fronts.push({ f, look, tiles });
+    }
+    for (const c of flames) {
+      const look = groundLook(c.seed), tex = b.ground(look.variant);
+      if (!tex.length) continue;
+      const sprite = new PIXI.Sprite(tex[0]);
+      sprite.anchor.set(ground.ax / ground.w, ground.ay / ground.h);
+      sprite.position.set(c.rect.x, c.rect.y);
+      sprite.scale.set(c.rect.w / b.S);
+      groundBox.addChild(sprite);
+      grounds.push({ sprite, tex, phase: look.phase, shown: -1 });
+    }
+  };
   const drawFlames = (ms, still) => {
     if (!flameArt) return;
     flameArt.clear();
-    const k = (grid() || 100) / 100;
-    for (const f of flames) {
-      const rand = seededRandom((f.seed >>> 0) || 1), { x, y, w, h } = f.rect;
-      const glow = still ? fireSteady(1) : firePulse(ms, 1);
-      const count = 3 + Math.floor(rand() * 2);
-      for (let i = 0; i < count; i++) {
-        const foot = x + w * (0.18 + 0.64 * rand()), base = y + h * (0.55 + 0.35 * rand());
-        const wide = w * (0.16 + 0.1 * rand()), tall = h * (0.34 + 0.3 * rand()) * (0.75 + 0.35 * glow);
-        const lean = (rand() - 0.5) * w * 0.2 + Math.sin((2 * Math.PI * ms) / 900 + i) * w * 0.05;
-        const tongue = (s) => [foot - wide * s, base, foot - wide * s * 0.45, base - tall * s * 0.55,
-          foot + lean * s, base - tall * s, foot + wide * s * 0.5, base - tall * s * 0.5, foot + wide * s, base];
-        flameArt.beginFill(EMBER, Math.min(1, 0.45 + 0.35 * glow)).drawPolygon(tongue(1)).endFill();
-        flameArt.beginFill(EMBER_CORE, Math.min(1, 0.4 + 0.4 * glow)).drawPolygon(tongue(0.5)).endFill();
-        flameArt.lineStyle(1.1 * k, INK, 0.45).drawPolygon(tongue(1));
-        flameArt.lineStyle(0);
+    for (const g of grounds) {
+      const i = frameAt(ms, g.phase, still);
+      if (i !== g.shown) { g.sprite.texture = g.tex[i]; g.shown = i; }
+    }
+    for (const fr of fronts) {
+      const i = frameAt(ms, fr.look.phase, still), lean = leanAt(ms, fr.look.phase, still);
+      if (!fr.tiles.length) { fallbackBody(fr, i); continue; }
+      for (const t of fr.tiles) {
+        if (i !== t.shown) { t.sprite.texture = t.tex[i]; if (t.glow) t.glow.texture = t.light[i]; t.shown = i; }
+        t.sprite.skew.x = -lean;
       }
     }
+  };
+  // With no way to paint the pictures (no canvas), a front is still drawn: one plain thin body under the same edge.
+  const fallbackBody = ({ f, look }, i) => {
+    const theta = i / FRAMES, lift = liftAt(theta) * f.h, n = f.cells.length, pts = [f.x + f.w * 0.03, f.y + FOOT * f.h];
+    for (let s = 0; s <= 28 * n; s++) { const x = s / 28; pts.push(f.x + x * f.w, f.y + FOOT * f.h - lift * topAt(x, theta, look.variant, Math.min(x, n - x))); }
+    pts.push(f.x + f.w * (n - 0.03), f.y + FOOT * f.h);
+    flameArt.beginFill(EMBER, 0.42).drawPolygon(pts).endFill();
   };
   // The swell is read off the shared clock, not this screen's own, so every screen is at the same point in it. It
   // breathes only while something is still changing (liveUntil, set on each sync that brings something new); after
@@ -161,6 +223,8 @@ export function createFireLooks({ PIXI, layer, floor = layer, grid = () => 100, 
       if (!ensure()) return;
       edges = warm.filter((e) => fireRectOk(e?.rect));
       flames = lit.filter((f) => fireRectOk(f?.rect));
+      const laid = flames.map((f) => `${f.id}@${f.rect.x},${f.rect.y},${f.rect.w},${f.rect.h}#${f.seed}`).join("|");
+      if (laid !== flameKey) { flameKey = laid; layoutFlames(); }
       const key = scorch.filter((s) => fireRectOk(s?.rect)).map((s) => s.id).join("|");
       if (key !== scorched) { scorched = key; drawScorch(scorch.filter((s) => fireRectOk(s?.rect))); }
       // Anything new or hotter than last time wakes the swell for a while; the same fire as before leaves it alone,
@@ -173,8 +237,11 @@ export function createFireLooks({ PIXI, layer, floor = layer, grid = () => 100, 
     },
     clear() {
       cancelAnimationFrame(raf); raf = 0; edges = []; flames = []; scorched = ""; shown = ""; liveUntil = 0;
+      try { dropSprites(); } catch { /* gone */ }
+      if (bank) { releaseFlameBank(); bank = null; }
+      bankTried = false; flameKey = "";
       try { edgeArt?.clear(); flameArt?.clear(); scorchArt?.clear(); box?.destroy({ children: true }); under?.destroy({ children: true }); } catch { /* gone */ }
-      box = null; under = null; edgeArt = null; flameArt = null; scorchArt = null;
+      box = null; under = null; edgeArt = null; flameArt = null; scorchArt = null; groundBox = null; flameBox = null; seatBox = null;
     },
   };
 }

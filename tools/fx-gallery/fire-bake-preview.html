@@ -1,0 +1,130 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Fire bake preview — the module's baked flames beside the approved mock</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #14110e; color: #e8ddcd; font: 14px/1.5 system-ui, sans-serif; }
+  header { padding: 14px 18px 6px; }
+  h1 { font-size: 16px; margin: 0 0 4px; font-weight: 600; }
+  p { margin: 0; color: #a79781; max-width: 90ch; }
+  .controls { padding: 8px 18px; display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  label { display: flex; gap: 6px; align-items: center; }
+  .row { display: flex; gap: 14px; padding: 6px 18px 20px; align-items: flex-start; flex-wrap: wrap; }
+  figure { margin: 0; }
+  figcaption { padding: 6px 2px 0; color: #a79781; }
+  figcaption b { color: #e8ddcd; font-weight: 600; }
+  canvas, iframe { border-radius: 8px; display: block; box-shadow: 0 2px 14px #0008; border: 0; }
+  iframe { width: 800px; height: 620px; background: #14110e; }
+  pre { margin: 0 18px 18px; color: #a79781; }
+</style>
+<header>
+  <h1>Fire bake preview</h1>
+  <p>Left: the approved mock, live (its right-hand panel is the look). Right: the same squares drawn the way the module draws them: frames baked once with this module's own painting code, then placed as sprites, a front of N squares as N tiles cut from one strip. Serve the repo over http (the module's own <code>npm run preview</code>, or any static server) and open this page; it imports <code>scripts/engines/props/fire-bake.mjs</code> directly.</p>
+</header>
+<div class="controls">
+  <label>Burning squares <input id="count" type="range" min="1" max="12" value="5"></label>
+  <label><input id="still" type="checkbox"> settled (still frame, no lean)</label>
+  <label><input id="dim" type="checkbox" checked> darken the map (the mock does; the module does not)</label>
+  <label><input id="seams" type="checkbox"> show tile seams</label>
+</div>
+<div class="row">
+  <figure><iframe id="mock" src="fire-looks-mock.html"></iframe><figcaption><b>Mock</b> (right panel = approved v5)</figcaption></figure>
+  <figure><canvas id="port" width="360" height="360"></canvas><figcaption><b>Port</b> — baked frames, drawn as sprites would be</figcaption></figure>
+</div>
+<pre id="stats"></pre>
+
+<script type="module">
+import { frontsOf, frontLook, groundLook, tilePlan, frameAt, leanAt, bakeTile, bakeSeats, bakeGround, tileSize, seatSize, groundPx,
+  FRAMES, FRAME_MS, ABOVE, FOOT, CELL_PX, VARIANTS } from "../../scripts/engines/props/fire-bake.mjs";
+
+const GRID = 88;
+const seeded = (n) => () => (n = (n * 1664525 + 1013904223) >>> 0) / 4294967296;
+// The same painted ground and trees as the mock, so the comparison is on the same map.
+function ground(c, w, h) {
+  const g = c.createLinearGradient(0, 0, w, h);
+  g.addColorStop(0, "#b9793f"); g.addColorStop(.5, "#a8692f"); g.addColorStop(1, "#8d5526");
+  c.fillStyle = g; c.fillRect(0, 0, w, h);
+  const r = seeded(7);
+  for (let i = 0; i < 160; i++) {
+    c.globalAlpha = .05 + r() * .07; c.fillStyle = r() < .5 ? "#6b3d18" : "#d79b5c";
+    const x = r() * w, y = r() * h, s = 6 + r() * 26;
+    c.beginPath(); c.ellipse(x, y, s, s * .6, r() * 6.3, 0, 6.3); c.fill();
+  }
+  c.globalAlpha = 1;
+}
+function tree(c, x, y, s) {
+  c.save(); c.translate(x, y);
+  c.fillStyle = "#2f1d0e"; c.globalAlpha = .28;
+  c.beginPath(); c.ellipse(6, 8, s * .8, s * .5, 0, 0, 6.3); c.fill(); c.globalAlpha = 1;
+  for (let i = 0; i < 3; i++) {
+    const t = i / 3, w = s * (1 - t * .45), hgt = s * (1.25 - t * .3);
+    c.fillStyle = ["#6f8f3a", "#86a647", "#9dbb57"][i];
+    c.beginPath(); c.moveTo(-w * .6, 0); c.lineTo(0, -hgt); c.lineTo(w * .6, 0); c.closePath(); c.fill();
+  }
+  c.strokeStyle = "#241a10"; c.lineWidth = 1.6; c.globalAlpha = .85;
+  c.beginPath(); c.moveTo(-s * .6, 0); c.lineTo(0, -s * 1.25); c.lineTo(s * .6, 0); c.closePath(); c.stroke();
+  c.globalAlpha = 1; c.restore();
+}
+const TREES = (() => { const r = seeded(31), a = []; for (let i = 0; i < 14; i++) a.push({ x: 24 + r() * 310, y: 50 + r() * 290, s: 19 + r() * 13 }); return a; })();
+const SQUARES = (() => { const r = seeded(99), a = []; for (let i = 0; i < 12; i++) a.push({ x: 24 + Math.floor(r() * 3) * GRID, y: 56 + Math.floor(r() * 3) * GRID, seed: 1 + i * 7 }); return a; })();
+
+// ---- bake: the same functions the module bakes with, into canvases kept here ----
+const makeCanvas = (w, h) => { const cv = document.createElement("canvas"); cv.width = w; cv.height = h; return cv; };
+const tiles = new Map(), seats = new Map(), grounds = new Map();
+let bakeMs = 0;
+const timed = (fn) => { const t = performance.now(); const v = fn(); bakeMs += performance.now() - t; return v; };
+const tileOf = (spec) => { const key = `${spec.variant}:${spec.kind}:${spec.k}`; if (!tiles.has(key)) tiles.set(key, timed(() => bakeTile(makeCanvas, spec))); return tiles.get(key); };
+const seatsOf = (spec) => { const key = `${spec.variant}:${spec.kind}:${spec.k}`; if (!seats.has(key)) seats.set(key, timed(() => bakeSeats(makeCanvas, spec))); return seats.get(key); };
+const groundOf = (v) => { if (!grounds.has(v)) grounds.set(v, timed(() => bakeGround(makeCanvas, v))); return grounds.get(v); };
+const T = tileSize(), G = groundPx(), SE = seatSize();
+// Both scenes are lowered by the same amount, so a front that stands two squares tall is not cut by the top of the canvas.
+const LOWER = 110;
+for (const s of SQUARES) s.y += LOWER;
+const lowerMock = setInterval(() => { // the mock's script runs in its own frame; lower its squares the moment they exist
+  try { const w = document.getElementById("mock").contentWindow; if (w.eval("typeof SQUARES") === "object" && !w.__lowered) { w.eval("for (const s of SQUARES) s.y += " + LOWER); w.__lowered = true; clearInterval(lowerMock); } } catch { /* not there yet, or cross-origin: the mock stays as it is */ }
+}, 100);
+
+const cv = document.getElementById("port"), c = cv.getContext("2d");
+const $ = (id) => document.getElementById(id);
+
+function draw() {
+  const ms = performance.now(), still = $("still").checked, live = SQUARES.slice(0, +$("count").value);
+  ground(c, cv.width, cv.height);
+  for (const t of TREES) tree(c, t.x, t.y, t.s);
+  if ($("dim").checked) {
+    c.globalAlpha = .55; c.fillStyle = "#120c06"; c.fillRect(0, 0, cv.width, cv.height); c.globalAlpha = 1;
+    for (const sq of live) {
+      const g = c.createRadialGradient(sq.x + GRID / 2, sq.y + GRID / 2, 4, sq.x + GRID / 2, sq.y + GRID / 2, GRID * 2.1);
+      g.addColorStop(0, "#ffb45533"); g.addColorStop(1, "#ffb45500");
+      c.fillStyle = g; c.beginPath(); c.arc(sq.x + GRID / 2, sq.y + GRID / 2, GRID * 2.1, 0, 6.3); c.fill();
+    }
+  }
+  const cells = live.map((s, i) => ({ id: i, seed: s.seed, rect: { x: s.x, y: s.y, w: GRID, h: GRID } }));
+  for (const cell of cells) { // the ground pictures, as the module's ground sprites
+    const look = groundLook(cell.seed), f = frameAt(ms, look.phase, still), s = GRID / CELL_PX;
+    c.save(); c.translate(cell.rect.x, cell.rect.y); c.scale(s, s);
+    c.drawImage(groundOf(look.variant)[f], -G.ax, -G.ay); c.restore();
+  }
+  for (const front of frontsOf(cells)) { // the flames, as the module's tile sprites
+    const look = frontLook(front.cells[0].seed), n = front.cells.length, f = frameAt(ms, look.phase, still), lean = leanAt(ms, look.phase, still);
+    const scale = front.w / CELL_PX;
+    tilePlan(n).forEach((spec, i) => {
+      const at = look.mirror ? n - 1 - i : i;
+      const px = front.x + at * front.w + (look.mirror ? front.w : 0), py = front.y + FOOT * front.h;
+      c.save();
+      c.transform(look.mirror ? -scale : scale, 0, -Math.sin(lean) * scale, Math.cos(lean) * scale, px, py);
+      c.drawImage(tileOf({ variant: look.variant, ...spec })[f], 0, -ABOVE * CELL_PX);
+      c.globalCompositeOperation = "lighter"; // the foot light is added to the ground, as the module's additive seat sprites do
+      c.drawImage(seatsOf({ variant: look.variant, ...spec })[f], 0, -SE.ay);
+      c.globalCompositeOperation = "source-over";
+      if ($("seams").checked) { c.strokeStyle = "#0ff8"; c.lineWidth = 1 / scale; c.strokeRect(0, -ABOVE * CELL_PX, T.w, T.h); }
+      c.restore();
+    });
+  }
+  const tn = tiles.size * FRAMES, gn = grounds.size * FRAMES, sn = seats.size * FRAMES;
+  $("stats").textContent = `bake: ${FRAMES} frames x ${VARIANTS} variants, ${FRAME_MS} ms a frame; tile ${T.w}x${T.h}, ground ${G.w}x${G.h}\n` +
+    `baked so far: ${tiles.size} tile families, ${grounds.size} ground variants = ${tn + gn + sn} textures, ${(((tn * T.w * T.h) + (gn * G.w * G.h) + (sn * SE.w * SE.h)) * 4 / 1048576).toFixed(1)} MB, ${bakeMs.toFixed(0)} ms spent baking`;
+  requestAnimationFrame(draw);
+}
+draw();
+</script>
