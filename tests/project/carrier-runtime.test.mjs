@@ -100,7 +100,7 @@ test('the pack is drawn at its own length, on a rope', () => {
   assert.ok(!/\(\(10 \/ feet\) \* grid\) \/ along/.test(main.slice(main.indexOf('const paintCarrierTeam'), main.indexOf('const tickCarrierLooks'))),
     'nothing in the team is still drawn at a horse\'s length');
   // The traces: one line from the sled's nose to each animal, its own child so it can be let go with the rest.
-  assert.match(main, /const paintCarrierRope = \(token, step, grid, art, ahead, beside, team\)/);
+  assert.match(main, /const paintCarrierRope = \(rig, step, grid, art, ahead, beside, team\)/);
   assert.match(main, /const roped = team\.filter\(\(a\) => a\.rope\);/);
   assert.match(main, /rope\.quadraticCurveTo\(mid\.x, mid\.y, end\.x, end\.y\);/, 'and it sags rather than ruling a line');
   // Roi: "it doesnt touch the sled lol", then "traces to corners". Each one is made fast to the deck's own corner,
@@ -111,7 +111,26 @@ test('the pack is drawn at its own length, on a rope', () => {
   const paint = readFileSync(new URL('../../scripts/engines/motion/carrier-paint.mjs', import.meta.url), 'utf8');
   const sled = paint.slice(paint.indexOf('  sled(g, s, rng, o) {'), paint.indexOf('};', paint.indexOf('  sled(g, s, rng, o) {')));
   assert.ok(!/const rope =/.test(sled), 'the sled no longer paints a bridle of its own for the traces to double');
-  assert.match(main, /for \(const key of \[CARRY_LOOK, CARRY_TEAM, CARRY_ROPE\]\)/, 'the rope goes with the picture');
+  assert.match(main, /dropCarrierRig\(token\?\.id \?\? token\?\.document\?\.id\);/, 'the rope goes with the picture, and the picture with its holder');
+});
+
+// Roi, of a sled standing in a pitch-dark cave as bright as at noon: "why carriers arent affected by
+// light\\darkness\\sun\\moon?" The rig hung on the token, and Foundry draws the token layer in its interface group,
+// over the lighting. It stands on the map now, under the creatures, where the lighting reaches it.
+test('the rig stands on the map, where the light falls on it', () => {
+  assert.match(main, /const carrierRootOf = floorLayer\("carriers"\);/);
+  assert.match(main, /rig\.position\.set\(Number\(token\.position\?\.x \?\? token\.x\) \|\| 0, Number\(token\.position\?\.y \?\? token\.y\) \|\| 0\);/,
+    'the holder stands where the token is drawn, so everything in it keeps the token\'s own coordinates');
+  assert.ok(!/token\.addChildAt\(/.test(main), 'nothing of the rig hangs on the token any more');
+  // Under the creatures (tokens sort at 700 in Foundry's primary group), over the decorations.
+  const sorts = readFileSync(new URL('../../scripts/engines/motion/floor-slot.mjs', import.meta.url), 'utf8');
+  assert.match(sorts, /carriers: 690,/);
+  // It goes when its token goes, and when the scene does.
+  assert.match(main, /Hooks\.on\("destroyToken", \(token\) => \{ lookStates\.delete\(token\?\.document\?\.id\); dropCarrierRig\(/);
+  assert.match(main, /Hooks\.on\("canvasTearDown", \(\) => \{ dropAllCarrierRigs\(\); \}\);/);
+  // What works from the worn picture (its shadow, its reflection) looks in the holder, not among the token's children.
+  assert.match(main, /const wornLook = \(t\) => \{ const worn = carrierRigOf\(t, false\)\?\.children/);
+  assert.match(main, /const pull = carrierRigOf\(t, false\)\?\.children\?\.find\(\(c\) => c\?\.\[CARRY_TEAM\]\);/);
 });
 
 test('a passenger remembers its carrier, so one whose carrier is gone can be found again', () => {
