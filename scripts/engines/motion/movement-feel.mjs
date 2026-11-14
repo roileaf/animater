@@ -438,6 +438,13 @@ export const TRACKS = Object.freeze({
   slither: { feet: 'groove' },
   ooze: { feet: 'smear' },
   roots: { feet: 'biped', size: 1.1 },
+  // Two long ruts a wheel-track apart, pressed deep in mud and snow and faint on stone. `spread` is each rut's distance
+  // from the middle, in token widths; `thick` how wide the rut is; `team` what pulls it, which walks the line between the
+  // ruts and leaves its own prints there (a wagon's track is two ruts with hoofprints down the middle, never ruts alone).
+  wheels: { feet: 'ruts', spread: 0.33, thick: 0.055, team: 'hooves' },
+  barrow: { feet: 'ruts', spread: 0.19, thick: 0.045, team: 'boots' },
+  // A sled has no wheels to cut in: two broad smooth grooves, and whatever pulls it walks ahead of them.
+  runners: { feet: 'ruts', spread: 0.24, thick: 0.11 },
 });
 // What a walking plant sheds (the 'roots' gait): a leaf every other stride, on any floor but water, in its own colour
 // (green to dry brown) whatever the ground, turned every which way; it lasts as a print does.
@@ -451,6 +458,16 @@ export function shedLeaf(floor, at, { width = 100, life = 15000 } = {}) {
     x: at.x + Math.cos(heading) * d + Math.cos(across) * a, y: at.y + Math.sin(heading) * d + Math.sin(across) * a,
     radius: width * 0.08, rotation: heading + (turn - 0.5) * 5, vx: 0, vy: 0, delay: 0, spin: 0, grow: 0, life, hold: 0.5 };
 }
+// How far a wheel wanders off its line, in rut widths, after `along` squares (pure): no wheel tracks dead straight, and
+// reading it off the distance travelled rather than off the stride means one stride's piece ends exactly where the next
+// begins, so the two ruts run on without a kink or a seam.
+export const rutWander = (along = 0, side = 1) =>
+  Math.sin(along * 0.9 + side * 1.7) * 0.4 + Math.sin(along * 2.3 + side * 4.1) * 0.25;
+// How deep the rut is pressing after `along` squares (pure), 0 to 1: it bites where the ground is soft and lets go
+// where it firms, so the track is never one even band of ink.
+export const rutBite = (along = 0) =>
+  0.5 + 0.5 * (0.5 + 0.5 * Math.sin(along * 1.7 + 0.7) * Math.cos(along * 0.5));
+
 const mod = (n, m) => ((n % m) + m) % m;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 // How a foot sits to the line of travel, in degrees: its usual turn outward (a bird's turn a little in), and how much each step differs from that.
@@ -486,6 +503,25 @@ export function tracksFor(gait, part, base, at, { grid, width, seed = '', shape 
     radius: half * 1.08, rotation: heading, grow: 0, flip: mod(index, 2) ? 1 : -1, ...extra });
   if (track.feet === 'groove') return [segment('slither', { amp: clamp((0.1 * width) / half, 0.04, 0.5), thick: clamp((0.05 * width) / half, 0.02, 0.25) })];
   if (track.feet === 'smear') return [segment('ooze', { ry: clamp((0.32 * width) / half, 0.15, 1), alpha: part.alpha * 0.8 })];
+  // Ruts: a channel pressed under each wheel track. Each stride's piece spans exactly the stride it walked and meets
+  // the next where the last one ended (rutWander is read off how far it has come, not off the stride), so the pair runs
+  // on as two unbroken lines instead of a stack of overlapping strokes doubling the ink at every join.
+  if (track.feet === 'ruts') {
+    // A rut is as wide as the rim that cut it, whatever that comes to against the stride: held down to a twelfth of a
+    // stride it came out a hairline, which is half of why it read as a drawn line rather than a pressed channel.
+    const thick = clamp((track.thick * width) / half, 0.012, 0.6);
+    const from = (index - 1) * STRIDE, to = index * STRIDE;
+    // A pressed footprint in mud or snow is drawn from a hollow picture (`hollow`, `wet`): a rut is not a footprint and
+    // presses its own channel, so it must not inherit either, or the renderer hands it a round hollow instead.
+    const { hollow: _hollow, wet: _wet, ...plain } = base;
+    const ruts = [-1, 1].map((side) => ({ ...plain, kind: 'rut', gait: 'rut', color: part.color, ...place(-half, side * track.spread * width),
+      radius: half, rotation: heading, grow: 0, thick, back: rutWander(from, side) * thick, front: rutWander(to, side) * thick,
+      bite: rutBite((from + to) / 2), alpha: (part.alpha ?? 1) * 0.9 }));
+    // What pulls it walks between the ruts: its prints are laid on the middle line, a touch fainter than its own would be.
+    if (!track.team) return ruts;
+    const team = tracksFor(track.team, { ...part, alpha: (part.alpha ?? 1) * 0.85 }, base, at, { grid, width: width * 0.55, seed: `${seed}|team`, shape: track.team });
+    return [...ruts, ...team];
+  }
   const marks = [];
   if (track.tail) marks.push(tailDrag(at, { half, width, base, part, flip: mod(index, 2) ? 1 : -1 }));
   const squares = width / (grid || 100), every = track.feet === 'paced' ? Math.max(1, Math.round(squares * 0.75)) : squares >= 5 ? 3 : squares >= 3 ? 2 : 1;
@@ -547,10 +583,13 @@ export function puffsFor(floor, at, { seed = '', grid = 100, density = 1, width 
       out.push({ ...base, color: part.color, light: part.light, x: at.x + Math.cos(across) * off, y: at.y + Math.sin(across) * off,
         radius: width * part.size, rotation: heading, grow: 0, spring: part.spring ?? 0, lasting: true, blades });
     } else if (part.emit === 'print') {
-      // In snow, mud and sand a print is a hollow pressed into the ground (drawn so where the layer can). A groove stays a
-      // groove: a tail's drag or a snake's furrow is no foot, and as a hollow it would draw as a giant print of one.
+      // In snow, mud and sand a print is a hollow pressed into the ground (drawn so where the layer can). A groove and
+      // a rut stay themselves: a tail's drag, a snake's furrow and a wheel's channel are no foot, and as a hollow each
+      // draws as one giant footprint — which is what a wagon was laying down both its wheel tracks (Roi, on a wagon's
+      // track beside the prints: "why is it such low quality?").
       const pressed = floor === 'snow' || floor === 'mud' || floor === 'sand';
-      out.push(...tracksFor(gait, part, base, at, { grid, width, seed, shape }).map((p) => (pressed && p.kind !== 'groove' ? { ...p, hollow: floor, alpha: p.depth ?? 1 } : p)));
+      const foot = (p) => p.kind !== 'groove' && p.kind !== 'rut';
+      out.push(...tracksFor(gait, part, base, at, { grid, width, seed, shape }).map((p) => (pressed && foot(p) ? { ...p, hollow: floor, alpha: p.depth ?? 1 } : p)));
     } else if (part.emit === 'crack') {
       if (random() >= (part.chance ?? 1)) return;
       out.push({ ...base, color: part.color, x: at.x, y: at.y, radius: unit * part.size * (0.8 + random() * 0.4),
@@ -710,7 +749,9 @@ export const GAIT_STEP_FILES = Object.freeze({
 // The fewest recordings a family (or variant) needs to be used: fewer would repeat audibly.
 export const MIN_FAMILY_FILES = 3;
 const GAIT_FAMILY = { dragon: 'dragon', claws: 'paws', paws: 'paws', padded: 'padded', webbed: 'webbed', hooves: 'hooves', talons: 'talons', ooze: 'ooze', legs: 'legs', slither: 'slither' };
-const SILENT_GAITS = new Set(['none']);
+// The pulled things are silent until their own sounds are recorded: a wagon that sounds like boots is worse than a quiet
+// one. (The team pulling it is drawn into the tracks, not into the sound: its hooves come with the wagon's own recording.)
+const SILENT_GAITS = new Set(['none', 'wheels', 'barrow', 'runners']);
 const FOREST_FLOORS = new Set(['dirt', 'grass']);
 const HARD_FLOORS = new Set(['stone', 'pebbles', 'wood', 'ice', 'glass', 'metal', 'lava']);
 const WET_FLOORS = new Set(['mud', 'water']);
@@ -1283,10 +1324,49 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     });
   };
   // A shadow geometry moved to where a fall lays it, as strong as its light, softer in dim light.
+  // How far out a shadow on the ground may be drawn, as a share of its own length. A torch a step away from something
+  // nearly as tall as the flame really does throw a shadow four or five squares long, but drawn in the thing's own
+  // shape that reads as a smear and nothing else: Roi, on a horse standing by a torchbearer, "the shadow of the horse
+  // looks nothing like a horse". Past this it keeps its length in the round but stops being drawn out further.
+  // A shadow drawn out more than half again its own length stops reading as the thing and starts reading as a second
+  // one lying beside it: the far end keeps the shape crisply while the near end is lost under the object, and what
+  // the eye sees is a wagon and a wagon-shaped slab a stride away from it. Held to this, and softened as it goes out
+  // (a real shadow's edge spreads with distance from what casts it, which is the other half of why a long crisp one
+  // looks wrong).
+  // Not a hard stop: held at one, a shadow stops answering the light altogether — a torch's flare and dip would move
+  // it not at all. It eases toward this instead, so it always answers and never runs away.
+  const LONGEST_SHADOW = 2;
+  const drawnOut = (x) => 1 + ((LONGEST_SHADOW - 1) * x) / (x + (LONGEST_SHADOW - 1));
+  // What has already been complained about, so a fault is said once rather than sixty times a second.
+  const said = new Set();
   const fallen = (geom, fall, point, grounded = false) => {
     const off = Math.hypot(fall.dx, fall.dy), w = Number(geom.width) || 100;
-    return { ...geom, fall: { x: point.x + fall.dx, y: point.y + fall.dy }, alpha: geom.alpha * fall.alpha, lift: (geom.lift ?? 0) + 4 * fall.soft,
-      along: off > 0.5 ? Math.atan2(fall.dy, fall.dx) : 0, stretch: grounded ? 1 + (2 * off) / w : 1, laid: grounded && off > 0.5, sun: fall.sun === true, ...(fall.clip ? { clip: fall.clip } : {}) };
+    // A thing standing on the ground is joined to its shadow: the shadow starts at its feet and is drawn out away from
+    // the light, so where its middle goes follows from how far it is drawn out, not from how far the light throws it.
+    // Setting its middle at the full throw while its length was held back by the cap tore the two apart, and a wagon
+    // stood beside a shadow of itself a square away (Roi: "the shadows are STILL fucked up"). A flier's shadow is
+    // another matter: that one really is cast away from under it, and keeps the whole throw.
+    const stretch = grounded ? drawnOut((2 * off) / w) : 1;
+    // How far its middle moves is set by the thing in the picture, not by the picture: a carrier's wagon is painted
+    // with ten feet of shafts in front of it, so half the picture is empty air. Measured by the picture, the box was
+    // anchored at the wheels but the wagon drawn inside it floated a wheel's length clear of them. `core` is how much
+    // of the picture is the thing standing on the ground; without one the picture is all of it.
+    const core = Number(geom.core) || w;
+    const along = off > 0.5 ? (core / 2) * (stretch - 1) : 0;
+    const to = grounded && off > 0.5
+      ? { x: point.x + (fall.dx / off) * along, y: point.y + (fall.dy / off) * along }
+      : { x: point.x + fall.dx, y: point.y + fall.dy };
+    return { ...geom, fall: to, alpha: geom.alpha * fall.alpha * (grounded ? 1 - 0.25 * (stretch - 1) : 1),
+      lift: (geom.lift ?? 0) + 4 * fall.soft + (grounded ? 10 * (stretch - 1) : 0),
+      along: off > 0.5 ? Math.atan2(fall.dy, fall.dx) : 0, stretch,
+      // A shadow on the floor keeps the way its subject is pointing. It used to be laid over instead — turned so its
+      // head lay away from the light, which is what a standing thing's shadow really does — but on a map seen from
+      // straight above that reads as the thing having fallen over: a wagon's shafts came out on the far side of its
+      // bed from the horse they are attached to, and the horse itself lay across the road while facing up it. Roi,
+      // asked whether it should be the carriers or everything: "All creatures". A shadow thrown on a wall is another
+      // matter and still lies over (wall-shadows.mjs): there you are looking at its side.
+      laid: false,
+      sun: fall.sun === true, ...(fall.clip ? { clip: fall.clip } : {}) };
   };
   // Each standing creature's grounding rim (rimGeometry; the layer's addRim, drawn as a shadow); null removes it.
   const rims = new Map();
@@ -1579,25 +1659,58 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
           const lit = typeof token.light === 'function' ? token.light() : null;
           // Lying on the floor (prone): its shadow is cast from barely above it, short and close.
           const lying = (typeof token.lying === 'function' ? token.lying() : token.statuses?.has?.('prone')) === true;
-          const key = `${point.x}|${point.y}|${token.width}|${size}|${both}|${lying}|${token.deck ?? ''}`, refs = [lit, sun(), art];
+          // A token can carry a second body standing on the ground beside it: a wagon's team in the shafts is a picture
+          // of its own, out in front of the token, and it throws its own shadow rather than sharing the wagon's.
+          // (Roi: "horse missing shadow".) `shadowAlso`: { art, dx, dy, width } in pixels from the token's middle.
+          const also = typeof token.shadowAlso === 'function' ? token.shadowAlso() : null;
+          const key = `${point.x}|${point.y}|${token.width}|${size}|${both}|${lying}|${token.deck ?? ''}`, refs = [lit, sun(), art, also?.art?.texture ?? null];
           if (!handle || !unchanged(move, key, refs)) {
           if (!handle) shadows.set(id, handle = layer.addShadow());
-          const geom = shadowGeometry({ x: point.x, y: point.y, width: token.width, distance: distance() || 5, grid: size, grounded: true });
+          // The ground it covers, for the shadow: its token's, or the picture's own where it wears one bigger than its
+          // token (a wagon's bed is its token; the shafts and the team reach past it).
+          const shadowWide = Number.isFinite(token.shadowWidth) ? token.shadowWidth : token.width;
+          const geom = shadowGeometry({ x: point.x, y: point.y, width: shadowWide, distance: distance() || 5, grid: size, grounded: true });
           // (Standing on a bridge (token.deck: its deck's elevation), its shadow lies on the deck, drawn there over the planks, not
           // on the ground under them. Roi: "shouldnt shadows be affected from elevation?")
           if (Number.isFinite(token.deck)) geom.deck = token.deck;
           let main = null;
           if (lit) {
-            const body = (lying ? LYING_BODY : 0.8) * (Number(token.width) || size) / size;
+            // How tall it stands, in squares, which is how far its shadow reaches. A creature's is taken from its token
+            // — about four fifths of its width — but a token wearing a picture of its own says so itself (`shadowBody`):
+            // a wagon is a low thing on a two-square token, and taking it for a creature that size threw a shadow half
+            // the yard long. (Roi: "something about the shadow doesnt make sense".)
+            const body = Number.isFinite(token.shadowBody) ? Math.max(0, token.shadowBody)
+              : (lying ? LYING_BODY : 0.8) * (Number(token.width) || size) / size;
             const [first, ...others] = aimShadows(token, move, lit, body, true);
             main = first;
             // The shadows its lights cast, and the rim below: no big round one under it (on a token's disc it read as
             // a coin's drop shadow).
-            Object.assign(geom, { width: Number(token.width) || size, lift: 0, flat: 1, ...(art ? { art } : {}) });
+            // How long the shadow is drawn out is measured against how wide the thing is (fallen: stretch), so a token
+            // wearing a picture bigger than itself is measured by the picture. Measured by the token instead, a wagon's
+            // shadow came out half as long again as it should and reached across the road. (Roi: "wagon shadow still
+            // broken completely" — a torch beside it threw it, which is right; its length was not.)
+            Object.assign(geom, { width: Number(token.shadowWidth) || Number(token.width) || size, lift: 0, flat: 1,
+              ...(Number(token.shadowCore) > 0 ? { core: Number(token.shadowCore) } : {}), ...(art ? { art } : {}) });
             // (Up on a bridge or a raised top (token.stand: its outline), kept to it: past its edge the shadow would fall far below.)
             const laid = [main, ...(both ? others : [])].map((fall) => fallen(geom, fall, point, true)).map((g) => (token.stand?.length >= 6 && !g.clip ? { ...g, clip: token.stand } : g));
             const done = layer.updateShadow(handle, laid[0]) !== false;
-            remember(move, key, refs, second(id, both ? laid.slice(1) : null) && done);
+            // The second body's own shadow, from where it stands and in its own shape, laid by the same light.
+            const alsoAt = also?.art ? { x: point.x + (Number(also.dx) || 0), y: point.y + (Number(also.dy) || 0) } : null;
+            // Thrown by the light where that body stands, which is not the same direction as from the token when the
+            // light is close: a torch beside a wagon lies another way from the horse out in front of it. Its own
+            // easing state, so neither shadow drags the other round.
+            let alsoFall = main;
+            if (alsoAt && typeof also.light === 'function') {
+              const theirs = also.light();
+              if (theirs) [alsoFall] = aimShadows(token, (move.alsoFalls ??= {}), theirs, body, true);
+            }
+            const alsoGeom = alsoAt ? fallen({
+              ...shadowGeometry({ x: alsoAt.x, y: alsoAt.y, width: Number(also.width) || size, distance: distance() || 5, grid: size, grounded: true }),
+              width: Number(also.width) || size, lift: 0, flat: 1, art: also.art,
+              ...(Number(also.core) > 0 ? { core: Number(also.core) } : {}),
+              ...(Number.isFinite(token.deck) ? { deck: token.deck } : {}),
+            }, alsoFall, alsoAt, true) : null;
+            remember(move, key, refs, second(id, [...(both ? laid.slice(1) : []), ...(alsoGeom ? [alsoGeom] : [])]) && done);
             // A big creature's shadows fall over the smaller ones behind it, each light's (with "Flier shadows fall on
             // creatures").
             move.lastGround = (Number(token.width) || 0) >= 2 * size
@@ -1614,6 +1727,13 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
         for (const at of tracker.step(id, point)) emit(token, at, time, size, rate, kind, move);
       } catch (error) {
         if (id !== undefined) { tracker.forget(id); dropShadow(id); moves.delete(id); }
+        // One creature's trouble is not the scene's, so this is swallowed — but swallowed in silence it reads as
+        // "the shadows stopped working" with nothing to go on. (A one-line slip in what the light is read from did
+        // exactly that, for every token at once, and nothing said a word.) Said once, not once a frame.
+        if (!said.has(String(error?.message ?? error))) {
+          said.add(String(error?.message ?? error));
+          try { console.warn('Animater | a creature\'s movement feel stopped at an error; its shadow and marks are off until this is fixed', error); } catch { /* no console */ }
+        }
       }
     }
     // "Flier shadows fall on creatures": each flier's shadow also darkens the art of the creatures below it.

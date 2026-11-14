@@ -5,6 +5,9 @@
 // engine's own frame's size and place, so every scale, shadow and layer the engine works out stays as it was. A frame with
 // no baked picture, or any frame before the sheets have loaded, stays as the engine drew it. Our own code.
 
+// (There was a 'vehicles' sheet here: a wagon, a covered wagon and a hand cart baked as 3D shapes. The carriers are
+// painted now instead, with the map decorations' own tools and at the size they are drawn (carrier-paint.mjs), so
+// there is nothing left to bake for them and the sheet has gone.)
 export const ART_GROUPS = Object.freeze(['town', 'wildlife', 'field', 'pond', 'farm', 'vermin', 'aftermath']);
 const BASE = 'modules/animater/assets/animals';
 // How much finer than the engine's own frame each group's pictures are drawn (a farm's frames are already drawn twice over).
@@ -27,7 +30,7 @@ export function loadAnimalArt({ base = BASE, fetchJson = (u) => fetch(u).then((r
 const imageOf = (src) => new Promise((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img); img.onerror = reject; img.src = src; });
 export const animalArtReady = (group) => sheets.has(group);
 /** For tests: set or forget a group's sheet. */
-export function setAnimalSheet(group, sheet) { if (sheet) sheets.set(group, sheet); else sheets.delete(group); }
+export function setAnimalSheet(group, sheet) { if (sheet) sheets.set(group, sheet); else sheets.delete(group); forgetArtFrames(); }
 
 /** The bounds of what is drawn (alpha over `cut`) in RGBA `data` of `w` x `h` (pure); null when nothing is. */
 export function drawnBox(data, w, h, cut = 32) {
@@ -35,6 +38,37 @@ export function drawnBox(data, w, h, cut = 32) {
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (data[(y * w + x) * 4 + 3] > cut) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
   return x1 < 0 ? null : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
 }
+/**
+ * The body of a drawn thing (pure): the run of it that is near its widest, in RGBA `data` of `w` x `h`. A wagon and its
+ * horse are one picture, but the wagon is what stands on the ground the token covers — and the wagon is far the wider of
+ * the two (its wheels reach out past the bed, where a horse is narrow), so the widest run is the wagon and the horse
+ * leads out in front of it. `of` is how near the widest a row must be to count. null when nothing is drawn.
+ */
+// (Measured off the baked wagon: its bed runs 74-76 pixels wide at the axles and narrows to 56 between them, while the
+// horse ahead of it never passes 36. Three fifths of the widest keeps the whole bed in one run and leaves the horse out,
+// with room on both sides of the line.)
+export function bodyRun(data, w, h, { cut = 32, of = 0.6 } = {}) {
+  const wide = new Array(h).fill(0);
+  for (let y = 0; y < h; y++) {
+    let x0 = -1, x1 = -1;
+    for (let x = 0; x < w; x++) if (data[(y * w + x) * 4 + 3] > cut) { if (x0 < 0) x0 = x; x1 = x; }
+    wide[y] = x0 < 0 ? 0 : x1 - x0 + 1;
+  }
+  const most = Math.max(...wide);
+  if (!most) return null;
+  // The longest unbroken run of rows that are near the widest: a wheel's gap must not cut the wagon in two.
+  const want = most * of;
+  let best = null, from = -1;
+  for (let y = 0; y <= h; y++) {
+    if (y < h && wide[y] >= want) { if (from < 0) from = y; continue; }
+    if (from >= 0) { if (!best || y - from > best.h) best = { y: from, h: y - from }; from = -1; }
+  }
+  if (!best) return null;
+  let x0 = w, x1 = -1;
+  for (let y = best.y; y < best.y + best.h; y++) for (let x = 0; x < w; x++) if (data[(y * w + x) * 4 + 3] > cut) { if (x < x0) x0 = x; if (x > x1) x1 = x; }
+  return { x: x0, y: best.y, w: x1 - x0 + 1, h: best.h };
+}
+
 /**
  * How to lay a baked picture over the engine's own frame (pure): scaled so the animal is as long as the engine's (along its
  * length: up the picture, or across it when `across`, as a rat drawn facing right), its middle on the engine's middle.
@@ -46,6 +80,51 @@ export function fitOf(own, baked, across = false) {
   if (!(scale > 0) || !Number.isFinite(scale)) return null;
   return { scale, dx: own.x + own.w / 2 - (baked.x + baked.w / 2) * scale, dy: own.y + own.h / 2 - (baked.y + baked.h / 2) * scale };
 }
+
+// One cell of a sheet (the colours, or at `ncell` which way they face) on a canvas the colours' size, turned to face as
+// the engine's frames do (`rot`, radians clockwise).
+function cellOf(map, f, from, size = map.cell) {
+  const cell = map.cell, c = document.createElement('canvas'); c.width = c.height = cell;
+  const x = c.getContext('2d');
+  x.translate(cell / 2, cell / 2); if (f.rot) x.rotate(f.rot); x.translate(-cell / 2, -cell / 2);
+  x.drawImage(from, (f.i % map.cols) * size, Math.floor(f.i / map.cols) * size, size, size, 0, 0, cell, cell);
+  return c;
+}
+
+// Frames handed out whole (artFrame), kept so a token redrawn does not cut its picture out of the sheet again.
+const loose = new Map();
+/**
+ * One baked frame on its own, as a texture: for anything that wears a baked picture without an engine's own frames behind
+ * it (a carrier wearing its wagon). `path` as the group's map has it ('wagon/0/roll/2'). It carries which way its surface
+ * faces, so a LitSprite shades it by the light where it stands, and how much of the cell it actually covers
+ * (animaterBox), since a baked cell leaves room around what is in it. null when the sheet has no such frame.
+ */
+export function artFrame(PIXI, group, path) {
+  const key = `${group}/${path}`;
+  if (loose.has(key)) return loose.get(key);
+  const sheet = sheets.get(group);
+  if (!sheet || !PIXI?.Texture || typeof document === 'undefined') return null;
+  const { map, img, normals } = sheet, f = map.frames[path];
+  if (!f) return null;
+  let tex = null;
+  try {
+    const paint = cellOf(map, f, img, map.cell);
+    tex = PIXI.Texture.from(paint);
+    try {
+      const x = paint.getContext('2d', { willReadFrequently: true }), pixels = x.getImageData(0, 0, paint.width, paint.height).data;
+      tex.animaterBox = drawnBox(pixels, paint.width, paint.height);
+      tex.animaterBody = bodyRun(pixels, paint.width, paint.height);
+    } catch { tex.animaterBox = null; tex.animaterBody = null; }
+    // How much ground the cell holds, in metres (the bake records it): what anything drawn at its real size on the map
+    // needs, since the picture's own pixels say nothing about how big the thing in it is.
+    tex.animaterMetres = Number(f.m) || 0;
+    if (normals && map.ncell) { tex.animaterNormal = PIXI.Texture.from(cellOf(map, f, normals, map.ncell)); tex.animaterTurn = f.rot ?? 0; }
+  } catch { tex = null; }
+  loose.set(key, tex);
+  return tex;
+}
+/** For tests and for a sheet swapped out from under us: forget the frames handed out whole. */
+export const forgetArtFrames = () => loose.clear();
 
 const isTexture = (v) => !!v && typeof v === 'object' && 'baseTexture' in v;
 const sourceOf = (tex) => tex?.baseTexture?.resource?.source ?? tex?.baseTexture?.source ?? null;
@@ -71,14 +150,7 @@ export function restyle(PIXI, group, set, prefix = '') {
   const sheet = sheets.get(group);
   if (!sheet || !set || typeof document === 'undefined') return set;
   const { map, img, normals } = sheet, cell = map.cell, leaves = leavesOf(set, prefix), fits = new Map();
-  // One cell of a sheet (the colours, or at `ncell` which way they face) on a canvas the colours' size, turned to face as
-  // the engine's frames do (`rot`, radians clockwise).
-  const cellCanvas = (f, from = img, size = cell) => {
-    const c = document.createElement('canvas'); c.width = c.height = cell; const x = c.getContext('2d');
-    x.translate(cell / 2, cell / 2); if (f.rot) x.rotate(f.rot); x.translate(-cell / 2, -cell / 2);
-    x.drawImage(from, (f.i % map.cols) * size, Math.floor(f.i / map.cols) * size, size, size, 0, 0, cell, cell);
-    return c;
-  };
+  const cellCanvas = (f, from = img, size = cell) => cellOf(map, f, from, size);
   const boxOf = (c) => { const x = c.getContext('2d', { willReadFrequently: true }); return drawnBox(x.getImageData(0, 0, c.width, c.height).data, c.width, c.height); };
   // A family's fit, from its reference frame: the engine's drawing of it against the baked picture of it.
   const fitFor = (f) => {

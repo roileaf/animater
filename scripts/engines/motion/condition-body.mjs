@@ -102,8 +102,11 @@ export function bodyPose(kind, t, strength = 1, { period, dir } = {}) {
 export class ConditionBody {
   // `follow(token, dx, dy)`: the body moved this far from its place (0, 0 when it is back), for what rides on it.
   // `cutOut(token)`: its art is a top-down or pop-out creature on a clear background (lies flat when prone).
-  constructor({ tokenFx = () => null, now = () => performance.now(), frame = nextFrame, cancel = cancelFrame, busy = () => false, enabled = () => true, follow = () => {}, cutOut = () => false } = {}) {
-    Object.assign(this, { tokenFx, now, frame, cancel, busy, enabled, follow, cutOut });
+  // `carried()`: tokens something else moves them with (a rocking ship's deck), and `carry(token)` how far, { x, y } px and
+  // `r` radians, added over whatever pose it shows here, so the two never fight over its sprite.
+  constructor({ tokenFx = () => null, now = () => performance.now(), frame = nextFrame, cancel = cancelFrame, busy = () => false, enabled = () => true, follow = () => {}, cutOut = () => false, carried = () => [], carry = () => null } = {}) {
+    Object.assign(this, { tokenFx, now, frame, cancel, busy, enabled, follow, cutOut, carried, carry });
+    this.riders = new Set();
     this.records = new Map();
     // One pose per token: several conditions (PF2e Dying brings Unconscious) must not
     // each treat the other's offset as the natural pose, or the deltas compound
@@ -155,8 +158,10 @@ export class ConditionBody {
     if (r.stone) { try { r.stone(); } catch { /* the canvas already went away */ } }
     if (r.tip) { try { r.tip(); } catch { /* the canvas already went away */ } }
     if (r.tint !== undefined && r.token.mesh && !r.token.mesh.destroyed) r.token.mesh.tint = r.tint;
-    if (!this.records.size && this.handle) { this.cancel(this.handle); this.handle = null; }
+    if (!this.records.size && !this.riders.size && this.handle) { this.cancel(this.handle); this.handle = null; }
   }
+  // Something began carrying tokens (a ship's deck started rocking): tick if not already.
+  wake() { if (!this.handle) this.handle = this.frame(() => this.tick()); }
   clear() { for (const name of [...this.records.keys()]) this.remove(name, { immediate: true }); }
   // Is a treatment moving this token's sprite right now (stone and stillness hold it still)?
   moves(token) { return shownTreatment([...this.records.values()].filter(r => r.token === token && !IDLE_KINDS.has(r.kind)).map(r => r.kind)) !== null; }
@@ -189,10 +194,12 @@ export class ConditionBody {
   }
   tick() {
     this.handle = null;
-    if (!this.records.size) return;
     const time = this.now(), on = this.enabled();
     for (const [name, r] of [...this.records]) if (r.leaving !== undefined && time - r.leaving >= (r.tipFilter ? TIP_RISE : RISE)) this.remove(name, { immediate: true });
-    if (!this.records.size) return;
+    let riding = [];
+    try { riding = [...(this.carried() ?? [])].filter((t) => t?.mesh && !t.destroyed); } catch { riding = []; }
+    const rides = new Set(riding);
+    if (!this.records.size && !rides.size && !this.riders.size) return;
     // Each token shows its highest-priority treatment (see BODY_PRIORITY); stone or
     // stillness anywhere on the token holds it in its natural pose.
     const byToken = new Map();
@@ -204,8 +211,11 @@ export class ConditionBody {
     }
     // A fallen creature not shown fallen (still, stone, an animation playing) stands as it was.
     for (const r of this.records.values()) if (r.tipFilter && (shown.get(r.token) !== r || !on || this.busy(r.token))) r.tipFilter.current.amount = 0;
-    for (const token of new Set([...this.records.values()].map(r => r.token))) if (!shown.has(token)) this.restore(token);
-    for (const [token, r] of shown) {
+    for (const token of new Set([...this.records.values()].map(r => r.token))) if (!shown.has(token) && !rides.has(token)) this.restore(token);
+    for (const token of this.riders) if (!rides.has(token) && !shown.has(token)) this.restore(token);
+    const posed = new Map(shown);
+    for (const token of rides) if (!posed.has(token)) posed.set(token, null);
+    for (const [token, r] of posed) {
       const mesh = token?.mesh;
       if (!mesh || mesh.destroyed || token.destroyed) continue;
       if (!on || this.busy(token)) { this.restore(token); continue; }
@@ -222,24 +232,30 @@ export class ConditionBody {
       const baseR = a && (mesh.rotation === a.setR || (a.prone && a.docR === token.document?.rotation)) ? a.baseR : mesh.rotation;
       const baseSY = a && mesh.scale.y === a.setSY ? a.baseSY : mesh.scale.y;
       const baseSX = a && mesh.scale.x === a.setSX ? a.baseSX : mesh.scale.x;
-      let flat = false;
-      if (r.kind === 'prone') { try { flat = this.cutOut(token) === true; } catch { /* lies on its side */ } }
-      if (r.tipFilter) r.tipFilter.current.amount = proneTip((time - r.start) / 1000, r.leaving === undefined ? null : (time - r.leaving) / 1000);
-      const full = bodyPose(r.tipFilter ? 'prone-tip' : flat ? 'prone-top' : r.kind, (time - r.start) / 1000, r.strength, { period: r.period, dir: r.dir }), w = token.w ?? 100;
-      if (full.yh) full.y = (full.y ?? 0) + (full.yh * (token.h ?? w)) / w;
-      // Standing back up: the pose eases away.
-      const f = r.leaving === undefined ? 1 : (1 - Math.min(1, (time - r.leaving) / (r.tipFilter ? TIP_RISE : RISE))) ** 2;
-      const pose = { x: (full.x ?? 0) * f, y: (full.y ?? 0) * f, r: (full.r ?? 0) * f, sy: 1 - (1 - (full.sy ?? 1)) * f, sx: 1 - (1 - (full.sx ?? 1)) * f };
-      mesh.position.x = baseX + (pose.x ?? 0) * w;
-      mesh.position.y = baseY + (pose.y ?? 0) * w;
-      mesh.rotation = baseR + ((pose.r ?? 0) * Math.PI) / 180;
+      let flat = false, pose = { x: 0, y: 0, r: 0, sy: 1, sx: 1 };
+      const w = token.w ?? 100;
+      if (r) {
+        if (r.kind === 'prone') { try { flat = this.cutOut(token) === true; } catch { /* lies on its side */ } }
+        if (r.tipFilter) r.tipFilter.current.amount = proneTip((time - r.start) / 1000, r.leaving === undefined ? null : (time - r.leaving) / 1000);
+        const full = bodyPose(r.tipFilter ? 'prone-tip' : flat ? 'prone-top' : r.kind, (time - r.start) / 1000, r.strength, { period: r.period, dir: r.dir });
+        if (full.yh) full.y = (full.y ?? 0) + (full.yh * (token.h ?? w)) / w;
+        // Standing back up: the pose eases away.
+        const f = r.leaving === undefined ? 1 : (1 - Math.min(1, (time - r.leaving) / (r.tipFilter ? TIP_RISE : RISE))) ** 2;
+        pose = { x: (full.x ?? 0) * f, y: (full.y ?? 0) * f, r: (full.r ?? 0) * f, sy: 1 - (1 - (full.sy ?? 1)) * f, sx: 1 - (1 - (full.sx ?? 1)) * f };
+      }
+      let c = null;
+      if (rides.has(token)) { try { c = this.carry(token); } catch { c = null; } }
+      mesh.position.x = baseX + (pose.x ?? 0) * w + (Number(c?.x) || 0);
+      mesh.position.y = baseY + (pose.y ?? 0) * w + (Number(c?.y) || 0);
+      mesh.rotation = baseR + ((pose.r ?? 0) * Math.PI) / 180 + (Number(c?.r) || 0);
       mesh.scale.y = baseSY * (pose.sy ?? 1);
       mesh.scale.x = baseSX * pose.sx;
       try { this.follow(token, mesh.position.x - baseX, mesh.position.y - baseY); } catch { /* optional */ }
-      const order = this.layFlat(mesh, a, !!r.tipFilter && r.leaving === undefined);
-      this.poses.set(token, { baseX, baseY, baseR, baseSY, prone:r.kind==='prone'&&!flat&&!r.tipFilter,docR:token.document?.rotation,setX: mesh.position.x, setY: mesh.position.y, setR: mesh.rotation, setSY: mesh.scale.y,
+      const order = this.layFlat(mesh, a, !!r?.tipFilter && r.leaving === undefined);
+      this.poses.set(token, { baseX, baseY, baseR, baseSY, prone:!!r&&r.kind==='prone'&&!flat&&!r.tipFilter,docR:token.document?.rotation,setX: mesh.position.x, setY: mesh.position.y, setR: mesh.rotation, setSY: mesh.scale.y,
         baseSX, setSX: mesh.scale.x, ...(order ?? {}) });
     }
-    if (this.records.size) this.handle = this.frame(() => this.tick());
+    this.riders = rides;
+    if (this.records.size || rides.size) this.handle = this.frame(() => this.tick());
   }
 }

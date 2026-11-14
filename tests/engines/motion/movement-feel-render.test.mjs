@@ -78,11 +78,12 @@ test('every gait draws its own track shape in its colour', () => {
   const layer = createMovementFeelLayer({ PIXI: { Graphics }, root: () => root });
   const shapes = new Map();
   for (const gait of GAITS.filter((g) => g !== 'none' && g !== 'unknown')) {
-    const specs = puffsFor('mud', { x: 0, y: 0, heading: 0.3, index: 1 }, { seed: 'r', grid: 100, gait }).filter((p) => p.kind === 'print' || p.kind === 'groove');
+    const specs = puffsFor('mud', { x: 0, y: 0, heading: 0.3, index: 1 }, { seed: 'r', grid: 100, gait }).filter((p) => p.kind === 'print' || p.kind === 'groove' || p.kind === 'rut');
     assert.ok(specs.length >= 1, gait);
-    const main = specs.find((p) => p.gait === gait) ?? specs[0];
+    const main = specs.find((p) => p.gait === gait) ?? specs.find((p) => p.kind === 'rut') ?? specs[0];
     const g = layer.addParticle(main);
-    assert.ok(g.calls.some((c) => (c[0] === 'fill' && c[1] === main.color) || (c[0] === 'line' && c[2] === main.color)), gait);
+    // A rut strokes with round ends, so it passes its line its settings as an object rather than as arguments.
+    assert.ok(g.calls.some((c) => (c[0] === 'fill' && c[1] === main.color) || (c[0] === 'line' && (c[2] === main.color || c[1]?.color === main.color))), gait);
     assert.equal(g.rotation, main.rotation, gait);
     assert.ok(Math.abs(main.rotation - 0.3) < 0.8, gait);
     shapes.set(gait, JSON.stringify(g.calls.map((c) => c.map((v) => (typeof v === 'number' ? Math.round(v) : v)))));
@@ -92,8 +93,13 @@ test('every gait draws its own track shape in its colour', () => {
       assert.ok(Number.isFinite(t.scale.x) && t.scale.x > 0, `${gait} ${spec.kind}`);
     }
   }
-  // No two gaits share a shape.
-  assert.equal(new Set(shapes.values()).size, shapes.size);
+  // No two gaits share a shape — except the pulled things, which all press the same channel and differ in how far
+  // apart and how broad it is rather than in its shape.
+  const PULLED = ['wheels', 'barrow', 'runners'];
+  const own = [...shapes].filter(([gait]) => !PULLED.includes(gait)).map(([, shape]) => shape);
+  assert.equal(new Set(own).size, own.length);
+  assert.ok(PULLED.every((gait) => shapes.has(gait)));
+  assert.ok(!own.includes(shapes.get('wheels')), 'and a rut is nothing a foot leaves');
   // A snake's groove is a stroked wave; an ooze's smear is filled.
   assert.ok(JSON.parse(shapes.get('slither')).some((c) => c[0] === 'lineTo'));
   assert.ok(!JSON.parse(shapes.get('ooze')).some((c) => c[0] === 'lineTo'));
@@ -165,6 +171,114 @@ test('a clipped shadow with no silhouette yet leaves no white floor shape drawn'
   const drawn = root.children.filter((c) => c !== s && c.calls?.some((k) => k[0] === 'polygon'));
   assert.ok(drawn.length >= 1);
   for (const m of drawn) assert.equal(m.renderable, false, 'a mask shape is never drawn itself');
+});
+
+// Roi, looking at a wagon: "something about the shadow doesnt make sense". The painted wagon is slid along its token
+// until its bed sits on the token's middle and the team leads out ahead, and it is drawn at the size the wagon really
+// is — but its shadow was laid on the token's middle and shrunk to fit the token, so it fell where the wagon was not
+// and at the wrong size. Art that says `own` keeps its size, and `ox`/`oy` carry the slide to the shadow.
+test('a worn picture casts its shadow where the picture is, at the size the picture is', () => {
+  const root = container();
+  class Container2 { constructor() { this.children = []; this.position = point(); this.scale = point(); } addChild(...c) { this.children.push(...c); c.forEach((k) => { k.parent = this; }); return c[0]; } destroy() { this.destroyed = true; } }
+  class Sprite extends Container2 { constructor(t) { super(); this.texture = t; this.anchor = point(); } }
+  const shape = { sharp: { texture: { id: 's' } }, soft: { texture: { id: 'f' } }, width: 100, height: 100, fill: { w: 1, h: 1 } };
+  const silhouettes = { get: () => shape, known: () => true };
+  const layer = createMovementFeelLayer({ PIXI: { Graphics, Container: Container2, Sprite }, root: () => root, silhouettes });
+  const lay = (art) => {
+    const before = new Set(root.children);
+    const s = layer.addShadow();
+    layer.updateShadow(s, { x: 1000, y: 1000, rx: 50, ry: 25, alpha: 0.4, width: 100, art });
+    return root.children.find((c) => c !== s && !before.has(c) && c.children?.length === 1);
+  };
+  const worn = lay({ texture: { id: 'wagon' }, width: 600, height: 600, rotation: 0, own: true, ox: 40, oy: -25 });
+  assert.deepEqual([worn.position.x, worn.position.y], [1040, 975], 'slid with the picture it is the shadow of');
+  const plain = lay({ texture: { id: 'person' }, width: 600, height: 600, rotation: 0 });
+  assert.deepEqual([plain.position.x, plain.position.y], [1000, 1000], 'ordinary art is where its token is');
+  // The wagon keeps its own size; art that does not say so is still held to its token.
+  const scaleOf = (node) => Math.abs(node.children[0].children[0].scale.x);
+  assert.ok(scaleOf(worn) > scaleOf(plain), 'the wagon is not shrunk to the size of its token');
+});
+
+// Roi: "horse missing shadow". A wagon's team is a second picture on the same token, and the shadow machinery knew
+// only about the token's own art, so the horse stood in the sun casting nothing.
+// Roi, on a horse standing a step from a torchbearer: "the shadow of the horse looks nothing like a horse". It was its
+// shape, drawn out five times its length by a flame almost as tall as it — which is the right geometry and an
+// unreadable picture. A shadow on the ground is drawn out no further than this.
+test('a shadow on the ground is never drawn out so far that its shape is lost', async () => {
+  const laid = [];
+  const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const fakeLayer = { addShadow: () => ({}), removeShadow: () => {}, addRim: () => ({}), updateRim: () => {}, removeRim: () => {},
+    addParticle: () => null, updateParticle: () => {}, removeParticle: () => {}, clear: () => {},
+    updateShadow: (h, geom) => { laid.push(geom); return true; } };
+  const token = { id: 'horse', x: 1000, y: 1000, width: 200, elevation: 0, base: 0, visible: true, shadow: true, gait: 'hooves',
+    art: () => ({ texture: { id: 'horse' }, width: 275, height: 275, rotation: 0, own: true }), shadowWidth: 275, shadowCore: 170, shadowBody: 1.2,
+    // A torch a step away and barely taller than the horse: the longest shadow the geometry can make.
+    light: () => ({ light: { strength: 1, angle: 20, elevation: 0 }, darkness: 1, lights: [{ strength: 1, angle: 20, elevation: 0, key: 'torch', x: 1100, y: 1000 }] }) };
+  const feel = createMovementFeel({ layer: fakeLayer, tokens: () => [token], grid: () => 100, distance: () => 5, now: () => 0,
+    floorAt: () => 'dirt', groundShadows: () => true, shadowShapes: () => true, lightShadows: () => true, enabled: () => true,
+    density: () => 1, sun: () => ({ angle: 45, height: 8, strength: 0.2 }) });
+  for (const name of ['tick', 'step', 'update', 'frame']) if (typeof feel[name] === 'function') { feel[name](0); break; }
+  const stretched = laid.filter((g) => Number.isFinite(g?.stretch));
+  assert.ok(stretched.length >= 1, 'something was laid on the ground');
+  assert.ok(stretched.every((g) => g.stretch < 2), `drawn out ${Math.max(...stretched.map((g) => g.stretch))}`);
+  assert.ok(stretched.every((g) => g.stretch >= 1), 'and never squashed');
+  // The further it is drawn out the softer and fainter it goes, as a real shadow's edge spreads away from what casts it.
+  const far = stretched.filter((g) => g.stretch > 1.2);
+  assert.ok(far.every((g) => (g.lift ?? 0) > 1), 'a long shadow is drawn soft');
+  // And it stays joined to what casts it: the near end of the shadow is still under the thing, however far the light
+  // would throw it. Its middle is half its own drawn-out length away, no further.
+  for (const g of stretched) {
+    if (!(g.stretch > 1)) continue;
+    // Measured by what is drawn in the picture (`core`) where there is one: a wagon's picture is half shafts and air,
+    // and anchoring the picture left the wagon inside it floating clear of its own wheels (Roi, circling the gap:
+    // "shouldnt this part be here? like from where the torch location is?").
+    const core = Number(g.core) || Number(g.width) || 0;
+    const half = (core / 2) * g.stretch;
+    const moved = Math.hypot((g.fall?.x ?? g.x) - 1000, (g.fall?.y ?? g.y) - 1000);
+    assert.ok(moved <= half - core / 2 + 1e-6, `its middle moved ${Math.round(moved)} with a half-length of ${Math.round(half)}`);
+    assert.ok(moved > 0, 'but it does lie away from the light');
+  }
+  // A picture far bigger than the thing in it stays joined to the thing, not to the picture's edge.
+  const wide = laid.find((g) => Number(g.core) > 0 && g.stretch > 1);
+  if (wide) assert.ok(Math.hypot((wide.fall?.x ?? 0) - 1000, (wide.fall?.y ?? 0) - 1000) < ((Number(wide.width) || 0) / 2) * (wide.stretch - 1) + 1e-6, 'and not as far as the picture would have put it');
+});
+
+test('a token carrying a second body has a shadow laid for that one too', async () => {
+  const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const laid = [];
+  const fakeLayer = {
+    addShadow: () => ({}), removeShadow: () => {}, addRim: () => ({}), updateRim: () => {}, removeRim: () => {},
+    addParticle: () => null, updateParticle: () => {}, removeParticle: () => {}, clear: () => {},
+    updateShadow: (h, geom) => { laid.push(geom); return true; },
+  };
+  const horse = { texture: { id: 'horse' }, width: 200, height: 200, rotation: 0, own: true };
+  const token = { id: 'wagon', x: 1000, y: 1000, width: 200, elevation: 0, base: 0, visible: true, shadow: true,
+    gait: 'wheels', art: () => ({ texture: { id: 'wagon' }, width: 300, height: 300, rotation: 0, own: true }),
+    shadowWidth: 300, shadowBody: 1, shadowFlat: true,
+    // The horse stands two and a half squares in front, with the torch below it: from there the light lies another
+    // way than it does from the wagon, and its shadow has to follow its own light (Roi: "still wrong direction
+    // compared to where the light is").
+    shadowAlso: () => ({ art: horse, width: 200, dx: 0, dy: -260, flat: true,
+      light: () => ({ light: { strength: 1, angle: 270 }, darkness: 1, lights: [{ strength: 1, angle: 270, key: 'torch' }] }) }),
+    light: () => ({ light: { strength: 1, angle: 45 }, darkness: 1, lights: [{ strength: 1, angle: 45, key: 'torch' }] }) };
+  const feel = createMovementFeel({ layer: fakeLayer, tokens: () => [token], grid: () => 100, distance: () => 5,
+    now: () => 0, floorAt: () => 'dirt', groundShadows: () => true, shadowShapes: () => true, lightShadows: () => false,
+    enabled: () => true, density: () => 1, sun: () => ({ angle: 45, height: 30, strength: 1 }) });
+  for (const name of ['tick', 'step', 'update', 'frame']) if (typeof feel[name] === 'function') { feel[name](0); break; }
+  const of = (g) => { const a = typeof g?.art === 'function' ? g.art() : g?.art; return a?.texture?.id ?? null; };
+  const theirs = laid.filter((g) => of(g) === 'horse');
+  assert.ok(theirs.length >= 1, 'the horse casts one of its own');
+  assert.ok(theirs.every((g) => (g.fall?.y ?? g.y) < 1000), 'from where the horse stands, not where the wagon does');
+  const ours = laid.filter((g) => of(g) === 'wagon');
+  assert.ok(ours.length >= 1, 'and the wagon still casts its own');
+  // Each is thrown by the light where it stands: the two lie different ways, because the torch is in a different
+  // direction from each of them.
+  const away = (g) => Math.round(((Number(g.along) || 0) * 180) / Math.PI);
+  assert.notEqual(away(theirs[0]), away(ours[0]), 'the horse\'s shadow does not copy the wagon\'s');
+  // Nothing on the floor is laid over any more: a shadow keeps the way its subject points, whatever it is. Laid over,
+  // a wagon's shafts ended up on the wrong side of its bed and the horse in them lay across the road while facing up
+  // it, and seen from straight above that reads as the thing having fallen over.
+  assert.ok(laid.every((g) => g.laid !== true), 'a shadow on the floor keeps its heading');
 });
 
 test('the sun shadows lie under the sunlit floor: kept off floor a wall already shades', () => {

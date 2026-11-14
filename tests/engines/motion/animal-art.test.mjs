@@ -1,7 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
-import { ART_GROUPS, drawnBox, fitOf, restyle, setAnimalSheet, loadAnimalArt, keyLightOf, nearestLamps, litPIXI, setAnimalLight, animalLightNow } from '../../../scripts/engines/motion/animal-art.mjs';
+import { ART_GROUPS, drawnBox, bodyRun, fitOf, restyle, setAnimalSheet, loadAnimalArt, keyLightOf, nearestLamps, litPIXI, setAnimalLight, animalLightNow } from '../../../scripts/engines/motion/animal-art.mjs';
+
+// Roi, looking at a wagon on a one-square token: "why so small lol". The picture holds a wagon and the horse pulling
+// it, nearly seven metres of rig; fitting all of that into the token squeezed the wagon itself down to a toy. The
+// wagon is the part that stands on the ground the token covers, and it is far the wider of the two.
+test('the body of a drawn thing is its widest run, so a wagon is found and its horse is not', () => {
+  const w = 10, h = 20, data = new Uint8ClampedArray(w * h * 4);
+  const fill = (y0, y1, x0, x1) => { for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) data[(y * w + x) * 4 + 3] = 255; };
+  fill(2, 7, 4, 5);    // the horse out in front: narrow
+  fill(8, 9, 4, 5);    // the shafts: narrower still
+  fill(10, 17, 1, 8);  // the wagon: wide, with its wheels out each side
+  const body = bodyRun(data, w, h);
+  assert.deepEqual(body, { x: 1, y: 10, w: 8, h: 8 }, 'only the wagon');
+  const all = drawnBox(data, w, h);
+  assert.ok(body.h < all.h, 'the whole picture is longer than the wagon alone');
+  assert.ok(body.y > all.y, 'and the wagon sits behind the horse, not centred on the picture');
+  assert.equal(bodyRun(new Uint8ClampedArray(w * h * 4), w, h), null, 'nothing drawn, nothing to fit');
+  // A hand cart has no horse, so its body is very nearly the whole of it.
+  const cart = new Uint8ClampedArray(w * h * 4);
+  for (let y = 10; y <= 16; y++) for (let x = 2; x <= 7; x++) cart[(y * w + x) * 4 + 3] = 255;
+  assert.deepEqual(bodyRun(cart, w, h), { x: 2, y: 10, w: 6, h: 7 });
+});
 
 test('the animals are lit from where the sun stands, the moon more softly, the painted top left with neither', () => {
   const noon = keyLightOf({ angle: 90, height: 90, strength: 1 });
