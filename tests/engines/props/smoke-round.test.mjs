@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { smokeRoundPlan, smokeLevelFor, smokeShapes, smokeNeighbours } from "../../../scripts/engines/props/smoke-round.mjs";
+import { smokeRoundPlan, smokeLevelFor, smokeShapes, smokeNeighbours, smokeOnlySave } from "../../../scripts/engines/props/smoke-round.mjs";
 import { THICK, THIN } from "../../../scripts/engines/props/smoke-field.mjs";
 import { propSceneFieldsHTML } from "../../../scripts/ui/prop-config.mjs";
 
@@ -22,7 +22,7 @@ const walledWith = (door = null) => (i, n) => {
   return !(door && ((door[0] === i && door[1] === n) || (door[0] === n && door[1] === i)));
 };
 const sealed = walledWith(null);
-const roomOf = () => 25;
+const roomOf = () => ({ id: "room", size: 25 });
 const FIRE = [{ i: 33, rate: 1, levels: [] }]; // the middle of the room
 const plan = (args) => smokeRoundPlan({ activeGM: true, on: true, indoors: inRoom, walled: sealed, roomOf, ...args });
 // Run the round over and over, feeding each round's cells back as the scene's saved smoke.
@@ -41,7 +41,12 @@ test("a round writes its cells, and the geometry they were indexed with, beside 
   // The fire's own cell and the four it bleeds into, nothing out of doors.
   assert.deepEqual(p.cells.map((c) => c.i).sort((a, b) => a - b), [23, 32, 33, 34, 43]);
   assert.ok(p.cells.every((c) => inRoom(c.i)));
-  assert.equal(p.fields["flags.animater.smoke.33"], Math.round(p.cells.find((c) => c.i === 33).v * 10000) / 10000);
+  // Worked out by hand, not read back off the plan. One round on an empty sealed room: the source puts SOURCE (2) x
+  // rate (1) into its own cell, each of the four touching cells takes SPREAD (0.1) of the 2 that stands between it
+  // and the full one, so 0.2 goes out of 33 four times over, and what is left fades by FADE (0.1): a sealed room
+  // vents nothing. (2 - 4 x 0.2) x 0.9 = 1.08, and the flag stores four decimals.
+  assert.equal(p.fields["flags.animater.smoke.33"], 1.08);
+  assert.equal(p.fields["flags.animater.smoke.32"], 0.18); // 0.2 x 0.9
   assert.equal(p.fields["flags.animater.smokeGrid.cols"], COLS);
   assert.equal(p.fields["flags.animater.smokeGrid.cell"], CELL);
   assert.equal(p.fields["flags.animater.smokeGrid.level"], A);
@@ -118,6 +123,67 @@ test("the smoke never crosses out of its room, however long it burns", () => {
   assert.ok(p.shapes.every((s) => s.x >= 100 && s.x + s.width <= 600 && s.y >= 100 && s.y + s.height <= 600));
 });
 
+// ---- A great hall with a burning closet off it: two rooms that must be stepped apart. ----
+// Rows 1-5 of columns 1-5 are the hall (25 cells, sealed). Row 7, columns 1-3 is the closet (3 cells), open to the
+// outside at its east end. Nothing else is indoors, and no wall is shared: the two never touch.
+const HALL = new Set(), CLOSET = new Set([71, 72, 73]);
+for (let r = 1; r <= 5; r++) for (let c = 1; c <= 5; c++) HALL.add(r * COLS + c);
+const rooms = (gap) => ({
+  indoors: (i) => HALL.has(i) || CLOSET.has(i),
+  // `gap` opens the closet's east end on the passage outside; everything else is walled in.
+  walled: (i, n) => {
+    const a = HALL.has(i) ? "hall" : CLOSET.has(i) ? "closet" : "out", b = HALL.has(n) ? "hall" : CLOSET.has(n) ? "closet" : "out";
+    if (a === b) return false;
+    return !(gap && ((i === 73 && n === 74) || (i === 74 && n === 73)));
+  },
+  roomOf: (i) => (HALL.has(i) ? { id: "hall", size: 25 } : CLOSET.has(i) ? { id: "closet", size: 3 } : { id: "out", size: 1 }),
+});
+const twoRooms = rooms(true);
+const FIRES = [{ i: 33, rate: 1, levels: [] }, { i: 73, rate: 1, levels: [] }];
+
+test("each room is stepped on its own: the closet's opening never vents the hall", () => {
+  const both = smokeRoundPlan({ activeGM: true, on: true, scene: scene(), ...twoRooms, sources: FIRES });
+  assert.deepEqual(both.rooms.map((r) => [r.id, r.size, r.openings]), [["hall", 25, []], ["closet", 3, [73]]]);
+  // The hall alone, with no closet burning at all, must come out exactly the same: the closet cannot reach it.
+  const alone = smokeRoundPlan({ activeGM: true, on: true, scene: scene(), ...twoRooms, sources: [FIRES[0]] });
+  const hallOf = (p) => p.cells.filter((c) => HALL.has(c.i)).map((c) => [c.i, c.v]);
+  assert.deepEqual(hallOf(both), hallOf(alone));
+  assert.equal(both.fields["flags.animater.smoke.33"], 1.08, "the sealed hall vents nothing, closet or no closet");
+  // And the closet is vented by its own 1-in-3 share, not by the hall's 25 cells.
+  const shut = smokeRoundPlan({ activeGM: true, on: true, scene: scene(), ...rooms(false), sources: FIRES });
+  const keeps = (p) => p.cells.find((c) => c.i === 73).v;
+  assert.ok(keeps(both) < keeps(shut) * 0.75, `open closet keeps ${keeps(both)}, shut ${keeps(shut)}`);
+});
+
+test("neither room's smoke ever leaks into the other, nor out of doors", () => {
+  const run = (how) => {
+    let smoke = null, p = null;
+    for (let n = 0; n < 25; n++) {
+      p = smokeRoundPlan({ activeGM: true, on: true, ...how, scene: scene({ smoke, grid: smoke ? { cols: COLS, cell: CELL } : null }), sources: FIRES });
+      smoke = Object.fromEntries(p.cells.map((c) => [String(c.i), Math.round(c.v * 10000) / 10000]));
+    }
+    return p;
+  };
+  const p = run(twoRooms);
+  assert.ok(p.cells.every((c) => HALL.has(c.i) || CLOSET.has(c.i)), "nothing anywhere else");
+  assert.ok(p.cells.some((c) => HALL.has(c.i) && c.v >= THICK), "the sealed hall still fills");
+  // The open closet holds plainly less than the same closet shut, round after round.
+  const mass = (p_, where) => p_.cells.filter((c) => where.has(c.i)).reduce((s, c) => s + c.v, 0);
+  assert.ok(mass(p, CLOSET) < mass(run(rooms(false)), CLOSET) * 0.6, `open ${mass(p, CLOSET)}`);
+  assert.equal(mass(p, HALL).toFixed(6), mass(run(rooms(false)), HALL).toFixed(6), "the hall is untouched either way");
+});
+
+test("one room is one group, and the same scene groups the same way every tick", () => {
+  // Underground, where every cell counts as indoors and no roomOf is given, the lot is one room.
+  const deep = smokeRoundPlan({ activeGM: true, on: true, scene: scene(), sources: [{ i: 33, rate: 1, levels: [] }] });
+  assert.deepEqual(deep.rooms.map((r) => [r.id, r.size]), [["", COLS * ROWS]]);
+  // Every indoor cell lands in exactly one group, and the groups come out in the same order each time.
+  const once = () => smokeRoundPlan({ activeGM: true, on: true, scene: scene(), ...twoRooms,
+    sources: [{ i: 71, rate: 1, levels: [] }, { i: 33, rate: 1, levels: [] }] }).rooms.map((r) => r.id);
+  assert.deepEqual(once(), ["hall", "closet"]);
+  assert.deepEqual(once(), once());
+});
+
 test("the region's shapes cover the smoke at or above thin, a run of cells to a rectangle", () => {
   const cells = [{ i: 11, v: 1 }, { i: 12, v: 1 }, { i: 13, v: 1 }, { i: 22, v: THIN / 2 }, { i: 31, v: 2 }];
   assert.deepEqual(smokeShapes(cells, { cols: COLS, cell: CELL, origin: { x: 0, y: 0 } }), [
@@ -164,6 +230,22 @@ test("the four cells touching one are its own, and never off the grid", () => {
   assert.equal(smokeNeighbours(33, COLS, ROWS).length, 4);
 });
 
+test("the round's own write back is not a scene edit; a real one is", () => {
+  const note = { animater: { roomSmoke: true } };
+  // What the round writes, flat and (as the update hook may hand it over) nested, with the deletion marker too.
+  assert.equal(smokeOnlySave({ "flags.animater.smoke.33": 1.08, "flags.animater.smokeGrid.cols": 10 }, note), true);
+  assert.equal(smokeOnlySave({ "flags.animater.smoke.-=33": null, "flags.animater.-=smokeGrid": null }, note), true);
+  assert.equal(smokeOnlySave({ "flags.animater.smoke.33": {} , _id: "x", _stats: {} }, note), true);
+  assert.equal(smokeOnlySave({ flags: { animater: { smoke: { 33: 1 }, smokeGrid: { cols: 10 } } } }, note), true);
+  // A real edit by the GM, even carried in the same update, is an edit: the room sizes must go.
+  assert.equal(smokeOnlySave({ "flags.animater.smoke.33": 1, width: 2000 }, note), false);
+  assert.equal(smokeOnlySave({ "flags.animater.roomSmoke": false }, note), false, "the GM's own switch is an edit");
+  assert.equal(smokeOnlySave({ flags: { animater: { smoke: {} }, core: {} } }, note), false);
+  // And with no note it is somebody else's write, whatever it touches.
+  assert.equal(smokeOnlySave({ "flags.animater.smoke.33": 1 }, {}), false);
+  assert.equal(smokeOnlySave({}, note), false);
+});
+
 // ---- The two guards that really are about main.mjs's own text. ----
 const main = readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8");
 
@@ -171,6 +253,15 @@ test("the smoke runs on the fire's own round: there is still only the one interv
   assert.equal([...main.matchAll(/setInterval\(fireTick/g)].length, 1);
   assert.equal([...main.matchAll(/setInterval\(/g)].filter((m) => main.slice(m.index - 200, m.index).includes("smoke")).length, 0);
   assert.match(main, /await smokeRound\(scene, burning\)/);
+});
+
+test("the room sizes survive the round's own write and go on a real scene edit", () => {
+  // quietSave is what the cache's hook asks, and the round's write must be forgiven there.
+  assert.match(main, /const quietSave = \(first, changes, options\) => isClockSave\(first\)[\s\S]{0,220}first\?\.documentName === "Scene" && smokeOnlySave\(changes, options\)/);
+  const hook = main.split(/\r?\n/).find((l) => l.includes("smokeRooms = new Map(); });"));
+  assert.match(hook, /if \(!quietSave\(first, changes, options\)\)/, "a real edit still clears it");
+  const list = main.split(/\r?\n/)[main.split(/\r?\n/).indexOf(hook) - 1];
+  for (const name of ["updateScene", "deleteScene", "updateWall", "updateRegion", "canvasReady"]) assert.ok(list.includes(`"${name}"`), name);
 });
 
 test("the smoke never reads the scene's regions raw", () => {

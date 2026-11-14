@@ -65,12 +65,36 @@ export function smokeLevelFor(scene, sources = []) {
   return real(first) ? first : null;
 }
 
+// The flags the round itself writes on the scene, as the keys reach the update hook: the cells, the geometry beside
+// them, and either one removed. (withDeletes takes the `-=` off the key and puts the deletion marker in the value, so
+// both spellings turn up.) The scene's own "Fires fill rooms with smoke" switch is deliberately NOT one of them.
+const SMOKE_OWN = new Set(["smoke", "smokeGrid", "-=smoke", "-=smokeGrid"]);
+/**
+ * A scene update that is only this round putting its own smoke back (pure): written with options.animater.roomSmoke,
+ * changing nothing but flags.animater.smoke and flags.animater.smokeGrid. The scene rebuilds — and the round's own
+ * room-size cache, which a tick-by-tick flood fill would otherwise cost dearly — skip it, as they skip a clock save.
+ * Any other change in the same update is a real edit: a moved wall or a redrawn region must still throw the cache out.
+ */
+export function smokeOnlySave(changes, options) {
+  if (options?.animater?.roomSmoke !== true) return false;
+  const keys = Object.keys(changes ?? {}).filter((k) => k !== "_id" && k !== "_stats");
+  if (!keys.length) return false;
+  const nested = keys.length === 1 && keys[0] === "flags" ? changes.flags : null;
+  if (nested) {
+    const scopes = Object.keys(nested ?? {});
+    if (scopes.length !== 1 || scopes[0] !== "animater") return false;
+    const own = Object.keys(nested.animater ?? {});
+    return own.length > 0 && own.every((k) => SMOKE_OWN.has(k));
+  }
+  return keys.every((k) => k.startsWith("flags.animater.") && SMOKE_OWN.has(k.slice("flags.animater.".length).split(".")[0]));
+}
+
 // Everything the smoke left behind, taken off the scene. The `-=` key form is the caller's to translate (withDeletes).
 const clearPlan = (saved, hadGrid) => {
   const fields = {};
   for (const key of Object.keys(saved ?? {})) fields[`${FLAG}.smoke.-=${key}`] = null;
   if (hadGrid) fields[`${FLAG}.-=${SMOKE_GRID_FLAG}`] = null;
-  return { fields, cells: [], shapes: [], level: null, grid: null, openings: [], room: 0 };
+  return { fields, cells: [], shapes: [], level: null, grid: null, openings: [], rooms: [] };
 };
 
 // The round's whole decision.
@@ -80,13 +104,19 @@ const clearPlan = (saved, hadGrid) => {
 //   sources   [{i, rate, levels}] from smokeSourcesOf, already placed on this scene's smoke grid.
 //   indoors(i)      whether that cell is in a room (a region that keeps the weather out, or an underground scene).
 //   walled(i, n)    whether a sight- or move-blocking wall stands between two touching cells.
-//   roomOf(i)       how many cells the room holding cell i has, for the venting. The whole grid when not given.
+//   roomOf(i)       the room cell i sits in, as {id, size}: a name that is the same for every cell of that room, and
+//                   how many cells it holds, for the venting. The whole grid as one room when not given.
 // Returns null when this client must not write or the scene has no usable geometry; otherwise
-// {fields, cells, shapes, level, grid, openings, room}. `fields` may be empty: an unchanged round writes nothing.
+// {fields, cells, shapes, level, grid, openings, rooms}. `fields` may be empty: an unchanged round writes nothing.
 //
 // Indoors is where smoke lives: a fire out of doors fills nothing. Indoor-to-outdoor pairs are always blocked, so
 // smoke never crosses out of its room; where no wall stands between them the indoor cell is an opening instead, and
 // the room breathes out there — an open door, a smashed window, the mouth of a cave.
+//
+// Each room is stepped ON ITS OWN, with its own cells, sources, openings and cell count. Rooms are cut off from one
+// another by the very walls the blocked pairs already encode, so this is not an approximation: it is the same answer,
+// worked out right. One room's openings must never vent another's, and a great hall must never be divided by the
+// cell count of the burning closet off it.
 export function smokeRoundPlan({ activeGM, on, scene, sources = [], indoors = () => true, walled = () => false, roomOf = null } = {}) {
   if (activeGM !== true || !scene) return null;
   const saved = smokeCellsOf(scene);
@@ -108,21 +138,44 @@ export function smokeRoundPlan({ activeGM, on, scene, sources = [], indoors = ()
   const seed = new Set([...held.map((c) => c.i), ...lit.map((s) => s.i)]);
   const look = new Set(seed);
   for (const i of seed) for (const n of smokeNeighbours(i, cols, rows)) look.add(n);
-  const openings = [], blocked = [];
-  for (const i of look) {
+  // Which room each cell belongs to. Walked in index order, so the same scene gives the same groups in the same
+  // order every tick. Every cell that is indoors lands in exactly one group (its own room's), and a cell that is not
+  // indoors lands in none — with no roomOf given, or underground where every cell is indoors, that is one group
+  // holding the lot, which is what a single cave or a scene with no rooms drawn on it should be.
+  const whole = { id: "", size: total };
+  const roomAt = (i) => (roomOf ? (roomOf(i) ?? whole) : whole);
+  const looked = [...look].sort((a, b) => a - b);
+  const rooms = new Map(), owner = new Map();
+  for (const i of looked) {
     if (!indoors(i)) continue;
+    const own = roomAt(i), id = own.id ?? "";
+    if (!rooms.has(id)) rooms.set(id, { id, size: Number(own.size) > 0 ? Number(own.size) : total, cells: [], sources: [], openings: [], blocked: [] });
+    owner.set(i, id);
+  }
+  const roomIdOf = (i) => (owner.has(i) ? owner.get(i) : (roomAt(i).id ?? ""));
+  for (const [i, id] of owner) {
+    const group = rooms.get(id);
     let breathes = false;
     for (const n of smokeNeighbours(i, cols, rows)) {
       const wall = walled(i, n);
-      if (!indoors(n)) { blocked.push({ from: i, to: n }); if (!wall) breathes = true; continue; }
-      if (n > i && wall) blocked.push({ from: i, to: n });
+      // Out of the room: the smoke never goes that way, and with no wall in between the room breathes out here.
+      if (!indoors(n)) { group.blocked.push({ from: i, to: n }); if (!wall) breathes = true; continue; }
+      // Another room: whatever stands between them, this room's smoke is not that room's.
+      if (roomIdOf(n) !== id) { group.blocked.push({ from: i, to: n }); continue; }
+      if (n > i && wall) group.blocked.push({ from: i, to: n });
     }
-    if (breathes) openings.push(i);
+    if (breathes) group.openings.push(i);
   }
-  openings.sort((a, b) => a - b);
-  const room = roomOf ? roomOf(Math.min(...seed)) : total;
-  const step = smokeStep({ cells: held, sources: lit, cols, rows, openings, blocked, room });
-  const cells = step.cells.filter((c) => indoors(c.i));
+  for (const c of held) rooms.get(owner.get(c.i))?.cells.push(c);
+  for (const s of lit) rooms.get(owner.get(s.i))?.sources.push(s);
+  // One step per room, then the rooms' answers put back together as one field.
+  const byCell = new Map();
+  for (const group of rooms.values()) {
+    const step = smokeStep({ cells: group.cells, sources: group.sources, cols, rows, openings: group.openings, blocked: group.blocked, room: group.size });
+    for (const c of step.cells) if (indoors(c.i) && !byCell.has(c.i)) byCell.set(c.i, c);
+  }
+  const cells = [...byCell.values()].sort((a, b) => a.i - b.i);
+  const openings = [...rooms.values()].flatMap((g) => g.openings).sort((a, b) => a - b);
   const level = smokeLevelFor(scene, lit);
   const fields = smokeUpdatesFor({ cells }, { scene })[0] ?? {};
   // The geometry goes BESIDE the cells, key by key so Foundry merges it and nothing old is stranded: without it the
@@ -134,5 +187,6 @@ export function smokeRoundPlan({ activeGM, on, scene, sources = [], indoors = ()
   } else if (Object.keys(grid).length) fields[`${FLAG}.-=${SMOKE_GRID_FLAG}`] = null;
   // A grid the stored cells no longer fit was dropped above: their keys go too, whatever this round wrote.
   if (stale) for (const key of Object.keys(saved)) if (!(`${FLAG}.smoke.${key}` in fields)) fields[`${FLAG}.smoke.-=${key}`] = null;
-  return { fields, cells, shapes: smokeShapes(cells, geo), level: cells.length ? level : null, grid: geo, openings, room };
+  return { fields, cells, shapes: smokeShapes(cells, geo), level: cells.length ? level : null, grid: geo, openings,
+    rooms: [...rooms.values()].map((g) => ({ id: g.id, size: g.size, openings: [...g.openings].sort((a, b) => a - b) })) };
 }
