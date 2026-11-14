@@ -4,6 +4,7 @@ import { waterKindOf, stepMenu, caveMenu, caveKindFlags, caveHasMenu, stepFlags,
 import { REGION_ANIMAL_GROUPS, regionAnimalCounts, regionHasAnimals, animalSizeOf } from '../engines/motion/region-animals.mjs';
 import { weatherLabel } from '../engines/motion/sky-weather.mjs';
 import { readHeight, readRamp, CROSSING_KINDS } from '../engines/regions/heights.mjs';
+import { thinIceOn } from '../engines/regions/thin-ice.mjs';
 
 // The animals' size lives with the animals (it is read as they are placed); the panel's slider reads it from here.
 export { animalSizeOf, ANIMAL_SIZE } from '../engines/motion/region-animals.mjs';
@@ -167,6 +168,9 @@ export function summaryOf(id, own = {}, floor) {
       return parts.length ? parts.join(', ') : 'None';
     }
     case 'steps': {
+      // Thin ice is the step while it is on (region-steps.mjs activeStep), so the heading says that and not a step the
+      // region is not really on.
+      if (thinIceOn(own)) return 'Frozen over · thin ice';
       const m = stepMenu(own, floor);
       return m.steps.length ? `${m.steps[m.current] ?? m.steps[0]} (${m.current + 1} of ${m.steps.length})${m.hidden ? ' · hidden' : ''}` : 'None';
     }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SECTIONS } from '../../scripts/ui/region-panel-sections.mjs';
-import { panelSections } from '../../scripts/ui/region-panel-model.mjs';
+import { panelSections, summaryOf } from '../../scripts/ui/region-panel-model.mjs';
 import { iceSettingsOf } from '../../scripts/engines/regions/thin-ice.mjs';
 
 // Thin ice in the region panel: the GM turns it on for one water region, says what it holds, and puts it back whole.
@@ -80,4 +80,48 @@ test('thin ice is offered only where the region is water', () => {
   const has = (kind) => panelSections(kind, {}, undefined).some((s) => s.id === 'water');
   assert.equal(has('water'), true);
   for (const kind of ['ground', 'indoors', 'cave', 'lava', 'deck', 'none']) assert.equal(has(kind), false, `${kind} has no water section`);
+});
+
+// The Steps section as the panel builds it for the same region.
+const steps = (own = {}) => {
+  fakeDom();
+  const acts = [];
+  const c = { doc: { id: 'reg1' }, own, floor: 'water', kind: 'water', at: null, act: (f) => acts.push(f), toFloor: () => {}, more: () => [], texture: () => false, season: () => false, fireSpreads: () => false, close: () => {}, edit: () => {} };
+  return { parts: SECTIONS.steps(c), acts };
+};
+const text = (parts) => all(parts, (n) => typeof n.textContent === 'string').map((n) => n.textContent).join(' | ');
+
+test('with thin ice on, the Steps section offers nothing to pick or hide: thin ice is the step', () => {
+  // Every reader goes by the frozen step while thin ice is on, so a step chip or "Hide this step" here would be a
+  // control the region throws away.
+  const { parts, acts } = steps({ floor: 'water', iceThin: true });
+  assert.equal(labelled(parts, 'Hide this step'), undefined, 'no dead toggle');
+  assert.equal(named(parts, 'Clear'), undefined, 'and no step to pick');
+  assert.equal(named(parts, 'Frozen over'), undefined);
+  assert.equal(named(parts, 'Edit steps…'), undefined);
+  assert.match(text(parts), /Thin ice sets this region's step/, 'it says why instead');
+  assert.deepEqual(acts, [], 'and nothing was saved by building it');
+  assert.equal(summaryOf('steps', { floor: 'water', iceThin: true, steps: [{ name: 'Clear', look: 'none', walks: 'water' }], step: 0 }, 'water'), 'Frozen over · thin ice',
+    'the heading names the step the region is really on');
+});
+
+test('without thin ice the Steps section is untouched', () => {
+  const { parts } = steps({ floor: 'water', steps: [{ name: 'Clear', look: 'none', walks: 'water' }, { name: 'Murky', look: 'murky', walks: 'water' }], stepsFloor: 'water', step: 1 });
+  assert.ok(named(parts, 'Clear'), 'the water list is there to pick from');
+  assert.ok(named(parts, 'Edit steps…'));
+  assert.ok(labelled(parts, 'Hide this step'), 'and a step showing can be hidden');
+});
+
+// The hover explanation on the row a control sits in (tip(), which puts it on the row, not the switch).
+const hintOf = (parts, label) => {
+  const control = labelled(parts, label);
+  for (const part of parts) for (const node of walk(part)) if (node.attrs?.['data-tooltip'] && [...walk(node)].includes(control)) return node.attrs['data-tooltip'];
+  return '';
+};
+
+test('the Thin ice tooltip says fire melts it, and that the melt waits on Breakable props', () => {
+  const said = hintOf(water().parts, 'Thin ice');
+  assert.match(said, /fire area melts/i, 'a GM reads what fire does to it');
+  assert.match(said, /Breakable props/, 'and that the melt waits on that scene setting');
+  assert.match(said, /steps are not used/, 'and that it takes the region over from its own steps');
 });

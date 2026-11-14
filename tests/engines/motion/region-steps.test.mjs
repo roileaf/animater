@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FLOORS } from '../../../scripts/engines/motion/movement-feel.mjs';
-import { STEP_EFFECTS, STEP_LOOKS, TEXTURE_STYLES, textureStyleOf, activeStep, changeStep, defaultSteps, STEP_SCALE, stepScale, fallWindAngle, flowChoices, noLifeOnWater, WATER_KINDS, waterFlows, waterKindFlags, waterKindOf, floodedByStep, unfitForLife, paintsOverWater, setStepSpeed, STEP_SPEEDS, setStepStrength, stepStrength, STEP_STRENGTH, showsTexture, spreadFrom, stepEdge, stepFlags, takesSeason, stepLook, stepMenu, textureFloor } from '../../../scripts/engines/motion/region-steps.mjs';
+import { STEP_EFFECTS, STEP_LOOKS, TEXTURE_STYLES, textureStyleOf, activeStep, frozenStepOf, changeStep, defaultSteps, STEP_SCALE, stepScale, fallWindAngle, flowChoices, noLifeOnWater, WATER_KINDS, waterFlows, waterKindFlags, waterKindOf, floodedByStep, unfitForLife, paintsOverWater, setStepSpeed, STEP_SPEEDS, setStepStrength, stepStrength, STEP_STRENGTH, showsTexture, spreadFrom, stepEdge, stepFlags, takesSeason, stepLook, stepMenu, textureFloor } from '../../../scripts/engines/motion/region-steps.mjs';
 
 test('a step\'s look strength is kept to its range, as painted when unset or nonsense', () => {
   assert.equal(stepStrength({}), STEP_STRENGTH.usual);
@@ -376,8 +376,24 @@ test('thin ice is frozen over whatever the weather, through the water list\'s ow
   assert.equal(stepFlags(ice).floor, 'ice', 'it walks as ice');
   assert.equal(stepLook(ice, 'water').look, 'frozen', 'and it is drawn as ice');
   // Whatever else the region was showing, and whether or not its steps are hidden: it is thin ice, so it is frozen.
+  // (The panel leaves its Steps controls out while it is on, so none of this throws away a setting the GM can reach:
+  // region-panel-ice.test.mjs holds that end.)
   assert.equal(activeStep({ ...ice, steps: defaultSteps('water'), stepsFloor: 'water', step: 1 }).look, 'frozen');
   assert.equal(activeStep({ ...ice, stepHidden: true }).look, 'frozen');
   assert.equal(activeStep({ floor: 'water' }), null, 'water without thin ice is left alone');
   assert.equal(activeStep({ floor: 'water', iceThin: 'yes' }), null, 'and only the flag set true is thin ice');
+});
+
+test('the step thin ice freezes with is one object, shared and unchangeable, read as a creature walks', () => {
+  const ice = { floor: 'water', iceThin: true };
+  assert.equal(activeStep(ice), activeStep({ ...ice }), 'the same object every time: nothing is built per read');
+  assert.equal(Object.isFrozen(activeStep(ice)), true, 'and nobody can change the step every region shares');
+});
+
+test('a floor list with no frozen step fails loudly: thin ice never quietly stops being ice', () => {
+  assert.deepEqual(frozenStepOf(defaultSteps('water')), defaultSteps('water').find((s) => s.look === 'frozen'));
+  assert.throws(() => frozenStepOf([]), /Frozen over/, 'a list the step was dropped from');
+  assert.throws(() => frozenStepOf(defaultSteps('ice')), /Frozen over/, 'a real list with no frozen step in it: ice is already frozen');
+  assert.throws(() => frozenStepOf([{ name: 'Frozen over', look: 'frozen' }]), /Frozen over/, 'a step with no floor to walk as');
+  assert.throws(() => frozenStepOf(undefined), /Frozen over/);
 });

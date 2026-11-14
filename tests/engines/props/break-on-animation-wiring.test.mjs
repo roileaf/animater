@@ -19,7 +19,7 @@ test("the damage roll is the fallback: only the roll's types the spell deals, th
   assert.match(b, /breakAreaThings\(propAreas\.get\(area\.templateId\) \?\? area, types, named\)/);
   assert.doesNotMatch(b, /askProp|askWall|askDecor/);
   const t = body("breakAreaThings");
-  for (const claim of ["thing.id)", "`wall:${thing.id}`", "`ignite:${t.id}`"]) assert.ok(t.includes(`propAreas.claim(area.templateId, ${claim}`), claim);
+  for (const claim of ["thing.id)", "`wall:${thing.id}`", "`ignite:${t.id}`", '"ice")']) assert.ok(t.includes(`propAreas.claim(area.templateId, ${claim}`), claim);
   assert.match(t, /types\.includes\("fire"\)/);
 });
 
@@ -73,3 +73,15 @@ test("a spell with no damage type on its item breaks from its roll only, the GM 
   assert.ok(g.includes("rollDamageTypes(summary, { itemUuid, actorUuid, sender: { id: user?.id, isGM: user?.isGM === true }, now })"));
 });
 
+test("a fire area melts the thin ice it covers, asked of the GM once for the area", () => {
+  const t = body("breakAreaThings");
+  // The melt rides the areas the props already watch: claimed for the area, so a sustained flame asks once, and only
+  // on a scene that has thin ice on a region at all.
+  assert.ok(t.includes('sceneHasThinIce(scene) && propAreas.claim(area.templateId, "ice")'), "claimed, and only where there is thin ice");
+  assert.ok(t.includes('types.includes("fire") && sceneHasThinIce(scene)'), "and only a fire area melts it");
+  assert.ok(t.includes('askClaimed({ ask: () => askIceMelt(area, messageId), release: () => propAreas.release(area.templateId, "ice"), wait: CLAIM_SETTLE_MS'),
+    "the claim is given back when the GM does not write it");
+  assert.ok(t.includes("return iceMeltOf(scene, area).length === 0;"), "held until the ice this area covers is really melted");
+  // An area that melts ice and breaks nothing still counts as asked for, or the roll would ask all over again.
+  assert.ok(t.includes("return quenching || lighting || melting;"), "the melt is folded into the early return");
+});

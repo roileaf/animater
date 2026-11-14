@@ -84,14 +84,23 @@ const indexIn = (list, index) => { const i = Number(index); return Number.isInte
 // Which step of its list a region is on.
 export const stepIndexOf = (own, floor) => (hasList(own) ? indexIn(own.steps, own.step) : STARTS_AT[floor] ?? 0);
 
-// Thin ice is frozen over whatever the weather (engines/regions/thin-ice.mjs): the region shows the water list's own
-// "Frozen over" step, so it draws and walks as ice through the one ice look Animater has, and no second ice drawing is
-// invented for it. The weather's own freeze is untouched: this is the region saying it is frozen, cold or not.
-const FROZEN_OVER = defaultSteps('water').find((s) => s.look === 'frozen');
+/** The step thin ice is always on, picked out of a floor's own list by its frozen look: the water list's "Frozen over",
+ *  so thin ice draws and walks as ice through the one ice look Animater has and no second ice drawing is invented for it.
+ *  A list with no such step (one renamed or dropped from LOOKS above) throws here and now, loudly: left to a bare `find`,
+ *  thin ice would quietly stop being ice at all. Frozen, so the one object is shared and never changed. */
+export function frozenStepOf(steps) {
+  const step = (steps ?? []).find((s) => s?.look === 'frozen');
+  if (!step?.walks) throw new Error("region-steps: no 'Frozen over' step to freeze thin ice with");
+  return Object.freeze({ ...step });
+}
+// Thin ice is frozen over whatever the weather (engines/regions/thin-ice.mjs). The weather's own freeze is untouched:
+// this is the region saying it is frozen, cold or not. The panel leaves its Steps controls out while it is on, because
+// every reader goes by this step instead (region-panel-sections.mjs).
+const THIN_ICE_STEP = frozenStepOf(defaultSteps('water'));
 
 // The step showing now, or null: no steps saved, or hidden. Read as a creature walks, so it builds nothing.
 export function activeStep(own) {
-  if (thinIceOn(own)) return { ...FROZEN_OVER };
+  if (thinIceOn(own)) return THIN_ICE_STEP;
   if (!hasList(own) || own.stepHidden) return null;
   return own.steps[indexIn(own.steps, own.step)] ?? null;
 }

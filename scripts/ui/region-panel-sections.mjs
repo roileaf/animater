@@ -150,7 +150,7 @@ const ICE_HOLDS = [['sm', 'Small'], ['med', 'Medium'], ['lg', 'Large']];
 const withHolds = (value) => (ICE_HOLDS.some(([v]) => v === value) ? ICE_HOLDS : [...ICE_HOLDS, [value, ICE_SIZE_NAMES[value] ?? capital(value)]]);
 const iceParts = (c) => {
   const { own, act, doc } = c;
-  const parts = [toggle('Thin ice', thinIceOn(own), (on) => act({ iceThin: on }), 'The water here is frozen only thinly, whatever the weather. The ice holds a light creature; a heavier one cracks it square by square, and a much heavier one goes straight through into the water.')];
+  const parts = [toggle('Thin ice', thinIceOn(own), (on) => act({ iceThin: on }), 'The water here is frozen only thinly, whatever the weather. The ice holds a light creature; a heavier one cracks it square by square, and a much heavier one goes straight through into the water. A fire area melts the ice it covers to open water, but only on a scene with Breakable props on. While this is on, the region\'s own steps are not used.')];
   if (!thinIceOn(own)) return parts;
   parts.push(row('Holds up to', choice(withHolds(iceHoldsOf(own)), iceHoldsOf(own), 'Holds up to', (v) => act({ iceHolds: v })), 'A creature of this size or smaller walks over it safely. One size over cracks the ice it crosses and falls through a crack already there; two sizes over goes straight through.'));
   if (c.refreezeIce) {
@@ -260,7 +260,11 @@ export const SECTIONS = {
   },
 
   steps(c) {
-    const { own, floor, act } = c, menu = stepMenu(own, floor), chips = element('div', 'an-rp-steps');
+    const { own, floor, act } = c;
+    // Thin ice is this region's step, whatever the weather (engines/motion/region-steps.mjs activeStep), so every
+    // control here would be thrown away: the section says so instead of offering a step to pick or hide.
+    if (thinIceOn(own)) return [element('div', 'an-rp-note', 'Thin ice sets this region\'s step: it is frozen over whatever the weather. Turn Thin ice off under Water to pick steps here.')];
+    const menu = stepMenu(own, floor), chips = element('div', 'an-rp-steps');
     menu.steps.forEach((name, i) => chips.append(button(name, i === menu.current ? 'an-rp-on' : '', () => act(changeStep(own, floor, i, c.at)))));
     const parts = [tip(chips, menu.walks ? `This step walks as ${menu.walks}: its footsteps, sounds and prints.` : '')];
     // The water's current while this step shows (not how fast the steps change): the river's, or its own.
