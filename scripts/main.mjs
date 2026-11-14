@@ -28,7 +28,9 @@ import { registerSmokeFence } from "./engines/props/smoke-fence.mjs";
 import { smokeGridOf, storedSmokeGrid, smokeCellList, smokeLevelOf } from "./engines/props/smoke-edges.mjs";
 import { createSmokeLooks, smokePuffs, smokeSheets, smokeSeedOf, airHazeFor, SMOKE_SORT_LAYER } from "./engines/props/smoke-look.mjs";
 import { CONCEALMENT_BEHAVIOUR, smokeRegionPlan, smokeRegionSave, skyRegionsOf, regionsOnLevel } from "./engines/props/smoke-regions.mjs";
-import { smokeRoundPlan, smokeRoomAt, smokeOnlySave, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, smokeLevelFor, SMOKE_NOTE } from "./engines/props/smoke-round.mjs";
+import { smokeRoundPlan, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, smokeLevelFor, SMOKE_NOTE } from "./engines/props/smoke-round.mjs";
+import { smokeGathering } from "./engines/props/smoke-gather.mjs";
+import { quietSave, isClockSave } from "./engines/props/quiet-writes.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls, blockingWalls, wallStop } from "./engines/props/prop-walls.mjs";
@@ -156,16 +158,16 @@ const hotSettings = frameSettings({ get: key => (settingPreview.has(key) ? setti
 const hotSetting = key => hotSettings.get(key);
 // Any setting written (this world's, this screen's, by Animater or another module): read afresh.
 for (const hook of ["updateSetting", "createSetting", "deleteSetting", "clientSettingChanged"]) Hooks.on(hook, () => hotSettings.invalidate());
-// Foundry keeps the game's clock in a setting, so every tick of it arrives as a setting saved: nothing to build again for that.
-const isClockSave = (first) => first?.key === "core.time";
+// (The clock save, the decoration break and the smoke round's own two writes all live in quiet-writes.mjs now.)
 // A region write that only stores or clears decoration breaks (decor-break.mjs decorOnlySave): the decoration painter and
 // wrecks follow it (their own updateRegion hook); the region rebuilds skip it, as they skip a clock save.
 // (The smoke round puts its own cells back on the scene, and its own concealment region back beside them, every few
 // seconds; both writes are the round talking to itself, so the rebuilds — and the round's own room-size cache — skip
 // them too. smoke-round.mjs smokeOnlySave for the scene, smoke-regions.mjs smokeRegionSave for the region.)
-const quietSave = (first, changes, options) => isClockSave(first) ||
-  (first?.documentName === "Region" && (decorOnlySave(changes, options) || smokeRegionSave(first, changes, options))) ||
-  (first?.documentName === "Scene" && smokeOnlySave(changes, options));
+// The whole composition — the clock save, the decoration break, the smoke round's own scene and region writes — is
+// quiet-writes.mjs's `quietSave`, which main.mjs imports and no test re-implements. It used to be spelled out here,
+// where the only thing that could check it was a source-text regex (in three different suites), and a test that
+// wrote its own copy of the composition would have gone on passing while this one lost a clause.
 // Invalidate before our own onChange callbacks (not only after Foundry's
 // update hook): quality routing and other synchronous readers need the new value.
 const registerSetting = (key, config) => game.settings.register(ID, key, {
@@ -10320,22 +10322,21 @@ let smokeRooms = new Map();
 for (const hook of ["canvasReady", "createWall", "updateWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion", "updateScene", "deleteScene"]) {
   Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) smokeRooms = new Map(); });
 }
-// Everything the round works out about a scene's SHAPE, kept for as long as the room walk is and thrown away with it.
-// The rooms were the only thing cached across ticks, and they were the cheapest of the lot: every tick also built a
-// blocking-wall list over every wall on the scene, the indoor polygons, the sky polygons, and then asked a linear
-// scan of those walls for every pair of cells it looked at. A warm round cost 3 ms at 400 cells and 400 walls but
-// 25.8 ms at 1600 cells and 1500 walls — growing with the scene rather than with the smoke.
-// `key` is the geometry and the level the answers were worked out for, so a resize, a grid change or the smoke
-// moving floor rebuilds them; anything else that could move a wall or a room (a real wall, region or scene edit)
-// empties smokeRooms altogether, which takes these with it.
-const smokeWorkOf = (scene, key, build) => {
-  let own = smokeRooms.get(scene.id);
-  if (!own || own.key !== key) {
-    own = { key, rooms: new Map(), indoors: new Map(), sky: new Map(), walled: new Map(), ...build() };
-    smokeRooms.set(scene.id, own);
-  }
-  return own;
-};
+// Everything the round works out about a scene's SHAPE — which cells are indoors, which pairs have a wall between
+// them, which lie under a hole in the roof — is smoke-gather.mjs's (smokeGathering), kept for as long as the room
+// walk is and thrown away with it. All that is here is the Foundry looking-up: the regions on the smoke's level,
+// the polygons of the ones that keep the weather out and of the ones open to the sky, and the walls that stop it.
+// Each is a thunk, so a scene with no smoke to decide about pays for none of them (smokeGathering asks at most
+// once per record), and so a test can drive the real gathering with fakes — which is the point: it lived here,
+// where no test could import it, and two of its keys collided unseen.
+const smokeShapeOf = (scene, geo, level, deep) => smokeGathering({
+  cache: smokeRooms, sceneId: scene.id, geo, level, deep,
+  polygons: () => (deep ? [] : indoorPolygonsOf(regionsOnLevel(scene.regions, level), regionAreas)),
+  shafts: () => skyRegionsOf(regionsOnLevel(scene.regions, level))
+    .flatMap((r) => { try { return regionAreas(r) ?? []; } catch { return []; } }),
+  walls: () => blockingWalls((scene.walls?.contents ?? []).map(wallView)),
+  inside: pointInPolygon, crosses: wallBetween,
+});
 // One round of smoke on one scene, run by the active GM on the fire's own tick, straight after fireRound, with what
 // fireRound found alight. Switched off, or with nothing stored, nothing burning and no light set to smoke, it costs
 // a flag read and a pass over the scene's lights — and nothing of the scene's shape is looked at at all.
@@ -10364,41 +10365,13 @@ async function smokeRound(scene, burning = []) {
     // smoke never formed, and our own region was never found, so a new one was made every round it burned.
     // (viewedRegions stays where something really is drawn on the viewed level.)
     const level = smokeLevelFor(scene, sources);
-    const mid = (i) => ({ x: origin.x + ((i % cols) + 0.5) * cell, y: origin.y + (Math.floor(i / cols) + 0.5) * cell });
-    // The scene's shape, worked out once and kept until the map really changes. A hole in the roof is every cell
-    // under a region the GM marked "Open to the sky" (a shaft, a broken roof), which vents upward whatever its walls
-    // do and is the one opening an inside room can have with no outdoor cell near it.
-    const deep = undergroundOf(scene.flags?.[ID], null);
-    const work = smokeWorkOf(scene, `${cols}:${cell}:${origin.x},${origin.y}:${level ?? ""}:${deep ? 1 : 0}`, () => {
-      const here = regionsOnLevel(scene.regions, level);
-      return {
-        rooms: deep ? [] : indoorPolygonsOf(here, regionAreas),
-        shafts: skyRegionsOf(here).flatMap((r) => { try { return regionAreas(r) ?? []; } catch { return []; } }),
-        walls: blockingWalls((scene.walls?.contents ?? []).map(wallView)),
-      };
-    });
     // Indoors is a cell whose middle lies in a region that keeps the weather out, or every cell of an underground
-    // scene. A walk over polygons, so each cell is asked once and the answer kept with the rooms.
-    const indoors = (i) => {
-      let v = work.indoors.get(i);
-      if (v === undefined) { try { v = deep || work.rooms.some((p) => pointInPolygon(mid(i), p)); } catch { v = false; } work.indoors.set(i, v); }
-      return v;
-    };
-    // A wall between two touching cells is a scan of the scene's walls, so each PAIR is asked once and kept too,
-    // named from the lower cell so the same pair asked either way round is the one answer.
-    const pairs = cols * rows;
-    const walled = (i, n) => {
-      const at = Math.min(i, n) * pairs + Math.max(i, n);
-      let v = work.walled.get(at);
-      if (v === undefined) { v = wallBetween(mid(i), mid(n), work.walls); work.walled.set(at, v); }
-      return v;
-    };
-    const sky = (i) => {
-      if (!work.shafts.length) return false;
-      let v = work.sky.get(i);
-      if (v === undefined) { try { v = work.shafts.some((a) => pointInPolygon(mid(i), a)); } catch { v = false; } work.sky.set(i, v); }
-      return v;
-    };
+    // scene; a hole in the roof is a cell under a region the GM marked "Open to the sky" (a shaft, a broken roof),
+    // which vents upward whatever its walls do and is the one opening an inside room can have with no outdoor cell
+    // near it. All three are smoke-gather.mjs's, asked once per cell (per PAIR, for the walls) and kept.
+    const deep = undergroundOf(scene.flags?.[ID], null);
+    const work = smokeShapeOf(scene, geo, level, deep);
+    const { indoors, walled, sky } = work;
     // Where the room breathes out through its own walls (smoke-field.mjs smokeOpeningsOf): an open door, a window
     // standing open, a smashed one, a hole battered through — each counted only where it leads OUT, which is why it
     // is handed the very same `indoors`. An inside door joins two rooms into one for the walk and carries the smoke
@@ -10462,6 +10435,20 @@ async function clearSmokeNow(scene) {
     await smokeRegionNow(scene, [], null).catch((e) => runtime?.trace("props", `smoke region not cleared: ${e?.message ?? e}`));
   } finally { fireRunning.delete(scene.id); }
 }
+// A round of smoke that threw: traced as everything here is, and ALSO said once to the GM, per scene, per session.
+// This is the lesson of the key collision: the round threw on its first indoor cell, every round, on every scene,
+// and the only sign of it was a trace line nobody reads — the smoke simply never appeared, and a GM would have
+// called that "the feature does not work" with nothing to go on. Once is the whole point: a fire throwing every
+// few seconds for twenty rounds must not become twenty notifications, so the scene is remembered and never
+// warned about again while this client lives. Nothing is said when it works, which is almost always.
+const smokeBroke = new Set();
+const smokeThrew = (scene, where, e) => {
+  runtime?.trace("props", `${where}: ${e?.message ?? e}`);
+  if (smokeBroke.has(scene.id)) return;
+  smokeBroke.add(scene.id);
+  console.warn(`Animater | the room smoke could not run on "${scene.name ?? scene.id}"`, e);
+  try { ui?.notifications?.warn(`Animater: the smoke could not fill the rooms on "${scene.name ?? scene.id}". See the console for why.`); } catch { /* no interface yet */ }
+};
 // The ticker: every scene with both switches on, each keeping its own count, on the active GM alone. Then any scene
 // still carrying smoke whose switches have since gone off, to take it away.
 async function fireRoundsNow() {
@@ -10481,7 +10468,7 @@ async function fireRoundsNow() {
     // The same round feeds the smoke: the fire first, then what it has set going fills the rooms. No second clock.
     let burning = [];
     try { burning = (await fireRound(scene)) ?? []; } catch (e) { runtime?.trace("props", `fire round: ${e?.message ?? e}`); }
-    try { await smokeRound(scene, burning); } catch (e) { runtime?.trace("props", `smoke round: ${e?.message ?? e}`); }
+    try { await smokeRound(scene, burning); } catch (e) { smokeThrew(scene, "smoke round", e); }
     finally { fireRunning.delete(scene.id); }
   }
   // Smoke left standing on a scene the fire round no longer visits: its switches were unticked with a room full, so
@@ -10491,7 +10478,7 @@ async function fireRoundsNow() {
   for (const scene of smokeLeftovers(game.scenes?.contents ?? [], { activeGM: true })) {
     if (fireRunning.has(scene.id)) continue;
     fireRunning.add(scene.id);
-    try { await smokeRound(scene, []); } catch (e) { runtime?.trace("props", `smoke left behind: ${e?.message ?? e}`); }
+    try { await smokeRound(scene, []); } catch (e) { smokeThrew(scene, "smoke left behind", e); }
     finally { fireRunning.delete(scene.id); }
   }
 }

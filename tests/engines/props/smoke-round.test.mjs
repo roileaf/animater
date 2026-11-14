@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { smokeRoundPlan, smokeLevelFor, smokeShapes, smokeNeighbours, smokeOnlySave, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, SMOKE_NOTE, ROOM_CAP } from "../../../scripts/engines/props/smoke-round.mjs";
 import { THICK, THIN, smokeOpeningsOf } from "../../../scripts/engines/props/smoke-field.mjs";
 import { smokeRegionPlan, smokeRegionSave } from "../../../scripts/engines/props/smoke-regions.mjs";
+import { quietSave } from "../../../scripts/engines/props/quiet-writes.mjs";
 import { viewedRegions } from "../../../scripts/core/viewed-regions.mjs";
 import { propSceneFieldsHTML, smokeLightFieldHTML } from "../../../scripts/ui/prop-config.mjs";
 
@@ -306,8 +307,10 @@ test("the smoke runs on the fire's own round: there is still only the one interv
 });
 
 test("the room sizes survive the round's own write and go on a real scene edit", () => {
-  // quietSave is what the cache's hook asks, and the round's write must be forgiven there.
-  assert.match(main, /const quietSave = \(first, changes, options\) => isClockSave\(first\)[\s\S]{0,220}first\?\.documentName === "Scene" && smokeOnlySave\(changes, options\)/);
+  // quietSave is what the cache's hook asks, and the round's own scene write must be forgiven there. It is one
+  // imported composition now, so that is asserted on the real function rather than read off main.mjs's text.
+  assert.equal(quietSave({ documentName: "Scene" }, { "flags.animater.smoke.33": 1.08 }, SMOKE_NOTE), true);
+  assert.equal(quietSave({ documentName: "Scene" }, { "flags.animater.smoke.33": 1.08, width: 2000 }, SMOKE_NOTE), false);
   const hook = main.split(/\r?\n/).find((l) => l.includes("smokeRooms = new Map(); });"));
   assert.match(hook, /if \(!quietSave\(first, changes, options\)\)/, "a real edit still clears it");
   const list = main.split(/\r?\n/)[main.split(/\r?\n/).indexOf(hook) - 1];
@@ -326,9 +329,12 @@ test("the smoke picks regions by their flag and their level, never by whether a 
   assert.ok(from >= 0 && to > from);
   assert.doesNotMatch(smoke, /viewedRegions\(/, "a drawing helper has no business on a scene nobody is looking at");
   // Every region the round reads goes through the level filter first, and is chosen by flag from there.
-  assert.match(smoke, /const here = regionsOnLevel\(scene\.regions, level\);/);
-  assert.match(smoke, /indoorPolygonsOf\(here, regionAreas\)/);
-  assert.match(smoke, /skyRegionsOf\(here\)/);
+  // The gathering itself moved to smoke-gather.mjs, where smoke-gather.test.mjs drives the real thing over a fake
+  // scene; what is left here is the Foundry looking-up it is handed, and every region read still goes through the
+  // level filter and is chosen by a flag.
+  assert.match(smoke, /indoorPolygonsOf\(regionsOnLevel\(scene\.regions, level\), regionAreas\)/);
+  assert.match(smoke, /skyRegionsOf\(regionsOnLevel\(scene\.regions, level\)\)/);
+  assert.match(smoke, /const work = smokeShapeOf\(scene, geo, level, deep\);/);
   assert.match(smoke, /smokeRegionPlan\(scene\.regions, shapes, \{ level, visioner: smokeConceals\(\) \}\)/);
   // The order of the region writes is the plan's, applied by one loop, so there is nothing here to put the wrong way
   // round; and nothing catches a refused removal, because it has to stop the creation behind it.
@@ -605,11 +611,11 @@ test("a non-active scene with a switch off loses its region along with its cells
 });
 
 // ---- The round's own writes wake nothing, including the region one. ----
-// quietSave composes three pure predicates; this is that composition, so what main.mjs decides can be driven here.
-// The room cache (and with it the whole working set: the indoor answers, the wall answers, the sky answers) is emptied
+// THE composition, imported (quiet-writes.mjs quietSave), not a copy of it. A copy here was the gap: it could have
+// gone on passing while main.mjs lost a clause, which is the whole reason this is one exported function now.
+// The room cache — and with it the working set: the indoor answers, the wall answers, the sky answers — is emptied
 // whenever this says a write was a real edit.
-const asQuietSave = (first, changes, options) => (first?.documentName === "Region" && smokeRegionSave(first, changes, options))
-  || (first?.documentName === "Scene" && smokeOnlySave(changes, options));
+const asQuietSave = quietSave;
 // The round's OWN note, imported and never rebuilt here: a test that wrote its own copy would go on passing if the
 // marker moved, which is the very fault SMOKE_MARK and smokeOnlySave are kept side by side to prevent.
 const NOTE = SMOKE_NOTE;
