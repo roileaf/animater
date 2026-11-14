@@ -282,6 +282,37 @@ test('a token carrying a second body has a shadow laid for that one too', async 
   assert.ok(laid.every((g) => g.laid !== true), 'a shadow on the floor keeps its heading');
 });
 
+// Roi, of a sled pulled by a pack: "only 1 wolf has shadows". A carrier can carry more than one body standing on its
+// own ground, so `shadowAlso` may hand over a list, and every one of them throws its own.
+test('every animal pulling a carrier throws a shadow of its own', async () => {
+  const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const laid = [];
+  const fakeLayer = {
+    addShadow: () => ({}), removeShadow: () => {}, addRim: () => ({}), updateRim: () => {}, removeRim: () => {},
+    addParticle: () => null, updateParticle: () => {}, removeParticle: () => {}, clear: () => {},
+    updateShadow: (h, geom) => { laid.push(geom); return true; },
+  };
+  // Three wolves, two abreast and one behind, each on its own ground in front of the sled.
+  const pack = [[-80, -300], [80, -300], [0, -180]].map(([dx, dy], i) => ({
+    art: { texture: { id: `wolf${i}` }, width: 100, height: 100, rotation: 0, own: true },
+    width: 100, dx, dy, light: () => ({ light: { strength: 1, angle: 270 }, darkness: 1, lights: [{ strength: 1, angle: 270, key: 'torch' }] }),
+  }));
+  const token = { id: 'sled', x: 1000, y: 1000, width: 100, elevation: 0, base: 0, visible: true, shadow: true,
+    gait: 'runners', art: () => ({ texture: { id: 'sled' }, width: 200, height: 200, rotation: 0, own: true }),
+    shadowWidth: 200, shadowBody: 1, shadowFlat: true, shadowAlso: () => pack,
+    light: () => ({ light: { strength: 1, angle: 45 }, darkness: 1, lights: [{ strength: 1, angle: 45, key: 'torch' }] }) };
+  const feel = createMovementFeel({ layer: fakeLayer, tokens: () => [token], grid: () => 100, distance: () => 5,
+    now: () => 0, floorAt: () => 'dirt', groundShadows: () => true, shadowShapes: () => true, lightShadows: () => false,
+    enabled: () => true, density: () => 1, sun: () => ({ angle: 45, height: 30, strength: 1 }) });
+  for (const name of ['tick', 'step', 'update', 'frame']) if (typeof feel[name] === 'function') { feel[name](0); break; }
+  const of = (g) => { const a = typeof g?.art === 'function' ? g.art() : g?.art; return a?.texture?.id ?? null; };
+  for (const id of ['wolf0', 'wolf1', 'wolf2']) assert.ok(laid.some((g) => of(g) === id), `${id} casts one of its own`);
+  assert.ok(laid.some((g) => of(g) === 'sled'), 'and the sled still casts its own');
+  // Each from its own ground, so no two of the pack's shadows start in the same place.
+  const where = laid.filter((g) => String(of(g)).startsWith('wolf')).map((g) => `${Math.round(g.fall?.x ?? g.x)}|${Math.round(g.fall?.y ?? g.y)}`);
+  assert.equal(new Set(where).size, where.length, 'no two of them are stacked on one spot');
+});
+
 test('the sun shadows lie under the sunlit floor: kept off floor a wall already shades', () => {
   const root = container();
   class Container { constructor() { this.children = []; this.position = point(); this.scale = point(); } addChild(c) { this.children.push(c); c.parent = this; return c; } destroy() { this.destroyed = true; } }

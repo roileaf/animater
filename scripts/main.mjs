@@ -335,7 +335,7 @@ import {ConditionBody,bodyTreatment} from './engines/motion/condition-body.mjs';
 import { IdleLife, breathes, idleKind, pickIdle } from "./engines/motion/idle-life.mjs";
 import { seaStrength, rollSeed, shipRoll, onDeck, carriedBy, deckShade, hullWash, tileMiddle } from "./engines/motion/ship-roll.mjs";
 import { ABOARD, KIND as CARRIER_KIND, STOW as CARRIER_STOW, RIDING as CARRIER_RIDING, SEATS as CARRIER_SEATS, CARRIER_KINDS, carrierKind, kindLabel, pulledOff, boardList, stillAboard, ridePlan, landPlan, boardLabel, capacityOf, overCapacity, tooBig, seatsOf, seatsLeft } from "./engines/motion/carriers.mjs";
-import { LOOK as CARRIER_LOOK, CARRIER_LOOKS, lookStep, lookSize, lookFor, trueTall, trueSquares, framePath, squareMetres, drawnSize, idleFrame, headUp, SETS as CARRIER_SETS } from "./engines/motion/carrier-look.mjs";
+import { LOOK as CARRIER_LOOK, CARRIER_LOOKS, lookStep, lookSize, lookFor, trueTall, trueSquares, framePath, squareMetres, drawnSize, idleFrame, headUp, BREATH_SWELL, SETS as CARRIER_SETS } from "./engines/motion/carrier-look.mjs";
 import { paintCarrier } from "./engines/motion/carrier-paint.mjs";
 import { rollFile, rollShape, lapFile, lapShape, paceGap, paceVoice, knocksFor, teamCall, callGap, carrierSoundFiles, hoofFile, hoofShape, mountPace } from "./engines/sound/carrier-sound.mjs";
 import { WoundedLooks, bleedTier, tokenMoving } from "./engines/playback/wounded-looks.mjs";
@@ -4238,6 +4238,8 @@ const dropAllCarrierRigs = () => { for (const id of [...carrierRigs.keys()]) dro
 // How rough the going is on each floor, for the way the body rides: a paved road or ice hardly throws it, a rutted track
 // or mud throws it about.
 const CARRIER_ROUGH = { stone: 0.25, wood: 0.3, ice: 0.15, snow: 0.5, sand: 0.7, dirt: 0.65, grass: 0.6, mud: 0.95, water: 0.4 };
+// A waiting team breathes with the rest of the world's idle life, and stops with it.
+const idleLifeOn = () => bothSettingsOn("idleLife");
 const lookStates = new Map();
 const lookStateOf = (doc) => {
   let state = lookStates.get(doc.id);
@@ -4423,7 +4425,10 @@ const paintCarrierTeam = (rig, step, grid, art, ahead) => {
     // A frame with no size baked into it is drawn at the length its set says the animal is: a wolf is five feet
     // nose to tail, not a draught horse's ten, and stretched to ten it was both too big and soft at the edges.
     const over = real > 0 ? real / (tex.width || 1) : along > 0 ? ((animal.feet / feet) * grid) / along : 1;
-    pull.width = tex.width * over; pull.height = tex.height * over;
+    // Standing, it breathes: the picture faces up the screen, so the swell is across its width, and it is only there
+    // while the pack waits (carrier-look breathAt). Off with the world's Idle life, like every other breathing body.
+    const swell = idleLifeOn() ? 1 - (Number(animal.breath) || 0) * BREATH_SWELL : 1;
+    pull.width = tex.width * over * swell; pull.height = tex.height * over;
     const out = (animal.ahead / feet) * grid, side = ((animal.across ?? 0) / feet) * grid;
     pull.position.set(art.position.x + Math.cos(ahead) * out + Math.cos(beside) * side,
       art.position.y + Math.sin(ahead) * out + Math.sin(beside) * side);
@@ -7895,18 +7900,24 @@ const carrierShadowOf = (t) => {
     shadowWidth: Math.abs(worn.width) || undefined,
     ...(core > 0 ? { shadowCore: core } : {}),
     ...(tall > 0 ? { shadowBody: tall } : {}),
-    // The team in the shafts stands on its own ground in front of the wagon, so it throws a shadow of its own.
+    // The team stands on its own ground in front of the vehicle, so it throws a shadow of its own — one each. A sled's
+    // pack is two to four wolves and only the first of them had one (Roi: "only 1 wolf has shadows").
     shadowAlso: () => {
-      const pull = carrierRigOf(t, false)?.children?.find((c) => c?.[CARRY_TEAM]);
-      if (!pull || pull.destroyed || !pull.texture?.valid || pull.visible === false) return null;
-      const dx = pull.position.x - (t.w ?? 0) / 2, dy = pull.position.y - (t.h ?? 0) / 2;
-      const at = { x: (t.center?.x ?? 0) + dx, y: (t.center?.y ?? 0) + dy };
-      return { art: { texture: pull.texture, width: Math.abs(pull.width), height: Math.abs(pull.height), flipX: false, flipY: false, rotation: pull.rotation ?? 0, own: true },
-        // A draught horse is ten feet of animal in a picture that holds half as much again.
-        width: Math.abs(pull.width), core: (10 / feet) * grid, dx, dy,
-        // The light where the horse stands, not where the wagon does: a torch beside the bed is in another direction
-        // from a horse two squares in front of it, and its shadow was being thrown the wagon's way.
-        light: () => flierLight(t, at, `${t.id}|team`) };
+      const team = (carrierRigOf(t, false)?.children ?? []).filter((c) => c?.[CARRY_TEAM]);
+      const out = [];
+      team.forEach((pull, i) => {
+        if (!pull || pull.destroyed || !pull.texture?.valid || pull.visible === false) return;
+        const dx = pull.position.x - (t.w ?? 0) / 2, dy = pull.position.y - (t.h ?? 0) / 2;
+        const at = { x: (t.center?.x ?? 0) + dx, y: (t.center?.y ?? 0) + dy };
+        out.push({ art: { texture: pull.texture, width: Math.abs(pull.width), height: Math.abs(pull.height), flipX: false, flipY: false, rotation: pull.rotation ?? 0, own: true },
+          // A draught horse is ten feet of animal in a picture that holds half as much again.
+          width: Math.abs(pull.width), core: (10 / feet) * grid, dx, dy,
+          // The light where this animal stands, not where the wagon does: a torch beside the bed is in another
+          // direction from a horse two squares in front of it, and its shadow was being thrown the wagon's way.
+          // Each one is aimed from its own place, so the pack's shadows fan out as the real ones would.
+          light: () => flierLight(t, at, `${t.id}|team:${i}`) });
+      });
+      return out;
     },
   };
 };

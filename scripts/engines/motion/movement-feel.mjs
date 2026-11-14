@@ -1699,9 +1699,13 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
           const lying = (typeof token.lying === 'function' ? token.lying() : token.statuses?.has?.('prone')) === true;
           // A token can carry a second body standing on the ground beside it: a wagon's team in the shafts is a picture
           // of its own, out in front of the token, and it throws its own shadow rather than sharing the wagon's.
-          // (Roi: "horse missing shadow".) `shadowAlso`: { art, dx, dy, width } in pixels from the token's middle.
-          const also = typeof token.shadowAlso === 'function' ? token.shadowAlso() : null;
-          const key = `${point.x}|${point.y}|${token.width}|${size}|${both}|${lying}|${token.deck ?? ''}`, refs = [lit, sun(), art, also?.art?.texture ?? null];
+          // (Roi: "horse missing shadow".) `shadowAlso`: one { art, dx, dy, width } in pixels from the token's middle,
+          // or a list of them — a sled's pack is two to four wolves, and each stands on its own ground (Roi: "only 1
+          // wolf has shadows").
+          const alsoRaw = typeof token.shadowAlso === 'function' ? token.shadowAlso() : null;
+          const alsoList = (Array.isArray(alsoRaw) ? alsoRaw : [alsoRaw]).filter((a) => a?.art);
+          const key = `${point.x}|${point.y}|${token.width}|${size}|${both}|${lying}|${token.deck ?? ''}|${alsoList.length}`;
+          const refs = [lit, sun(), art, ...alsoList.map((a) => a.art?.texture ?? null)];
           if (!handle || !unchanged(move, key, refs)) {
           if (!handle) shadows.set(id, handle = layer.addShadow());
           // The ground it covers, for the shadow: its token's, or the picture's own where it wears one bigger than its
@@ -1732,23 +1736,27 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
             // (Up on a bridge or a raised top (token.stand: its outline), kept to it: past its edge the shadow would fall far below.)
             const laid = [main, ...(both ? others : [])].map((fall) => fallen(geom, fall, point, true)).map((g) => (token.stand?.length >= 6 && !g.clip ? { ...g, clip: token.stand } : g));
             const done = layer.updateShadow(handle, laid[0]) !== false;
-            // The second body's own shadow, from where it stands and in its own shape, laid by the same light.
-            const alsoAt = also?.art ? { x: point.x + (Number(also.dx) || 0), y: point.y + (Number(also.dy) || 0) } : null;
+            // Each second body's own shadow, from where it stands and in its own shape, laid by the same light.
             // Thrown by the light where that body stands, which is not the same direction as from the token when the
-            // light is close: a torch beside a wagon lies another way from the horse out in front of it. Its own
-            // easing state, so neither shadow drags the other round.
-            let alsoFall = main;
-            if (alsoAt && typeof also.light === 'function') {
-              const theirs = also.light();
-              if (theirs) [alsoFall] = aimShadows(token, (move.alsoFalls ??= {}), theirs, body, true);
-            }
-            const alsoGeom = alsoAt ? fallen({
-              ...shadowGeometry({ x: alsoAt.x, y: alsoAt.y, width: Number(also.width) || size, distance: distance() || 5, grid: size, grounded: true }),
-              width: Number(also.width) || size, lift: 0, flat: 1, art: also.art,
-              ...(Number(also.core) > 0 ? { core: Number(also.core) } : {}),
-              ...(Number.isFinite(token.deck) ? { deck: token.deck } : {}),
-            }, alsoFall, alsoAt, true) : null;
-            remember(move, key, refs, second(id, [...(both ? laid.slice(1) : []), ...(alsoGeom ? [alsoGeom] : [])]) && done);
+            // light is close: a torch beside a wagon lies another way from the horse out in front of it. Each keeps
+            // its own easing state, so no two of them drag each other round.
+            const alsoGeoms = [];
+            move.alsoFalls ??= [];
+            alsoList.forEach((also, i) => {
+              const alsoAt = { x: point.x + (Number(also.dx) || 0), y: point.y + (Number(also.dy) || 0) };
+              let alsoFall = main;
+              if (typeof also.light === 'function') {
+                const theirs = also.light();
+                if (theirs) [alsoFall] = aimShadows(token, (move.alsoFalls[i] ??= {}), theirs, body, true);
+              }
+              alsoGeoms.push(fallen({
+                ...shadowGeometry({ x: alsoAt.x, y: alsoAt.y, width: Number(also.width) || size, distance: distance() || 5, grid: size, grounded: true }),
+                width: Number(also.width) || size, lift: 0, flat: 1, art: also.art,
+                ...(Number(also.core) > 0 ? { core: Number(also.core) } : {}),
+                ...(Number.isFinite(token.deck) ? { deck: token.deck } : {}),
+              }, alsoFall, alsoAt, true));
+            });
+            remember(move, key, refs, second(id, [...(both ? laid.slice(1) : []), ...alsoGeoms]) && done);
             // A big creature's shadows fall over the smaller ones behind it, each light's (with "Flier shadows fall on
             // creatures").
             move.lastGround = (Number(token.width) || 0) >= 2 * size

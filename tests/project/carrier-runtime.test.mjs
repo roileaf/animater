@@ -130,7 +130,24 @@ test('the rig stands on the map, where the light falls on it', () => {
   assert.match(main, /Hooks\.on\("canvasTearDown", \(\) => \{ dropAllCarrierRigs\(\); \}\);/);
   // What works from the worn picture (its shadow, its reflection) looks in the holder, not among the token's children.
   assert.match(main, /const wornLook = \(t\) => \{ const worn = carrierRigOf\(t, false\)\?\.children/);
-  assert.match(main, /const pull = carrierRigOf\(t, false\)\?\.children\?\.find\(\(c\) => c\?\.\[CARRY_TEAM\]\);/);
+  assert.match(main, /const team = \(carrierRigOf\(t, false\)\?\.children \?\? \[\]\)\.filter\(\(c\) => c\?\.\[CARRY_TEAM\]\);/);
+});
+
+// Roi, of a sled drawn by a pack: "only 1 wolf has shadows, also no idle animation.. fix both".
+test('every animal pulling a carrier has its own shadow, and a waiting one breathes', () => {
+  // One shadow each, aimed by the light where that animal stands rather than where the vehicle is.
+  assert.match(main, /shadowAlso: \(\) => \{\r?\n\s+const team = /);
+  assert.match(main, /light: \(\) => flierLight\(t, at, `\$\{t\.id\}\|team:\$\{i\}`\) \}\);/);
+  assert.ok(!/children\?\.find\(\(c\) => c\?\.\[CARRY_TEAM\]\)/.test(main), 'not just the first of them');
+  const feel = readFileSync(new URL('../../scripts/engines/motion/movement-feel.mjs', import.meta.url), 'utf8');
+  assert.match(feel, /const alsoList = \(Array\.isArray\(alsoRaw\) \? alsoRaw : \[alsoRaw\]\)\.filter\(\(a\) => a\?\.art\);/,
+    'the shadow engine takes one or a list of them');
+  assert.match(feel, /remember\(move, key, refs, second\(id, \[\.\.\.\(both \? laid\.slice\(1\) : \[\]\), \.\.\.alsoGeoms\]\) && done\);/);
+  assert.match(feel, /move\.alsoFalls\[i\] \?\?= \{\}/, 'each keeps its own easing, so no two drag each other round');
+  // The breath: from the body, since the wolves have one standing frame and no more, and off with Idle life.
+  assert.match(main, /const swell = idleLifeOn\(\) \? 1 - \(Number\(animal\.breath\) \|\| 0\) \* BREATH_SWELL : 1;/);
+  assert.match(main, /pull\.width = tex\.width \* over \* swell; pull\.height = tex\.height \* over;/);
+  assert.match(main, /const idleLifeOn = \(\) => bothSettingsOn\("idleLife"\);/);
 });
 
 test('a passenger remembers its carrier, so one whose carrier is gone can be found again', () => {

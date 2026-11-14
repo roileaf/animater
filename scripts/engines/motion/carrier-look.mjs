@@ -54,6 +54,19 @@ export const idleFrame = (now = 0, seed = "") =>
 // in the grass does not neigh.
 export const HEAD_UP = 2;
 export const headUp = (frame = 0) => (Number(frame) || 0) < HEAD_UP;
+// A standing animal with only one frame to stand in is a stuffed one (Roi, of the sled's pack: "no idle animation").
+// The wolves have a single `rest` frame baked and nothing else, so the standing round cannot come from the sheet: it
+// comes from the body instead, the way Animater's idle life breathes a creature. One slow swell across the ribs,
+// each animal on its own clock so a pack does not breathe as one body.
+// (The same shape and size as the idle life of any other body: condition-body.mjs's `idle-breathe`, a one-sided
+// 2.5% over about four seconds.)
+export const BREATH_PERIOD = 4; // seconds a breath takes
+export const BREATH_SWELL = 0.025; // how much it draws in across the ribs at the top of it
+/** Where an animal is in its breath at `now` (ms), 0 to 1 (pure). Seeded, so two standing side by side are out of step. */
+export const breathAt = (now = 0, seed = "") => {
+  const turn = (Number(now) || 0) / (BREATH_PERIOD * 1000) + coatOf(`breath:${seed}`) / COATS;
+  return 0.5 + 0.5 * Math.sin(turn * Math.PI * 2);
+};
 // How far ahead of the vehicle's middle the team walks, in feet. The shafts reach a metre past the bed, so the horse
 // stands with its hindquarters over their tips and they run up alongside it: set further out, it floated ahead of the
 // wagon with a clear gap and nothing joining the two.
@@ -138,6 +151,8 @@ export function teamStep(set, coat = 0, rolled = 0, moving = true, now = 0, seed
     // into it was being drawn at a horse's ten feet (Roi, of the sled's pack: "i think the wolves scale is weird,
     // they are also low quality (blurry)" — both are the same fault, a 256px frame stretched to two squares).
     out.push({ group, path, feet: spec.feet ?? TEAM_FEET, rope: spec.rope === true,
+      // Standing, it breathes; moving, its legs are its life and the ribs are left alone.
+      breath: n === null ? breathAt(now, `${seed}:${i}`) : 0,
       ahead: ahead + pair * (spec.rows ?? 0), across: side * ((spec.apart ?? 0) / 2) });
   }
   return out;
