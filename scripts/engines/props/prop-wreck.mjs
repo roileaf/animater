@@ -115,6 +115,12 @@ export function paintMark(PIXI, mark, held) {
 // wallsFor(tile doc): the walls that stop its wreckage (prop-walls blockingWalls: move or sight walls on its level, open
 // doors and its own walls left out); pieces, spills, books, shards, coals and burning oil land short of them.
 export const WALL_GAP = 0.06; // squares short of a wall that something thrown at it comes to rest
+/** The rings on a stump's cut face, as shares of its radius (pure, seeded from the break's note, so every screen paints the same stump). */
+export function stumpRings(seed) {
+  const r = seededRandom(((seed ?? 0) >>> 0) * 131 + 7), n = 2 + Math.floor(r() * 3);
+  return Array.from({ length: n }, (_, i) => Math.round((0.3 + ((i + 1) / (n + 1)) * 0.6 + (r() - 0.5) * 0.06) * 1000) / 1000);
+}
+const STUMP_TONES = { mid: 0x6a5238, dark: 0x4e3a26, light: 0x8a6a44 };
 export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = () => "wood", playSound = () => {}, shake = () => {},
   fireRoot = () => null, fireSeen = () => true, fireLean = () => 0, fireTongues = () => true, fireForget = () => {}, wallsFor = () => [],
   // The shared clock a charred wreck's ember fade is measured against (the server's, so every screen agrees).
@@ -335,6 +341,18 @@ export function createPropWreckage({ PIXI, layer, renderer, grid, materialOf = (
     if (sortLayer !== undefined) stand.sortLayer = sortLayer;
     box.addChild(stand);
     return stand;
+  };
+  // The cut face of a stump, painted at twice its size on a canvas of its own (the pieces of a felled tree are cut from this, not from its crown).
+  const stumpTexture = (size, seed, entry) => {
+    const S = Math.max(16, Math.round(size * 2)), c = document.createElement("canvas"); c.width = S; c.height = S;
+    const g = c.getContext("2d"), m = S / 2, ox = m - S * 0.02, oy = m - S * 0.03;
+    g.fillStyle = "#4e3a26"; g.strokeStyle = "#1a1410"; g.lineWidth = Math.max(1.5, S * 0.03);
+    g.beginPath(); g.arc(m, m, S * 0.46, 0, Math.PI * 2); g.fill(); g.stroke();
+    g.fillStyle = "#8a6a44"; g.beginPath(); g.arc(ox, oy, S * 0.34, 0, Math.PI * 2); g.fill();
+    g.strokeStyle = "rgba(40,26,14,0.6)"; g.lineWidth = Math.max(1, S * 0.012);
+    for (const r of stumpRings(seed)) { g.beginPath(); g.arc(ox, oy, S * 0.34 * r, 0, Math.PI * 2); g.stroke(); }
+    const tex = PIXI.Texture.from(c); entry.textures.push(tex);
+    return tex;
   };
   // A container placed like the tile (children in tile-local px), for a tile with or without its art.
   const frameOf = (d, centre, z) => {
@@ -743,13 +761,13 @@ void main() {
   // the cracks and going cold over EMBER_MS, a soot mark round it and a thin wisp of smoke from the hottest seams while
   // it is warm. Painted (ink outline, a stepped lighter face), seeded from the note alone. Drawn on load (animate: false)
   // it is settled: cold, no smoke. (Named apart from charred(art), the bush's charred heart.)
-  const FRESH_WOOD = [0x8a6a44, 0x4e3a26], CHAR_WOOD = [0x4a3a2e, 0x0e0a08], EMBER_HOT = 0xff7a28, EMBER_CORE = 0xffc060, WISP_TONES = [0x3a3633, 0x524c47];
-  function charredWreck({ d, note, entry, box, centre, animate, fresh = false }) {
+  const CHAR_WOOD = [0x4a3a2e, 0x0e0a08], EMBER_HOT = 0xff7a28, EMBER_CORE = 0xffc060, WISP_TONES = [0x3a3633, 0x524c47];
+  function charredWreck({ d, note, entry, box, centre, animate }) {
     const w = d.width, h = d.height, side = Math.max(w, h), L = charLayout(note, { width: w, height: h, grid: grid() || 100 });
     const at = tileToWorld(d, centre, { x: w / 2, y: h / 2 }), turn = ((d.rotation ?? 0) * Math.PI) / 180;
     // On the floor: the soot mark, then the seams, the pieces' shadows and the pieces in the tile's own frame.
     const marks = new PIXI.Container(); marks.zIndex = -1; box.addChild(marks);
-    if (!fresh) marks.addChild(groundMark(flatMark("scorch", { x: at.x, y: at.y, r: L.scorch.rx, squash: L.scorch.ry / L.scorch.rx, angle: turn }, seededRandom((note.seed >>> 0) * 71 + 5)), entry.textures));
+    marks.addChild(groundMark(flatMark("scorch", { x: at.x, y: at.y, r: L.scorch.rx, squash: L.scorch.ry / L.scorch.rx, angle: turn }, seededRandom((note.seed >>> 0) * 71 + 5)), entry.textures));
     const floor = frameOf(d, centre, 0); box.addChild(floor);
     const seams = new PIXI.Graphics(), shadows = new PIXI.Graphics(), body = new PIXI.Graphics();
     shadows.alpha = 0.35; floor.addChild(seams, shadows, body);
@@ -757,7 +775,7 @@ void main() {
     for (const p of L.pieces) {
       const pts = flat(p.pts), n = p.pts.length;
       const cx = pts.filter((_, i) => i % 2 === 0).reduce((a, b) => a + b, 0) / n, cy = pts.filter((_, i) => i % 2).reduce((a, b) => a + b, 0) / n;
-      const colour = mix(...(fresh ? FRESH_WOOD : CHAR_WOOD), p.dark);
+      const colour = mix(CHAR_WOOD[0], CHAR_WOOD[1], p.dark);
       paintShard(shadows, pts.map((v, i) => v + (i % 2 ? 2.5 : 1.5)), 0, 1, true);
       paintShard(body, pts, colour, 1);
       body.lineStyle(1.2, INK, 0.9).drawPolygon(pts); // the ink outline, over paintShard's glass edge
@@ -778,7 +796,6 @@ void main() {
       }
     };
     entry.handle = { update() {}, destroy() {} };
-    if (fresh) return; // broken, not burnt: bare wood, no glowing seams, no smoke
     // Drawn as it stands (a reload, another screen coming in): the seams are as far through their fade as the time
     // since the fire went out (note.burnedAt), and go on cooling from there. A wreck whose note carries no such time
     // is settled cold, as every charred wreck was before the time was written.
@@ -1003,7 +1020,8 @@ void main() {
 
   // ignite: spilled powder set off later; the wreck already drawn stays until the explosion covers it (exploded).
   async function draw(tile, note, contents, { animate = false, ignite = false }) {
-    const d = tile.document ?? tile, id = d.id;
+    let d = tile.document ?? tile;
+    const id = d.id;
     const prior = ignite && animate ? wrecks.get(id) ?? null : null;
     if (prior) { wrecks.delete(id); prior.stop?.(); } else hide(id);
     const rect = tileRect(d), centre = { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
@@ -1017,15 +1035,17 @@ void main() {
 
     // A tile that brings its own picture (tile.art, a painted decoration) is drawn from it, not from its src.
     const src = d.texture?.src, art = tile.art ?? null;
-    const [texture, tones] = art ? [art.texture ?? null, artTones(art)] : await Promise.all([textureOf(tile, src).catch(() => null), src ? sample(src) : FALLBACK]);
+    let [texture, tones] = art ? [art.texture ?? null, artTones(art)] : await Promise.all([textureOf(tile, src).catch(() => null), src ? sample(src) : FALLBACK]);
     if (wrecks.get(id) !== entry) return; // hidden or redrawn while loading
     // A tree, however it broke (a blade, force, a slam), leaves its stump, never a pile cut from its crown: only a fire's own ash (burn) has the crown to burn away.
-    if (bareStump(tile, note.style)) { dropPrior(entry); charredWreck({ d: stumpTile(tile, d), note, entry, box, centre, animate: false, fresh: true }); return; }
-    if (note.style === "tip") { dropPrior(entry); tipped({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
-    if (note.style === "topple") { dropPrior(entry); toppled({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate }); return; }
-    if (note.style === "burn") { dropPrior(entry); burned({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
-    if (note.style === "char") { dropPrior(entry); charredWreck({ d: stumpTile(tile, d), note, entry, box, centre, animate }); return; }
-    if (note.style === "split") { dropPrior(entry); cutApart({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate, contents }); return; }
+    // It breaks the way any wreck does (pieces flying, then lying), but its own size: cut from a stump picture at the trunk's footprint, seeded from the note.
+    const bare = bareStump(tile, note.style);
+    if (bare) { d = stumpTile(tile, d); texture = stumpTexture(d.width, note.seed, entry); tones = STUMP_TONES; }
+    if (!bare && note.style === "tip") { dropPrior(entry); tipped({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
+    if (!bare && note.style === "topple") { dropPrior(entry); toppled({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate }); return; }
+    if (!bare && note.style === "burn") { dropPrior(entry); burned({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
+    if (!bare && note.style === "char") { dropPrior(entry); charredWreck({ d: stumpTile(tile, d), note, entry, box, centre, animate }); return; }
+    if (!bare && note.style === "split") { dropPrior(entry); cutApart({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate, contents }); return; }
     const stop = stopFor(d, centre);
     const layout = wreckLayout(note, { centre, width: d.width, height: d.height, grid: grid() || 100, contents, rotation: d.rotation ?? 0, stop });
     if (layout.blast) { exploded({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate, layout, contents, prior: entry.prior }); return; }
