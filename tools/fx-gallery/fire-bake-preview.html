@@ -34,7 +34,7 @@
 <pre id="stats"></pre>
 
 <script type="module">
-import { frontsOf, frontLook, groundLook, tilePlan, frameAt, leanAt, bakeTile, bakeSeats, bakeGround, tileSize, seatSize, groundPx,
+import { frontsOf, frontLook, groundLook, tilePlan, frameMix, leanAt, bakeTile, bakeSeats, bakeGround, tileSize, seatSize, groundPx,
   FRAMES, FRAME_MS, ABOVE, FOOT, CELL_PX, VARIANTS } from "../../scripts/engines/props/fire-bake.mjs";
 
 const GRID = 88;
@@ -101,19 +101,23 @@ function draw() {
   }
   const cells = live.map((s, i) => ({ id: i, seed: s.seed, rect: { x: s.x, y: s.y, w: GRID, h: GRID } }));
   for (const cell of cells) { // the ground pictures, as the module's ground sprites
-    const look = groundLook(cell.seed), f = frameAt(ms, look.phase, still), s = GRID / CELL_PX;
+    const look = groundLook(cell.seed), m = frameMix(ms, look.phase, still), s = GRID / CELL_PX;
     c.save(); c.translate(cell.rect.x, cell.rect.y); c.scale(s, s);
-    c.drawImage(groundOf(look.variant)[f], -G.ax, -G.ay); c.restore();
+    c.drawImage(groundOf(look.variant)[m.a], -G.ax, -G.ay);
+    c.globalAlpha = m.t; c.drawImage(groundOf(look.variant)[m.b], -G.ax, -G.ay); c.globalAlpha = 1; c.restore();
   }
   for (const front of frontsOf(cells)) { // the flames, as the module's tile sprites
-    const look = frontLook(front.cells[0].seed), n = front.cells.length, f = frameAt(ms, look.phase, still), lean = leanAt(ms, look.phase, still);
+    const look = frontLook(front.cells[0].seed), n = front.cells.length, m = frameMix(ms, look.phase, still), lean = leanAt(ms, look.phase, still);
     const scale = front.w / CELL_PX;
-    tilePlan(n).forEach((spec, i) => {
+    tilePlan(n, look.offset).forEach((spec, i) => {
       const at = look.mirror ? n - 1 - i : i;
       const px = front.x + at * front.w + (look.mirror ? front.w : 0), py = front.y + FOOT * front.h;
       c.save();
       c.transform(look.mirror ? -scale : scale, 0, -Math.sin(lean) * scale, Math.cos(lean) * scale, px, py);
-      c.drawImage(tileOf({ variant: look.variant, ...spec })[f], 0, -ABOVE * CELL_PX);
+      const tex = tileOf({ variant: look.variant, ...spec });
+      c.drawImage(tex[m.a], 0, -ABOVE * CELL_PX);
+      c.globalAlpha = m.t; c.drawImage(tex[m.b], 0, -ABOVE * CELL_PX); c.globalAlpha = 1; // the next frame faded in
+      const f = m.a;
       c.globalCompositeOperation = "lighter"; // the foot light is added to the ground, as the module's additive seat sprites do
       c.drawImage(seatsOf({ variant: look.variant, ...spec })[f], 0, -SE.ay);
       c.globalCompositeOperation = "source-over";

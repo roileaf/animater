@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { frontsOf, frontLook, groundLook, tilePlan, frameAt, leanAt, topAt, liftAt, cellFeatures, paintTile, paintSeats, paintGround, bakeTile,
+import { frontsOf, frontLook, groundLook, tilePlan, frameAt, frameMix, footAt, leanAt, topAt, liftAt, cellFeatures, paintTile, paintSeats, paintGround, bakeTile,
   createFlameBank, acquireFlameBank, releaseFlameBank, tileSize, FRAMES, FRAME_MS, RING, VARIANTS, LEAN } from "../../../scripts/engines/props/fire-bake.mjs";
 import { createFireLooks } from "../../../scripts/engines/props/fire-looks.mjs";
 
@@ -70,6 +70,24 @@ test("a front of n squares is n tiles: its two ends fall to the ground and the s
   // Each tile's place in the ring is one more than the last, so the edge of one square is the start of the next.
   for (let i = 1; i < plan.length; i++) assert.equal(plan[i].k, i % RING);
   assert.equal(tilePlan(0).length, 1);
+  // The strip can begin anywhere round the ring, so two fronts do not show the same stretch of edge.
+  assert.deepEqual(tilePlan(5, 3).map((t) => t.k), [3, 4, 5, 6, 7]);
+  assert.deepEqual(tilePlan(RING + 2, RING - 1).map((t) => t.k).slice(0, 3), [RING - 1, 0, 1]);
+  assert.deepEqual(tilePlan(1, 5), [{ kind: "solo", k: 5 }]);
+  assert.deepEqual(tilePlan(3, -1), tilePlan(3, RING - 1));
+});
+
+test("fronts start at different places round the ring, and a wide front shows no period", () => {
+  const offsets = new Set();
+  for (let s = 1; s < 200; s++) { const o = frontLook(s * 7919).offset; assert.ok(Number.isInteger(o) && o >= 0 && o < RING); offsets.add(o); }
+  assert.equal(offsets.size, RING);
+  assert.ok(RING >= 8);
+  const h = (x) => topAt(x, 0.3, 1);
+  for (const shift of [1, 2, 3, 4, 5, 6, 7]) {
+    let diff = 0;
+    for (let x = 0; x < RING; x += 0.05) diff += Math.abs(h(x) - h(x + shift));
+    assert.ok(diff > 1, `shifted by ${shift} squares it is a different edge`);
+  }
 });
 
 test("the top edge falls to nothing at an end, is full a seventh of a square in, and never goes under its floor", () => {
@@ -100,6 +118,36 @@ test("the top edge runs on across the ring and round the loop, so tiles and fram
   assert.notEqual(topAt(0.4, 0, 0), topAt(0.4, 0.25, 0));
 });
 
+test("the foot's erased line wanders smoothly: uneven, but with no comb in it", () => {
+  for (let v = 0; v < VARIANTS; v++) {
+    let lo = Infinity, hi = -Infinity, worst = 0;
+    for (let x = 0; x < RING; x += 1 / 48) {
+      const f = footAt(x, v);
+      lo = Math.min(lo, f); hi = Math.max(hi, f);
+      worst = Math.max(worst, Math.abs(footAt(x + 1 / 48, v) - f));
+      assert.ok(Math.abs(footAt(x, v) - footAt(x + RING, v)) < 1e-9, "repeats every ring");
+    }
+    assert.ok(hi - lo > 0.1, "uneven");
+    assert.ok(worst < 0.04, `neighbouring columns differ by ${worst}: no picket fence`);
+  }
+});
+
+test("the loop is played by cross-fading each frame into the next, never by cutting", () => {
+  assert.deepEqual(frameMix(0, 0), { a: 0, b: 1, t: 0 });
+  const half = frameMix(FRAME_MS * 2.5, 0);
+  assert.equal(half.a, 2); assert.equal(half.b, 3); assert.ok(Math.abs(half.t - 0.5) < 1e-9);
+  assert.equal(frameMix(FRAME_MS * (FRAMES - 0.25), 0).b, 0, "the last frame fades into the first");
+  assert.deepEqual(frameMix(99999, 4, true), { a: 4, b: 4, t: 0 }, "settled is one frame");
+  let last = frameMix(0, 3);
+  for (let ms = 1; ms < 3000; ms += 7) {
+    const m = frameMix(ms, 3);
+    assert.ok(m.t >= 0 && m.t < 1);
+    if (m.a !== last.a) assert.ok(m.t < 0.1 && last.t > 0.9, "the frame changes only as the fade completes");
+    last = m;
+  }
+  assert.equal(frameMix(5000, 2).a, frameAt(5000, 2), "the same frame as the cut would show");
+});
+
 test("the mass breathes with the loop and the swell comes round to where it began", () => {
   assert.ok(Math.abs(liftAt(0) - liftAt(1)) < 1e-9);
   assert.ok(Math.abs(liftAt(0) - (1.9 + 0.45 * 0.5)) < 1e-9, "frame 0 is the middle of the swell, which is the still one");
@@ -124,9 +172,8 @@ test("the same square has the same features everywhere, and its neighbours' are 
   assert.notDeepEqual(cellFeatures(1, 2), cellFeatures(1, 3));
   assert.notDeepEqual(cellFeatures(0, 2), cellFeatures(1, 2));
   const f = cellFeatures(0, 0);
-  assert.equal(f.slices.length, 14);
   assert.ok(f.columns.length > 0 && f.channels.length >= 2 && f.licks.length >= 2 && f.seats.length === 3);
-  for (const v of [...f.slices, ...f.knots.map((k) => k.u)]) assert.ok(v >= 0 && v <= 1);
+  for (const v of f.knots.map((k) => k.u)) assert.ok(v >= 0 && v <= 1);
 });
 
 test("painting uses the canvas modes PIXI.Graphics cannot: additive light, subtracted channels, a dissolved foot", () => {
@@ -223,8 +270,8 @@ test("burning grass is drawn as one body per front, off the shared clock, baked 
     looks.sync({ flames });
     const tileSprites = log.sprites.filter((s) => s.anchor.y > 0 && s.anchor.x === 0 && s.blendMode === 0 && s.scale.x !== 0 && Math.abs(s.scale.x) < 2);
     const additive = log.sprites.filter((s) => s.blendMode === 1);
-    // 5 squares in 3 fronts: 5 flame tiles, 5 foot lights, 5 ground pictures.
-    assert.equal(log.sprites.length, 15);
+    // 5 squares in 3 fronts: per square a flame tile and the next frame over it, a foot light, a ground picture and its next frame.
+    assert.equal(log.sprites.length, 25);
     assert.equal(additive.length, 5);
     assert.ok(tileSprites.length >= 5);
     const baked = log.canvases;
@@ -274,7 +321,7 @@ test("a front of n squares is placed as n tiles side by side on the grid, mirror
       const looks = createFireLooks({ PIXI, layer: () => root, grid: () => 100, now: () => 0, makeCanvas: fakeCanvas(log) });
       const from = log.sprites.length;
       looks.sync({ flames: [0, 1, 2, 3].map((i) => ({ id: `s${i}`, seed: seed + (i === 0 ? 0 : 1000 * i), rect: { x: 200 + i * 100, y: 300, w: 100, h: 100 } })) });
-      const mine = log.sprites.slice(from).filter((s) => s.blendMode === 0 && s.anchor.x === 0 && s.anchor.y > 0.9);
+      const mine = log.sprites.slice(from).filter((s) => s.blendMode === 0 && s.anchor.x === 0 && s.anchor.y > 0.9 && s.alpha !== 0);
       const xs = mine.map((s) => (s.scale.x < 0 ? s.position.x - 100 : s.position.x)).sort((a, b) => a - b);
       assert.deepEqual(xs, [200, 300, 400, 500], "four tiles, one per square, abutting exactly");
       assert.ok(mine.every((s) => Math.abs(Math.abs(s.scale.x) - 100 / 64) < 1e-9), "scaled so a tile is one square wide");

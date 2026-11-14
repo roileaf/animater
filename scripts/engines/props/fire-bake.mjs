@@ -29,7 +29,7 @@ export const VARIANTS = 3;
 export const FRAMES = 8;
 export const LOOP_MS = 1200;
 export const FRAME_MS = LOOP_MS / FRAMES;
-export const RING = 4;
+export const RING = 8;
 export const CELL_PX = 64;
 // The picture of a tile reaches this many squares above the foot line and this many below it; the foot line is
 // FOOT of the way down a square, as in the approved drawing.
@@ -63,10 +63,11 @@ export function frontsOf(cells) {
 }
 
 // How a front looks, from its first square's seed: which of the baked variants, whether it is mirrored, and where in the
-// loop it starts (so two fronts never breathe in step). Same seed, same answer, on every screen.
+// loop it starts (so two fronts never breathe in step) and where along the ring its strip begins (so two fronts never show
+// the same stretch of edge). Same seed, same answer, on every screen.
 export function frontLook(seed) {
   const r = rng(seed >>> 0, 0xf17e);
-  return { variant: Math.floor(r() * VARIANTS), mirror: r() < 0.5, phase: Math.floor(r() * FRAMES) };
+  return { variant: Math.floor(r() * VARIANTS), mirror: r() < 0.5, phase: Math.floor(r() * FRAMES), offset: Math.floor(r() * RING) };
 }
 // The same for the ground picture of one square.
 export function groundLook(seed) {
@@ -75,13 +76,13 @@ export function groundLook(seed) {
 }
 
 // The tiles a front of n squares is built from, in order from its start: the picture for each square and the place it
-// has in the ring. A single square is its own two ends.
-export function tilePlan(n) {
-  const count = Math.max(1, Math.floor(n) || 1);
-  if (count === 1) return [{ kind: "solo", k: 0 }];
-  const plan = [{ kind: "left", k: 0 }];
-  for (let i = 1; i < count - 1; i++) plan.push({ kind: "mid", k: i % RING });
-  plan.push({ kind: "right", k: (count - 1) % RING });
+// has in the ring, the strip beginning `offset` squares round it. A single square is its own two ends.
+export function tilePlan(n, offset = 0) {
+  const count = Math.max(1, Math.floor(n) || 1), o = ((Math.floor(offset) || 0) % RING + RING) % RING;
+  if (count === 1) return [{ kind: "solo", k: o }];
+  const plan = [{ kind: "left", k: o }];
+  for (let i = 1; i < count - 1; i++) plan.push({ kind: "mid", k: (o + i) % RING });
+  plan.push({ kind: "right", k: (o + count - 1) % RING });
   return plan;
 }
 
@@ -92,13 +93,23 @@ export function frameAt(ms, phase = 0, still = false) {
   if (still) return p;
   return ((Math.floor((Number(ms) || 0) / FRAME_MS) + p) % f + f) % f;
 }
+// The two frames to blend at `ms` and how much of the second: the loop is played continuously by cross-fading each frame
+// into the next, so 8 baked frames move smoothly. Settled, it is the start frame alone.
+export function frameMix(ms, phase = 0, still = false) {
+  const f = FRAMES, p = ((Math.floor(phase) % f) + f) % f;
+  if (still) return { a: p, b: p, t: 0 };
+  const pos = (Number(ms) || 0) / FRAME_MS, whole = Math.floor(pos);
+  return { a: (((whole + p) % f) + f) % f, b: (((whole + p + 1) % f) + f) % f, t: pos - whole };
+}
 // How far the whole front leans, in radians of shear at the foot line: all its tiles together, so it moves as one.
 export const LEAN = 0.07;
 export const leanAt = (ms, phase = 0, still = false) => (still ? 0 : Math.sin((Number(ms) || 0) / 1100 + phase) * LEAN);
 
 // ---- pure: the boiling top edge ----
 
-const EDGE_CYCLES = [3, 6, 10, 16]; // turns per RING squares: about 0.75, 1.5, 2.5 and 4 per square
+// Whole turns per RING squares, all odd: about 0.6, 1.4, 2.6 and 4.1 a square. Odd, so half a ring along the edge is a different
+// edge and the true period is the whole ring, not half of it.
+const EDGE_CYCLES = [5, 11, 21, 33];
 const edgePhases = (variant) => { const r = rng(variant, 0xed9e); return [r() * TAU, r() * TAU, r() * TAU, r() * TAU]; };
 
 // How far up the top of a front stands, as a multiple of its lift, at `x` squares along the ring and `theta` of the
@@ -117,6 +128,14 @@ export function topAt(x, theta, variant, fromEnd = Infinity) {
 // The height of the front's mass: breathes with the loop.
 export const liftAt = (theta) => 1.9 + 0.45 * (0.5 + 0.5 * Math.sin(TAU * theta));
 
+// How far up the erased foot reaches (in squares) at `x` along the ring: a smooth wandering line through random anchors a
+// quarter of a square apart, so the foot is uneven but has no comb in it. Repeats every RING squares.
+export function footAt(x, variant) {
+  const per = 4, n = RING * per, g = x * per, j = Math.floor(g), t = g - j, u = (1 - Math.cos(Math.PI * t)) / 2;
+  const anchor = (i) => 0.18 + 0.26 * rng(variant, ((i % n) + n) % n, 0xf007)();
+  return anchor(j) * (1 - u) + anchor(j + 1) * u;
+}
+
 // ---- pure: the seeded features of one square of the strip ----
 
 // Everything random about one square of the ring, for one variant: where its knots, currents, channels, lobes, licks,
@@ -129,9 +148,8 @@ export function cellFeatures(variant, k) {
   const channels = Array.from({ length: r() < 0.5 ? 3 : 2 }, () => ({ u: 0.1 + 0.8 * r(), tall: 0.3 + 0.4 * r() }));
   const lobes = Array.from({ length: 7 }, () => ({ u: 0.12 + 0.76 * r(), turns: r() < 0.5 ? 1 : 2, phase: r() * TAU, y: 0.12 + 0.5 * r(), rad: 0.1 + 0.16 * r() }));
   const licks = Array.from({ length: r() < 0.5 ? 3 : 2 }, () => ({ u: 0.2 + 0.6 * r(), wide: 0.07 + 0.05 * r(), tall: 0.22 + 0.18 * r(), phase: r() * TAU }));
-  const slices = Array.from({ length: 14 }, () => 0.18 + 0.26 * r());
   const seats = Array.from({ length: 3 }, () => ({ u: 0.08 + 0.84 * r(), rad: 0.05 + 0.07 * r() + 0.06, phase: r() * TAU }));
-  return { knots, columns, channels, lobes, licks, slices, seats };
+  return { knots, columns, channels, lobes, licks, seats };
 }
 
 // ---- painting (any canvas 2D context) ----
@@ -251,12 +269,13 @@ export function paintTile(c, { variant, kind, k }, theta, S = CELL_PX) {
 
   // Dissolve the foot: fire has no bottom edge. The erase line wanders, so the foot does not end on a level line either.
   c.globalAlpha = 1; c.globalCompositeOperation = "destination-out";
-  for (let s = 0; s < 14; s++) {
-    const u0 = s / 14, bw = 1 / 14 + 0.02;
-    const t = -(own.slices[s]) - Math.sin((TAU * 6 * (k + u0)) / RING + TAU * theta) * 0.05;
+  const COLS = 48; // thin side-by-side columns, each as high as the wandering line is there: neighbours differ little, so no comb
+  for (let s = 0; s < COLS; s++) {
+    const u0 = s / COLS, xm = k + u0 + 0.5 / COLS;
+    const t = -footAt(xm, variant) - Math.sin(TAU * (1.5 * xm + theta)) * 0.05;
     const g = c.createLinearGradient(0, 0.12, 0, t);
     g.addColorStop(0, "#000f"); g.addColorStop(0.6, "#0008"); g.addColorStop(1, "#0000");
-    c.fillStyle = g; c.fillRect(u0, t, bw, 0.12 - t);
+    c.fillStyle = g; c.fillRect(u0, t, 1 / COLS + 0.004, 0.12 - t);
   }
   c.globalCompositeOperation = "source-over"; c.globalAlpha = 1;
 }
