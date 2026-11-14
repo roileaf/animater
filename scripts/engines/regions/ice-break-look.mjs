@@ -1,4 +1,4 @@
-import { iceStateOf } from "./thin-ice.mjs";
+import { iceStateOf, SIZES } from "./thin-ice.mjs";
 
 // The shapes of thin ice breaking: the cracks painted in a square that has cracked, the jagged hole of dark water where it gave
 // way, and the loose shards of ice floating in that hole. Geometry only, pure: no Foundry, no PIXI, no drawing; a later layer
@@ -95,15 +95,27 @@ export function shards(key, { grid, seed = 0, size } = {}) {
 // A region's thin ice as the screen draws it. Pure: the region arrives as { id, flags } and the answer is plain data, so what a
 // client draws is tested without Foundry; main.mjs only hands regions in and puts the answers on the map.
 
-// How many squares across a creature that breaks the ice is, by what the ice holds: the first size over its limit (Small ice
-// gives way under Medium, Medium under Large, Large under Huge). The hole is that plus one square (holeOutline).
-const BREAKER_SQUARES = { sm: 1, med: 2, lg: 3 };
+// How many squares across each creature size is (Tiny takes up half a square).
+const SQUARES = { tiny: 0.5, sm: 1, med: 1, lg: 2, huge: 3, grg: 4 };
 
-// The region's own thin-ice settings: off unless the flag is exactly true; Medium unless it says Small or Large.
+// How many squares across a creature that breaks ice holding up to `limit` is: the first size over it, the next in SIZES (the one
+// list holdsUp judges by); ice that holds the largest size is only ever broken by that size. The hole is that plus one square.
+export function breakerSquares(limit) {
+  const at = SIZES.indexOf(limit);
+  return SQUARES[SIZES[Math.min(SIZES.length - 1, at + 1)]];
+}
+
+// The region's own thin-ice settings: off unless the flag is exactly true; Medium unless it names one of the sizes in SIZES.
 export function iceSettingsOf(doc) {
   const own = doc?.flags?.animater;
-  const holds = own?.iceHolds;
-  return { thin: own?.iceThin === true, holds: Object.hasOwn(BREAKER_SQUARES, holds) ? holds : "med" };
+  return { thin: own?.iceThin === true, holds: SIZES.includes(own?.iceHolds) ? own.iceHolds : "med" };
+}
+
+/** Where a floating shard is `seconds` in: it bobs about its place and turns slowly, each shard out of step with the others by
+ *  its own seeded turn, so every client sees the same drift at the same time. Pure; {x, y, turn}. */
+export function shardAt(shard, seconds) {
+  const phase = shard.turn * 2.3 + shard.r, t = Number(seconds) || 0, sway = shard.r * 0.45;
+  return { x: shard.x + Math.sin(t * 0.9 + phase) * sway, y: shard.y + Math.cos(t * 0.7 + phase * 1.7) * sway, turn: shard.turn + Math.sin(t * 0.5 + phase) * 0.4 };
 }
 
 // A region's id as a number, so each region breaks in its own way but every client breaks it the same way.
@@ -125,10 +137,11 @@ export function iceBreakOf(region, { grid } = {}) {
   if (!region?.id || !validGrid(grid)) return none;
   const { thin, holds } = iceSettingsOf(region);
   if (!thin) return none;
-  const { cracks, holes } = iceStateOf(region);
-  const seed = seedOfId(region.id), size = BREAKER_SQUARES[holds];
+  const { cracks, holes, holeSizes } = iceStateOf(region);
+  const seed = seedOfId(region.id), usual = breakerSquares(holds);
   const out = { holes: [], cracks: [], shards: [] };
   for (const key of holes) {
+    const stored = Number(holeSizes?.[key]), size = stored > 0 && Number.isFinite(stored) ? stored : usual; // (the creature that fell, once the ice stores it)
     const ring = holeOutline(key, { grid, seed, size });
     if (!ring.length) continue;
     const id = `${region.id}:ice:${key}`;

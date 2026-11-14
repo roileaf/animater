@@ -7738,6 +7738,7 @@ function skyTick() {
   if (vermin.count) vermin.tick(seconds, { near: creaturesNow(), lit: litForRats, blocked: ratBlocks, batBlocked: batBlocks, view: viewNow(), light: nearestLamp, sound: critterSound });
   tickFloorBlood(seconds);
   if (waterEngine.busy) waterEngine.tick(seconds, { shade: sunReachNow, sky: () => sunNow, view: viewNow, lights: floorLightSources, weather: () => floorWeather, flash: () => flashSun, wind: skyWindNow, angle: skyWindAngle, mostLights: floorLevel.lights, fish: () => wildlife.fishBeneath, fishLook: () => wildlife.fishLook });
+  if (iceBreakLook.busy) iceBreakLook.tick(fireNow());
   if (floorLooks.busy) floorLooks.tick(seconds, { shade: sunReachNow, sky: () => sunNow, view: viewNow, lights: floorLightSources, weather: () => floorWeather, flash: () => flashSun, wind: skyWindNow, mostLights: floorLevel.lights });
   if (floorMotion.busy) floorMotion.tick(seconds, viewNow(), skyForFloors(sunNow).strength);
   if (floorShadows.busy) { floorShadows.tick(seconds, { shade: sunReachNow, sky: () => sunNow, view: viewNow, weather: () => floorWeather }); for (const p of floorShadows.ripples(seconds)) waterEngine.addRing({ x: p.x, y: p.y, size: 0.4, keep: false }); }
