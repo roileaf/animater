@@ -26,7 +26,7 @@ import { propMaterial, canBreak } from "./engines/props/prop-material.mjs";
 import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf } from "./engines/props/smoke-field.mjs";
 import { registerSmokeFence } from "./engines/props/smoke-fence.mjs";
 import { smokeGridOf, storedSmokeGrid, smokeCellList, smokeLevelOf } from "./engines/props/smoke-edges.mjs";
-import { createSmokeLooks, smokePuffs, smokeSeedOf, airHazeShows } from "./engines/props/smoke-look.mjs";
+import { createSmokeLooks, smokePuffs, smokeSheets, smokeSeedOf, airHazeShows } from "./engines/props/smoke-look.mjs";
 import { CONCEALMENT_BEHAVIOUR, smokeRegionPlan, skyRegionsOf, regionsOnLevel } from "./engines/props/smoke-regions.mjs";
 import { smokeRoundPlan, smokeRoomAt, smokeOnlySave, smokeClearPlan, smokeRunsOn, smokeLeftovers, smokeLevelFor } from "./engines/props/smoke-round.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
@@ -10572,7 +10572,10 @@ function syncSmokeLooksNow() {
   if (!grid) { smokeLooks.clear(); return; }
   // Seeded from the scene's own id, so every screen looking at this map paints the same cloud and the map next door
   // wears a different brush. No clock and no dice: the drift and the sway are the shared clock's alone.
-  smokeLooks.sync({ puffs: smokePuffs(smokeCellList(cells), { cols: grid.cols, origin: grid.origin, cell: grid.cell, seed: smokeSeedOf(scene.id) }) });
+  // The bodies are the cloud (one wash over all of it, one dark mass over what blocks sight); the puffs are the brush
+  // shading over them.
+  const list = smokeCellList(cells), geo = { cols: grid.cols, origin: grid.origin, cell: grid.cell, seed: smokeSeedOf(scene.id) };
+  smokeLooks.sync({ sheets: smokeSheets(list, geo), puffs: smokePuffs(list, geo) });
 }
 const syncSmokeLooks = () => { clearTimeout(smokeLooksTimer); smokeLooksTimer = setTimeout(() => propSafe("smoke looks", syncSmokeLooksNow), 60); };
 // The round's own write back is the new smoke, so unlike the fire's looks this is NOT filtered by quietSave: skipping

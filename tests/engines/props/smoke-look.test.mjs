@@ -4,7 +4,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { smokePuffs, smokeTone, smokeBetween, smokeSway, smokeSeedOf, airHazeShows, TONE_STEPS, SMOKE_DRIFT_MS } from "../../../scripts/engines/props/smoke-look.mjs";
+import { smokePuffs, smokeSheets, smokeSheetAt, smokeTone, smokeBetween, smokeSway, smokeSeedOf, airHazeShows,
+  TONE_STEPS, THIN_TOP, SMOKE_DRIFT_MS, HAZE_ALPHA, CORE_ALPHA, CORE_ALPHA_TOP } from "../../../scripts/engines/props/smoke-look.mjs";
 import { THICK, THIN, DENSITY_CAP } from "../../../scripts/engines/props/smoke-field.mjs";
 
 const geo = { cols: 4, origin: { x: 0, y: 0 }, cell: 50, seed: 7 };
@@ -108,6 +109,139 @@ test("the tones are steps, and thick is always darker than thin", () => {
   assert.equal(smokeTone(THIN - 0.01), 0);
   // Past the cap nothing goes darker still.
   assert.equal(smokeTone(DENSITY_CAP * 3), smokeTone(DENSITY_CAP));
+});
+
+// ---- The cloud is ONE BODY: the three faults of fix round 1, each pinned. ----
+
+// A point in a polygon given as a flat [x, y, x, y, ...] run.
+const inside = (pts, x, y) => {
+  let on = false;
+  for (let i = 0, j = pts.length - 2; i < pts.length; j = i, i += 2) {
+    const ax = pts[i], ay = pts[i + 1], bx = pts[j], by = pts[j + 1];
+    if ((ay > y) !== (by > y) && x < ((bx - ax) * (y - ay)) / (by - ay) + ax) on = !on;
+  }
+  return on;
+};
+const area = (pts) => {
+  let a = 0;
+  for (let i = 0, j = pts.length - 2; i < pts.length; j = i, i += 2) a += pts[j] * pts[i + 1] - pts[i] * pts[j + 1];
+  return Math.abs(a) / 2;
+};
+// A 4-wide block of cells: 5, 6, 9, 10 is a 2x2 square in the middle of a 4-wide grid.
+const BLOCK = [{ i: 5, v: 2 }, { i: 6, v: 2 }, { i: 9, v: 2 }, { i: 10, v: 2 }];
+const kindOf = (sheets, kind) => sheets.filter((s) => s.kind === kind);
+
+test("every smoking square is covered, and the two bodies are the two tiers", () => {
+  const sheets = smokeSheets([{ i: 5, v: 2 }, { i: 6, v: 0.4 }], geo);
+  // One haze sheet per smoking square of either tier; one core sheet for the thick square alone.
+  assert.deepEqual(kindOf(sheets, "haze").map((s) => s.i).sort((a, b) => a - b), [5, 6]);
+  assert.deepEqual(kindOf(sheets, "core").map((s) => s.i), [5]);
+  // The thin square is in no core body at all: that is what makes the tiers different things on the map.
+  assert.equal(kindOf(sheets, "core").some((s) => s.i === 6), false);
+});
+
+test("neighbouring smoking cells join dead flush: no clean floor between two full squares", () => {
+  const sheets = kindOf(smokeSheets(BLOCK, geo), "haze");
+  assert.equal(sheets.length, 4);
+  // Cell 5 is column 1 row 1 (x 50-100, y 50-100); cell 6 is column 2 row 1 (x 100-150).
+  // The shared side is x = 100, y 50-100. Every point along it must be inside BOTH squares' outlines, which can only
+  // happen if neither side was pulled in — if either were ragged, floor would show between them.
+  const five = sheets.find((s) => s.i === 5).pts, six = sheets.find((s) => s.i === 6).pts;
+  for (const y of [52, 60, 75, 90, 98]) {
+    assert.ok(inside(five, 99.5, y), `cell 5 reaches its east wall at y ${y}`);
+    assert.ok(inside(six, 100.5, y), `cell 6 reaches its west wall at y ${y}`);
+  }
+  // A joined side carries no ink: the seam must be invisible, or a filled room reads as a grid of lumps.
+  // Cell 5 of the 2x2 block has two joined sides (east and south) and two boundary sides, so two rims.
+  assert.equal(sheets.find((s) => s.i === 5).rims.length, 2);
+  // And no rim of cell 5 runs along its joined east side (x = 100) or its joined south side (y = 100).
+  for (const rim of sheets.find((s) => s.i === 5).rims) {
+    const xs = rim.filter((_, k) => k % 2 === 0), ys = rim.filter((_, k) => k % 2 === 1);
+    assert.ok(!(xs.every((x) => x > 99.9)), "no ink along the joined east side");
+    assert.ok(!(ys.every((y) => y > 99.9)), "no ink along the joined south side");
+  }
+});
+
+test("a cell with smoke all round it has no ragged edge at all, and covers its whole square", () => {
+  // A 3x3 block on a 4-wide grid: cells 1,2 / 5,6 / 9,10 give cell 5 and 6 interior-ish; take a full 3-wide run.
+  const nine = [1, 2, 3, 5, 6, 7, 9, 10, 11].map((i) => ({ i, v: 2 }));
+  const sheets = kindOf(smokeSheets(nine, { ...geo, cols: 4 }), "haze");
+  const middle = sheets.find((s) => s.i === 6);
+  assert.deepEqual(middle.rims, [], "nothing of it is a boundary");
+  // Its outline is exactly its own square: four corners, the full 50x50.
+  assert.equal(middle.pts.length, 8);
+  assert.equal(Math.round(area(middle.pts)), 2500);
+});
+
+test("the cloud's ragged edge is pulled inward, so it never crosses the wall its cells stop at", () => {
+  for (const seed of [1, 7, 42, 1234, 99999]) {
+    for (const s of smokeSheets([{ i: 5, v: 2 }], { ...geo, seed })) {
+      for (let k = 0; k < s.pts.length; k += 2) {
+        assert.ok(s.pts[k] >= 50 - 1e-9 && s.pts[k] <= 100 + 1e-9, `x ${s.pts[k]} left its square (seed ${seed})`);
+        assert.ok(s.pts[k + 1] >= 50 - 1e-9 && s.pts[k + 1] <= 100 + 1e-9, `y ${s.pts[k + 1]} left its square`);
+      }
+      // A lone square is ragged on all four sides, so it is plainly smaller than the square it stands in.
+      assert.equal(s.rims.length, 4);
+      assert.ok(area(s.pts) < 2500 * 0.95, `a lone square is ragged: ${area(s.pts)}`);
+    }
+  }
+});
+
+test("thick smoke really hides what is under it; thin smoke does not", () => {
+  // What a creature is seen through, as the painter stacks it: the haze over every smoking square, and the core over
+  // the thick ones on top of that.
+  const thin = HAZE_ALPHA;
+  const thick = 1 - (1 - HAZE_ALPHA) * (1 - CORE_ALPHA);
+  const thickest = 1 - (1 - HAZE_ALPHA) * (1 - CORE_ALPHA_TOP);
+  assert.ok(thick >= 0.85, `a thick square must hide: ${thick}`);
+  assert.ok(thickest >= 0.9, `the thickest must hide more still: ${thickest}`);
+  // Thin smoke conceals and no more: a creature standing in it is still plainly there.
+  assert.ok(thin > 0.2 && thin < 0.6, `thin smoke veils, it does not hide: ${thin}`);
+  // And the step between the tiers is unmistakable, not a shade of alpha.
+  assert.ok(thick - thin > 0.35, `the tiers must differ at a glance: ${thin} against ${thick}`);
+});
+
+test("the tiers differ in brush coverage too, not only in tone", () => {
+  const patches = (v) => smokePuffs([{ i: 5, v }], geo).length;
+  assert.ok(patches(DENSITY_CAP) >= patches(THIN) * 2, `${patches(DENSITY_CAP)} against ${patches(THIN)}`);
+  // Every thick tone is above the thin tier's darkest, which is the line the two bodies are cut on.
+  assert.ok(smokeTone(THICK) > THIN_TOP);
+  assert.ok(smokeTone(THICK - 0.01) <= THIN_TOP);
+});
+
+test("a body is seeded and stable, and nonsense in is nothing out", () => {
+  assert.deepEqual(smokeSheets(BLOCK, geo), smokeSheets(BLOCK, geo));
+  assert.notDeepEqual(smokeSheets(BLOCK, geo), smokeSheets(BLOCK, { ...geo, seed: 8 }));
+  // The order the cells arrive in changes nothing.
+  assert.deepEqual(smokeSheets(BLOCK, geo), smokeSheets([...BLOCK].reverse(), geo));
+  assert.deepEqual(smokeSheets(BLOCK, { ...geo, cols: 0 }), []);
+  assert.deepEqual(smokeSheets(BLOCK, { ...geo, cell: 0 }), []);
+  assert.deepEqual(smokeSheets(null, geo), []);
+  assert.deepEqual(smokeSheets([{ i: 5, v: THIN - 0.01 }, { i: -2, v: 2 }, { i: "x", v: 2 }, null], geo), []);
+  for (const s of smokeSheets(BLOCK, geo)) assert.ok(s.pts.every(Number.isFinite) && s.pts.length >= 8);
+});
+
+test("a square at the far right of the grid does not join the square at the far left of the next row", () => {
+  // Cells 7 and 8 on a 4-wide grid are column 3 row 1 and column 0 row 2: they touch in the index, not on the map.
+  const sheets = kindOf(smokeSheets([{ i: 7, v: 2 }, { i: 8, v: 2 }], geo), "haze");
+  for (const s of sheets) assert.equal(s.rims.length, 4, `cell ${s.i} is alone on the map`);
+});
+
+test("a body's weight walks in and out while its outline stands still", () => {
+  const s = smokeSheets([{ i: 5, v: 2 }], geo).find((x) => x.kind === "core");
+  assert.equal(smokeSheetAt(null, s, 0).grow, 0);
+  assert.equal(smokeSheetAt(null, s, 1).grow, 1);
+  assert.equal(smokeSheetAt(s, null, 0).grow, 1);
+  assert.equal(smokeSheetAt(s, null, 1).grow, 0);
+  // Growing in or fading out, the outline is the one it had: the shape moves only on the round boundary.
+  assert.deepEqual(smokeSheetAt(null, s, 0.5).pts, s.pts);
+  assert.deepEqual(smokeSheetAt(s, null, 0.5).pts, s.pts);
+  // A square that stayed is at full weight throughout, with its tone walking between the two rounds.
+  const darker = { ...s, tone: 1 };
+  assert.equal(smokeSheetAt(s, darker, 0.5).grow, 1);
+  assert.equal(smokeSheetAt(s, darker, 0.5).tone, (s.tone + 1) / 2);
+  assert.equal(smokeSheetAt(null, null, 0.5), null);
+  assert.deepEqual(smokeSheetAt(null, s, 5), smokeSheetAt(null, s, 1));
 });
 
 // ---- The drift: the cloud walks from the round just gone to the one just written. ----

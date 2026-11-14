@@ -3,24 +3,46 @@
 <head>
 <meta charset="UTF-8" />
 <title>Room Smoke</title>
-<style>body { margin: 0; background: #111; font: 14px/1.5 system-ui, sans-serif; color: #ddd; } canvas { display: block; } p { margin: 8px 12px; }</style>
+<!-- PIXI from a pinned CDN build, so this page opens from ANY plain static file server with no Foundry and no dev
+     server: `python -m http.server` at the repository root, then /tools/fx-gallery/smoke-look-preview.html.
+     A classic script runs before the deferred module below, so globalThis.PIXI is ready by then. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.4.2/pixi.min.js"></script>
+<style>
+  body { margin: 0; background: #16150f; font: 14px/1.5 system-ui, sans-serif; color: #ddd; }
+  canvas { display: block; width: 100%; height: auto; }
+  #bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; background: #211f17; }
+  button { font: inherit; padding: 4px 10px; background: #3a3627; color: #eee; border: 1px solid #555; border-radius: 4px; cursor: pointer; }
+  button:hover { background: #4a4533; }
+  input[type=range] { width: 320px; }
+  #say { padding: 4px 12px 12px; }
+  b { color: #fff; }
+</style>
 </head>
 <body>
+<div id="bar">
+  <button id="play">Pause</button>
+  <button id="back">&minus; round</button>
+  <button id="fwd">+ round</button>
+  <input id="slider" type="range" min="0" max="40" step="1" value="0" />
+  <span id="at"></span>
+</div>
+<div id="say"></div>
 <script type="module">
-// Check, not shipped: the module's own room smoke (smokePuffs + createSmokeLooks), filling two rooms the module's own
-// round really worked out (smokeRoundPlan), round by round, drifting between rounds exactly as it does in play.
-// The clock here stands in for the server's, which the module has injected; nothing in the module reads one.
-import * as PIXI from '/preview-pixi.mjs';
-import { createSmokeLooks, smokePuffs, smokeSeedOf } from '/modules/animater/scripts/engines/props/smoke-look.mjs';
-import { smokeRoundPlan } from '/modules/animater/scripts/engines/props/smoke-round.mjs';
-import { smokeOpeningsOf, THICK, THIN } from '/modules/animater/scripts/engines/props/smoke-field.mjs';
+// Check, not shipped: the module's own room smoke (smokeSheets + smokePuffs + createSmokeLooks), filling two rooms
+// the module's own round really worked out (smokeRoundPlan), round by round.
+// Nothing here is a stand-in for the module: the geometry, the tones and the drift are all the shipped code's. Only
+// the clock is this page's, standing in for the server clock the module has injected — the module reads none itself.
+import { createSmokeLooks, smokePuffs, smokeSheets, smokeSeedOf } from "../../scripts/engines/props/smoke-look.mjs";
+import { smokeRoundPlan } from "../../scripts/engines/props/smoke-round.mjs";
+import { smokeOpeningsOf, THICK, THIN } from "../../scripts/engines/props/smoke-field.mjs";
 
+const PIXI = globalThis.PIXI;
 const CELL = 70, COLS = 20, ROWS = 9, W = COLS * CELL, H = ROWS * CELL;
-const app = new PIXI.Application({ width: W, height: H, background: 0x2b2a26, preserveDrawingBuffer: true, antialias: true });
-document.body.append(app.view); globalThis.__PIXI_APP__ = app;
+const app = new PIXI.Application({ width: W, height: H, background: 0x2b2a26, antialias: true });
+document.body.prepend(app.view); globalThis.__PIXI_APP__ = app;
 
-// Two rooms side by side on one grid: a sealed 5x5 on the left (columns 1-5), and an inn on the right whose taproom
-// (columns 11-12) and back room (columns 13-15) share one open inside door in row 3.
+// Two rooms on one grid: a sealed 5x5 on the left (columns 1-5), and an inn on the right whose taproom (columns
+// 11-12) and back room (columns 13-15) share one open inside door in row 3.
 const left = (i) => { const c = i % COLS, r = (i - c) / COLS; return c >= 1 && c <= 5 && r >= 1 && r <= 5; };
 const right = (i) => { const c = i % COLS, r = (i - c) / COLS; return c >= 11 && c <= 15 && r >= 1 && r <= 5; };
 const inRoom = (i) => left(i) || right(i);
@@ -32,9 +54,12 @@ const walled = (i, n) => {
   if (Math.min(ci, cn) === 12 && Math.max(ci, cn) === 13) return !(DOOR.includes(i) && DOOR.includes(n));
   return false;
 };
-const openings = smokeOpeningsOf({ walls: [{ c: [13 * CELL, 3 * CELL, 13 * CELL, 4 * CELL], door: 1, ds: 1 }], grid: CELL, cell: CELL, origin: { x: 0, y: 0 }, cols: COLS, rows: ROWS, indoors: inRoom });
-const sources = [{ i: 3 * COLS + 3, rate: 1, levels: [] }, { i: 3 * COLS + 11, rate: 1, levels: [] }];
-const sceneOf = (smoke) => ({ id: 'preview00000000z', dimensions: { width: W, height: H, size: CELL }, levels: [],
+const openings = smokeOpeningsOf({ walls: [{ c: [13 * CELL, 3 * CELL, 13 * CELL, 4 * CELL], door: 1, ds: 1 }],
+  grid: CELL, cell: CELL, origin: { x: 0, y: 0 }, cols: COLS, rows: ROWS, indoors: inRoom });
+const SOURCES = [{ i: 3 * COLS + 3, rate: 1, levels: [] }, { i: 3 * COLS + 11, rate: 1, levels: [] }];
+const OUT_AT = 20; // the fire is put out at this round, and the rooms start to clear
+const SCENE_ID = "preview00000000z";
+const sceneOf = (smoke) => ({ id: SCENE_ID, dimensions: { width: W, height: H, size: CELL }, levels: [],
   flags: { animater: { smokeFills: true, ...(smoke ? { smoke, smokeGrid: { cols: COLS, cell: CELL } } : {}) } } });
 
 // The painted room: stepped floor, ink walls — the battlemap look the smoke has to sit on.
@@ -45,48 +70,67 @@ for (let i = 0; i < COLS * ROWS; i++) {
   floor.lineStyle(1, 0x1b1812, 0.35).drawRect(x, y, CELL, CELL).lineStyle(0);
 }
 for (let i = 0; i < COLS * ROWS; i++) for (const [dc, dr] of [[1, 0], [0, 1]]) {
-  const c = i % COLS, r = Math.floor(i / COLS), n = (r + dr) * COLS + (c + dc);
-  if (c + dc >= COLS || r + dr >= ROWS || !walled(i, n)) continue;
+  const c = i % COLS, r = Math.floor(i / COLS);
+  if (c + dc >= COLS || r + dr >= ROWS || !walled(i, (r + dr) * COLS + (c + dc))) continue;
   floor.lineStyle(4, 0x151109, 0.9);
   if (dc) floor.moveTo((c + 1) * CELL, r * CELL).lineTo((c + 1) * CELL, (r + 1) * CELL);
   else floor.moveTo(c * CELL, (r + 1) * CELL).lineTo((c + 1) * CELL, (r + 1) * CELL);
   floor.lineStyle(0);
 }
 app.stage.addChild(floor);
-// Stand-ins for creatures, so it is plain that thick smoke is painted OVER them: that is what layer 752 is for.
+// Stand-ins for creatures, so it is plain whether thick smoke really hides what stands in it: one in each room's
+// thick middle, one out at each room's thin edge, and one on clean floor for comparison.
+const FOLK = [3 * COLS + 3, 2 * COLS + 5, 3 * COLS + 11, 1 * COLS + 15, 7 * COLS + 8];
 const folk = new PIXI.Graphics();
-for (const i of [2 * COLS + 2, 4 * COLS + 5, 2 * COLS + 14, 4 * COLS + 12]) {
+for (const i of FOLK) {
   const x = (i % COLS) * CELL + CELL / 2, y = Math.floor(i / COLS) * CELL + CELL / 2;
-  folk.beginFill(0xc8a46a).drawCircle(x, y, CELL * 0.3).endFill();
-  folk.lineStyle(2, 0x1b1410, 0.8).drawCircle(x, y, CELL * 0.3).lineStyle(0);
+  folk.beginFill(0xe8c98a).drawCircle(x, y, CELL * 0.3).endFill();
+  folk.lineStyle(3, 0x1b1410, 0.95).drawCircle(x, y, CELL * 0.3).lineStyle(0);
+  folk.beginFill(0x1b1410, 0.9).drawCircle(x - CELL * 0.1, y - CELL * 0.06, CELL * 0.04).drawCircle(x + CELL * 0.1, y - CELL * 0.06, CELL * 0.04).endFill();
 }
 app.stage.addChild(folk);
 
 const cloud = new PIXI.Container(); app.stage.addChild(cloud);
 const looks = createSmokeLooks({ PIXI, layer: () => cloud, grid: () => CELL, now: () => performance.now() });
 
-const text = new PIXI.Text('', { fill: 0xffffff, fontSize: 14, fontWeight: '600', stroke: 0x000000, strokeThickness: 3 });
-text.position.set(10, 8); app.stage.addChild(text);
-
-let smoke = null, round = 0, dying = false;
-const step = () => {
-  const plan = smokeRoundPlan({ activeGM: true, on: true, scene: sceneOf(smoke), sources: dying ? [] : sources,
-    indoors: inRoom, walled, openings, roomOf: () => ({ id: 'room', size: 25 }) });
-  smoke = Object.fromEntries((plan?.cells ?? []).map((c) => [String(c.i), Math.round(c.v * 10000) / 10000]));
-  round += 1;
-  if (round === 20) dying = true;            // the fire is put out, and the room starts to clear
-  if (!Object.keys(smoke).length && dying) { round = 0; dying = false; smoke = null; }
-  const cells = Object.entries(smoke).map(([i, v]) => ({ i: Number(i), v }));
-  const thick = cells.filter((c) => c.v >= THICK).length, thin = cells.filter((c) => c.v >= THIN && c.v < THICK).length;
-  text.text = `round ${round}${dying ? ' — the fire is out, the room is clearing' : ''}   ${thick} thick (blocks sight), ${thin} thin (conceals)`;
-  looks.sync({ puffs: smokePuffs(cells, { cols: COLS, origin: { x: 0, y: 0 }, cell: CELL, seed: smokeSeedOf('preview00000000z') }) });
+// The round, run from scratch up to `target`, so the slider can jump anywhere at once instead of waiting it out.
+const fieldAt = (target) => {
+  let smoke = null;
+  for (let n = 1; n <= target; n++) {
+    const plan = smokeRoundPlan({ activeGM: true, on: true, scene: sceneOf(smoke), sources: n > OUT_AT ? [] : SOURCES,
+      indoors: inRoom, walled, openings, roomOf: () => ({ id: "room", size: 25 }) });
+    smoke = Object.fromEntries((plan?.cells ?? []).map((c) => [String(c.i), Math.round(c.v * 10000) / 10000]));
+  }
+  return Object.entries(smoke ?? {}).map(([i, v]) => ({ i: Number(i), v }));
 };
-step();
-// A round is six seconds in play; here it is three, so the drift between rounds is easy to watch.
-setInterval(step, 3000);
+
+const slider = document.getElementById("slider"), at = document.getElementById("at");
+const say = document.getElementById("say"), playBtn = document.getElementById("play");
+let round = 0, playing = true;
+const show = () => {
+  const cells = fieldAt(round);
+  const geo = { cols: COLS, origin: { x: 0, y: 0 }, cell: CELL, seed: smokeSeedOf(SCENE_ID) };
+  looks.sync({ sheets: smokeSheets(cells, geo), puffs: smokePuffs(cells, geo) });
+  const thick = cells.filter((c) => c.v >= THICK).length, thin = cells.filter((c) => c.v >= THIN && c.v < THICK).length;
+  slider.value = String(round);
+  at.textContent = `round ${round}`;
+  say.innerHTML = `<b>${thick}</b> thick (blocks sight &mdash; the dark mass) and <b>${thin}</b> thin (conceals &mdash; the light wash).`
+    + (round > OUT_AT ? " The fire is out; the rooms are clearing." : "")
+    + " Five stand-in creatures: two in the thick middles, two at the thin edges, one on clean floor.";
+};
+const to = (n) => { round = Math.max(0, Math.min(Number(slider.max), n)); show(); };
+slider.addEventListener("input", () => to(Number(slider.value)));
+document.getElementById("back").addEventListener("click", () => to(round - 1));
+document.getElementById("fwd").addEventListener("click", () => to(round + 1));
+playBtn.addEventListener("click", () => { playing = !playing; playBtn.textContent = playing ? "Pause" : "Play"; });
+// A round is six seconds in play; here it is three, so the drift between rounds is easy to watch. Paused, or dragged
+// to a round by hand, the cloud still drifts and sways: that is the module's own loop, not this page's.
+setInterval(() => { if (playing) to(round >= Number(slider.max) ? 0 : round + 1); }, 3000);
+to(18); // where there is actually something to judge
 </script>
-<p>Left: a sealed 5&times;5 room. Right: an inn whose taproom and back room share one open inside door. The round runs
-every three seconds (six in play); the fire is put out at round 20 and the rooms clear. The cloud drifts and sways
-between rounds — but what blocks sight does not move until the round does.</p>
+<div id="say2" style="padding: 0 12px 16px; max-width: 1100px; color: #aaa;">
+Opens from a plain static file server at the repository root &mdash; no Foundry, no dev server:
+<code>python -m http.server</code>, then <code>/tools/fx-gallery/smoke-look-preview.html</code>.
+</div>
 </body>
 </html>
