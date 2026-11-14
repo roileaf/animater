@@ -40,8 +40,8 @@ import { propTraits } from "./engines/props/prop-traits.mjs";
 import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsOf, dropLostDecorFire, regionBurns, createQuenchGate, quenchedBy, quenchUpdates, repairFireUpdates } from "./engines/props/fire-spread.mjs";
 import { areaRefusal } from "./engines/props/prop-areas.mjs";
 import { createFireLooks, thingFires, charredCells, litCells } from "./engines/props/fire-looks.mjs";
-import { iceBreakOf } from "./engines/regions/ice-break-look.mjs";
-import { iceSettingsOf, iceStateOf, iceHoleAt, iceMoveFor, sizeNameOf, squaresCrossed, weightOffset, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares } from "./engines/regions/thin-ice.mjs";
+import { iceBreakOf, iceHoleAt } from "./engines/regions/ice-break-look.mjs";
+import { iceSettingsOf, iceStateOf, iceMoveFor, sizeNameOf, walkedLegs, squaresEntered, moveSince, weightOffset, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares } from "./engines/regions/thin-ice.mjs";
 import { createIceBreakLook } from "./engines/regions/ice-break-draw.mjs";
 import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
@@ -3699,12 +3699,13 @@ const waterEngine = createWaterEngine({ PIXI: globalThis.PIXI, root: floorLayer(
 const floorShadows = createFloorShadows({ PIXI: globalThis.PIXI, root: floorDrawRoot("floorShadows"), edges: floorLayer("floorEdges"), grid: () => canvas.grid?.size ?? 100 });
 // Thin ice breaking (engines/regions/ice-break-look.mjs, ice-break-draw.mjs): the cracks and the floating shards, painted on the floor under the creatures, read from what the GM stored on the region so every screen draws the same. The holes are water, in movingWaterList.
 const iceBreakLook = createIceBreakLook({ PIXI: globalThis.PIXI, layer: floorLayer("iceBreak", 643), grid: () => canvas.grid?.size ?? 100 });
+const iceDrawn = { holes: 0, cracks: 0, shards: 0 };
 const syncIceBreak = () => {
   const cracks = [], shards = [], grid = canvas.grid?.size ?? 100, wet = movingWaterOn();
   for (const region of drawnRegions()) {
     try { const broken = iceBreakOf(region, { grid }); cracks.push(...broken.cracks); if (wet) shards.push(...broken.shards); /* (shards float on a hole, and a hole is moving water) */ } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
   }
-  try { iceBreakLook.sync({ cracks, shards }); } catch (err) { runtime?.trace?.("thin ice", `paint: ${err?.message ?? err}`); }
+  try { iceBreakLook.sync({ cracks, shards }); iceDrawn.cracks = cracks.length; iceDrawn.shards = shards.length; } catch (err) { runtime?.trace?.("thin ice", `paint: ${err?.message ?? err}`); }
 };
 // Whether two sets of areas have boxes that overlap at all.
 // (Each set of areas' box worked out once and kept with it; each region's areas kept till it changes: floor shadows asked them
@@ -3713,6 +3714,8 @@ const areaBoxes = new WeakMap();
 const areasBox = (areas) => { let b = areaBoxes.get(areas); if (b) return b; let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const area of areas) for (let i = 0; i + 1 < area.length; i += 2) { x0 = Math.min(x0, area[i]); x1 = Math.max(x1, area[i]); y0 = Math.min(y0, area[i + 1]); y1 = Math.max(y1, area[i + 1]); } b = { x0, y0, x1, y1 }; areaBoxes.set(areas, b); return b; };
 // Whether a region runs more across the map than down it (its box wider than tall).
 const acrossOf = (areas) => { const b = areasBox(areas); return b.x1 - b.x0 > b.y1 - b.y0; };
+// A set of areas as a box to walk the squares of ({ x, y, w, h }, pixels), or null when their shapes say nothing.
+const squareBox = (areas) => { const b = areasBox(areas ?? []); return b.x1 > b.x0 && b.y1 > b.y0 ? { x: b.x0, y: b.y0, w: b.x1 - b.x0, h: b.y1 - b.y0 } : null; };
 const boxesMeet = (a, b) => { const p = areasBox(a), q = areasBox(b); return p.x0 < q.x1 && q.x0 < p.x1 && p.y0 < q.y1 && q.y0 < p.y1; };
 let keptAreas = new WeakMap();
 const regionAreasKept = (region) => { let a = keptAreas.get(region); if (!a) { a = regionAreas(region); keptAreas.set(region, a); } return a; };
@@ -3752,6 +3755,8 @@ const hullsOver = (areas) => {
 const movingWaterList = () => {
   const list = [], sceneChoice = canvas.scene?.flags?.[ID]?.floorTextures;
   const on = movingWaterOn();
+  // The map the water lies on, which every spec here carries: worked out once for all of them.
+  const rect = canvas.dimensions?.sceneRect, mapRect = rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null;
   // What stands over the water (a dock, a bridge): its regions are taken out of what moves beneath them; and what casts a shadow shades it, hidden or not.
   const over = on ? drawnRegions().filter((r) => r.flags?.[ID]?.overWater === true || castsShadow(r.flags?.[ID])) : [];
   if (on) for (const region of drawnRegions()) {
@@ -3766,17 +3771,17 @@ const movingWaterList = () => {
       const bed = under ? { texture: floorTextures.tile(under.floor, textureStyleOf(own, under.floor)), key: `${under.floor}/${textureStyleOf(own, under.floor)}`, edge: under.edge, colourOnly: under.floor === "water" } : null;
       // (Its shadow by how far above this water it stands; with several, the highest that reaches it.)
       const above = over.filter((r) => r.id !== region.id && boxesMeet(regionAreasKept(r), areas));
-      list.push({ id: region.id, areas, watery: true, over: above.map((r) => { const shape = regionAreasKept(r); return { areas: shape, ...overShadowOf(r.flags?.[ID], plainFloorOf(r) ?? ""), contact: false, cut: r.flags?.[ID]?.overWater === true, casts: castsShadow(r.flags?.[ID]), painted: !!plainFloorOf(r) && regionStepsOn() && !!floorLevel.show && showsTexture(r.flags?.[ID] ?? {}, sceneChoice), across: acrossOf(shape) }; }), lift: Math.max(0, ...above.filter((r) => castsShadow(r.flags?.[ID])).map((r) => overLiftOf({ above: r.elevation?.bottom, water: region.elevation?.bottom, distance: canvas.dimensions?.distance, grid: canvas.grid.size }))) || undefined, bed, kind, followsWind: toward === "wind", edge: stepEdge(own), depth: waterDepthLook(own.waterDepth), beach: own.seaBeach !== "off", sand: kind === "sea" && own.seaBeach !== "off" ? floorTextures.tile("sand", "beach") : null, map: canvas.dimensions?.sceneRect ? { x: canvas.dimensions.sceneRect.x, y: canvas.dimensions.sceneRect.y, width: canvas.dimensions.sceneRect.width, height: canvas.dimensions.sceneRect.height } : null, waves: kind === "sea" && own.waveTo in WIND_FROM ? ((WIND_FROM[own.waveTo] - 90) * Math.PI) / 180 : null, angle: toward in WIND_FROM ? ((WIND_FROM[toward] - 90) * Math.PI) / 180 : kind === "falls" ? fallWindAngle(skyWindAngle) : null, current: riverCurrent(stepFlags(own)?.current), keeps: !!own.noFreeze, roofed: roofedRegion(areas), hulls: kind === "sea" ? hullsOver(areas) : undefined });
+      list.push({ id: region.id, areas, watery: true, over: above.map((r) => { const shape = regionAreasKept(r); return { areas: shape, ...overShadowOf(r.flags?.[ID], plainFloorOf(r) ?? ""), contact: false, cut: r.flags?.[ID]?.overWater === true, casts: castsShadow(r.flags?.[ID]), painted: !!plainFloorOf(r) && regionStepsOn() && !!floorLevel.show && showsTexture(r.flags?.[ID] ?? {}, sceneChoice), across: acrossOf(shape) }; }), lift: Math.max(0, ...above.filter((r) => castsShadow(r.flags?.[ID])).map((r) => overLiftOf({ above: r.elevation?.bottom, water: region.elevation?.bottom, distance: canvas.dimensions?.distance, grid: canvas.grid.size }))) || undefined, bed, kind, followsWind: toward === "wind", edge: stepEdge(own), depth: waterDepthLook(own.waterDepth), beach: own.seaBeach !== "off", sand: kind === "sea" && own.seaBeach !== "off" ? floorTextures.tile("sand", "beach") : null, map: mapRect, waves: kind === "sea" && own.waveTo in WIND_FROM ? ((WIND_FROM[own.waveTo] - 90) * Math.PI) / 180 : null, angle: toward in WIND_FROM ? ((WIND_FROM[toward] - 90) * Math.PI) / 180 : kind === "falls" ? fallWindAngle(skyWindAngle) : null, current: riverCurrent(stepFlags(own)?.current), keeps: !!own.noFreeze, roofed: roofedRegion(areas), hulls: kind === "sea" ? hullsOver(areas) : undefined });
     } catch (err) { runtime?.trace?.("moving water", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
   }
   // The decorations' puddles and cave pools: still water in the outline their painted rim goes round, deep, the colour of a painted water floor.
   if (on) for (const pool of decorations.water()) {
-    try { list.push({ id: pool.id, areas: pool.areas, watery: true, over: [], kind: "still", followsWind: false, edge: 1, depth: pool.deep ? { hold: 1.6, dark: 0.72 } : { hold: 1.35, dark: 0.4 }, bed: { texture: decorPondBed(), key: "decor-pond", edge: 1, colourOnly: true }, beach: false, sand: null, map: canvas.dimensions?.sceneRect ? { x: canvas.dimensions.sceneRect.x, y: canvas.dimensions.sceneRect.y, width: canvas.dimensions.sceneRect.width, height: canvas.dimensions.sceneRect.height } : null, waves: null, angle: null, current: 0, keeps: false, roofed: roofedRegion(pool.areas) }); } catch { /* one pool never breaks the rest */ }
+    try { list.push({ id: pool.id, areas: pool.areas, watery: true, over: [], kind: "still", followsWind: false, edge: 1, depth: pool.deep ? { hold: 1.6, dark: 0.72 } : { hold: 1.35, dark: 0.4 }, bed: { texture: decorPondBed(), key: "decor-pond", edge: 1, colourOnly: true }, beach: false, sand: null, map: mapRect, waves: null, angle: null, current: 0, keeps: false, roofed: roofedRegion(pool.areas) }); } catch { /* one pool never breaks the rest */ }
   }
   // Thin ice that has given way: a hole of dark water in the ice, one spec for each, flat areas as every region's are.
   if (on) for (const region of drawnRegions()) {
     try {
-      for (const hole of iceBreakOf(region, { grid: canvas.grid?.size ?? 100 }).holes) list.push({ ...hole, bed: { texture: decorPondBed(), key: "decor-pond", edge: 1, colourOnly: true }, map: canvas.dimensions?.sceneRect ? { x: canvas.dimensions.sceneRect.x, y: canvas.dimensions.sceneRect.y, width: canvas.dimensions.sceneRect.width, height: canvas.dimensions.sceneRect.height } : null, roofed: roofedRegion(hole.areas) });
+      for (const hole of iceBreakOf(region, { grid: canvas.grid?.size ?? 100 }).holes) list.push({ ...hole, bed: { texture: decorPondBed(), key: "decor-pond", edge: 1, colourOnly: true }, map: mapRect, roofed: roofedRegion(hole.areas) });
     } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
   }
   return list;
@@ -3820,6 +3825,8 @@ const syncFloorShadows = (moving) => {
   floorShadows.sync(list);
 };
 const syncMovingWater = (list) => {
+  // (Counted here, where the specs are handed over, so a hole that never reaches the water engine is seen to be missing.)
+  iceDrawn.holes = list.filter((spec) => typeof spec?.id === "string" && spec.id.includes(":ice:")).length;
   waterEngine.sync(list, { floor: list.length ? mapFloor() : null, quality: floorLevel.water ?? "full" });
   surfaceLight.movingWater(waterEngine.count > 0);
 };
@@ -4760,7 +4767,7 @@ Hooks.on("canvasTearDown", () => { regionDrag = null; });
 // The menu stands by the spot it was opened for: when the map moves under it, it goes.
 Hooks.on("canvasPan", () => { regionPanel.close(); });
 Hooks.on("deleteRegion", (doc) => { if (regionPanel.doc === doc) regionPanel.close(); });
-Hooks.on("canvasTearDown", () => { clearTimeout(floorLooksTimer); forgetPlanes(); dropTileBoxes(); floorLooks.clear(); floorTextures.clear(); floorMotion.clear(); waterEngine.clear(); floorShadows.clear(); regionPanel.close(); });
+Hooks.on("canvasTearDown", () => { clearTimeout(floorLooksTimer); forgetPlanes(); dropTileBoxes(); floorLooks.clear(); floorTextures.clear(); floorMotion.clear(); waterEngine.clear(); floorShadows.clear(); iceBreakLook.clear(); regionPanel.close(); });
 // The region with a floor under a point, the last listed as the floor's own lookup has it.
 const floorRegionAt = (point) => {
   const elevation = Number(canvas.level?.elevation?.base) || 0, regions = regionsHere();
@@ -4973,16 +4980,14 @@ Hooks.on("moveToken", (doc, movement) => {
     if (!game.user?.isActiveGM || !canvas?.ready || doc.parent?.id !== canvas.scene?.id || !doc.actor) return;
     const { mode } = tracksOf(canvas.scene); if (mode === "off" || !hotSetting("oldTracks")) return;
     const grid = canvas.grid.size, base = canvas.level?.elevation?.base ?? 0, size = Math.max(0.5, Number(doc.width) || 1), mid = (w) => ({ x: w.x + ((w.width ?? doc.width) * grid) / 2, y: w.y + ((w.height ?? doc.height) * grid) / 2 });
-    let from = movement?.origin, gait = trackGait.get(doc.id) ?? { left: 0, side: 1 };
+    let gait = trackGait.get(doc.id) ?? { left: 0, side: 1 };
     const secret = doc.hidden === true || movementSneaking(doc.id) === true;
-    for (const way of movement?.passed?.waypoints ?? []) {
-      // Flying, burrowing, swimming and blinking across leave nothing on the floor.
-      const walked = from && !["fly", "burrow", "swim", "displace"].includes(way.action) && !way.teleport && Number(way.elevation ?? base) === base;
-      if (walked) {
-        const out = stepsAlong(mid(from), mid(way), { grid, size, worldTime: game.time?.worldTime ?? 0, secret, left: gait.left, side: gait.side, floorAt: (p) => movementFeelFloor(p, doc) });
-        gait = { left: out.left, side: out.side }; trackWaiting.push(...out.steps);
-      }
-      from = way;
+    // Which legs of the move were really walked — flying, burrowing, swimming and blinking across leave nothing on the
+    // floor — is the same question the thin ice asks of the same move, and is answered in one place for both
+    // (thin-ice.mjs walkedLegs). This hook's own business is unchanged: its own middle of the footprint, its own gait.
+    for (const leg of walkedLegs(movement?.passed?.waypoints, { from: movement?.origin, base, mid })) {
+      const out = stepsAlong(leg.from, leg.to, { grid, size, worldTime: game.time?.worldTime ?? 0, secret, left: gait.left, side: gait.side, floorAt: (p) => movementFeelFloor(p, doc) });
+      gait = { left: out.left, side: out.side }; trackWaiting.push(...out.steps);
     }
     trackGait.set(doc.id, gait);
     if (trackWaiting.length && !trackWriteTimer) trackWriteTimer = setTimeout(() => void writeTracks(), 30000);
@@ -5006,39 +5011,51 @@ const writeIceBreak = async (scene, updates, notes) => {
     catch (err) { runtime?.trace?.("thin ice", `not whispered: ${err?.message ?? err}`); }
   }
 };
+// How much of one move the ice has already walked, kept by token: how many of its waypoints were walked and what path
+// they were (thin-ice.mjs moveSince). Foundry may fire this hook again for the same move with a longer `passed` list, and
+// a square this move already cracked would break the second time round. Only a path that really begins with the waypoints
+// already walked, and that names itself the same move where Foundry gives a move a name of its own, is taken as that same
+// move going on, so another move from the same square is walked whole. A token keeps
+// one entry, replaced by its next move; at most a few tokens are kept, the oldest going when the room is wanted; and the
+// whole lot goes with the scene.
+const ICE_MOVES_KEPT = 8;
+const iceMoveDone = new Map();
+const iceMoveSeen = (id, kept) => { iceMoveDone.delete(id); iceMoveDone.set(id, kept); while (iceMoveDone.size > ICE_MOVES_KEPT) iceMoveDone.delete(iceMoveDone.keys().next().value); };
+Hooks.on("canvasTearDown", () => { iceMoveDone.clear(); });
 Hooks.on("moveToken", (doc, movement) => {
   try {
     if (!game.user?.isActiveGM || !canvas?.ready || doc?.parent?.id !== canvas.scene?.id) return;
     const regions = iceRegionsHere(); if (!regions.length) return;
-    // The creature's size by name: Small and Medium both stand in one square, and the ice tells them apart.
+    // The creature's size by name: Small and Medium both stand in one square, and the ice tells them apart. (No actor is
+    // wanted here, unlike the footprints' hook above: a token placed without one still has a footprint, and what the ice
+    // holds is a weight, which sizeNameOf reads off that footprint when nothing else names it. A nameless shape heavy
+    // enough to go through the ice goes through it.)
     const size = sizeNameOf(doc.actor, doc); if (!size) return;
     // Where its weight falls, which for an even footprint is not its middle: that is exactly on a grid line (thin-ice.mjs
     // weightOffset), and the square it reads must be one the creature really stands in.
     const grid = canvas.grid.size, base = canvas.level?.elevation?.base ?? 0, mid = (w) => ({ x: w.x + weightOffset(w.width ?? doc.width) * grid, y: w.y + weightOffset(w.height ?? doc.height) * grid });
-    const squares = [];
-    let from = movement?.origin, ended = null;
-    for (const way of movement?.passed?.waypoints ?? []) {
-      // Flying, burrowing, swimming and blinking across crack nothing, nor does a creature above the ice.
-      const walked = from && !["fly", "burrow", "swim", "displace"].includes(way.action) && !way.teleport && Number(way.elevation ?? base) === base;
-      ended = null;
-      if (walked) {
-        for (const key of squaresCrossed([mid(from), mid(way)], grid)) if (squares[squares.length - 1] !== key) squares.push(key);
-        ended = squares[squares.length - 1] ?? null; // where the move came to rest, if its last leg was walked
-      }
-      from = way;
-    }
+    // Only the part of the move this hook has not walked yet, so a second firing never escalates the squares the first
+    // cracked; and of that part, only the squares really entered — not the one the creature was already standing in.
+    const since = moveSince(movement, iceMoveDone.get(doc.id));
+    iceMoveSeen(doc.id, { id: since.id, done: since.done, sig: since.sig });
+    const legs = walkedLegs(since.ways, { from: since.from, base, mid });
+    const squares = squaresEntered(legs, grid);
     if (!squares.length) return;
-    const updates = [], notes = [];
+    const ended = legs[legs.length - 1]?.last ? squares[squares.length - 1] : null; // where the move came to rest, if its last leg was walked
+    const updates = [], cracked = [], broken = [];
     for (const region of regions) {
       try {
         // Only the squares this region itself holds: the move may have crossed its edge.
         const mine = [];
         for (const key of squares) if (region.testPoint({ ...iceSquareMid(key, grid), elevation: base }) && mine[mine.length - 1] !== key) mine.push(key);
-        const { updates: wrote, note } = iceMoveFor({ region, size, squares: mine, ended: mine.includes(ended) ? ended : null, name: doc.name });
+        const { updates: wrote, note, broke } = iceMoveFor({ region, size, squares: mine, ended: mine.includes(ended) ? ended : null, name: doc.name });
         updates.push(...wrote);
-        if (note) notes.push(note);
+        // One break, one whisper: two thin-ice regions over the same square would otherwise each tell the GM about it,
+        // and a break is the only thing worth saying when the same move also cracked ice somewhere else.
+        if (note) (broke ? broken : cracked).push(note);
       } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
     }
+    const notes = [...new Set(broken.length ? broken : cracked)];
     if (updates.length) void writeIceBreak(canvas.scene, updates, notes);
   } catch { /* a token mid-change */ }
 });
@@ -10691,10 +10708,12 @@ function iceMeltOf(scene, area) {
       if (!iceSettingsOf(doc).thin) continue;
       const areas = regionAreas(doc) ?? [];
       if (!areas.length) continue;
-      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-      for (const a of areas) for (let i = 0; i + 1 < a.length; i += 2) { x0 = Math.min(x0, a[i]); x1 = Math.max(x1, a[i]); y0 = Math.min(y0, a[i + 1]); y1 = Math.max(y1, a[i + 1]); }
+      const bounds = squareBox(areas);
+      if (!bounds) continue;
       const inside = (p) => areas.some((a) => pointInPolygon(p, a) && !(a.holes ?? []).some((h) => pointInPolygon(p, h)));
-      const squares = iceMeltSquares({ bounds: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, grid, inside, inArea: area.testPoint });
+      // Only where the region and the fire overlap: a fireball is a handful of squares, and an eighty-square lake walked
+      // whole would be past iceMeltSquares cap and melt nothing at all.
+      const squares = iceMeltSquares({ bounds, within: area.bounds ?? null, grid, inside, inArea: area.testPoint });
       if (squares.length) regions.push({ id: doc.id, flags: doc.flags ?? {}, levels: [...(doc.levels ?? [])], squares });
     } catch (err) { runtime?.trace?.("thin ice", `melt ${doc?.id ?? "?"}: ${err?.message ?? err}`); }
   }
@@ -10702,6 +10721,7 @@ function iceMeltOf(scene, area) {
 }
 // The GM's one region batch for a melt, stamped as Animater's own on an options object built for this write alone.
 async function meltIceWrite(scene, area) {
+  if (!game.user?.isGM || !scene) return false;
   const updates = propSafe("thin ice melt", () => iceMeltOf(scene, area)) ?? [];
   if (!updates.length) return false;
   await scene.updateEmbeddedDocuments("Region", updates.map((u) => withDeletes(u, propDel())), { animater: { thinIce: true } })
@@ -11320,6 +11340,18 @@ function areaTestOf(doc) {
   }
   return (p) => { try { return doc?.object?.shape?.contains(p.x - doc.x, p.y - doc.y) === true; } catch { return false; } };
 }
+// A box round a placed area, in pixels, for anything that must walk the squares under it (the thin ice fire melts): a
+// region area's own shapes, else the template's own reach from where it was placed, which every template type stays
+// inside (a rectangle's `distance` is its diagonal, so a square of twice it round the origin covers it either way). Only the
+// document's own fields are read, never the drawn object's. null when they say nothing, and then the whole region is walked.
+function areaBoxOf(doc) {
+  if (!doc) return null;
+  if (doc.documentName === "Region") return squareBox(regionAreas(doc) ?? []);
+  const scene = doc.parent, per = (Number(scene?.grid?.size) || Number(canvas?.grid?.size) || 100) / (Number(scene?.grid?.distance) || 5);
+  const reach = Number(doc.distance) * per, x = Number(doc.x), y = Number(doc.y);
+  if (!(reach > 0) || !Number.isFinite(reach) || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x: x - reach, y: y - reach, w: reach * 2, h: reach * 2 };
+}
 // Where the blow comes from: the area's origin (a burst's centre, a cone's or line's start).
 function areaCentreOf(doc) {
   const s = doc?.shapes?.[0], fin = (...v) => v.every(Number.isFinite);
@@ -11416,7 +11448,7 @@ function areaPlace(cause, user) {
   try { const actor = actorUuid ? fromUuidSync(actorUuid) : null; ownsOrigin = !!user && actor?.testUserPermission?.(user, "OWNER") === true; } catch { ownsOrigin = false; }
   const levels = doc ? [...(doc.levels ?? [])] : [...(rec?.levels ?? [])];
   return { now, area: { uuid, sceneId: doc?.parent?.id ?? null, authorId: placed.authorId ?? null, authorIsGM: !!(placed.authorId && game.users.get(placed.authorId)?.isGM),
-    ownsOrigin, rememberedAt: placed.rememberedAt, testPoint: rec?.testPoint ?? (doc ? areaTestOf(doc) : undefined), levels, at: rec?.centre ?? (doc ? areaShapeCentreOf(doc) : null), damageTypes: doc ? areaPlaceTypes(doc, cause, user, now) : [] } };
+    ownsOrigin, rememberedAt: placed.rememberedAt, bounds: propSafe("area box", () => areaBoxOf(doc)) ?? null, testPoint: rec?.testPoint ?? (doc ? areaTestOf(doc) : undefined), levels, at: rec?.centre ?? (doc ? areaShapeCentreOf(doc) : null), damageTypes: doc ? areaPlaceTypes(doc, cause, user, now) : [] } };
 }
 for (const hook of ["deleteMeasuredTemplate", "deleteRegion"]) Hooks.on(hook, (doc) => propAreas.forget(doc.uuid));
 // Everything inside a remembered area on its level that one of the given damage types breaks (the first of them that
@@ -15381,10 +15413,13 @@ Hooks.once("ready", () => {
         return requestWallBreak(doc, { kind: "area", damageType: "bludgeoning", at: side, ...cause }, { from: cause.at ?? side });
       },
       repairProps: () => repairAllProps(canvas?.scene),
+      // What thin ice last gave the screen: holes handed to the moving water, cracked squares and holes of shards handed
+      // to its painter. Zero for all three on a map with no broken ice.
+      iceDrawn: () => ({ ...iceDrawn }),
       // GM: one region's thin ice frozen over again (the panel's Refreeze, without the question), and a round patch of
       // thin ice melted as a fire area over it would melt it (its middle and how far it reaches, in pixels).
       refreezeIce: (regionId) => refreezeIceRegion(canvas?.scene?.regions?.get(regionId)),
-      meltIce: (at, radius = canvas.grid?.size ?? 100) => meltIceWrite(canvas?.scene, { testPoint: (p) => Math.hypot(p.x - at.x, p.y - at.y) <= radius, levels: [] }),
+      meltIce: (at, radius = canvas.grid?.size ?? 100) => meltIceWrite(canvas?.scene, { testPoint: (p) => Math.hypot(p.x - at.x, p.y - at.y) <= radius, bounds: { x: at.x - radius, y: at.y - radius, w: radius * 2, h: radius * 2 }, levels: [] }),
       // Break a region's decoration (a key from decorKeys) as a bludgeoning area at its centre would (both switches still
       // apply; a player's is asked of the GM, who checks it as any other); the region's breakable decorations, with their
       // keys; and the keys this screen lets break now (drawn, not broken: decorBreakable).

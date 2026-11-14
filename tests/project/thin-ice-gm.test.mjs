@@ -64,14 +64,14 @@ const key = (col, row) => `${col},${row}`;
 const mid = (col, row) => ({ x: (col + 0.5) * GRID, y: (row + 0.5) * GRID });
 
 // A region of thin ice covering the top-left 6x6 squares of the map, with whatever the ice has stored in it.
-const iceRegion = (thinIce, { thin = true, id = "reg1" } = {}) => {
+const iceRegion = (thinIce, { thin = true, id = "reg1", w = 600, h = 600 } = {}) => {
   const doc = {
     id, parent: null, name: "The lake", levels: [], elevation: { bottom: null, top: null },
     flags: { animater: { floor: "water", iceThin: thin, iceHolds: "med", thinIce } },
-    shapes: [{ type: "rectangle", x: 0, y: 0, width: 600, height: 600 }],
-    polygons: [{ points: [0, 0, 600, 0, 600, 600, 0, 600] }],
+    shapes: [{ type: "rectangle", x: 0, y: 0, width: w, height: h }],
+    polygons: [{ points: [0, 0, w, 0, w, h, 0, h] }],
     behaviors: [],
-    testPoint: ({ x, y }) => x >= 0 && x <= 600 && y >= 0 && y <= 600,
+    testPoint: ({ x, y }) => x >= 0 && x <= w && y >= 0 && y <= h,
   };
   return doc;
 };
@@ -199,4 +199,25 @@ test("fire melts nothing on a region the GM never marked as thin ice", async () 
   setUp([region]);
   await api.debug.meltIce(mid(2, 2), GRID * 0.9);
   assert.deepEqual(scene.writes.filter((w) => w.type === "Region"), []);
+});
+
+test("a fire on a lake too wide to walk whole still melts the squares under it", async () => {
+  // Eighty-one squares by fifty: walking every square of the region would be past what the melt is allowed to walk, and
+  // every fireball on an ordinary outdoor lake would quietly do nothing.
+  const region = iceRegion({}, { w: 8100, h: 5000 });
+  setUp([region]);
+  await api.debug.meltIce(mid(40, 30), GRID * 0.9);
+  assert.equal(iceOf(region).holes[key(40, 30)], "melt", `the square under the fire melted: ${JSON.stringify(iceOf(region).holes)}`);
+  assert.equal(Object.keys(iceOf(region).holes).length, 1, "and only the squares the fire really covers");
+});
+
+test("a player with the console melts no ice: only the GM writes a region", async () => {
+  const region = iceRegion({});
+  setUp([region]);
+  game.user.isGM = false;
+  try {
+    await api.debug.meltIce(mid(2, 2), GRID * 0.9);
+    assert.deepEqual(scene.writes.filter((w) => w.type === "Region"), [], "nothing was written");
+    assert.deepEqual(iceOf(region).holes ?? {}, {}, "and the ice is whole");
+  } finally { game.user.isGM = true; }
 });

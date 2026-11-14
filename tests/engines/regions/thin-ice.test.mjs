@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { SIZES, holdsUp, iceStep, iceStateOf, iceUpdatesFor, squareKeyAt, squaresCrossed, sizeNameOf, squaresAcross, weightOffset, iceHoleAt, iceMoveFor, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares, MELTED } from "../../../scripts/engines/regions/thin-ice.mjs";
+import { SIZES, holdsUp, iceStep, iceStateOf, iceUpdatesFor, squareKeyAt, squaresCrossed, sizeNameOf, squaresAcross, weightOffset, walkedLegs, squaresEntered, moveSince, movePathName, OFF_THE_FLOOR, thinIceOn, iceSettingsOf, iceMoveFor, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares, MELTED } from "../../../scripts/engines/regions/thin-ice.mjs";
 
 test("the limit holds its own size and everything smaller", () => {
   assert.equal(holdsUp("med", "sm"), 0);
@@ -135,7 +135,26 @@ test("iceStateOf names the squares fire melted apart from the ones a creature br
   assert.deepEqual(state.holeSizes, { "2,2": 3 }, "and a melt has no creature's width");
 });
 
-test("a new crack is written at its own key, never as a whole object", () => {
+test("no key written is ever a parent of another key written", () => {
+  // A parent object written beside a delete beneath it undoes that delete, and leaves what was cleared sitting in the
+  // flag for ever. Nothing here may write `thinIce`, or `thinIce.cracks`, next to `thinIce.cracks.3,4`.
+  const region = regionWith({ cracks: { "3,4": 1, "9,9": 1 }, holes: { "0,0": 2 } });
+  const every = [
+    iceUpdatesFor({ cracks: ["1,1"], breaks: [] }, { region }),
+    iceUpdatesFor({ cracks: ["5,5"], breaks: ["3,4"] }, { region, size: 2 }),
+    iceUpdatesFor({ cracks: [], breaks: ["9,9", "7,7"] }, { region, size: 3 }),
+    iceRefreezeUpdates(region),
+    iceMeltUpdates([{ id: "reg1", flags: { animater: { ...region.flags.animater, iceThin: true } }, squares: ["3,4", "2,2"] }]),
+  ].flat();
+  assert.ok(every.length >= 5, "there is something to check in each shape of write");
+  for (const update of every) {
+    const keys = Object.keys(update).filter((k) => k !== "_id");
+    assert.ok(keys.length, "a write writes something");
+    for (const key of keys) for (const other of keys) {
+      if (key === other) continue;
+      assert.ok(!other.startsWith(`${key}.`), `${key} is a parent of ${other}`);
+    }
+  }
   const [u] = iceUpdatesFor({ cracks: ["3,4"], breaks: [] }, { region: regionWith({}) });
   assert.deepEqual(u, { _id: "reg1", [`${FLAG}.cracks.3,4`]: 1 });
 });
@@ -273,7 +292,7 @@ const iceRegion = (thinIce, { thin = true, holds = "med" } = {}) => ({ id: "reg1
 
 test("a creature the ice holds writes nothing at all, not even an empty update", () => {
   const out = iceMoveFor({ region: iceRegion({ cracks: { "1,1": 1 } }), size: "med", squares: ["1,1", "1,2"], ended: "1,2", name: "Pip" });
-  assert.deepEqual(out, { updates: [], note: null });
+  assert.deepEqual(out, { updates: [], note: null, broke: false });
 });
 
 test("a creature two sizes over breaks the first square it enters, and no other", () => {
@@ -309,49 +328,21 @@ test("a second heavy creature over another's cracks falls through them, and the 
 test("a region the GM never marked as thin ice is left alone, whatever walks over it", () => {
   for (const thin of [false, undefined, "true", 1]) {
     const region = { id: "reg1", flags: { animater: { iceThin: thin, iceHolds: "med", thinIce: {} } } };
-    assert.deepEqual(iceMoveFor({ region, size: "grg", squares: ["1,1"], ended: "1,1" }), { updates: [], note: null }, `thin ice off as ${JSON.stringify(thin)}`);
+    assert.deepEqual(iceMoveFor({ region, size: "grg", squares: ["1,1"], ended: "1,1" }), { updates: [], note: null, broke: false }, `thin ice off as ${JSON.stringify(thin)}`);
   }
 });
 
 test("iceMoveFor reads the region's own limit, and holds nothing against junk", () => {
-  assert.deepEqual(iceMoveFor({ region: iceRegion({}, { holds: "huge" }), size: "lg", squares: ["1,1"], ended: "1,1" }), { updates: [], note: null });
+  assert.deepEqual(iceMoveFor({ region: iceRegion({}, { holds: "huge" }), size: "lg", squares: ["1,1"], ended: "1,1" }), { updates: [], note: null, broke: false });
   assert.equal(iceMoveFor({ region: iceRegion({}, { holds: "sm" }), size: "med", squares: ["1,1"], ended: "1,1" }).updates.length, 1);
-  assert.deepEqual(iceMoveFor({ region: iceRegion({}), size: "huge" }), { updates: [], note: null });
-  assert.deepEqual(iceMoveFor({}), { updates: [], note: null });
-  assert.deepEqual(iceMoveFor(), { updates: [], note: null });
-});
-
-// ---- where the ice has given way, the floor is water ----
-test("a point in a hole is water; the rest of the ice, and a region with no holes, is not", () => {
-  const region = iceRegion({ cracks: { "0,0": 1 }, holes: { "3,4": 2 } });
-  const regions = [region];
-  assert.equal(iceHoleAt({ x: 350, y: 450 }, { regions, grid: GRID }), true);
-  assert.equal(iceHoleAt({ x: 50, y: 50 }, { regions, grid: GRID }), false, "a cracked square still carries a creature");
-  assert.equal(iceHoleAt({ x: 350, y: 450 }, { regions: [iceRegion({})], grid: GRID }), false);
-  assert.equal(iceHoleAt({ x: 350, y: 450 }, { regions: [iceRegion({ holes: { "3,4": 2 } }, { thin: false })], grid: GRID }), false, "thin ice off: the region's holes are not ours");
-});
-
-test("the region has the last say over a point in one of its hole squares", () => {
-  const regions = [iceRegion({ holes: { "3,4": 2 } })];
-  const asked = [];
-  assert.equal(iceHoleAt({ x: 350, y: 450 }, { regions, grid: GRID, inside: (doc, point) => { asked.push([doc.id, point.x, point.y]); return false; } }), false);
-  assert.deepEqual(asked, [["reg1", 350, 450]], "asked once, about the point itself");
-  assert.equal(iceHoleAt({ x: 50, y: 50 }, { regions, grid: GRID, inside: () => { throw new Error("never asked outside a hole"); } }), false);
-});
-
-test("iceHoleAt never throws on junk, and a region that throws is only itself", () => {
-  const good = iceRegion({ holes: { "3,4": 2 } });
-  assert.equal(iceHoleAt({ x: 350, y: 450 }, { regions: [null, undefined, {}, "x", good], grid: GRID }), true);
-  assert.equal(iceHoleAt({ x: 350, y: 450 }, { regions: [good], grid: GRID, inside: () => { throw new Error("broken region"); } }), false);
-  assert.equal(iceHoleAt(null, { regions: [good], grid: GRID }), false);
-  assert.equal(iceHoleAt({ x: 350, y: 450 }, { regions: [good], grid: 0 }), false);
-  assert.equal(iceHoleAt({ x: 350, y: 450 }), false);
-  assert.equal(iceHoleAt(), false);
+  assert.deepEqual(iceMoveFor({ region: iceRegion({}), size: "huge" }), { updates: [], note: null, broke: false });
+  assert.deepEqual(iceMoveFor({}), { updates: [], note: null, broke: false });
+  assert.deepEqual(iceMoveFor(), { updates: [], note: null, broke: false });
 });
 
 test("nothing to write is nothing to whisper: a creature falling into a hole that is already there", () => {
   const region = iceRegion({ holes: { "1,1": 3 } });
-  assert.deepEqual(iceMoveFor({ region, size: "huge", squares: ["1,1"], ended: "1,1", name: "Torvald" }), { updates: [], note: null });
+  assert.deepEqual(iceMoveFor({ region, size: "huge", squares: ["1,1"], ended: "1,1", name: "Torvald" }), { updates: [], note: null, broke: false });
 });
 
 test("where a creature's weight is read in its footprint, in squares from its own corner", () => {
@@ -447,4 +438,113 @@ test("the squares a fire area covers are the region's own, on the map's grid", (
   assert.deepEqual(iceMeltSquares({ bounds, grid: GRID, inside: () => { throw new Error("a region mid-change"); }, inArea: () => true }), []);
   assert.deepEqual(iceMeltSquares({ bounds: { x: 0, y: 0, w: 1e6, h: 1e6 }, grid: GRID, inArea: () => true }), [], "a region too big to walk melts nothing");
   for (const bad of [undefined, { bounds: { x: 0, y: 0, w: 0, h: 0 }, grid: GRID }, { bounds: { x: 0, y: 0, w: 100, h: 100 }, grid: 0 }]) assert.deepEqual(iceMeltSquares(bad), []);
+});
+
+// ---- the legs of a move, the squares it entered, and a move reported twice ----
+
+const way = (col, row, extra = {}) => ({ x: col * 100, y: row * 100, elevation: 0, action: "walk", teleport: false, ...extra });
+
+test("the actions that leave the floor alone are one list, and swimming is in it", () => {
+  assert.deepEqual([...OFF_THE_FLOOR], ["fly", "burrow", "swim", "displace"]);
+  assert.ok(Object.isFrozen(OFF_THE_FLOOR), "shared, so never changed under a reader");
+});
+
+test("walkedLegs gives the legs really walked, in order, with the last one marked", () => {
+  const legs = walkedLegs([way(1, 2), way(1, 3)], { from: way(1, 1) });
+  assert.deepEqual(legs.map((l) => [l.from.x, l.from.y, l.to.x, l.to.y, l.last]), [[100, 100, 100, 200, false], [100, 200, 100, 300, true]]);
+});
+
+test("a leg flown, burrowed, swum, blinked, teleported or off the floor is left out, and the walk goes on past it", () => {
+  for (const extra of [{ action: "fly" }, { action: "burrow" }, { action: "swim" }, { action: "displace" }, { teleport: true }, { elevation: 10 }]) {
+    const legs = walkedLegs([way(1, 2, extra), way(1, 3)], { from: way(1, 1) });
+    assert.deepEqual(legs.map((l) => [l.from.y, l.to.y, l.last]), [[200, 300, true]], JSON.stringify(extra));
+  }
+  assert.deepEqual(walkedLegs([way(1, 2)], {}), [], "a move with nowhere to come from walks nothing");
+  assert.deepEqual(walkedLegs(undefined, { from: way(1, 1) }), []);
+  assert.deepEqual(walkedLegs("waypoints", { from: way(1, 1) }), []);
+});
+
+test("walkedLegs reads each end through the point the caller asks for", () => {
+  const mid = (w) => ({ x: w.x + 50, y: w.y + 50 });
+  assert.deepEqual(walkedLegs([way(1, 2)], { from: way(1, 1), mid }).map((l) => [l.from, l.to]), [[{ x: 150, y: 150 }, { x: 150, y: 250 }]]);
+});
+
+test("the squares a move entered leave out the one it began in", () => {
+  const legs = walkedLegs([way(1, 2), way(1, 3)], { from: way(1, 1), mid: (w) => ({ x: w.x + 50, y: w.y + 50 }) });
+  assert.deepEqual(squaresEntered(legs, 100), ["1,2", "1,3"], "not 1,1, where it was already standing");
+  assert.deepEqual(squaresEntered([], 100), []);
+  assert.deepEqual(squaresEntered(undefined, 100), []);
+  // A move that never leaves its own square enters nothing at all.
+  assert.deepEqual(squaresEntered(walkedLegs([way(1, 1)], { from: way(1, 1), mid: (w) => ({ x: w.x + 50, y: w.y + 50 }) }), 100), []);
+});
+
+test("a move reported again with a longer path is walked only from where it was left", () => {
+  const ways = [way(1, 2), way(1, 3), way(1, 4)];
+  const first = moveSince({ origin: way(1, 1), passed: { waypoints: ways.slice(0, 1) } }, undefined);
+  assert.deepEqual([first.from.y, first.ways.length, first.done], [100, 1, 1]);
+  const second = moveSince({ origin: way(1, 1), passed: { waypoints: ways.slice(0, 2) } }, first);
+  assert.deepEqual([second.from.y, second.ways.map((w) => w.y), second.done], [200, [300], 2], "only the new waypoint");
+  const third = moveSince({ origin: way(1, 1), passed: { waypoints: ways } }, second);
+  assert.deepEqual([third.from.y, third.ways.map((w) => w.y)], [300, [400]]);
+  const again = moveSince({ origin: way(1, 1), passed: { waypoints: ways } }, third);
+  assert.deepEqual(again.ways, [], "the very same report again walks nothing");
+});
+
+test("another move is walked whole, even one starting from the very same square", () => {
+  const seen = moveSince({ origin: way(1, 1), passed: { waypoints: [way(1, 2), way(1, 3)] } }, undefined);
+  const other = moveSince({ origin: way(1, 1), passed: { waypoints: [way(2, 1)] } }, seen);
+  assert.deepEqual([other.from.y, other.ways.map((w) => w.x)], [100, [200]], "from the origin, the whole path");
+  const sameLength = moveSince({ origin: way(1, 1), passed: { waypoints: [way(2, 1), way(3, 1)] } }, seen);
+  assert.deepEqual(sameLength.ways.map((w) => w.x), [200, 300], "the same number of waypoints, another path");
+  // Where Foundry names a move, a different name is a different move however alike the paths are.
+  const named = moveSince({ id: "m1", origin: way(1, 1), passed: { waypoints: [way(1, 2)] } }, undefined);
+  const renamed = moveSince({ id: "m2", origin: way(1, 1), passed: { waypoints: [way(1, 2), way(1, 3)] } }, named);
+  assert.deepEqual(renamed.ways.map((w) => w.y), [200, 300]);
+  assert.equal(moveSince({ id: "m1", origin: way(1, 1), passed: { waypoints: [way(1, 2), way(1, 3)] } }, named).ways.length, 1, "the same name goes on from where it was");
+});
+
+test("moveSince holds nothing against junk", () => {
+  assert.deepEqual(moveSince().ways, []);
+  assert.deepEqual(moveSince({}, { done: 3, sig: "x" }).ways, []);
+  assert.deepEqual(moveSince({ passed: { waypoints: "x" } }).ways, []);
+  assert.equal(moveSince({ origin: way(0, 0), passed: { waypoints: [way(1, 1)] } }, { done: 9, sig: "x" }).ways.length, 1, "more remembered than reported: walked whole");
+  assert.equal(movePathName(undefined, 2), "");
+  assert.equal(movePathName([way(1, 1)], 0), "");
+});
+
+// ---- thin ice is water: a region given another floor is not thin ice ----
+
+test("thin ice is off for a region that is no longer water, and its switch is still there to turn off", () => {
+  assert.equal(thinIceOn({ iceThin: true }), true, "a water region with no floor of its own");
+  assert.equal(thinIceOn({ iceThin: true, floor: "water" }), true);
+  assert.equal(thinIceOn({ iceThin: true, floor: "grass" }), false, "open ground is not thin ice");
+  assert.equal(thinIceOn({ iceThin: true, floor: "stone" }), false);
+  assert.equal(thinIceOn({ iceThin: true, cavern: "fungus" }), false, "nor is a cave");
+  assert.equal(thinIceOn({ iceThin: true, overWater: true, floor: "wood" }), false, "nor a deck over the water");
+  assert.equal(thinIceOn({ iceThin: true, indoors: true, floor: "wood" }), false, "nor a room");
+  assert.equal(thinIceOn({ iceThin: false, floor: "water" }), false);
+  // The flag itself is left alone, so taking the region back to water brings the switch back showing it on.
+  assert.equal(iceSettingsOf({ flags: { animater: { iceThin: true, floor: "grass" } } }).thin, false);
+  assert.equal(iceSettingsOf({ flags: { animater: { iceThin: true, floor: "water", iceHolds: "lg" } } }).holds, "lg");
+});
+
+// ---- the squares a fire melts are the ones it reaches ----
+
+test("only where the region and the fire overlap is walked, so a wide lake still melts", () => {
+  // Eighty-one by fifty squares is past the cap: walked whole it melts nothing at all.
+  const lake = { x: 0, y: 0, w: 8100, h: 5000 };
+  const fire = (p) => Math.hypot(p.x - 3050, p.y - 2050) <= 120;
+  assert.deepEqual(iceMeltSquares({ bounds: lake, grid: GRID, inArea: fire }), [], "the whole lake is more than the cap allows");
+  assert.deepEqual(iceMeltSquares({ bounds: lake, within: { x: 2930, y: 1930, w: 240, h: 240 }, grid: GRID, inArea: fire }).sort(),
+    ["29,20", "30,19", "30,20", "30,21", "31,20"], "narrowed to the fire's own box, the squares under it melt");
+});
+
+test("the fire's box never widens the walk past the region, and no box at all walks the region", () => {
+  const region = { x: 0, y: 0, w: 200, h: 200 };
+  assert.deepEqual(iceMeltSquares({ bounds: region, within: { x: 100, y: 100, w: 1000, h: 1000 }, grid: GRID, inArea: () => true }), ["1,1"]);
+  assert.deepEqual(iceMeltSquares({ bounds: region, within: { x: 400, y: 400, w: 100, h: 100 }, grid: GRID, inArea: () => true }), [], "a fire nowhere near it melts nothing");
+  assert.deepEqual(iceMeltSquares({ bounds: region, within: null, grid: GRID, inArea: () => true }).length, 4, "no box known: the region itself");
+  for (const junk of [{ x: 0, y: 0, w: 0, h: 0 }, { x: NaN, y: 0, w: 10, h: 10 }, "box", 7]) {
+    assert.equal(iceMeltSquares({ bounds: region, within: junk, grid: GRID, inArea: () => true }).length, 4, `${JSON.stringify(junk)} is no box, so the region itself`);
+  }
 });

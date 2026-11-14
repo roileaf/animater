@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { crackLines, holeOutline, shards, meltOutline, slushRing, iceBreakOf } from "../../../scripts/engines/regions/ice-break-look.mjs";
+import { crackLines, holeOutline, shards, meltOutline, slushRing, iceBreakOf, iceHoleAt, iceHoleRings } from "../../../scripts/engines/regions/ice-break-look.mjs";
 import { MELTED } from "../../../scripts/engines/regions/ice-break-look.mjs";
 
 const GRID = 100;
@@ -203,4 +203,92 @@ test("a region draws a melted square as a melt and a broken one as a break", () 
   assert.ok(melt.edge > broke.edge, "the melt's water fades into the ice; the break ends at a hard edge");
   const chips = floating.find((s) => s.id === "reg1:ice:1,1").list, mid = centre("1,1", GRID);
   assert.ok(chips.length >= 6 && chips.every((c) => Math.hypot(c.x - mid.x, c.y - mid.y) > GRID * 0.15), "slush at its edge, not shards in its middle");
+});
+
+// ---- where the ice has given way, the floor is water ----
+// The question is asked of the hole's own drawn shape and not of the square it is keyed by, so it lives here, with that
+// shape. A hole is drawn a square wider than what fell through it, and a footprint an even number of squares across
+// stands with its centre in a different square from the one its weight broke, so a square key cannot answer it.
+
+const holed = (thinIce, { thin = true, holds = "med" } = {}) => ({ id: "reg1", flags: { animater: { iceThin: thin, iceHolds: holds, thinIce } } });
+
+test("a point in a hole is water; the rest of the ice, and a region with no holes, is not", () => {
+  const regions = [holed({ cracks: { "0,0": 1 }, holes: { "3,4": 2 } })];
+  assert.equal(iceHoleAt({ x: 350, y: 450 }, { regions, grid: GRID }), true);
+  assert.equal(iceHoleAt({ x: 50, y: 50 }, { regions, grid: GRID }), false, "a cracked square still carries a creature");
+  assert.equal(iceHoleAt({ x: 350, y: 450 }, { regions: [holed({})], grid: GRID }), false);
+  assert.equal(iceHoleAt({ x: 350, y: 450 }, { regions: [holed({ holes: { "3,4": 2 } }, { thin: false })], grid: GRID }), false, "thin ice off: the region's holes are not ours");
+});
+
+test("the water reaches as far as the hole is drawn, and no further", () => {
+  // A Large creature's hole is drawn three squares across, centred on the square it broke: the dark water beside that
+  // square is water underfoot too, and what is drawn as ice still carries.
+  const region = holed({ holes: { "3,4": 2 } }), regions = [region];
+  const ring = iceBreakOf(region, { grid: GRID }).holes[0].areas[0];
+  const ask = (p) => iceHoleAt(p, { regions, grid: GRID });
+  let water = 0, ice = 0;
+  for (let col = 0; col <= 7; col++) for (let row = 1; row <= 8; row++) {
+    const p = { x: (col + 0.5) * GRID, y: (row + 0.5) * GRID };
+    // Ray cast against the very ring the water engine is handed, as the only other reading of the same shape.
+    let inRing = false;
+    for (let i = 0, j = ring.length - 2; i < ring.length; j = i, i += 2) {
+      const ax = ring[i], ay = ring[i + 1], bx = ring[j], by = ring[j + 1];
+      if (ay > p.y !== by > p.y && p.x < ((bx - ax) * (p.y - ay)) / (by - ay) + ax) inRing = !inRing;
+    }
+    assert.equal(ask(p), inRing, `${col},${row} reads as ${ask(p) ? "water" : "ice"} and is drawn as ${inRing ? "water" : "ice"}`);
+    if (inRing) water++; else ice++;
+  }
+  assert.ok(water >= 5, `the hole is wider than its one square: ${water} squares of water`);
+  assert.ok(ice > water, "and the ice round it still carries");
+});
+
+test("the region has the last say over a point in one of its holes", () => {
+  const regions = [holed({ holes: { "3,4": 2 } })];
+  const asked = [];
+  assert.equal(iceHoleAt({ x: 350, y: 450 }, { regions, grid: GRID, inside: (doc, point) => { asked.push([doc.id, point.x, point.y]); return false; } }), false);
+  assert.deepEqual(asked, [["reg1", 350, 450]], "asked once, about the point itself");
+  assert.equal(iceHoleAt({ x: 50, y: 50 }, { regions, grid: GRID, inside: () => { throw new Error("never asked outside a hole"); } }), false);
+});
+
+test("iceHoleAt never throws on junk, and a region that throws is only itself", () => {
+  const good = holed({ holes: { "3,4": 2 } });
+  assert.equal(iceHoleAt({ x: 350, y: 450 }, { regions: [null, undefined, {}, "x", good], grid: GRID }), true);
+  assert.equal(iceHoleAt({ x: 350, y: 450 }, { regions: [good], grid: GRID, inside: () => { throw new Error("broken region"); } }), false);
+  assert.equal(iceHoleAt(null, { regions: [good], grid: GRID }), false);
+  assert.equal(iceHoleAt({ x: 350, y: 450 }, { regions: [good], grid: 0 }), false);
+  assert.equal(iceHoleAt({ x: 350, y: 450 }), false);
+  assert.equal(iceHoleAt(), false);
+});
+
+test("the rings the floor is asked about are the very rings the water engine is handed", () => {
+  const region = holed({ holes: { "3,4": 2, "0,0": 4 } });
+  const rings = iceHoleRings(region, { grid: GRID });
+  const drawn = iceBreakOf(region, { grid: GRID }).holes;
+  assert.equal(rings.length, 2);
+  for (const { key, ring } of rings) {
+    const spec = drawn.find((h) => h.id === `reg1:ice:${key}`);
+    assert.deepEqual(spec.areas[0], ring.flatMap((p) => [p.x, p.y]), `${key} is one shape, not two`);
+  }
+});
+
+test("the same stored ice gives byte-identical rings every time, so the water keeps its mesh", () => {
+  const stored = { holes: { "3,4": 2 } };
+  const once = iceBreakOf(holed(stored), { grid: GRID }).holes[0].areas;
+  const twice = iceBreakOf(holed(stored), { grid: GRID }).holes[0].areas;
+  assert.equal(JSON.stringify(once), JSON.stringify(twice));
+  const kept = holed(stored);
+  assert.equal(JSON.stringify(iceBreakOf(kept, { grid: GRID }).holes[0].areas), JSON.stringify(iceBreakOf(kept, { grid: GRID }).holes[0].areas), "and again from the one region, through the kept rings");
+  const more = iceBreakOf(holed({ holes: { "3,4": 2, "9,9": 1 } }), { grid: GRID }).holes;
+  assert.equal(JSON.stringify(more.find((h) => h.id === "reg1:ice:3,4").areas), JSON.stringify(once), "a second hole never moves the first");
+});
+
+test("a region's kept rings follow its stored ice when it changes", () => {
+  const region = holed({ holes: { "3,4": 2 } });
+  assert.equal(iceHoleRings(region, { grid: GRID }).length, 1);
+  region.flags.animater.thinIce = { holes: { "3,4": 2, "0,0": 1 } };
+  assert.equal(iceHoleRings(region, { grid: GRID }).length, 2, "the new hole is there");
+  region.flags.animater.thinIce = { holes: {} };
+  assert.deepEqual(iceHoleRings(region, { grid: GRID }), [], "and a refreeze leaves nothing behind");
+  region.flags.animater.thinIce = { holes: { "3,4": 2 } };
+  assert.equal(iceHoleRings(region, { grid: 50 })[0].ring[0].x, iceHoleRings(holed({ holes: { "3,4": 2 } }), { grid: 50 })[0].ring[0].x, "and another grid is drawn for that grid");
 });

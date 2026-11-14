@@ -63,8 +63,9 @@ const view = (scene) => ({
 // A token as big as its size really is — a Large creature is two squares wide, a Gargantuan four — standing with its
 // top-left corner in the square named, and a move as Foundry hands it over: the waypoints passed, each with the corner
 // the token reached and the footprint it reached it with.
+let movers = 0;
 const mover = (scene, { name = "Torvald", size = "huge", width = squaresAcross(size) } = {}) => ({
-  id: "tok1", name, parent: scene, actor: { size }, width, height: width, elevation: 0,
+  id: `tok${++movers}`, name, parent: scene, actor: { size }, width, height: width, elevation: 0,
 });
 const waypoint = (col, row, extra = {}, wide = 1) => ({ x: col * GRID, y: row * GRID, width: wide, height: wide, elevation: 0, action: "walk", teleport: false, ...extra });
 const moved = (doc, squares, options = {}) => {
@@ -96,37 +97,48 @@ test("a creature the ice holds writes nothing at all", async () => {
   assert.deepEqual(whispers, []);
 });
 
-test("a creature two sizes over the limit breaks the square it entered, with one hole and no cracks", async () => {
-  // A Huge creature is three squares wide: cornered on 1,1 it covers 1 to 3 each way and its weight is in 2,2.
+test("a creature two sizes over the limit breaks the first square it entered, with one hole and no cracks", async () => {
+  // A Huge creature is three squares wide: cornered on 1,1 it covers 1 to 3 each way and its weight is in 2,2. Stepping
+  // south it enters 2,3 and then 2,4; the square it was already standing in was not entered by this move, and the first
+  // one that was is where it goes through.
   const scene = await walk([region("reg1")], [[1, 1], [1, 2], [1, 3]], { size: "huge" });
   assert.equal(scene.writes.length, 1);
   const { type, updates } = scene.writes[0];
   assert.equal(type, "Region");
-  assert.deepEqual(updates, [{ _id: "reg1", [`${FLAG}.holes.2,2`]: 3 }]);
+  assert.deepEqual(updates, [{ _id: "reg1", [`${FLAG}.holes.2,3`]: 3 }]);
   assert.deepEqual(whispers.map((w) => w.content), ["Torvald breaks through the ice into the water (swim)."]);
   assert.deepEqual(whispers[0].whisper, ["gm1"], "the GMs alone");
 });
 
-test("one size over cracks every square it crossed and breaks the one it stopped on", async () => {
-  const scene = await walk([region("reg1")], [[1, 1], [1, 2], [1, 3]], { name: "Bron", size: "lg" });
+test("one size over cracks every square it entered and breaks the one it stopped on", async () => {
+  // Four squares walked over, three of them entered: the square it started in is not one of them.
+  const scene = await walk([region("reg1")], [[1, 1], [1, 2], [1, 3], [1, 4]], { name: "Bron", size: "lg" });
   assert.deepEqual(scene.writes[0].updates, [{
     _id: "reg1",
-    [`${FLAG}.holes.1,3`]: 2,
-    [`${FLAG}.cracks.1,1`]: 1,
+    [`${FLAG}.holes.1,4`]: 2,
     [`${FLAG}.cracks.1,2`]: 1,
+    [`${FLAG}.cracks.1,3`]: 1,
   }]);
+});
+
+test("a creature already standing on thin ice does not break the square under its own feet", async () => {
+  // The bug this guards: the origin square counted as entered, so a Huge creature already on the ice punched a hole
+  // beneath itself, strode on, and did it again next move without ever falling in.
+  const scene = await walk([region("reg1")], [[1, 1], [1, 2]], { size: "huge" });
+  const [u] = scene.writes[0].updates;
+  assert.deepEqual(Object.keys(u).filter((k) => k !== "_id"), [`${FLAG}.holes.2,3`], "the square it entered, not the one it was on");
 });
 
 test("the squares written are the ones the move passed through, not the ones its waypoints landed on", async () => {
   // One waypoint, two squares away on the diagonal: the square between them cracks as well.
   const scene = await walk([region("reg1")], [[0, 0], [2, 2]], { name: "Bron", size: "lg" });
   const [u] = scene.writes[0].updates;
-  assert.deepEqual(Object.keys(u).filter((k) => k.includes("cracks")).sort(), [`${FLAG}.cracks.0,0`, `${FLAG}.cracks.1,1`]);
+  assert.deepEqual(Object.keys(u).filter((k) => k.includes("cracks")).sort(), [`${FLAG}.cracks.1,1`]);
   assert.equal(u[`${FLAG}.holes.2,2`], 2, "and it stopped on the far one");
 });
 
 test("a second heavy creature crossing the first's cracks falls through them", async () => {
-  const scene = await walk([region("reg1", { thinIce: { cracks: { "1,1": 1, "1,2": 1 } } })], [[1, 1], [1, 2]], { name: "Bron", size: "lg" });
+  const scene = await walk([region("reg1", { thinIce: { cracks: { "1,1": 1, "1,2": 1 } } })], [[1, 0], [1, 1], [1, 2]], { name: "Bron", size: "lg" });
   const [u] = scene.writes[0].updates;
   assert.equal(u[`${FLAG}.holes.1,1`], 2);
   assert.equal(u[`${FLAG}.holes.1,2`], 2);
@@ -134,7 +146,7 @@ test("a second heavy creature crossing the first's cracks falls through them", a
 });
 
 test("a crack cleared by name reaches the scene as the database's own deletion, comma and minus and all", async () => {
-  const scene = await walk([region("reg1", { thinIce: { cracks: { "-1,2": 1 } } })], [[-2, 2], [-1, 2]], { name: "Bron", size: "lg" });
+  const scene = await walk([region("reg1", { thinIce: { cracks: { "-1,2": 1 } } })], [[-3, 2], [-2, 2], [-1, 2]], { name: "Bron", size: "lg" });
   const [u] = scene.writes[0].updates;
   assert.ok(!Object.keys(u).some((k) => k.includes("-=")), `the deprecated key form never leaves: ${Object.keys(u)}`);
   assert.ok(u[`${FLAG}.cracks.-1,2`] instanceof foundry.data.operators.ForcedDeletion, `the crack is deleted by name: ${Object.keys(u)}`);
@@ -171,7 +183,7 @@ test("two thin-ice regions under one move are each written, and one that throws 
   broken.testPoint = () => { throw new Error("a region mid-change"); };
   const scene = await walk([broken, region("reg2")], [[1, 1], [1, 2]], { size: "huge" });
   assert.equal(scene.writes.length, 1);
-  assert.deepEqual(scene.writes[0].updates, [{ _id: "reg2", [`${FLAG}.holes.2,2`]: 3 }]);
+  assert.deepEqual(scene.writes[0].updates, [{ _id: "reg2", [`${FLAG}.holes.2,3`]: 3 }]);
 });
 
 test("a client that is not the active GM writes nothing: every screen draws what the GM stored", async () => {
@@ -193,24 +205,68 @@ test("a move on another scene than the one in view is left to that scene's own G
 });
 
 test("nothing is written twice: a move over a square that is already a hole changes nothing", async () => {
-  const scene = await walk([region("reg1", { thinIce: { holes: { "2,2": 3 } } })], [[1, 1], [1, 2]], { size: "huge" });
+  const scene = await walk([region("reg1", { thinIce: { holes: { "2,3": 3 } } })], [[1, 1], [1, 2]], { size: "huge" });
   assert.deepEqual(scene.writes, []);
   assert.deepEqual(whispers, [], "and the GM is not told again");
 });
 
 test("a Large creature's weight is read in a square it really stands in, walking either way", async () => {
-  // A Large creature is two squares wide: cornered on 1,1 it covers columns 1 and 2 and rows 1 and 2, and its middle is
-  // the point 200,200 — the bare corner of 2,2. The square it cracks must be one of the four it stands on.
+  // A Large creature is two squares wide: cornered on 2,1 it covers columns 2 and 3 and rows 1 and 2, and its middle is
+  // the point 300,200 — the bare corner of 3,2. The square it breaks must be one of the four it stands on, and it is the
+  // one nearer its own corner: 2,1, behind it, not 3,2 ahead of it.
   const east = await walk([region("reg1")], [[1, 1], [2, 1]], { name: "Bron", size: "lg" });
-  assert.deepEqual(east.writes[0].updates, [{ _id: "reg1", [`${FLAG}.holes.2,1`]: 2, [`${FLAG}.cracks.1,1`]: 1 }]);
+  assert.deepEqual(east.writes[0].updates, [{ _id: "reg1", [`${FLAG}.holes.2,1`]: 2 }]);
   const south = await walk([region("reg1")], [[1, 1], [1, 2]], { name: "Bron", size: "lg" });
-  assert.deepEqual(south.writes[0].updates, [{ _id: "reg1", [`${FLAG}.holes.1,2`]: 2, [`${FLAG}.cracks.1,1`]: 1 }]);
+  assert.deepEqual(south.writes[0].updates, [{ _id: "reg1", [`${FLAG}.holes.1,2`]: 2 }]);
 });
 
-test("a Gargantuan creature breaks the first square under it, walking either way", async () => {
-  // Four squares wide: cornered on 0,0 it covers 0 to 3 each way, and of the middle two, 1 and 2, the first is read.
-  for (const to of [[1, 0], [0, 1]]) {
+test("a Gargantuan creature breaks the first square it enters, walking either way", async () => {
+  // Four squares wide: cornered on 1,0 it covers columns 1 to 4, and of the middle two, 2 and 3, the first is read.
+  for (const [to, key] of [[[1, 0], "2,1"], [[0, 1], "1,2"]]) {
     const scene = await walk([region("reg1")], [[0, 0], to], { name: "Grond", size: "grg" });
-    assert.deepEqual(scene.writes[0].updates, [{ _id: "reg1", [`${FLAG}.holes.1,1`]: 4 }], `walking to ${to}`);
+    assert.deepEqual(scene.writes[0].updates, [{ _id: "reg1", [`${FLAG}.holes.${key}`]: 4 }], `walking to ${to}`);
   }
+});
+
+test("a move reported twice over, with a longer path the second time, never escalates what it already cracked", async () => {
+  // Foundry may fire this hook once per segment with a growing `passed` list. A crack crossed again breaks, so a second
+  // firing that repeated the squares of the first would punch holes through a path it had only cracked, and no refreeze
+  // ever asked for. Each square is judged once, by the one firing that first entered it.
+  const scene = makeScene([region("reg1")]);
+  globalThis.canvas = view(scene);
+  whispers.length = 0;
+  const doc = mover(scene, { name: "Bron", size: "lg" });
+  const ways = [[1, 2], [1, 3], [1, 4]].map((s) => waypoint(...s, {}, doc.width));
+  for (const upto of [1, 2, 3]) for (const fn of moveToken) fn(doc, { origin: waypoint(1, 1, {}, doc.width), passed: { waypoints: ways.slice(0, upto) } });
+  await settle();
+  const written = scene.writes.flatMap(({ updates }) => Object.keys(updates[0]).filter((k) => k !== "_id"));
+  assert.deepEqual(written, [`${FLAG}.holes.1,2`, `${FLAG}.holes.1,3`, `${FLAG}.holes.1,4`],
+    `one write for each square entered, each judged once: ${written}`);
+  assert.equal(scene.writes.length, 3, "one write for each new segment, none for a segment already walked");
+});
+
+test("a second, separate move from the very same square is walked whole", async () => {
+  // The token is the same and the move begins where the last one did; only the path tells them apart.
+  const scene = makeScene([region("reg1")]);
+  globalThis.canvas = view(scene);
+  const doc = mover(scene, { name: "Bron", size: "lg" });
+  for (const to of [[1, 2], [2, 1]]) for (const fn of moveToken) fn(doc, { origin: waypoint(1, 1, {}, doc.width), passed: { waypoints: [waypoint(...to, {}, doc.width)] } });
+  await settle();
+  const written = scene.writes.flatMap(({ updates }) => Object.keys(updates[0]).filter((k) => k !== "_id")).sort();
+  assert.deepEqual(written, [`${FLAG}.holes.1,2`, `${FLAG}.holes.2,1`], `both moves were judged: ${written}`);
+});
+
+test("two thin-ice regions over the same square break once, and the GM is told once", async () => {
+  const scene = await walk([region("reg1"), region("reg2")], [[1, 1], [1, 2]], { size: "huge" });
+  assert.equal(scene.writes.length, 1, "one batch");
+  assert.equal(scene.writes[0].updates.length, 2, "each region keeps its own hole");
+  assert.deepEqual(whispers.map((w) => w.content), ["Torvald breaks through the ice into the water (swim)."], "one break, one whisper");
+});
+
+test("a break said once, over a crack said somewhere else in the same move", async () => {
+  // Only the half of the move that broke is worth telling the GM about.
+  const north = (point) => Math.floor(point.y / GRID) <= 2;
+  const scene = await walk([region("reg1", { inside: north }), region("reg2", { inside: (p) => !north(p) })], [[1, 1], [1, 2], [1, 3]], { name: "Bron", size: "lg" });
+  assert.ok(scene.writes.length, "something was written");
+  assert.deepEqual(whispers.map((w) => w.content), ["Bron breaks through the ice into the water (swim)."]);
 });

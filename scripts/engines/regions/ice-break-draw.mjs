@@ -46,7 +46,10 @@ export function createIceBreakLook({ PIXI, layer, grid = () => 100 }) {
     get busy() { return afloat.length > 0; },
     sync({ cracks = [], shards = [] } = {}) {
       const key = JSON.stringify([cracks.map((c) => c.lines), shards.map((s) => s.list), grid()]);
-      if (key === shown) return;
+      // What was drawn last time is only still on screen while its Graphics is: a scene switch destroys it with the map it
+      // belonged to, and the same state again must then draw it afresh rather than being waved through as already drawn.
+      const gone = !!cracksArt && (cracksArt.destroyed || !shardsArt || shardsArt.destroyed || cracksArt.parent !== layer?.());
+      if (key === shown && !gone) return;
       afloat = shards.flatMap((s) => s.list);
       // (Nothing to draw and nothing drawn yet: no layer is made for a map with no thin ice.)
       if (!cracks.length && !afloat.length && (!cracksArt || cracksArt.destroyed)) { shown = key; return; }

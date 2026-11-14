@@ -44,7 +44,12 @@ export function crackLines(key, { grid, seed = 0 } = {}) {
     const steps = 3 + Math.floor(next() * 2);
     for (let s = 0; s < steps; s++) {
       angle += (next() - 0.5) * 1.1; // each step veers, so the crack zigzags
-      const len = grid * 0.13 * (0.7 + next() * 0.6);
+      // Short enough that the clamp below stops deciding where a crack goes: four steps of the usual length reach about
+      // 0.42 of a grid from the middle, inside the 0.47 the clamp allows (only four at their very longest, all pointing
+      // the same way, would reach past it, and each step veers). At the length this was, a crack reached 0.74 and was
+      // pinned flat against the square's edge — which read as a straight run down the grid line, and lined up with the
+      // next cracked square's along their shared border.
+      const len = grid * 0.09 * (0.7 + next() * 0.6);
       x = clamp(x + Math.cos(angle) * len, x0); y = clamp(y + Math.sin(angle) * len, y0);
       line.push({ x, y });
     }
@@ -163,20 +168,73 @@ const meltLook = { ...holeLook, edge: 2.2, depth: { hold: 1.1, dark: 0.45 } };
  *  cracks: [{ id, lines }] one per cracked square, shards: [{ id, list }] one per hole }. All empty unless the region has thin
  *  ice on; ids are stable and the numbers depend only on what is stored, so every client draws the same break and the water
  *  engine's cache (keyed on the areas) keeps its meshes between rounds. */
-export function iceBreakOf(region, { grid } = {}) {
-  const none = { holes: [], cracks: [], shards: [] };
-  if (!region?.id || !validGrid(grid)) return none;
+/** Every hole one region has, as the one shape both the screen and the floor go by: [{ key, melted, size, ring }]. The
+ *  water engine draws this ring, and `iceHoleAt` asks this very ring whether a creature is standing in open water, so the
+ *  dark water a player sees and the water underfoot can never be two different shapes. [] unless the region has thin ice
+ *  on and something stored. Kept while the region's stored ice and the grid stay as they are: the drawing asks every sync
+ *  and the floor asks for every creature on every frame, and the same stored state must give byte-identical rings each
+ *  time or the water engine throws its mesh away and builds it again. */
+export function iceHoleRings(region, { grid } = {}) {
+  if (!region?.id || typeof region !== "object" || !validGrid(grid)) return [];
   const { thin, holds } = iceSettingsOf(region);
-  if (!thin) return none;
-  const { cracks, holes, holeSizes, melts } = iceStateOf(region);
-  const seed = seedOfId(region.id), usual = breakerSquares(holds);
-  const out = { holes: [], cracks: [], shards: [] };
+  if (!thin) return [];
+  const { holes, holeSizes, melts } = iceStateOf(region);
+  if (!holes.length) return [];
+  const sig = `${grid}|${holds}|${holes.join(" ")}|${holes.map((k) => holeSizes?.[k] ?? "").join(" ")}|${melts.join(" ")}`;
+  const had = ringCache.get(region);
+  if (had && had.sig === sig) return had.list;
+  const seed = seedOfId(region.id), usual = breakerSquares(holds), list = [];
   for (const key of holes) {
     // Fire melted this square: one square of open water, lobed and soft-edged, with its ice floating at the rim as slush.
     const melted = melts.includes(key);
     const stored = Number(holeSizes?.[key]), size = melted ? 1 : stored > 0 && Number.isFinite(stored) ? stored : usual; // (the creature that fell, once the ice stores it)
     const ring = melted ? meltOutline(key, { grid, seed, size }) : holeOutline(key, { grid, seed, size });
-    if (!ring.length) continue;
+    if (ring.length) list.push({ key, melted, size, ring });
+  }
+  ringCache.set(region, { sig, list });
+  return list;
+}
+const ringCache = new WeakMap();
+
+// Whether a point is inside a ring of points, by ray casting. The rings here are star-shaped and never cross themselves.
+function inRing(x, y, ring) {
+  let yes = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i], b = ring[j];
+    if (a.y > y !== b.y > y && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) yes = !yes;
+  }
+  return yes;
+}
+
+/** Whether a point is in a hole in the thin ice, so the floor there is open water: inside the very shape one of these
+ *  regions' holes is drawn as, and the region's own say over the point (`inside(doc, point)`, Foundry's testPoint, handed
+ *  in to keep this free of Foundry). The hole's shape answers it and not the square it is keyed by: a hole is drawn a
+ *  square wider than the creature that fell through, so the dark water beside its key square is water underfoot as well,
+ *  and a footprint an even number of squares across stands with its centre in a different square from the one its weight
+ *  broke. A region that throws is only itself. */
+export function iceHoleAt(point, { regions = [], grid, inside = () => true } = {}) {
+  const x = Number(point?.x), y = Number(point?.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+  for (const doc of regions ?? []) {
+    try {
+      for (const { ring } of iceHoleRings(doc, { grid })) {
+        if (!inRing(x, y, ring)) continue;
+        if (inside(doc, point)) return true;
+      }
+    } catch { /* a region mid-change is only itself */ }
+  }
+  return false;
+}
+
+export function iceBreakOf(region, { grid } = {}) {
+  const none = { holes: [], cracks: [], shards: [] };
+  if (!region?.id || !validGrid(grid)) return none;
+  const { thin, holds } = iceSettingsOf(region);
+  if (!thin) return none;
+  const { cracks, holes } = iceStateOf(region);
+  const seed = seedOfId(region.id);
+  const out = { holes: [], cracks: [], shards: [] };
+  for (const { key, melted, size, ring } of iceHoleRings(region, { grid })) {
     const id = `${region.id}:ice:${key}`;
     out.holes.push({ id, areas: [flatten(ring)], ...(melted ? meltLook : holeLook) });
     out.shards.push({ id, list: melted ? slushRing(key, { grid, seed, size }) : shards(key, { grid, seed, size }) });
