@@ -59,7 +59,7 @@ function windBoost(wind, from, to) {
 export const cellId = (i) => `cell:${i}`;
 
 // A grass square's rectangle, from its index in a grid of `cols` squares whose top-left corner is `origin`.
-function cellRect(i, { cols, origin, cell }) {
+export function cellRect(i, { cols, origin, cell }) {
   return { x: origin.x + (i % cols) * cell, y: origin.y + Math.floor(i / cols) * cell, w: cell, h: cell };
 }
 
