@@ -1215,8 +1215,10 @@ export function swimOutWaypoints(start, waypoints, floorAt, { walk = 'walk', bas
   return out;
 }
 // Nothing that goes over or under the water is ever in it: a flier above the surface, a burrower beneath the bed, a blink
-// across.
-const OUT_OF_WATER = new Set(['fly', 'burrow', 'displace']);
+// across, a creature in the middle of a jump over it. (Swimming is not here, and is the reason this is not the list of
+// actions that leave the floor alone — thin-ice.mjs OFF_THE_FLOOR, which the ice and the footprints share: a creature
+// swimming leaves no print and cracks no ice, but it is as plainly in the water as anything can be.)
+const OUT_OF_WATER = new Set(['fly', 'burrow', 'displace', 'jump']);
 // Depth is relative to the viewed level, not absolute world elevation. Swimming
 // below water (or explicit Swim on an underwater map) is never burrowing.
 export function movementEnvironment(token, floor) {

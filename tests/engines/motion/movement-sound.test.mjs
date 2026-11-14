@@ -486,3 +486,16 @@ test('nothing over or under the hole is in it: a flier, a burrower, a blink acro
  assert.equal(movementEnvironment({elevation:0,base:0,action:'walk'},'water').submerged,false,'water underfoot alone is wading, not swimming');
  assert.equal(movementEnvironment({elevation:10,base:0,action:'walk',hole:true},'water').submerged,false,'above the floor it is over the hole, not in it');
 });
+
+// Thin ice that gave way (engines/regions/thin-ice.mjs): the water is at the level's own floor, so a creature standing in
+// the hole swims there and is as deep in it as one below the floor, without its elevation ever changing.
+test('a creature standing in a hole in the ice is in the water; one going over or under it is not', () => {
+  const inHole = { elevation: 0, base: 0, hole: true };
+  assert.deepEqual(movementEnvironment({ ...inHole, action: 'walk' }, 'water'), { relative: 0, swimming: true, submerged: true, underground: false });
+  assert.equal(movementEnvironment({ ...inHole, action: 'swim' }, 'water').submerged, true, 'swimming in it is still in it');
+  for (const action of ['fly', 'burrow', 'displace', 'jump']) {
+    assert.equal(movementEnvironment({ ...inHole, action }, 'water').submerged, false, `${action} over the hole`);
+  }
+  assert.equal(movementEnvironment({ elevation: 0, base: 0, hole: true, action: 'walk' }, 'grass').submerged, false, 'and a hole only means water where the floor is water');
+  assert.equal(movementEnvironment({ elevation: 5, base: 0, hole: true, action: 'walk' }, 'water').submerged, false, 'over the hole, still over it');
+});
