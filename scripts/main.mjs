@@ -317,7 +317,7 @@ import { separateBatchBuffers, gpuName } from './core/apple-gpu.mjs';
 import {ConditionBody,bodyTreatment} from './engines/motion/condition-body.mjs';
 import { IdleLife, breathes, idleKind, pickIdle } from "./engines/motion/idle-life.mjs";
 import { seaStrength, rollSeed, shipRoll, onDeck, carriedBy, deckShade, hullWash, tileMiddle } from "./engines/motion/ship-roll.mjs";
-import { ABOARD, KIND as CARRIER_KIND, STOW as CARRIER_STOW, RIDING as CARRIER_RIDING, CARRIER_KINDS, carrierKind, kindLabel, carrierAt, pulledOff, boardList, stillAboard, ridePlan, landPlan, boardLabel, capacityOf, overCapacity, tooBig } from "./engines/motion/carriers.mjs";
+import { ABOARD, KIND as CARRIER_KIND, STOW as CARRIER_STOW, RIDING as CARRIER_RIDING, CARRIER_KINDS, carrierKind, kindLabel, pulledOff, boardList, stillAboard, ridePlan, landPlan, boardLabel, capacityOf, overCapacity, tooBig } from "./engines/motion/carriers.mjs";
 import { LOOK as CARRIER_LOOK, CARRIER_LOOKS, lookStep, lookSize, lookFor, trueTall, trueSquares, framePath, squareMetres, drawnSize, idleFrame, headUp } from "./engines/motion/carrier-look.mjs";
 import { paintCarrier } from "./engines/motion/carrier-paint.mjs";
 import { rollFile, rollShape, lapFile, lapShape, paceGap, paceVoice, knocksFor, teamCall, callGap, carrierSoundFiles } from "./engines/sound/carrier-sound.mjs";
@@ -3967,7 +3967,6 @@ const unloadToward = (doc) => {
 };
 // Whether the carrier system is on at all for this world.
 const carriersOn = () => { try { return game.settings.get(ID, "carriers") !== false; } catch { return true; } };
-const carriersHere = (scene) => [...(scene?.tokens ?? [])].filter((t) => kindOf(t)).map((t) => ({ id: t.id, kind: kindOf(t), x: t.x, y: t.y, width: t.width, height: t.height }));
 const carrierCarrying = (doc) => doc?.parent?.tokens?.find((t) => t.id !== doc.id && aboardOf(t).some((q) => q.id === doc.id)) ?? null;
 const carrierHere = (doc) => (doc?.parent === canvas?.scene ? aboardOf(doc) : []);
 const riderData = (d) => ({ id: d.id, x: d.x, y: d.y, elevation: d.elevation, hidden: d.hidden, width: d.width, height: d.height, kind: kindOf(d), carries: aboardOf(d) });
@@ -4051,7 +4050,7 @@ const loadCarrier = async (doc) => {
   carrierSaving.add(doc.id);
   try {
     // Loading a token the GM never marked makes it one on the spot, carrying and nothing more — so a wagon takes the
-    // party on one press, and from then on a token dropped on it climbs in by itself. The kind stays theirs to change.
+    // party on one press, without a trip through its configuration first. The kind stays theirs to change.
     const made = !kindOf(doc);
     if (made) await doc.setFlag(ID, CARRIER_KIND, "party");
     // Getting on is the moment visibility is settled — hidden if the GM asked for that, otherwise as visible as they
@@ -4550,8 +4549,10 @@ async function receiveCarrierOff(data, senderId) {
   if (!carrier || !pulledOff(mid, carrier, grid)) return;
   await dropOff(carrier, doc, { x: data.x, y: data.y });
 }
-// A token put down on a carrier climbs in; a passenger pulled clear of one steps out where it was dropped; one moved
-// about on the deck simply takes its new seat.
+// Standing on a wagon is not riding it (Roi: "dont board the carrier by walking on it"): crossing a deck, or being
+// dropped on one, boards nobody. Getting aboard is asked for — the carrier's HUD, or the scene tool. What this hook
+// does is keep the ones already aboard honest: a passenger pulled clear of the carrier steps out where it was
+// dropped, and one moved about on the deck simply takes its new seat.
 Hooks.on("updateToken", (doc, change, options) => {
   if (options?.animater?.carrying || !leadGM() || !carriersOn()) return;
   if (!("x" in change || "y" in change)) return;
@@ -4560,26 +4561,9 @@ Hooks.on("updateToken", (doc, change, options) => {
   const grid = canvas?.grid?.size ?? 100, to = { x: change.x ?? doc.x, y: change.y ?? doc.y };
   const mid = { x: to.x + (doc.width * grid) / 2, y: to.y + (doc.height * grid) / 2 };
   const carrier = carrierCarrying(doc);
-  if (carrier) { void (pulledOff(mid, carrier, grid) ? dropOff(carrier, doc) : reseat(carrier, doc, to)); return; }
-  if (aboardOf(doc).length || kindOf(doc)) return;
-  const onto = carrierAt(mid, carriersHere(doc.parent).filter((c) => c.id !== doc.id), grid);
-  if (onto) void climbAboard(doc.parent.tokens.get(onto.id), doc);
+  if (!carrier) return;
+  void (pulledOff(mid, carrier, grid) ? dropOff(carrier, doc) : reseat(carrier, doc, to));
 });
-// Put down on a wagon: it keeps the place on the deck where it was dropped.
-const climbAboard = async (carrier, doc) => {
-  if (!carrier || carrierSaving.has(carrier.id)) return;
-  const aboard = stillAboard(carrierHere(carrier), (id) => !!carrier.parent?.tokens?.get(id));
-  const list = boardList(carrier, [riderData(doc)], aboard, canvas?.grid?.size ?? 100, { square: squareGrid() });
-  if (list.length === aboard.length) return;
-  carrierSaving.add(carrier.id);
-  try {
-    const plan = ridePlan(list, carrier, { stow: stowOf(carrier), show: true, sort: carrier.sort }).map((p) => ({ ...p, ...ridingFlag(carrier.id) }));
-    await carrier.parent.updateEmbeddedDocuments("Token", plan, { animater: { carrying: true }, animate: false, teleport: true });
-    await carrier.setFlag(ID, ABOARD, list);
-    ui.notifications?.info(`Animater: ${doc.name} is aboard ${carrier.name}.`);
-  } catch (err) { ui.notifications?.warn(`Animater: ${doc.name} did not get aboard (${err?.message ?? err})`); }
-  finally { carrierSaving.delete(carrier.id); }
-};
 // Pulled clear of the wagon: it is out, and stays where the hand left it. `to` is for a hand that is not the GM's —
 // a player dragging their own token off, whose move was turned back so that the GM's client could make it.
 const dropOff = async (carrier, doc, to = null) => {
@@ -5636,7 +5620,7 @@ Hooks.on("renderTokenConfig", (app, html) => {
   const group = document.createElement("div");
   group.className = "form-group";
   const choices = Object.entries(CARRIER_KINDS).map(([k, label]) => `<option value="${k}"${k === now ? " selected" : ""}>${label}</option>`).join("");
-  group.innerHTML = `<label>Animater: carrier</label><div class="form-fields"><select name="flags.${ID}.${CARRIER_KIND}">${choices}</select></div><p class="hint">A carrier takes others along: drop a token on it and that one climbs in and rides wherever this goes, in plain sight, keeping its own light and vision; pull it off again and it gets out. Its own HUD loads or unloads the whole party at once. The kind is what its wheels, oars and sounds go by, and roughly how many it holds.</p>`;
+  group.innerHTML = `<label>Animater: carrier</label><div class="form-fields"><select name="flags.${ID}.${CARRIER_KIND}">${choices}</select></div><p class="hint">A carrier takes others along: load them from its own HUD (or the scene tool) and they ride wherever this goes, in plain sight, keeping their own light and vision; drag one clear of it and that one gets out. Walking onto it boards nobody — standing on a wagon is not riding it. The kind is what its wheels, oars and sounds go by, and roughly how many it holds.</p>`;
   const tab = root.querySelector('.tab[data-tab="character"]') ?? root.querySelector(".tab.active") ?? root.querySelector("form, .window-content") ?? root;
   tab.append(group);
   const picked = doc?.flags?.[ID]?.[CARRIER_LOOK] ?? "";
@@ -12477,7 +12461,7 @@ Hooks.once("init", () => {
   registerSetting("riverVolume", { name: "River volume", hint: "How loud running water is for you: 0 silent, 1 as recorded, 2 twice as loud.", scope: "client", config: true, type: Number, range: { min: 0, max: 2, step: 0.05 }, default: 1 });
   skyPair("carrierSounds", "carrierSoundsLocal", "Carrier sounds", "A wagon or a cart you can hear as it rolls: its iron rims on whatever it is crossing, the axle creaking when a wheel drops, the load shifting behind it, the harness and trace chains jingling with the pace, the brake when it stops short, and a covered wagon's canvas pulling on its ropes. Loudest beside it, fading within a few squares. Only for a token set as a carrier (Token configuration → Animater: carrier).", "");
   registerSetting("carriers", { name: "Carriers",
-    hint: "Tokens that carry other tokens: a wagon, a boat, a sled, a mount. The GM marks one (Token configuration → Animater: carrier), then loads the party aboard with the people button on its HUD; they ride in plain sight, keeping their own light and vision, and get out round it. Off: no carrier button, nothing climbs aboard, and no painted vehicle is drawn. Anyone already aboard stays where they are.",
+    hint: "Tokens that carry other tokens: a wagon, a boat, a sled, a mount. The GM marks one (Token configuration → Animater: carrier), then loads the party aboard with the people button on its HUD; they ride in plain sight, keeping their own light and vision, and get out round it. Walking onto a carrier boards nobody: getting aboard is always asked for. Off: no carrier button, no riding and no painted vehicle is drawn. Anyone already aboard stays where they are.",
     scope: "world", config: true, type: Boolean, default: true });
   registerSetting("carrierVolume", { name: "Carrier volume", hint: "How loud wagons and carts are for you: 0 silent, 1 as recorded, 2 twice as loud.", scope: "client", config: true, type: Number, range: { min: 0, max: 2, step: 0.05 }, default: 1 });
   skyPair("doorBurst", "doorBurstLocal", "Bats and rats bursting through doors", "A door set to it (Wall configuration → Animater door) sends a flock of bats or a run of rats through as it opens, over whoever opened it, with their sounds.");

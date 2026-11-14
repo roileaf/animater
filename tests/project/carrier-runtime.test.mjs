@@ -27,6 +27,18 @@ test('only one GM client moves, loads, unloads or seats anybody', () => {
   assert.ok((block.match(/!leadGM\(\)/g) ?? []).length >= 3, 'the ride, the delete and the drop each wait for the lead GM');
 });
 
+// Roi: "dont board the carrier by walking on it lol". Crossing a deck, or being dropped on one, is not a request to
+// ride: getting aboard is asked for, through the HUD button or the scene tool.
+test('walking onto a carrier boards nobody', () => {
+  assert.ok(!/climbAboard/.test(main), 'the hook that put a token aboard where it landed is gone');
+  assert.ok(!/carrierAt\(/.test(main), 'and nothing asks which carrier a token is standing on');
+  const hook = main.slice(main.lastIndexOf('Hooks.on("updateToken", (doc, change, options)'));
+  const body = hook.slice(0, hook.indexOf('\n});'));
+  assert.match(body, /if \(!carrier\) return;/, 'a token that is not already aboard one is left alone');
+  assert.match(body, /pulledOff\(mid, carrier, grid\) \? dropOff\(carrier, doc\) : reseat\(carrier, doc, to\)/);
+  assert.match(main, /Walking onto a carrier boards nobody/, 'and the setting says so');
+});
+
 test('a passenger remembers its carrier, so one whose carrier is gone can be found again', () => {
   assert.match(main, /const orphanRiders = async/);
   assert.match(main, /flags\.\$\{ID\}\.\$\{CARRIER_RIDING\}/);
