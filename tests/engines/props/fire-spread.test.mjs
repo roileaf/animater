@@ -657,3 +657,79 @@ test("a burning lamp-oil spill sets the grass round it alight", () => {
   assert.deepEqual(cellStep({ cells, ...geo }).heat, []);
   assert.deepEqual(cellStep({ cells: cells.map((c) => ({ ...c, blocked: [spill.id] })), ...geo, spills: [spill] }).heat, []);
 });
+
+import { quenchSmokeUpdate, QUENCH_SMOKE_LEFT } from "../../../scripts/engines/props/fire-spread.mjs";
+import { smokeCellsOf, DROP_FLOOR } from "../../../scripts/engines/props/smoke-field.mjs";
+
+// A scene holding room smoke, on a 10-wide grid of 100px cells.
+const smokeScene = (smoke, grid = true) => ({ flags: { animater: { smoke, ...(grid ? { smokeGrid: { cols: 10, cell: 100 } } : {}) } } });
+const GEO = { cols: 10, cell: 100, origin: { x: 0, y: 0 } };
+// Cell 0 is 0..100, cell 1 is 100..200: an area over x < 150 covers cell 0 and nothing else of row 0.
+const leftHalf = (p) => p.x < 150;
+
+test("a quenching area thins the room smoke it covers and leaves the rest alone", () => {
+  const scene = smokeScene({ 0: 2, 1: 2, 5: 2 });
+  const { fields, cells } = quenchSmokeUpdate(scene, leftHalf, GEO);
+  assert.equal(fields["flags.animater.smoke.0"], Math.round(2 * QUENCH_SMOKE_LEFT * 10000) / 10000);
+  assert.ok(!("flags.animater.smoke.1" in fields), "an untouched cell is not rewritten");
+  assert.ok(!("flags.animater.smoke.5" in fields), "nor one the area never reached");
+  // What is left still hangs, thinner: a drench knocks the smoke down, it does not scour the room.
+  assert.equal(cells.find((c) => c.i === 0).v, 2 * QUENCH_SMOKE_LEFT);
+  assert.equal(cells.find((c) => c.i === 1).v, 2);
+});
+
+test("smoke thinned past the drop floor is deleted by name, never written back as zero", () => {
+  const scene = smokeScene({ 0: DROP_FLOOR / 2, 1: 1 });
+  const { fields, cells } = quenchSmokeUpdate(scene, leftHalf, GEO);
+  assert.equal(fields["flags.animater.smoke.-=0"], null);
+  assert.deepEqual(cells.map((c) => c.i), [1]);
+  // Never the whole flag: Foundry merges an object-valued flag and would strand what was there.
+  for (const key of Object.keys(fields)) assert.ok(!/\.smoke$|\.smokeGrid$/.test(key), key);
+});
+
+test("the last cell takes the stored geometry with it, by name", () => {
+  const { fields, cells } = quenchSmokeUpdate(smokeScene({ 0: 0.03 }), () => true, GEO);
+  assert.deepEqual(cells, []);
+  assert.equal(fields["flags.animater.smoke.-=0"], null);
+  assert.equal(fields["flags.animater.-=smokeGrid"], null);
+  // With no geometry stored there is nothing to take off.
+  assert.ok(!("flags.animater.-=smokeGrid" in quenchSmokeUpdate(smokeScene({ 0: 0.03 }, false), () => true, GEO).fields));
+});
+
+test("a stored zero or a junk entry goes too, so the flag really does empty", () => {
+  const scene = smokeScene({ 0: 0.03, 7: 0, 8: "x" });
+  const { fields } = quenchSmokeUpdate(scene, () => true, GEO);
+  for (const key of ["-=0", "-=7", "-=8"]) assert.equal(fields[`flags.animater.smoke.${key}`], null, key);
+});
+
+test("an area that covers no smoke, a scene with none, and an unusable grid all write nothing", () => {
+  assert.deepEqual(quenchSmokeUpdate(smokeScene({ 5: 2 }), leftHalf, GEO).fields, {}, "none covered");
+  assert.deepEqual(quenchSmokeUpdate(smokeScene({}), () => true, GEO), { fields: {}, cells: [] });
+  assert.deepEqual(quenchSmokeUpdate(null, () => true, GEO), { fields: {}, cells: [] });
+  for (const geo of [null, {}, { cols: 0, cell: 100 }, { cols: 10, cell: 0 }, { cols: 1.5, cell: 100 }]) {
+    assert.deepEqual(quenchSmokeUpdate(smokeScene({ 0: 2 }), () => true, geo).fields, {}, JSON.stringify(geo));
+  }
+  assert.deepEqual(quenchSmokeUpdate(smokeScene({ 0: 2 }), null, GEO).fields, {}, "no area at all");
+});
+
+test("an area that throws is an area that covers nothing, and the smoke is left as it was", () => {
+  const { fields, cells } = quenchSmokeUpdate(smokeScene({ 0: 2 }), () => { throw new Error("no shape"); }, GEO);
+  assert.deepEqual(fields, {});
+  assert.deepEqual(cells, [{ i: 0, v: 2 }]);
+});
+
+test("the thinning is pure: the scene is untouched and the answer is the same every time", () => {
+  const scene = smokeScene({ 0: 2, 1: 2 });
+  const before = JSON.stringify(scene);
+  const a = quenchSmokeUpdate(scene, leftHalf, GEO), b = quenchSmokeUpdate(scene, leftHalf, GEO);
+  assert.deepEqual(a, b);
+  assert.equal(JSON.stringify(scene), before);
+  assert.deepEqual(smokeCellsOf(scene), { 0: 2, 1: 2 });
+});
+
+test("the share left is the caller's to say, and a silly one is held to 0..1", () => {
+  assert.equal(quenchSmokeUpdate(smokeScene({ 0: 2 }), leftHalf, GEO, 0.5).cells[0].v, 1);
+  assert.equal(quenchSmokeUpdate(smokeScene({ 0: 2 }), leftHalf, GEO, 5).cells[0].v, 2, "never more than it was");
+  assert.deepEqual(quenchSmokeUpdate(smokeScene({ 0: 2 }), leftHalf, GEO, -1).cells, [], "nor less than nothing");
+  assert.equal(quenchSmokeUpdate(smokeScene({ 0: 2 }), leftHalf, GEO, NaN).cells[0].v, 2 * QUENCH_SMOKE_LEFT);
+});

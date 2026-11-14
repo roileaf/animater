@@ -75,10 +75,22 @@ function forceDCField({ own, mat, system, disabled }) {
   return `<div class="form-group"><label>Force open ${w.dc}</label><div class="form-fields"><input type="number" name="flags.${ID}.breakWall.forceDC" min="1" max="60" step="1" value="${value}" placeholder="Automatic (${auto})" ${data}${disabled ? " disabled" : ""}></div><p class="hint">Blank goes by material. A roll from the sheet is checked against the closest door's ${w.dc}.</p></div>`;
 }
 
-export function propSceneFieldsHTML({ on = false, chance = 25, breakWalls, rubble = false, fireSpreads = false } = {}) {
+// A fire light's own "Fills the room with smoke" (flags.animater.smokeSource), for the light configuration's Animater
+// tab. It lives here beside the scene's own switch, not inline in main.mjs, so the two halves of one GM-facing
+// decision are written and read in one place — and so the flag name is checkable without reading main.mjs's text.
+// NOTE the three names that are deliberately NOT each other: the scene's switch is smokeFills, a light's own is
+// smokeSource, and the old settings pair "Smoke in the air" keeps roomSmoke. None of them is a spelling of another.
+export const SMOKE_LIGHT_FLAG = "smokeSource";
+export function smokeLightFieldHTML({ on = false } = {}) {
+  const tip = "With the scene's Fires fill rooms with smoke on, this light's fire fills the room it stands in: thick smoke blocks sight, thin smoke conceals. Off for a hearth or a brazier, so a lit fireplace does not fog the inn; tick it for a fire that really is smoking the place out.";
+  return `<div class="form-group"><label data-tooltip="${esc(tip)}">Fills the room with smoke</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.${SMOKE_LIGHT_FLAG}"${on === true ? " checked" : ""}></div></div>`;
+}
+
+export function propSceneFieldsHTML({ on = false, chance = 25, breakWalls, rubble = false, fireSpreads = false, smokeFills = false } = {}) {
   const n = Number(chance), pct = Number.isFinite(n) && n >= 0 && n <= 100 ? n : 25;
   return `<div class="form-group"><label>Breakable props</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.breakableProps"${on === true ? " checked" : ""}></div><p class="hint">Prop tiles (barrels, crates, pots) break from spells, shoves and missed swings and leave wreckage.</p></div>
     <div class="form-group"><label>Fire spreads</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.fireSpreads"${fireSpreads === true ? " checked" : ""}></div><p class="hint">A burning prop sets fire to what is next to it, round by round.</p></div>
+    <div class="form-group"><label>Fires fill rooms with smoke</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.smokeFills"${smokeFills === true ? " checked" : ""}></div><p class="hint">With Fire spreads on, a fire indoors fills its room with smoke, round by round, and the smoke drains out of open doors and windows. Thick smoke blocks sight; thin smoke conceals a creature standing in it (with PF2e Visioner). Only rooms: a fire out of doors fills nothing. Off by default, because it suits a closed inn or a mine far better than an open market.</p></div>
     <div class="form-group"><label>Chance a miss breaks a prop (%)</label><div class="form-fields"><input type="number" min="0" max="100" step="1" name="flags.${ID}.propMissChance" value="${pct}"></div></div>
     <div class="form-group"><label>Doors and windows break</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.breakWalls"${breakWalls === false ? "" : " checked"}></div><p class="hint">With Breakable props on, doors (and windows the GM marks breakable) can be smashed open by hits, Force Open and heavy shoves, and walls the GM marks breakable can be breached by powder kegs, some spells and huge creatures slammed into them.</p></div>
     <div class="form-group"><label>Rubble is difficult terrain</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.rubbleDifficult"${rubble === true ? " checked" : ""}></div><p class="hint">A statue or pillar that topples leaves rubble that costs double to walk through. Each tile can override this. Read when it topples: changing it later does not change rubble already there.</p></div>

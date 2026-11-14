@@ -2,6 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { quietSave } from "../../../scripts/engines/props/quiet-writes.mjs";
 const main = readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8");
 
 test("the decor relay: asked of the GM, checked twice, written coalesced", () => {
@@ -87,7 +88,13 @@ test("the wreck sync computes no placements for a region with nothing stored", (
   assert.ok(guard < sync.indexOf("decorRegionOf(doc)") && guard < sync.indexOf("decorIndex(region, grid)"), "before regionAreas and the scatter");
 });
 test("break and decoration repair writes skip the generic region rebuilds", () => {
-  assert.match(main, /const quietSave = \(first, changes, options\) => isClockSave\(first\) \|\| \(first\?\.documentName === "Region" && decorOnlySave\(changes, options\)\)/);
+  // A Region write is quiet when it is a decoration break OR the smoke round's own region. That composition is one
+  // exported function now (engines/props/quiet-writes.mjs quietSave), which main.mjs imports and keeps no copy of, so
+  // this asserts the import and quiet-writes.test.mjs drives the real thing clause by clause.
+  assert.match(main, /import \{ quietSave, isClockSave \} from "\.\/engines\/props\/quiet-writes\.mjs";/);
+  assert.doesNotMatch(main, /const quietSave = /);
+  assert.equal(quietSave({ documentName: "Region" }, { _id: "r", "flags.animater.decorBroken": {} }, { animater: { decorBreak: true } }), true);
+  assert.equal(quietSave({ documentName: "Region" }, { _id: "r", name: "mine" }, { animater: { decorBreak: true } }), false);
   const lines = main.split(/\r?\n/).filter((l) => /for \(const hook of \[[^\]]*"updateRegion"/i.test(l) || /'updateRegion'/.test(l));
   assert.ok(lines.length >= 11, `the rebuild listeners (${lines.length})`);
   const next = (l) => main.split(/\r?\n/)[main.split(/\r?\n/).indexOf(l) + 1];
