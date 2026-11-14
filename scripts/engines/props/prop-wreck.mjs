@@ -740,6 +740,8 @@ void main() {
   // it is warm. Painted (ink outline, a stepped lighter face), seeded from the note alone. Drawn on load (animate: false)
   // it is settled: cold, no smoke. (Named apart from charred(art), the bush's charred heart.)
   const CHAR_WOOD = [0x4a3a2e, 0x0e0a08], EMBER_HOT = 0xff7a28, EMBER_CORE = 0xffc060, WISP_TONES = [0x3a3633, 0x524c47];
+  // A tree's tile is its whole crown; what a fire leaves is its stump (tile.stump, decorations.decorWreckTile): the same tile, shrunk to that footprint about the same centre.
+  const stumpTile = (tile, d) => (tile?.stump > 0 ? { ...d, width: tile.stump, height: tile.stump } : d);
   function charredWreck({ d, note, entry, box, centre, animate }) {
     const w = d.width, h = d.height, side = Math.max(w, h), L = charLayout(note, { width: w, height: h, grid: grid() || 100 });
     const at = tileToWorld(d, centre, { x: w / 2, y: h / 2 }), turn = ((d.rotation ?? 0) * Math.PI) / 180;
@@ -820,7 +822,9 @@ void main() {
   }
   function burned({ tile, d, note, entry, box, texture, centre, sortLayer, animate }) {
     const w = d.width, h = d.height, side = Math.max(w, h), gk = (grid() || 100) / 100, web = propGuesses(d.texture?.src).cuttable;
-    const L = burnLayout(note, { width: w, height: h, grid: grid() || 100, rotation: d.rotation ?? 0 }), ashAt = tileToWorld(d, centre, L.ash);
+    const L = burnLayout(note, { width: w, height: h, grid: grid() || 100, rotation: d.rotation ?? 0 });
+    if (tile?.stump > 0) L.ash.r *= 0.75; // a canopy's ash lies a little inside where its leaves reached
+    const ashAt = tileToWorld(d, centre, L.ash);
     // On the floor: the ash mark, a bush's faint scorch, then the web's ghost or the bush's charred heart.
     const marks = new PIXI.Container(); marks.zIndex = -1; box.addChild(marks);
     const ash = marks.addChild(groundMark(flatMark("ash", { x: ashAt.x, y: ashAt.y, r: L.ash.r }, seededRandom((note.seed >>> 0) * 61 + 7)), entry.textures));
@@ -835,7 +839,13 @@ void main() {
     if (artTex) {
       const floor = frameOf(d, centre, 0); marks.addChild(floor);
       if (web) { left = new PIXI.Sprite(artTex); left.scale.set(1 / k); left.tint = GHOST_TINT; }
-      else {
+      else if (tile?.stump > 0) {
+        // A tree leaves a charred stump, not a shrunken crown: ringed bark, a lighter cut face, the rings on it.
+        const s = tile.stump; left = new PIXI.Graphics(); left.position.set(w / 2, h / 2);
+        left.lineStyle(1.4, INK, 0.9).beginFill(0x2a2420).drawEllipse(0, 0, s / 2, s * 0.46).endFill();
+        left.lineStyle(0).beginFill(0x4a3a2e, 0.9).drawEllipse(-s * 0.03, -s * 0.05, s * 0.34, s * 0.3).endFill();
+        left.lineStyle(1, 0x120d0a, 0.6).drawEllipse(-s * 0.03, -s * 0.05, s * 0.2, s * 0.17);
+      } else {
         const heart = charred(art); entry.textures.push(heart);
         left = new PIXI.Sprite(heart); left.anchor.set(0.5); left.position.set(w / 2, h / 2); left.scale.set(HEART_SIZE / k);
       }
@@ -1009,7 +1019,7 @@ void main() {
     if (note.style === "tip") { dropPrior(entry); tipped({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
     if (note.style === "topple") { dropPrior(entry); toppled({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate }); return; }
     if (note.style === "burn") { dropPrior(entry); burned({ tile, d, note, entry, box, texture, centre, sortLayer, animate }); return; }
-    if (note.style === "char") { dropPrior(entry); charredWreck({ d, note, entry, box, centre, animate }); return; }
+    if (note.style === "char") { dropPrior(entry); charredWreck({ d: stumpTile(tile, d), note, entry, box, centre, animate }); return; }
     if (note.style === "split") { dropPrior(entry); cutApart({ tile, d, note, entry, box, texture, tones, centre, sortLayer, animate, contents }); return; }
     const stop = stopFor(d, centre);
     const layout = wreckLayout(note, { centre, width: d.width, height: d.height, grid: grid() || 100, contents, rotation: d.rotation ?? 0, stop });

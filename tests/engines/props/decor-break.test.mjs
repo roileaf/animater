@@ -12,14 +12,14 @@ const hand = { kind: "crate", x: 300, y: 300, size: 0.8, turn: 0, seed: 5, flip:
 const note = { seed: 1, cutAngle: 0, pattern: "diced", pieces: 3, spread: 0.4, spin: 70, tint: "none", mark: "dust", from: { x: 0, y: 0 }, walls: [], style: "shatter", lights: [] };
 
 test("which kinds break, and as what", () => {
-  assert.deepEqual(Object.keys(DECOR_BREAKS).sort(), ["agave", "altar", "barrel", "bathtub", "bed", "bedroll", "beehive", "bench", "bookshelf", "brazier", "bush", "cage", "candles", "cart", "cattails", "cobweb", "coffin", "column", "counter", "crate", "crystals", "desk", "fence", "fern", "firewood", "haystack", "kennel", "lampPost", "marketStall", "mooringPost", "nest", "planter", "pottedPlant", "produce", "reeds", "rowboat", "rug", "sacks", "sarcophagus", "signpost", "stakeFence", "stalagmite", "statue", "strawBed", "strongbox", "tableStools", "tent", "throne", "tombstone", "trough", "urns", "washtub"]);
+  assert.deepEqual(Object.keys(DECOR_BREAKS).sort(), ["agave", "altar", "barrel", "bathtub", "bed", "bedroll", "beehive", "bench", "birch", "blossom", "bookshelf", "brazier", "bush", "cage", "candles", "cart", "cattails", "cobweb", "coffin", "column", "counter", "crate", "crystals", "deadTree", "desk", "fence", "fern", "firewood", "fruitTree", "haystack", "kennel", "lampPost", "maple", "marketStall", "mooringPost", "nest", "oak", "palm", "pine", "planter", "pottedPlant", "produce", "reeds", "rowboat", "rug", "sacks", "sarcophagus", "signpost", "spruce", "stakeFence", "stalagmite", "statue", "strawBed", "strongbox", "tableStools", "tent", "throne", "tombstone", "trough", "urns", "washtub", "willow"]);
   // (spec Amendment 3: a crate holds loose goods, a barrel water)
   assert.deepEqual(DECOR_BREAKS.crate, { material: "wood", style: "shatter", contents: "goods" });
   assert.deepEqual(DECOR_BREAKS.barrel, { material: "wood", style: "shatter", contents: "water" });
   assert.deepEqual(DECOR_BREAKS.crystals, { material: "glass", style: "shatter" });
   assert.deepEqual(DECOR_BREAKS.cobweb, { material: "plant", style: "burn" });
   assert.deepEqual(DECOR_BREAKS.column, { material: "stone", style: "topple" });
-  for (const k of ["rock", "boulder", "oak", "stump", "log", "puddle", "timberProps", "campfire", "rubble", "brokenPillar", "boneRubble"]) assert.equal(DECOR_BREAKS[k], undefined, k);
+  for (const k of ["rock", "boulder", "stump", "log", "puddle", "timberProps", "campfire", "rubble", "brokenPillar", "boneRubble"]) assert.equal(DECOR_BREAKS[k], undefined, k);
 });
 
 test("a decoration as a prop: the rules read it like a tile", () => {
@@ -217,4 +217,53 @@ test("every decoration a region shows has a place", () => {
     const at = decorPlaceOf(v);
     assert.ok(at && Number.isFinite(at.x) && Number.isFinite(at.y), `${v.decor.key} stands somewhere`);
   }
+});
+
+import { DECOR_NAMES, burningDecorIds } from "../../../scripts/engines/props/decor-break.mjs";
+import { DECOR_KINDS } from "../../../scripts/engines/motion/decor-paint.mjs";
+import { charLayout } from "../../../scripts/engines/props/char-layout.mjs";
+import { decorWreckTile, treeStump, burningShade } from "../../../scripts/engines/motion/decorations.mjs";
+
+const LIVING = ["oak", "maple", "birch", "willow", "fruitTree", "blossom", "pine", "spruce", "palm"];
+test("every tree kind has a break entry: living ones are plants that burn, a dead tree is wood", () => {
+  const trees = Object.keys(DECOR_KINDS).filter((k) => DECOR_KINDS[k].tree).sort();
+  assert.deepEqual(trees, [...LIVING, "deadTree"].sort(), "no tree kind is left out");
+  for (const k of LIVING) assert.deepEqual(DECOR_BREAKS[k], { material: "plant", style: "burn" }, k);
+  assert.deepEqual(DECOR_BREAKS.deadTree, { material: "wood", style: "shatter" });
+  assert.notDeepEqual(DECOR_BREAKS.deadTree, DECOR_BREAKS.oak);
+  for (const k of trees) assert.ok(DECOR_NAMES[k], `${k} is named in the whisper`);
+});
+
+test("a tree is a decoration view, and fire reads its material: a plant catches, a bare trunk burns out to a charred wreck", () => {
+  const oak = { kind: "oak", x: 500, y: 500, size: 2.6, turn: 0, seed: 3, flip: false }, dead = { ...oak, kind: "deadTree", size: 2 };
+  const reg = { id: "R1", levels: [] };
+  const a = decorView({ d: oak, key: "oak:500:500:fp" }, reg, grid), b = decorView({ d: dead, key: "deadTree:500:500:fp" }, reg, grid);
+  assert.ok(a && b, "a view, so fire can heat it");
+  assert.equal(breakStyle({ material: "plant" }, { burnedOut: true }), "burn");
+  assert.equal(breakStyle({ material: "wood", style: "shatter" }, { burnedOut: true }), "char");
+});
+
+test("a burnt tree's wreck is a stump, not a canopy of planks", () => {
+  const crown = 260, art = { width: crown };
+  for (const [kind, size] of [["oak", 2.6], ["deadTree", 2]]) {
+    const d = { kind, x: 500, y: 500, size, turn: 0, seed: 3, flip: false }, view = decorView({ d, key: kind + ":k" }, { id: "R", levels: [] }, grid);
+    const tile = decorWreckTile(view, art);
+    assert.equal(tile.tree, true); assert.equal(tile.stump, treeStump(kind, crown));
+    assert.ok(tile.stump < crown * 0.25 && tile.stump >= 8, "a trunk's footprint, far under the crown");
+    assert.equal(tile.width, crown, "the crown's size stays for the picture that burns away over it");
+    const L = charLayout({ seed: 9 }, { width: tile.stump, height: tile.stump, grid });
+    for (const p of L.pieces) for (const q of p.pts) assert.ok(Math.abs(q.x) <= tile.stump / 2 + 1e-6 && Math.abs(q.y) <= tile.stump / 2 + 1e-6, "every piece lies within the stump");
+    assert.ok(L.scorch.rx < crown / 2, "its soot mark is no canopy's");
+  }
+  assert.ok(treeStump("deadTree", 200) > treeStump("oak", 200), "a bare trunk's is the thicker");
+  const crate = decorWreckTile(decorView({ d: hand, key: "k" }, { id: "R", levels: [] }, grid), { width: 80 });
+  assert.equal(crate.stump, undefined, "other decorations keep their whole shape");
+});
+
+test("a burning tree's shade thins, and the burning ones are read from the region's saved fires", () => {
+  const s = burningShade(1);
+  assert.ok(s.leaves < 0.5 && s.alpha < 0.6);
+  const ids = burningDecorIds("R1", { "oak:500:500:ab12": { heat: 3, burning: true }, "pine:100:200:h": { heat: 1, burning: false }, "bush:1:2:x": { burning: true } });
+  assert.deepEqual([...ids].sort(), ["R1:bush:1:2", "R1:oak:500:500"]);
+  assert.equal(burningDecorIds("R1", null).size, 0);
 });

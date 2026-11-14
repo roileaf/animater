@@ -33,6 +33,11 @@ export const DECOR_BREAKS = Object.freeze({
   // its name would read as a lantern's oil to spill, and it spills none.
   lampPost: ENTRY("metal", "topple", { rule: "heavy", contents: "none" }), tableStools: ENTRY("wood", "collapse"), marketStall: ENTRY("wood", "collapse", { boxy: true }),
   stakeFence: ENTRY("wood", "collapse"), strawBed: ENTRY("plant", "burn"),
+  // Trees (Roi, 2026-11-14): a living canopy catches fast and burns to ash (plant, burn); a bare dead trunk is wood, slower, and
+  // leaves a wreck. Being in this table also makes them breakable by ordinary damage: it is the table fire reads. The crown
+  // and the trunk are one decoration (one key), so a break takes both; decorations.decorWreckTile cuts the wreck down to a stump.
+  oak: ENTRY("plant", "burn"), maple: ENTRY("plant", "burn"), birch: ENTRY("plant", "burn"), willow: ENTRY("plant", "burn"), fruitTree: ENTRY("plant", "burn"),
+  blossom: ENTRY("plant", "burn"), pine: ENTRY("plant", "burn"), spruce: ENTRY("plant", "burn"), palm: ENTRY("plant", "burn"), deadTree: ENTRY("wood", "shatter"),
   // The indoor and water kinds (spec Amendment 2; a rowboat bursts into planks, controller ruling). A throne, a bathtub or a mooring post breaks as what its picture is painted of (`painted`,
   // by decor-paint paintedMaterial): wood shatters or collapses, stone needs force, a copper tub follows metal's rules.
   bookshelf: ENTRY("wood", "collapse", { boxy: true, contents: "books" }), bed: ENTRY("wood", "collapse", { boxy: true }), desk: ENTRY("wood", "collapse", { boxy: true }),
@@ -63,7 +68,18 @@ export function decorDefaultsOf(kind) {
 /** Whether a broken decoration's own light goes out (pure): its Light prop, by its own choice, its region's, then its kind's. */
 export const decorLightOut = (d, regionProp) => resolveDecorProp(d?.kind, decorBreakOf(d), d?.prop, regionProp).light;
 /** What the topple whisper calls a toppled decoration. */
-export const DECOR_NAMES = Object.freeze({ stalagmite: "A stalagmite", column: "A rock column", signpost: "A signpost", tombstone: "A gravestone", lampPost: "A street lamp", statue: "A statue", mooringPost: "A mooring post" });
+export const DECOR_NAMES = Object.freeze({ stalagmite: "A stalagmite", column: "A rock column", signpost: "A signpost", tombstone: "A gravestone", lampPost: "A street lamp", statue: "A statue", mooringPost: "A mooring post",
+  oak: "An oak", maple: "A maple", birch: "A birch", willow: "A willow", fruitTree: "A fruit tree", blossom: "A blossom tree", pine: "A pine", spruce: "A spruce", palm: "A palm", deadTree: "A dead tree" });
+/** The trees that are burning, as the canopy names them (pure): `regionId:kind:x:y`, read from a region's saved decoration fires (keyed `kind:x:y:fingerprint`). */
+export function burningDecorIds(regionId, fires) {
+  const out = new Set();
+  for (const [key, f] of Object.entries(fires ?? {})) {
+    if (f?.burning !== true) continue;
+    const m = /^([^:]+):(-?\d+):(-?\d+):/.exec(key);
+    if (m) out.add(`${regionId}:${m[1]}:${m[2]}:${m[3]}`);
+  }
+  return out;
+}
 
 const px = (n) => Math.round(n);
 // An area's holes are an array property, which JSON.stringify of the areas array drops: write them out.
