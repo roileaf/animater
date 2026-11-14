@@ -102,13 +102,15 @@ export function smokeLevelFor(scene, sources = []) {
 // both spellings turn up.) The scene's own "Fires fill rooms with smoke" switch is deliberately NOT one of them.
 const SMOKE_OWN = new Set(["smoke", "smokeGrid", "-=smoke", "-=smokeGrid"]);
 /**
- * A scene update that is only this round putting its own smoke back (pure): written with options.animater.roomSmoke,
+ * A scene update that is only this round putting its own smoke back (pure): written with options.animater.smokeFills
+ * (main.mjs SMOKE_NOTE — the marker and this reader are ONE thing and are renamed together; drift them apart and the
+ * round starts mistaking its own write for a GM's map edit and throws the room cache away every tick),
  * changing nothing but flags.animater.smoke and flags.animater.smokeGrid. The scene rebuilds — and the round's own
  * room-size cache, which a tick-by-tick flood fill would otherwise cost dearly — skip it, as they skip a clock save.
  * Any other change in the same update is a real edit: a moved wall or a redrawn region must still throw the cache out.
  */
 export function smokeOnlySave(changes, options) {
-  if (options?.animater?.roomSmoke !== true) return false;
+  if (options?.animater?.smokeFills !== true) return false;
   const keys = Object.keys(changes ?? {}).filter((k) => k !== "_id" && k !== "_stats");
   if (!keys.length) return false;
   const nested = keys.length === 1 && keys[0] === "flags" ? changes.flags : null;
@@ -138,7 +140,7 @@ const clearPlan = (scene) => {
 // Whether the room smoke may run on a scene at all: all three.
 export const smokeRunsOn = (scene) => {
   const own = scene?.flags?.animater;
-  return own?.roomSmoke === true && own?.breakableProps === true && own?.fireSpreads === true;
+  return own?.smokeFills === true && own?.breakableProps === true && own?.fireSpreads === true;
 };
 
 // Whether a scene still carries smoke state of ours: any cell key at all (a zero or a junk entry counts: it is a key

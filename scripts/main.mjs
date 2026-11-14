@@ -25,7 +25,8 @@ import { BURN_MS, burnLightData, fireTimers, unhideLights, firesOf } from "./eng
 import { propMaterial, canBreak } from "./engines/props/prop-material.mjs";
 import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf } from "./engines/props/smoke-field.mjs";
 import { registerSmokeFence } from "./engines/props/smoke-fence.mjs";
-import { smokeGridOf, storedSmokeGrid } from "./engines/props/smoke-edges.mjs";
+import { smokeGridOf, storedSmokeGrid, smokeCellList, smokeLevelOf } from "./engines/props/smoke-edges.mjs";
+import { createSmokeLooks, smokePuffs, smokeSeedOf, airHazeShows } from "./engines/props/smoke-look.mjs";
 import { CONCEALMENT_BEHAVIOUR, smokeRegionPlan, skyRegionsOf, regionsOnLevel } from "./engines/props/smoke-regions.mjs";
 import { smokeRoundPlan, smokeRoomAt, smokeOnlySave, smokeClearPlan, smokeRunsOn, smokeLeftovers, smokeLevelFor } from "./engines/props/smoke-round.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
@@ -1955,7 +1956,7 @@ const lampSoon = () => { if (!lampTimer) lampTimer = setTimeout(rebuildLampAir, 
 let smokeAir = null, smokeWait = 0;
 const fillSmoke = () => {
   try {
-    if (!airField || !roomSmokeOn() || !undergroundScene()) { smokeAir = null; lampAir.smokeFill(null); return; }
+    if (!airField || !hazeSmokeOn()) { smokeAir = null; lampAir.smokeFill(null); return; }
     smokeAir ??= createSmokeAir();
     smokeAir.setup(airField, lampLights.filter((l) => l.fire).map((l) => l.smokeFrom));
     lampAir.smokeFill(smokeAir.pixels, airField.cols, airField.rows);
@@ -2012,6 +2013,15 @@ Hooks.on("sightRefresh", () => { lampLookAt = 0; });
 // out again when a door opens or shuts, or the walls or regions change.
 const draftsOn = () => bothSettingsOn("drafts"), roomSmokeOn = () => bothSettingsOn("roomSmoke");
 const undergroundScene = () => undergroundOf(canvas?.scene?.flags?.[ID], canvas?.level?.flags?.[ID]);
+// Whether this scene has the simulated smoke switched on (flags.animater.smokeFills, the scene's "Fires fill rooms
+// with smoke"): not the settings pair of the same old name, which is the rolling haze below.
+const smokeFillsHere = () => canvas?.scene?.flags?.[ID]?.smokeFills === true;
+// Whether the OLD rolling haze ("Smoke in the air") shows here. One smoke per scene, not two layered: where the GM
+// has switched the simulated smoke on, that is the scene's smoke and the haze stands down entirely — cells the round
+// really worked out, not a wash over the whole map. A scene that wants only the atmosphere leaves the new switch off
+// and loses nothing: this is then exactly the answer it has always given. (smoke-look.mjs airHazeShows holds the
+// rule, so the two places it is asked cannot drift apart.)
+const hazeSmokeOn = () => airHazeShows({ on: roomSmokeOn(), underground: undergroundScene(), fills: smokeFillsHere() });
 let draftTimer = null, gustAt = -Infinity, gustFrom = null, airLive = false, previewOpenings = [], airField = null;
 // How the air moves at a point now (0 still – 1 the fastest streams in a gust): how fast it runs there (a doorway on the
 // way out fast, a room's corner barely), and the gust once it has swept that far from the door that opened.
@@ -2167,7 +2177,7 @@ const lookLampAir = (now) => {
     // the fog); looked at with the list, a few times a second.
     const grid = canvas.grid.size, seen = (l) => { try { return canvas.visibility?.testVisibility?.({ x: l.x, y: l.y }, { tolerance: grid * 0.1 }) !== false && !flameCovered(`spark:${l.x},${l.y}`, l, canvas.level?.elevation?.base ?? 0); } catch { return true; } };
     lampAir.look({ fires: embersOn() || lean ? fireSparksOf(lampLights, view, grid).filter(seen) : [], embers: embersOn() ? 0.6 + 0.4 * dark : 0, motes: motesOn() ? dark : 0, wind: { x: 0.02, y: -0.01 },
-      air: airLive, since: (now - gustAt) / 1000, smoke: roomSmokeOn() && undergroundScene() ? 0.85 : 0, lean });
+      air: airLive, since: (now - gustAt) / 1000, smoke: hazeSmokeOn() ? 0.85 : 0, lean });
     gutterFlames(torchDraftOn() ? 1 : 0);
   } catch { /* the canvas mid-change */ }
 };
@@ -10272,17 +10282,23 @@ async function fireRound(scene) {
   return burningNow;
 }
 // ---- The smoke a fire fills its room with, round by round (engines/props/smoke-round.mjs). ----
-// The GM's switch is the scene's "Fires fill rooms with smoke" (flags.animater.roomSmoke), off by default: it suits a
+// The GM's switch is the scene's "Fires fill rooms with smoke" (flags.animater.smokeFills), off by default: it suits a
 // closed inn or a mine, not an open market. The round's whole decision is pure and lives in smoke-round.mjs; all that
 // is here is looking the scene up, saying what is indoors and where the walls are, and writing what comes back.
 // Every write is the active GM's; each screen draws its own view of what is written (the fence, registerSmokeFence,
-// and the region's concealment).
-const SMOKE_NOTE = { animater: { roomSmoke: true } };
+// the region's concealment, and the painted cloud below).
+// (The scene flag is smokeFills and a light's own is smokeSource. NEITHER is the settings pair "Smoke in the air"
+// (skyPair("roomSmoke", "roomSmokeLocal")), which is a different, older, purely visual haze: three things shared the
+// name roomSmoke before any of this shipped, and the two new ones were renamed so the next reader is not caught.)
+// The marker this round stamps its OWN scene writes with. smoke-round.mjs smokeOnlySave reads this very key to tell
+// the round talking to itself from a GM really editing the map; the two are one thing and move together, or the round
+// mistakes its own write for an edit and throws the room cache away every single tick.
+const SMOKE_NOTE = { animater: { smokeFills: true } };
 // Which lights make smoke: a fire light (a torch, flame, fire, candle or flicker) the GM ticked "Fills the room with
 // smoke" on. Off by default, so a lit hearth or brazier does not fog the inn. Each keeps its levels, so a light on
 // the cellar floor records its smoke there and not on whatever floor the scene opens on.
 const smokeLightsOf = (scene) => (scene?.lights?.contents ?? [])
-  .filter((d) => d.hidden !== true && d.flags?.[ID]?.roomSmoke === true && isFireLight(d.config ?? {}))
+  .filter((d) => d.hidden !== true && d.flags?.[ID]?.smokeSource === true && isFireLight(d.config ?? {}))
   .map((d) => ({ x: d.x, y: d.y, smokes: true, levels: [...(d.levels ?? [])] }));
 // Whether a token in the smoke is concealed: only through pf2e-visioner's own region behaviour, and only when that
 // behaviour type is really registered. Installed is not enough.
@@ -10529,6 +10545,40 @@ const syncFireLooks = () => { clearTimeout(fireLooksTimer); fireLooksTimer = set
 for (const hook of ["canvasReady", "createTile", "updateTile", "deleteTile", "updateRegion", "createRegion", "deleteRegion", "updateScene"])
   Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) syncFireLooks(); });
 Hooks.on("canvasTearDown", () => { clearTimeout(fireLooksTimer); fireLooks.clear(); });
+// ---- What the room smoke looks like on the viewed map, for everyone (engines/props/smoke-look.mjs). ----
+// Painted stepped grey puffs standing in the very cells the active GM wrote, drifting from one round to the next
+// instead of jumping. Nothing here writes anything: it reads the scene's own stored cells, and it reads them against
+// the geometry they were WRITTEN with (storedSmokeGrid), exactly as the sight-blocking fence does, so a resize or a
+// grid change can never slide the cloud out from under the cells.
+// The cloud drifts; the fence does NOT. A sight-blocker that moved mid-round would pop the fog and rebuild every
+// client's vision every frame, so the edges stay on the round boundary (smoke-fence.mjs, untouched).
+// Its layer is 752: over the creatures (Foundry draws tokens at 700) and the treetops (740), because thick smoke
+// hides what stands in it and must be painted over them, and under the birds and their shadows (1100), which fly
+// above the smoke. Not the fire's 657, which lies under the creatures, and not the old haze's 760.
+const smokeLooks = createSmokeLooks({ PIXI: globalThis.PIXI, layer: floorLayer("smokeLooks", 752),
+  grid: () => canvas?.grid?.size ?? 100, now: () => fireNow() });
+let smokeLooksTimer = 0;
+function syncSmokeLooksNow() {
+  if (!canvas?.ready) return;
+  const scene = canvas.scene;
+  // The same three switches the round itself asks (smokeRunsOn): with any of them off there is no smoke to paint,
+  // and whatever is still stored is on its way off the scene this very round.
+  if (!scene || !smokeRunsOn(scene)) { smokeLooks.clear(); return; }
+  // The smoke is recorded on one level; a screen looking at another floor sees none of it.
+  const level = smokeLevelOf(scene);
+  if (level && canvas?.level?.id && canvas.level.id !== level) { smokeLooks.clear(); return; }
+  const cells = smokeCellsOf(scene);
+  const grid = storedSmokeGrid(scene, cells) ?? smokeGridOf(scene.dimensions);
+  if (!grid) { smokeLooks.clear(); return; }
+  // Seeded from the scene's own id, so every screen looking at this map paints the same cloud and the map next door
+  // wears a different brush. No clock and no dice: the drift and the sway are the shared clock's alone.
+  smokeLooks.sync({ puffs: smokePuffs(smokeCellList(cells), { cols: grid.cols, origin: grid.origin, cell: grid.cell, seed: smokeSeedOf(scene.id) }) });
+}
+const syncSmokeLooks = () => { clearTimeout(smokeLooksTimer); smokeLooksTimer = setTimeout(() => propSafe("smoke looks", syncSmokeLooksNow), 60); };
+// The round's own write back is the new smoke, so unlike the fire's looks this is NOT filtered by quietSave: skipping
+// it would leave the cloud a round behind for ever. Only a clock save, which changes nothing of ours, is passed over.
+for (const hook of ["canvasReady", "updateScene"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) syncSmokeLooks(); });
+Hooks.on("canvasTearDown", () => { clearTimeout(smokeLooksTimer); smokeLooksTimer = 0; smokeLooks.clear(); });
 // A region repainted, reshaped or moved: its grass grid is laid out again next round, and its burning squares go
 // with the old grid. A square is saved by its index on the grid the shape had, so the same index names a different
 // patch of ground once the shape moves — keeping them would have the fire jump across the map on its own. The
@@ -14036,7 +14086,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
   // Breakable props: the GM's switch for this scene, the miss chance, and Repair (GM only).
   if (!root.querySelector(`[name="flags.${ID}.breakableProps"]`)) {
     const flags = app.document?.flags?.[ID] ?? {}, props = document.createElement("div");
-    props.innerHTML = propSceneFieldsHTML({ on: flags.breakableProps === true, chance: flags.propMissChance, breakWalls: flags.breakWalls, rubble: flags.rubbleDifficult === true, fireSpreads: flags.fireSpreads === true, roomSmoke: flags.roomSmoke === true });
+    props.innerHTML = propSceneFieldsHTML({ on: flags.breakableProps === true, chance: flags.propMissChance, breakWalls: flags.breakWalls, rubble: flags.rubbleDifficult === true, fireSpreads: flags.fireSpreads === true, smokeFills: flags.smokeFills === true });
     const repair = props.querySelector('[data-action="animater-repair-props"]');
     repair.disabled = !game.user?.isGM;
     repair.addEventListener("click", async (event) => {
@@ -14267,7 +14317,7 @@ Hooks.on("renderAmbientLightConfig", (app, html) => {
     ${autoOnOff("sparks", "Sparks", "Sparks and embers rising from this light (\"Sparks from fires\").")}
     ${autoOnOff("fireSound", "Sound", "This fire heard close by (\"Fire sounds\"): crackling, or a pot bubbling, by its Fire kind.")}
     ${autoOnOff("chimney", "Chimney smoke", "A hearth in a room smokes from the roof above it while the roof is drawn (Auto). On: always smokes above the roofs (a forge). Off: never.", "A hearth in a room")}
-    <div class="form-group"><label data-tooltip="${esc("With the scene's Fires fill rooms with smoke on, this light's fire fills the room it stands in: thick smoke blocks sight, thin smoke conceals. Off for a hearth or a brazier, so a lit fireplace does not fog the inn; tick it for a fire that really is smoking the place out.")}">Fills the room with smoke</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.roomSmoke"${flags.roomSmoke === true ? " checked" : ""}></div></div>
+    <div class="form-group"><label data-tooltip="${esc("With the scene's Fires fill rooms with smoke on, this light's fire fills the room it stands in: thick smoke blocks sight, thin smoke conceals. Off for a hearth or a brazier, so a lit fireplace does not fog the inn; tick it for a fire that really is smoking the place out.")}">Fills the room with smoke</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.smokeSource"${flags.smokeSource === true ? " checked" : ""}></div></div>
     <p class="hint">Auto follows the light's animation: a torch, flame, fire, candle or flicker light is a fire. Each switch is its own: turning Heat haze off leaves the flame, smoke and sparks. Hover a name or a button for more.</p>`;
   // A click sets the hidden field and tells the form, so Foundry's live preview of the light follows.
   set.addEventListener("click", (event) => {

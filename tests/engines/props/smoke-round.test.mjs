@@ -15,7 +15,7 @@ const scene = ({ smoke = null, grid = null, on = true, levels = [], width = 1000
   id: "scene0000000000z",
   dimensions: { width, height, size },
   levels,
-  flags: { animater: { roomSmoke: on, ...(smoke ? { smoke } : {}), ...(grid ? { smokeGrid: grid } : {}) } },
+  flags: { animater: { smokeFills: on, ...(smoke ? { smoke } : {}), ...(grid ? { smokeGrid: grid } : {}) } },
 });
 const inRoom = (i) => { const c = i % COLS, r = (i - c) / COLS; return c >= 1 && c <= 5 && r >= 1 && r <= 5; };
 // Walls all round the room, with a doorway where `door` says (a pair of touching cells smoke may pass between).
@@ -203,12 +203,12 @@ test("smoke crosses where a truncated walk used to leave a seam", () => {
   const seam = [...Array(CAVE.cols * CAVE.rows).keys()]
     .flatMap((i) => smokeNeighbours(i, CAVE.cols, CAVE.rows).filter((n) => n > i && cache.has(i) !== cache.has(n)).map((n) => [i, n]))[0];
   assert.ok(seam, "the walk really does stop part way across this cave");
-  const caveScene = { id: "cave000000000000", dimensions: { width: CAVE.cols * CELL, height: CAVE.rows * CELL, size: CELL }, levels: [], flags: { animater: { roomSmoke: true } } };
+  const caveScene = { id: "cave000000000000", dimensions: { width: CAVE.cols * CELL, height: CAVE.rows * CELL, size: CELL }, levels: [], flags: { animater: { smokeFills: true } } };
   // A fire on the near side of that seam, run until its smoke reaches across.
   let smoke = null, p = null;
   for (let n = 0; n < 20; n++) {
     p = smokeRoundPlan({ activeGM: true, on: true, sources: [{ i: seam[0], rate: 4, levels: [] }],
-      scene: { ...caveScene, flags: { animater: { roomSmoke: true, ...(smoke ? { smoke, smokeGrid: { cols: CAVE.cols, cell: CELL } } : {}) } } },
+      scene: { ...caveScene, flags: { animater: { smokeFills: true, ...(smoke ? { smoke, smokeGrid: { cols: CAVE.cols, cell: CELL } } : {}) } } },
       roomOf: caveRoom(cache) });
     smoke = Object.fromEntries(p.cells.map((c) => [String(c.i), Math.round(c.v * 10000) / 10000]));
   }
@@ -274,7 +274,7 @@ test("the four cells touching one are its own, and never off the grid", () => {
 });
 
 test("the round's own write back is not a scene edit; a real one is", () => {
-  const note = { animater: { roomSmoke: true } };
+  const note = { animater: { smokeFills: true } };
   // What the round writes, flat and (as the update hook may hand it over) nested, with the deletion marker too.
   assert.equal(smokeOnlySave({ "flags.animater.smoke.33": 1.08, "flags.animater.smokeGrid.cols": 10 }, note), true);
   assert.equal(smokeOnlySave({ "flags.animater.smoke.-=33": null, "flags.animater.-=smokeGrid": null }, note), true);
@@ -282,11 +282,11 @@ test("the round's own write back is not a scene edit; a real one is", () => {
   assert.equal(smokeOnlySave({ flags: { animater: { smoke: { 33: 1 }, smokeGrid: { cols: 10 } } } }, note), true);
   // A real edit by the GM, even carried in the same update, is an edit: the room sizes must go.
   assert.equal(smokeOnlySave({ "flags.animater.smoke.33": 1, width: 2000 }, note), false);
-  assert.equal(smokeOnlySave({ "flags.animater.roomSmoke": false }, note), false, "the GM's own switch is an edit");
+  assert.equal(smokeOnlySave({ "flags.animater.smokeFills": false }, note), false, "the GM's own switch is an edit");
   assert.equal(smokeOnlySave({ flags: { animater: { smoke: {} }, core: {} } }, note), false);
   // Nested is the shape the updateScene hook really hands over, so a real edit riding along in it must be caught
   // too: EVERY own key has to be one of ours, not merely one of them.
-  assert.equal(smokeOnlySave({ flags: { animater: { smoke: {}, roomSmoke: false } } }, note), false);
+  assert.equal(smokeOnlySave({ flags: { animater: { smoke: {}, smokeFills: false } } }, note), false);
   assert.equal(smokeOnlySave({ flags: { animater: { smokeGrid: { cols: 10 }, foulWater: true } } }, note), false);
   // And with no note it is somebody else's write, whatever it touches.
   assert.equal(smokeOnlySave({ "flags.animater.smoke.33": 1 }, {}), false);
@@ -337,14 +337,15 @@ test("the smoke picks regions by their flag and their level, never by whether a 
 
 test("both switches are off by default and the scene's says what the smoke does", () => {
   const off = propSceneFieldsHTML({});
-  assert.match(off, /name="flags\.animater\.roomSmoke"/);
-  assert.doesNotMatch(off, /roomSmoke"[^>]*checked/);
+  assert.match(off, /name="flags\.animater\.smokeFills"/);
+  assert.doesNotMatch(off, /smokeFills"[^>]*checked/);
   assert.match(off, /[Tt]hick smoke blocks sight/);
   assert.match(off, /thin smoke conceals/);
-  assert.match(propSceneFieldsHTML({ roomSmoke: true }), /roomSmoke"[^>]*checked/);
+  assert.match(propSceneFieldsHTML({ smokeFills: true }), /smokeFills"[^>]*checked/);
   // A fire light's own, likewise unticked.
   assert.match(main, /Fills the room with smoke/);
-  assert.match(main, /name="flags\.\$\{ID\}\.roomSmoke"\$\{flags\.roomSmoke === true \? " checked" : ""\}/);
+  // A light's own switch is a THIRD thing with its own name (smokeSource), never the scene's and never the settings pair's.
+  assert.match(main, /name="flags\.\$\{ID\}\.smokeSource"\$\{flags\.smokeSource === true \? " checked" : ""\}/);
 });
 
 // ---- Clearing: every path by which the smoke must stop existing. ----
@@ -427,12 +428,12 @@ test("a room with no source left empties on its own, cells, geometry and shapes"
 // sight-blocking fence would stand for ever, blinding the players in a room with no smoke drawn in it.
 
 const switched = (own = {}) => ({ ...scene({ smoke: { 33: 2, 34: 1 }, grid: { cols: COLS, cell: CELL, level: A } }),
-  flags: { animater: { roomSmoke: true, breakableProps: true, fireSpreads: true, smoke: { 33: 2, 34: 1 }, smokeGrid: { cols: COLS, cell: CELL, level: A }, ...own } } });
+  flags: { animater: { smokeFills: true, breakableProps: true, fireSpreads: true, smoke: { 33: 2, 34: 1 }, smokeGrid: { cols: COLS, cell: CELL, level: A }, ...own } } });
 const CLEARED = { "flags.animater.smoke.-=33": null, "flags.animater.smoke.-=34": null, "flags.animater.-=smokeGrid": null };
 
 test("every one of the three switches has to be on for the smoke to run", () => {
   assert.equal(smokeRunsOn(switched()), true);
-  for (const off of ["roomSmoke", "breakableProps", "fireSpreads"]) {
+  for (const off of ["smokeFills", "breakableProps", "fireSpreads"]) {
     assert.equal(smokeRunsOn(switched({ [off]: false })), false, off + " off");
     assert.equal(smokeRunsOn(switched({ [off]: undefined })), false, off + " unset");
   }
@@ -453,7 +454,7 @@ test("a scene with stored cells and Fire spreads off clears on its next round, r
 });
 
 test("the same for Breakable props off, and for the smoke's own switch", () => {
-  for (const off of ["breakableProps", "roomSmoke"]) {
+  for (const off of ["breakableProps", "smokeFills"]) {
     const sc = switched({ [off]: false });
     const p = smokeRoundPlan({ activeGM: true, on: smokeRunsOn(sc), scene: sc, sources: FIRE, indoors: inRoom, walled: sealed, roomOf });
     assert.deepEqual(p.fields, CLEARED, off);
@@ -471,7 +472,7 @@ test("the round still reaches a scene the fire round has stopped visiting", () =
   assert.deepEqual(smokeLeftovers([dead], { activeGM: false }), [], "only the active GM writes");
   assert.deepEqual(smokeLeftovers(null, { activeGM: true }), []);
   // Once its round has cleared it, it is not listed again: that is what stops this running for ever.
-  const cleaned = { ...dead, flags: { animater: { roomSmoke: true, breakableProps: true, fireSpreads: false } } };
+  const cleaned = { ...dead, flags: { animater: { smokeFills: true, breakableProps: true, fireSpreads: false } } };
   assert.deepEqual(smokeLeftovers([cleaned], { activeGM: true }), []);
 });
 
@@ -589,5 +590,5 @@ test("a non-active scene with a switch off loses its region along with its cells
   assert.deepEqual([region.remove, region.create, region.update], [["mine"], [], []]);
   assert.deepEqual(region.steps, [{ kind: "remove", ids: ["mine"] }]);
   // So after that pass the scene holds nothing of ours, and smokeHeldBy agrees it need not be visited again.
-  assert.equal(smokeHeldBy({ flags: { animater: { roomSmoke: true, breakableProps: true, fireSpreads: false } } }), false);
+  assert.equal(smokeHeldBy({ flags: { animater: { smokeFills: true, breakableProps: true, fireSpreads: false } } }), false);
 });
