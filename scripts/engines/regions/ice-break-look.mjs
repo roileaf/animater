@@ -1,3 +1,5 @@
+import { iceStateOf } from "./thin-ice.mjs";
+
 // The shapes of thin ice breaking: the cracks painted in a square that has cracked, the jagged hole of dark water where it gave
 // way, and the loose shards of ice floating in that hole. Geometry only, pure: no Foundry, no PIXI, no drawing; a later layer
 // draws what these return. Everything is in absolute canvas pixels (a square "col,row" has its corner at col*grid, row*grid)
@@ -85,6 +87,58 @@ export function shards(key, { grid, seed = 0, size } = {}) {
   for (let k = 0; k < count; k++) {
     const angle = next() * Math.PI * 2, dist = Math.sqrt(next()) * reach;
     out.push({ x: cx + Math.cos(angle) * dist, y: cy + Math.sin(angle) * dist, r: grid * (0.06 + next() * 0.1), turn: (next() - 0.5) * Math.PI * 2 });
+  }
+  return out;
+}
+
+// ---- what a region draws ----
+// A region's thin ice as the screen draws it. Pure: the region arrives as { id, flags } and the answer is plain data, so what a
+// client draws is tested without Foundry; main.mjs only hands regions in and puts the answers on the map.
+
+// How many squares across a creature that breaks the ice is, by what the ice holds: the first size over its limit (Small ice
+// gives way under Medium, Medium under Large, Large under Huge). The hole is that plus one square (holeOutline).
+const BREAKER_SQUARES = { sm: 1, med: 2, lg: 3 };
+
+// The region's own thin-ice settings: off unless the flag is exactly true; Medium unless it says Small or Large.
+export function iceSettingsOf(doc) {
+  const own = doc?.flags?.animater;
+  const holds = own?.iceHolds;
+  return { thin: own?.iceThin === true, holds: Object.hasOwn(BREAKER_SQUARES, holds) ? holds : "med" };
+}
+
+// A region's id as a number, so each region breaks in its own way but every client breaks it the same way.
+const seedOfId = (id) => { let n = 7; for (const ch of String(id)) n = (Math.imul(n, 31) + ch.charCodeAt(0)) | 0; return (n >>> 0) % 100000; };
+
+// The water engine reads an area as flat x, y pairs: [{x, y}, ...] -> [x, y, x, y, ...].
+const flatten = (ring) => ring.flatMap((p) => [p.x, p.y]);
+
+// Still, deep, dark water that never freezes with the rest of the region: the same look the decorations' cave pools have. The
+// caller adds what only the screen has (the bed's colour texture, the map's rectangle, whether a roof is over it).
+const holeLook = { watery: true, over: [], kind: "still", followsWind: false, edge: 1, depth: { hold: 1.6, dark: 0.72 }, beach: false, sand: null, waves: null, angle: null, current: 0, keeps: true };
+
+/** What a region's thin ice draws: { holes: water specs (one per hole, id "<region>:ice:<square>", areas one flat polygon),
+ *  cracks: [{ id, lines }] one per cracked square, shards: [{ id, list }] one per hole }. All empty unless the region has thin
+ *  ice on; ids are stable and the numbers depend only on what is stored, so every client draws the same break and the water
+ *  engine's cache (keyed on the areas) keeps its meshes between rounds. */
+export function iceBreakOf(region, { grid } = {}) {
+  const none = { holes: [], cracks: [], shards: [] };
+  if (!region?.id || !validGrid(grid)) return none;
+  const { thin, holds } = iceSettingsOf(region);
+  if (!thin) return none;
+  const { cracks, holes } = iceStateOf(region);
+  const seed = seedOfId(region.id), size = BREAKER_SQUARES[holds];
+  const out = { holes: [], cracks: [], shards: [] };
+  for (const key of holes) {
+    const ring = holeOutline(key, { grid, seed, size });
+    if (!ring.length) continue;
+    const id = `${region.id}:ice:${key}`;
+    out.holes.push({ id, areas: [flatten(ring)], ...holeLook });
+    out.shards.push({ id, list: shards(key, { grid, seed, size }) });
+  }
+  for (const key of cracks) {
+    if (holes.includes(key)) continue; // a square that gave way is a hole, not a crack
+    const lines = crackLines(key, { grid, seed });
+    if (lines.length) out.cracks.push({ id: `${region.id}:ice:${key}`, lines });
   }
   return out;
 }

@@ -40,6 +40,8 @@ import { propTraits } from "./engines/props/prop-traits.mjs";
 import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsOf, dropLostDecorFire, regionBurns, createQuenchGate, quenchedBy, quenchUpdates, repairFireUpdates } from "./engines/props/fire-spread.mjs";
 import { areaRefusal } from "./engines/props/prop-areas.mjs";
 import { createFireLooks, thingFires, charredCells, litCells } from "./engines/props/fire-looks.mjs";
+import { iceBreakOf } from "./engines/regions/ice-break-look.mjs";
+import { createIceBreakLook } from "./engines/regions/ice-break-draw.mjs";
 import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
 import { DECOR_BREAK_MESSAGE, DECOR_NAMES, burningDecorIds, decorPlaceOf, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
@@ -3675,11 +3677,21 @@ const syncFloorLooks = () => {
   floorTextures.sync(painted);
   syncMovingWater(moving);
   syncFloorShadows(moving);
+  syncIceBreak();
 };
 // Moving water (engines/motion/water-engine.mjs): every water region's, on every scene, as far as each screen's quality level and the Moving water setting allow.
 const waterEngine = createWaterEngine({ PIXI: globalThis.PIXI, root: floorLayer("waterEngine", 395), grid: () => canvas.grid?.size ?? 100 });
 // What raised floors throw on what is below them: over the painted floors (400), under what lies on them (410).
 const floorShadows = createFloorShadows({ PIXI: globalThis.PIXI, root: floorDrawRoot("floorShadows"), edges: floorLayer("floorEdges"), grid: () => canvas.grid?.size ?? 100 });
+// Thin ice breaking (engines/regions/ice-break-look.mjs, ice-break-draw.mjs): the cracks and the floating shards, painted on the floor under the creatures, read from what the GM stored on the region so every screen draws the same. The holes are water, in movingWaterList.
+const iceBreakLook = createIceBreakLook({ PIXI: globalThis.PIXI, layer: floorLayer("iceBreak", 643), grid: () => canvas.grid?.size ?? 100 });
+const syncIceBreak = () => {
+  const cracks = [], shards = [], grid = canvas.grid?.size ?? 100, wet = movingWaterOn();
+  for (const region of drawnRegions()) {
+    try { const broken = iceBreakOf(region, { grid }); cracks.push(...broken.cracks); if (wet) shards.push(...broken.shards); /* (shards float on a hole, and a hole is moving water) */ } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
+  }
+  try { iceBreakLook.sync({ cracks, shards }); } catch (err) { runtime?.trace?.("thin ice", `paint: ${err?.message ?? err}`); }
+};
 // Whether two sets of areas have boxes that overlap at all.
 // (Each set of areas' box worked out once and kept with it; each region's areas kept till it changes: floor shadows asked them
 // again for every tile, every caster, every other region. The audit's finding.)
@@ -3746,6 +3758,12 @@ const movingWaterList = () => {
   // The decorations' puddles and cave pools: still water in the outline their painted rim goes round, deep, the colour of a painted water floor.
   if (on) for (const pool of decorations.water()) {
     try { list.push({ id: pool.id, areas: pool.areas, watery: true, over: [], kind: "still", followsWind: false, edge: 1, depth: pool.deep ? { hold: 1.6, dark: 0.72 } : { hold: 1.35, dark: 0.4 }, bed: { texture: decorPondBed(), key: "decor-pond", edge: 1, colourOnly: true }, beach: false, sand: null, map: canvas.dimensions?.sceneRect ? { x: canvas.dimensions.sceneRect.x, y: canvas.dimensions.sceneRect.y, width: canvas.dimensions.sceneRect.width, height: canvas.dimensions.sceneRect.height } : null, waves: null, angle: null, current: 0, keeps: false, roofed: roofedRegion(pool.areas) }); } catch { /* one pool never breaks the rest */ }
+  }
+  // Thin ice that has given way: a hole of dark water in the ice, one spec for each, flat areas as every region's are.
+  if (on) for (const region of drawnRegions()) {
+    try {
+      for (const hole of iceBreakOf(region, { grid: canvas.grid?.size ?? 100 }).holes) list.push({ ...hole, bed: { texture: decorPondBed(), key: "decor-pond", edge: 1, colourOnly: true }, map: canvas.dimensions?.sceneRect ? { x: canvas.dimensions.sceneRect.x, y: canvas.dimensions.sceneRect.y, width: canvas.dimensions.sceneRect.width, height: canvas.dimensions.sceneRect.height } : null, roofed: roofedRegion(hole.areas) });
+    } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
   }
   return list;
 };
