@@ -105,6 +105,7 @@ import { createAreaMarkQueue, registerSpellArsenal } from "./integrations/spell-
 import { wrapRulerHighlight } from "./integrations/walked-path.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName, templateDocument } from "./engines/playback/runtime.mjs";
+import { AREA_LOOP_MODES } from "./engines/playback/lasting-area.mjs";
 import { wallHit, planFlight } from "./engines/playback/flight-path.mjs";
 import { nowPlayingRows } from "./ui/activity-actions.mjs";
 import { createHoverExplain, tokenRows, hoverView, hoverExplainDefault } from "./ui/hover-explain.mjs";
@@ -11208,6 +11209,10 @@ Hooks.once("init", () => {
   registerSetting('lastingMode',{name:'Lasting condition animations (this device)',
     hint:'How lasting conditions and effects show on your screen. "Follow the catalog setting" uses each catalog\'s Lasting animation switch in Animater. "On application and at its turn start" plays them when applied and again briefly whenever that creature\'s turn starts in combat. The Defeated look keeps its own setting. Each player\'s choice affects only their screen.',
     scope:'client',config:true,type:String,choices:{...LASTING_MODES},default:'world',onChange:()=>persistentStates?.schedule()});
+  // Lasting spell areas (a cloud, a wall, Blossoming Gore's roses): played for everyone from one client, so the world's choice.
+  registerSetting('areaLoopMode',{name:'Lasting area animations',
+    hint:'How spell areas that stay on the map (walls, clouds, difficult terrain) show. "Stay while placed" loops the area until its template is removed. "Play once, then fade" plays it once when placed. "Play once and at turn start" also plays it again briefly whenever the caster\'s turn starts in combat, while the template stays. Conditions and effects on tokens keep their own Lasting animation switch. Applies to areas placed after the change.',
+    scope:'world',config:true,type:String,choices:{...AREA_LOOP_MODES},default:'loop'});
   // Looks a GM flagged for a new look from a token's looks panel (ui/token-looks.mjs): { entryId: { name, kind, ... } }.
   registerSetting(FLAGGED_LOOKS,{scope:'world',config:false,type:Object,default:{},onChange:()=>{tokenLooks.refresh();app?.workspace?.render();}});
   registerSetting(SUBTLE_LASTING,{name:'Subtle effects, conditions and auras',
@@ -13274,6 +13279,8 @@ Hooks.once("ready", () => {
   Hooks.on('canvasReady',()=>{prepareShaders();});
   if(canvas?.ready)prepareShaders();
   runtime = new AnimaterRuntime({
+    // How lasting spell areas show (world setting): loop, once, or once and at the caster's turn start.
+    areaLoopMode: () => { try { return hotSetting("areaLoopMode"); } catch { return "loop"; } },
     soundCatalog: () =>
       installedSoundCatalog(game.modules, globalThis.Sequencer?.Database),
     get database() {
@@ -13563,6 +13570,9 @@ Hooks.once("ready", () => {
       if (!("turn" in (changed ?? {}) || "round" in (changed ?? {})) || combat?.scene?.id && combat.scene.id !== canvas.scene?.id) return;
       const token = combat?.combatant?.token?.object;
       if (token) void persistentStates.replay(token);
+      // ...and the lasting areas it placed play again (areaLoopMode "turn"), on the client that placed them.
+      const actorId = combat?.combatant?.actor?.id;
+      if (actorId) void runtime?.replayAreas(actorId);
     });
     Hooks.on("preCreateSequencerEffect", (data) => persistentStates.accepts(data.name) ? undefined : false);
     Hooks.on("createSequencerEffect", (effect) => {
