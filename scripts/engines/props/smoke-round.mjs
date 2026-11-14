@@ -21,6 +21,38 @@ export function smokeNeighbours(i, cols, rows) {
   return out;
 }
 
+// The most cells one room's walk will ever visit. A walk over a whole cave every few seconds is far too much, so
+// past this the fill gives up and says so.
+export const ROOM_CAP = 1200;
+
+// The room a cell sits in, as {id, size}: everything reachable from it without crossing a wall and without stepping
+// outside, named by the room's own lowest cell so every cell of one room answers to the same name, and counted so
+// the venting can be a share of it. `cache`, when given, is a Map the caller keeps between rounds: every cell of the
+// fill is written into it, so the rest of the room costs nothing.
+//
+// A fill that reaches `cap` gives up there and answers with ONE shared name for every truncated fill of that grid,
+// so the pieces of a space too big to walk are still a single room. This matters: cross-room pairs are blocked, so
+// a fill that split a great cave into named pieces would stop the smoke dead at a seam that is not there. The price
+// is that the vent then divides by the cap instead of the true size — an enormous cave vents a little too hard,
+// which is a number being wrong rather than a wall that does not exist.
+export function smokeRoomAt({ from, cols, rows, indoors = () => true, walled = () => false, cap = ROOM_CAP, cache = null } = {}) {
+  const kept = cache?.get(from);
+  if (kept) return kept;
+  const seen = new Set([from]), queue = [from];
+  while (queue.length && seen.size < cap) {
+    const i = queue.pop();
+    for (const n of smokeNeighbours(i, cols, rows)) {
+      if (seen.size >= cap) break;
+      if (seen.has(n) || !indoors(n) || walled(i, n)) continue;
+      seen.add(n);
+      queue.push(n);
+    }
+  }
+  const own = seen.size >= cap ? { id: `${cols}:big`, size: cap } : { id: `${cols}:${Math.min(...seen)}`, size: seen.size };
+  if (cache) for (const i of seen) cache.set(i, own);
+  return own;
+}
+
 // The smoke as the fewest rectangles: each row's run of touching cells is one. Thin smoke counts, since thin smoke is
 // what the concealment region is for; thick smoke is thin smoke and more.
 export function smokeShapes(cells, { cols, cell, origin }) {

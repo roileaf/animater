@@ -27,7 +27,7 @@ import { smokeCellsOf, smokeSourcesOf } from "./engines/props/smoke-field.mjs";
 import { registerSmokeFence } from "./engines/props/smoke-fence.mjs";
 import { smokeGridOf } from "./engines/props/smoke-edges.mjs";
 import { smokeRegionData, CONCEALMENT_BEHAVIOUR } from "./engines/props/smoke-regions.mjs";
-import { smokeRoundPlan, smokeNeighbours, smokeOnlySave } from "./engines/props/smoke-round.mjs";
+import { smokeRoundPlan, smokeRoomAt, smokeOnlySave } from "./engines/props/smoke-round.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls, blockingWalls, wallStop } from "./engines/props/prop-walls.mjs";
@@ -10290,35 +10290,20 @@ const smokeConceals = () => {
   try { return game.modules?.get("pf2e-visioner")?.active === true && !!CONFIG.RegionBehavior?.dataModels?.[CONCEALMENT_BEHAVIOUR]; }
   catch { return false; }
 };
-// The room a cell sits in: everything reachable from it without crossing a wall and without stepping outside, named
-// by its own lowest cell so every cell of one room answers to the same name, and counted so the venting can be a
-// share of it — one doorway on a closet is a gale, the same doorway on a great hall is a draught. Each room is
-// stepped on its own, so a burning closet never vents the hall beside it nor lends it its cell count.
-// Held per scene and thrown away whenever the walls, the regions or the scene really change (the round's own write
-// back is not a change: smokeOnlySave), since a walk over a whole cave is far too much to do every few seconds.
-const ROOM_CAP = 1200;
+// The rooms of each scene, as smoke-round.mjs's own walk works them out (smokeRoomAt): each cell's room, by name and
+// by cell count, so one doorway on a closet is a gale and the same doorway on a great hall is a draught, and each
+// room is stepped on its own — a burning closet never vents the hall beside it nor lends it its cell count.
+// Kept per scene between rounds and thrown away whenever the walls, the regions or the scene really change (the
+// round's own write back is not a change: smokeOnlySave), since a walk over a whole cave is far too much every tick.
 let smokeRooms = new Map();
 for (const hook of ["canvasReady", "createWall", "updateWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion", "updateScene", "deleteScene"]) {
   Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) smokeRooms = new Map(); });
 }
-function smokeRoomAt(scene, from, { cols, rows }, indoors, walled) {
+const smokeRoomsOf = (scene) => {
   let byCell = smokeRooms.get(scene.id);
   if (!byCell) { byCell = new Map(); smokeRooms.set(scene.id, byCell); }
-  const kept = byCell.get(from);
-  if (kept) return kept;
-  const seen = new Set([from]), queue = [from];
-  while (queue.length && seen.size < ROOM_CAP) {
-    const i = queue.pop();
-    for (const n of smokeNeighbours(i, cols, rows)) {
-      if (seen.has(n) || !indoors(n) || walled(i, n)) continue;
-      seen.add(n);
-      queue.push(n);
-    }
-  }
-  const own = { id: `${cols}:${Math.min(...seen)}`, size: seen.size };
-  for (const i of seen) byCell.set(i, own);
-  return own;
-}
+  return byCell;
+};
 // One round of smoke on one scene, run by the active GM on the fire's own tick, straight after fireRound, with what
 // fireRound found alight. Switched off, or with nothing stored and nothing burning, it costs a flag read.
 async function smokeRound(scene, burning = []) {
@@ -10343,7 +10328,8 @@ async function smokeRound(scene, burning = []) {
     };
     const walls = blockingWalls((scene.walls?.contents ?? []).map(wallView));
     const walled = (i, n) => wallBetween(mid(i), mid(n), walls);
-    plan = smokeRoundPlan({ activeGM, on, scene, sources, indoors, walled, roomOf: (i) => smokeRoomAt(scene, i, geo, indoors, walled) });
+    plan = smokeRoundPlan({ activeGM, on, scene, sources, indoors, walled,
+      roomOf: (i) => smokeRoomAt({ from: i, cols, rows, indoors, walled, cache: smokeRoomsOf(scene) }) });
   }
   if (!plan) return;
   if (Object.keys(plan.fields).length) {

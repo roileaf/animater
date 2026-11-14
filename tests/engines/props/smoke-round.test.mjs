@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { smokeRoundPlan, smokeLevelFor, smokeShapes, smokeNeighbours, smokeOnlySave } from "../../../scripts/engines/props/smoke-round.mjs";
+import { smokeRoundPlan, smokeLevelFor, smokeShapes, smokeNeighbours, smokeOnlySave, smokeRoomAt, ROOM_CAP } from "../../../scripts/engines/props/smoke-round.mjs";
 import { THICK, THIN } from "../../../scripts/engines/props/smoke-field.mjs";
 import { propSceneFieldsHTML } from "../../../scripts/ui/prop-config.mjs";
 
@@ -173,6 +173,47 @@ test("neither room's smoke ever leaks into the other, nor out of doors", () => {
   assert.equal(mass(p, HALL).toFixed(6), mass(run(rooms(false)), HALL).toFixed(6), "the hall is untouched either way");
 });
 
+// ---- A cave larger than the walk will go: one room all the same, with no seam in it. ----
+// 60 x 40 of open floor, every cell indoors, no walls at all: 2400 cells against a cap of 1200.
+const CAVE = { cols: 60, rows: 40 };
+const caveRoom = (cache) => (i) => smokeRoomAt({ from: i, ...CAVE, cache });
+
+test("a space bigger than the walk is one room, not pieces with seams between them", () => {
+  const cache = new Map(), roomAt = caveRoom(cache);
+  assert.ok(CAVE.cols * CAVE.rows > ROOM_CAP, "the cave really is over the cap");
+  // The walk gives up at the cap exactly, never one cell past it.
+  const first = roomAt(0);
+  assert.equal(first.size, ROOM_CAP);
+  assert.equal(cache.size, ROOM_CAP, "the cap is the cap");
+  // A cell the first walk never reached answers to the same name, so the pieces are one room.
+  const far = [...Array(CAVE.cols * CAVE.rows).keys()].find((i) => !cache.has(i));
+  assert.ok(far !== undefined, "there is floor the first walk never reached");
+  assert.equal(roomAt(far).id, first.id, "no second room, and so no seam");
+  // Every cell of the cave names the one room.
+  const names = new Set([...Array(CAVE.cols * CAVE.rows).keys()].map((i) => roomAt(i).id));
+  assert.deepEqual([...names], [first.id]);
+});
+
+test("smoke crosses where a truncated walk used to leave a seam", () => {
+  const cache = new Map(), roomAt = caveRoom(cache);
+  // Find a pair of touching cells the walk puts in different pieces: that is where the false wall would have stood.
+  roomAt(0);
+  const seam = [...Array(CAVE.cols * CAVE.rows).keys()]
+    .flatMap((i) => smokeNeighbours(i, CAVE.cols, CAVE.rows).filter((n) => n > i && cache.has(i) !== cache.has(n)).map((n) => [i, n]))[0];
+  assert.ok(seam, "the walk really does stop part way across this cave");
+  const caveScene = { id: "cave000000000000", dimensions: { width: CAVE.cols * CELL, height: CAVE.rows * CELL, size: CELL }, levels: [], flags: { animater: { roomSmoke: true } } };
+  // A fire on the near side of that seam, run until its smoke reaches across.
+  let smoke = null, p = null;
+  for (let n = 0; n < 20; n++) {
+    p = smokeRoundPlan({ activeGM: true, on: true, sources: [{ i: seam[0], rate: 4, levels: [] }],
+      scene: { ...caveScene, flags: { animater: { roomSmoke: true, ...(smoke ? { smoke, smokeGrid: { cols: CAVE.cols, cell: CELL } } : {}) } } },
+      roomOf: caveRoom(cache) });
+    smoke = Object.fromEntries(p.cells.map((c) => [String(c.i), Math.round(c.v * 10000) / 10000]));
+  }
+  assert.equal(p.rooms.length, 1, "the whole cave is one group");
+  assert.ok(p.cells.some((c) => c.i === seam[1]), `the smoke crosses from ${seam[0]} to ${seam[1]}`);
+});
+
 test("one room is one group, and the same scene groups the same way every tick", () => {
   // Underground, where every cell counts as indoors and no roomOf is given, the lot is one room.
   const deep = smokeRoundPlan({ activeGM: true, on: true, scene: scene(), sources: [{ i: 33, rate: 1, levels: [] }] });
@@ -241,6 +282,10 @@ test("the round's own write back is not a scene edit; a real one is", () => {
   assert.equal(smokeOnlySave({ "flags.animater.smoke.33": 1, width: 2000 }, note), false);
   assert.equal(smokeOnlySave({ "flags.animater.roomSmoke": false }, note), false, "the GM's own switch is an edit");
   assert.equal(smokeOnlySave({ flags: { animater: { smoke: {} }, core: {} } }, note), false);
+  // Nested is the shape the updateScene hook really hands over, so a real edit riding along in it must be caught
+  // too: EVERY own key has to be one of ours, not merely one of them.
+  assert.equal(smokeOnlySave({ flags: { animater: { smoke: {}, roomSmoke: false } } }, note), false);
+  assert.equal(smokeOnlySave({ flags: { animater: { smokeGrid: { cols: 10 }, foulWater: true } } }, note), false);
   // And with no note it is somebody else's write, whatever it touches.
   assert.equal(smokeOnlySave({ "flags.animater.smoke.33": 1 }, {}), false);
   assert.equal(smokeOnlySave({}, note), false);
