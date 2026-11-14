@@ -34,6 +34,44 @@ export function smokeTier(v) {
   return null;
 }
 
+// The least and the most a single burning thing counts for, however small or large the map draws it: a candle-sized
+// wreck still smokes, and a burning barn is not a hundred fires at once.
+const SOURCE_MIN = 0.25;
+const SOURCE_MAX = 4;
+
+// What is making smoke this round, as cells of the smoke grid. `fires` are the burning things ({rect: {x, y, w, h}},
+// a prop, a spilled oil fire, a square of burning grass), each counted at its middle and worth as much as it covers
+// of the scene's own square (`grid`), held between SOURCE_MIN and SOURCE_MAX; one may name its own `rate` instead.
+// `lights` are the scene's lights ({x, y, smokes}): only a light the GM marked (`smokes === true`) is a source, so a
+// lit hearth does not fog the inn. `cell`, `origin` and `cols` are the smoke grid the indices are read against (the
+// same smokeGridOf the cells are stored with). Rates add up where two sources share a cell; anything off the grid is
+// left out. Returns [{i, rate}] sorted by i. Pure: no Foundry, no clock.
+export function smokeSourcesOf({ fires = [], lights = [], grid = 100, cell = 100, origin = { x: 0, y: 0 }, cols = 1 } = {}) {
+  const size = Number(cell) > 0 ? Number(cell) : 100;
+  const square = Number(grid) > 0 ? Number(grid) : size;
+  const ox = Number(origin?.x) || 0, oy = Number(origin?.y) || 0;
+  const wide = Number.isInteger(Number(cols)) && Number(cols) > 0 ? Number(cols) : 1;
+  const totals = new Map();
+  const put = (x, y, rate) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !(rate > 0)) return;
+    const col = Math.floor((x - ox) / size), row = Math.floor((y - oy) / size);
+    if (col < 0 || col >= wide || row < 0) return;
+    const i = row * wide + col;
+    totals.set(i, (totals.get(i) ?? 0) + rate);
+  };
+  for (const f of fires ?? []) {
+    const r = f?.rect ?? f, w = Number(r?.w), h = Number(r?.h), own = Number(f?.rate);
+    if (!Number.isFinite(Number(r?.x)) || !Number.isFinite(Number(r?.y)) || !(w > 0) || !(h > 0)) continue;
+    const rate = own > 0 ? own : Math.min(SOURCE_MAX, Math.max(SOURCE_MIN, (w * h) / (square * square)));
+    put(Number(r.x) + w / 2, Number(r.y) + h / 2, rate);
+  }
+  for (const l of lights ?? []) {
+    if (l?.smokes !== true) continue;
+    put(Number(l.x), Number(l.y), Number(l.rate) > 0 ? Number(l.rate) : 1);
+  }
+  return [...totals].map(([i, rate]) => ({ i, rate })).sort((a, b) => a.i - b.i);
+}
+
 // cells: [{i, v}] with i = row * cols + col. sources: [{i, rate}]. openings: [i]. blocked: [{from, to}] cell pairs a wall
 // separates (smoke does not cross either way). wind: {x, y} with length up to 1. dt: rounds, default 1. cap: the most any cell holds (default DENSITY_CAP), applied last.
 // Returns {cells} sorted by i, with every cell at or below DROP_FLOOR left out.

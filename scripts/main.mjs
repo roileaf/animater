@@ -23,8 +23,10 @@ import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
 import { BURN_MS, burnLightData, fireTimers, unhideLights, firesOf } from "./engines/props/prop-lights.mjs";
 import { propMaterial, canBreak } from "./engines/props/prop-material.mjs";
-import { smokeCellsOf } from "./engines/props/smoke-field.mjs";
+import { smokeCellsOf, smokeStep, smokeUpdatesFor, smokeSourcesOf, THIN } from "./engines/props/smoke-field.mjs";
 import { registerSmokeFence } from "./engines/props/smoke-fence.mjs";
+import { smokeGridOf, smokeCellList, storedSmokeGrid, SMOKE_GRID_FLAG } from "./engines/props/smoke-edges.mjs";
+import { smokeRegionData, CONCEALMENT_BEHAVIOUR } from "./engines/props/smoke-regions.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls, blockingWalls, wallStop } from "./engines/props/prop-walls.mjs";
@@ -42,7 +44,7 @@ import { propTraits } from "./engines/props/prop-traits.mjs";
 import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsOf, dropLostDecorFire, regionBurns, createQuenchGate, quenchedBy, quenchUpdates, repairFireUpdates } from "./engines/props/fire-spread.mjs";
 import { areaRefusal } from "./engines/props/prop-areas.mjs";
 import { createFireLooks, warmEdges, charredCells, litCells } from "./engines/props/fire-looks.mjs";
-import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
+import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, wallBetween, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
 import { DECOR_BREAK_MESSAGE, DECOR_NAMES, decorPlaceOf, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
@@ -10151,15 +10153,18 @@ function fireSpillsOf(scene, lights) {
 // (fireAwake: the tiles' own flags, the regions' decorations and grass, the burning spills) and the round stops
 // there — no decoration views, no prop traits, no grass grids and no writes. Every scene that is switched on is
 // looked at every few seconds for as long as the world runs, so that look must stay this cheap.
+// It hands back what is burning on the scene when it ends ([{rect, levels}]: props, decorations, oil spills and grass
+// squares), so the smoke round that follows on the same tick has the sources without gathering them all over again.
+// Every early return is "nothing is burning": [], and the smoke there only thins.
 async function fireRound(scene) {
-  if (!game.users.activeGM?.isSelf || !propsOn(scene)) return;
+  if (!game.users.activeGM?.isSelf || !propsOn(scene)) return [];
   const lights = sceneLights(scene), spills = fireSpillsOf(scene, lights);
-  if (!fireAwake({ tiles: scene.tiles?.contents ?? [], regions: scene.regions?.contents ?? [], spills: spills.length })) return;
+  if (!fireAwake({ tiles: scene.tiles?.contents ?? [], regions: scene.regions?.contents ?? [], spills: spills.length })) return [];
   const grid = propGrid(scene), regions = fireRegionsOf(scene, grid);
   const { things, tiles, docs, decor } = fireThingsOf(scene, grid, regions);
   const alight = things.filter((t) => t.fire?.burning);
   const grassLit = regions.some((r) => Object.values(fireCellsOf(r.doc)).some((c) => c?.burning === true && c?.charred !== true));
-  if (!alight.length && !grassLit && !spills.length) return;
+  if (!alight.length && !grassLit && !spills.length) return [];
   const walls = blockingWalls((scene.walls?.contents ?? []).map(wallView));
   // The grass of every region that burns, each on its own grid, with the fire it has saved.
   for (const r of regions) {
@@ -10173,6 +10178,8 @@ async function fireRound(scene) {
   // Every burning grass square of the scene, as one source list for the props: each named by its own id (never by a
   // bare index, which means something different in every region) and placed on a grid wide enough to hold them all.
   const litSquares = regions.flatMap((r) => (r.grass ? r.squares.filter((c) => c.burning && !c.charred).map((c) => ({ ...c, rect: squareRect(r, c.i) })) : []));
+  // Everything alight on the scene this round, for the smoke that follows: where it is and which level it is on.
+  const burningNow = [...alight, ...spills, ...litSquares].map((t) => ({ rect: t.rect, levels: [...(t.levels ?? [])] }));
   const sceneCols = Math.max(1, ...litSquares.map((c) => Math.floor(c.rect.x / grid) + 1));
   const sceneCells = litSquares.map((c) => ({ i: Math.floor(c.rect.y / grid) * sceneCols + Math.floor(c.rect.x / grid), id: c.id, levels: c.levels, burning: true }));
   // The wind where the fire is: at a burning prop, else at a burning oil spill, else at a burning grass square (a
@@ -10258,6 +10265,171 @@ async function fireRound(scene) {
   }
   // Cooled right down or gone: it may be warned about again.
   for (const t of things) if (!t.fire && !step.heat.some((h) => h.id === t.id)) fireWarned.delete(`${scene.id}:${t.id}`);
+  return burningNow;
+}
+// ---- The smoke a fire fills its room with, round by round (engines/props/smoke-field.mjs). ----
+// The GM's switch is the scene's "Fires fill rooms with smoke" (flags.animater.roomSmoke), off by default: it suits a
+// closed inn or a mine, not an open market. Every write here is the active GM's; each screen draws its own view of
+// what is written (the fence, registerSmokeFence, and the region's concealment).
+const LEVEL_ID = /^[a-zA-Z0-9]{16}$/;
+const SMOKE_NOTE = { animater: { roomSmoke: true } };
+// The four cells touching this one, inside the grid.
+function smokeNeighbours(i, cols, rows) {
+  const col = i % cols, row = (i - col) / cols, out = [];
+  if (col > 0) out.push(i - 1);
+  if (col + 1 < cols) out.push(i + 1);
+  if (row > 0) out.push(i - cols);
+  if (row + 1 < rows) out.push(i + cols);
+  return out;
+}
+// The smoke as the fewest rectangles: each row's run of touching cells is one. Thin smoke counts, since thin smoke is
+// what the concealment region is for; thick smoke is thin smoke and more.
+function smokeShapes(cells, { cols, cell, origin }) {
+  const byRow = new Map();
+  for (const c of cells) {
+    if (!(c.v >= THIN)) continue;
+    const col = c.i % cols, row = (c.i - col) / cols;
+    if (!byRow.has(row)) byRow.set(row, []);
+    byRow.get(row).push(col);
+  }
+  const out = [];
+  for (const [row, cols_] of [...byRow].sort((a, b) => a[0] - b[0])) {
+    cols_.sort((a, b) => a - b);
+    let from = cols_[0], prev = cols_[0];
+    for (let k = 1; k <= cols_.length; k++) {
+      const col = cols_[k];
+      if (col === prev + 1) { prev = col; continue; }
+      out.push({ type: "rectangle", x: origin.x + from * cell, y: origin.y + row * cell, width: (prev - from + 1) * cell, height: cell });
+      from = col; prev = col;
+    }
+  }
+  return out;
+}
+// Which lights make smoke: a fire light (a torch, flame, fire, candle or flicker) the GM ticked "Fills the room with
+// smoke" on. Off by default, so a lit hearth or brazier does not fog the inn.
+const smokeLightsOf = (scene) => (scene?.lights?.contents ?? [])
+  .filter((d) => d.hidden !== true && d.flags?.[ID]?.roomSmoke === true && isFireLight(d.config ?? {}))
+  .map((d) => ({ x: d.x, y: d.y, smokes: true }));
+// Whether a token in the smoke is concealed: only through pf2e-visioner's own region behaviour, and only when that
+// behaviour type is really registered. Installed is not enough.
+const smokeConceals = () => {
+  try { return game.modules?.get("pf2e-visioner")?.active === true && !!CONFIG.RegionBehavior?.dataModels?.[CONCEALMENT_BEHAVIOUR]; }
+  catch { return false; }
+};
+// The level the smoke sits on: the one it was written with while that level is still there, else the level of the
+// first thing alight, else the scene's own first. Null when none of those is a real document id.
+function smokeLevelFor(scene, burning) {
+  const levels = [...(scene?.levels ?? [])].map((l) => l?.id);
+  const real = (id) => typeof id === "string" && LEVEL_ID.test(id) && (!levels.length || levels.includes(id));
+  const stored = scene?.flags?.[ID]?.[SMOKE_GRID_FLAG]?.level;
+  if (real(stored)) return stored;
+  for (const b of burning ?? []) for (const id of b?.levels ?? []) if (real(id)) return id;
+  const first = scene?.initialLevel?.id ?? scene?.firstLevel?.id ?? null;
+  return real(first) ? first : null;
+}
+// Everything the smoke left behind, taken off the scene: the cells, the geometry beside them and the region.
+async function smokeClear(scene, saved) {
+  const fields = {};
+  for (const key of Object.keys(saved ?? {})) fields[`flags.${ID}.smoke.-=${key}`] = null;
+  if (scene.flags?.[ID]?.[SMOKE_GRID_FLAG]) fields[`flags.${ID}.-=${SMOKE_GRID_FLAG}`] = null;
+  const region = viewedRegions(scene.regions).find((r) => r.flags?.[ID]?.smokeRegion === true) ?? null;
+  if (Object.keys(fields).length) await scene.update(fields, SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke not cleared: ${e?.message ?? e}`));
+  if (region) await scene.deleteEmbeddedDocuments("Region", [region.id], SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke region not removed: ${e?.message ?? e}`));
+}
+// One round of smoke on one scene, run by the active GM on the fire's own tick, straight after fireRound, with what
+// fireRound found alight. Switched off, or with nothing stored and nothing burning, it costs a flag read.
+//
+// Indoors is a cell whose middle lies in a region that keeps the weather out (indoorPolygons' own test), or every cell
+// of an underground scene: smoke only exists there, so a fire out of doors fills nothing. A cell indoors that touches
+// one that is not is an opening, where the room breathes out; smoke never crosses into the open, because those pairs
+// are blocked, so a room with a hole in it drains instead of smoking across the map. A wall between two indoor cells
+// blocks them the same way, so the smoke stops at the walls and the stored grid is the authority on where it is.
+async function smokeRound(scene, burning = []) {
+  if (!game.users?.activeGM?.isSelf || !scene) return;
+  const saved = smokeCellsOf(scene);
+  if (scene.flags?.[ID]?.roomSmoke !== true) { await smokeClear(scene, saved); return; }
+  const geo = smokeGridOf(scene.dimensions);
+  if (!geo) return;
+  const { cols, rows, cell, origin } = geo, total = cols * rows;
+  // The stored cells only mean something against the geometry they were written with: a resized scene or a changed
+  // grid starts the room clear rather than sliding the old smoke under the new squares.
+  const was = storedSmokeGrid(scene, saved);
+  const kept = !was || (was.cols === cols && was.cell === cell) ? saved : {};
+  const stale = kept !== saved;
+  const sourcesAll = smokeSourcesOf({ fires: burning, lights: smokeLightsOf(scene), grid: propGrid(scene), cell, origin, cols });
+  const cellsIn = smokeCellList(kept).filter((c) => Number.isInteger(c.i) && c.i >= 0 && c.i < total);
+  if (!cellsIn.length && !sourcesAll.length) { if (Object.keys(saved).length || scene.flags?.[ID]?.[SMOKE_GRID_FLAG]) await smokeClear(scene, saved); return; }
+  // Only the cells that hold smoke or make it, and the ring they could reach this round, are ever asked about: the
+  // room test is a polygon walk, and a whole canvas of them every few seconds would be the round's whole cost.
+  const seed = new Set([...cellsIn.map((c) => c.i), ...sourcesAll.map((s) => s.i)]);
+  const look = new Set(seed);
+  for (const i of seed) for (const n of smokeNeighbours(i, cols, rows)) look.add(n);
+  const deep = undergroundOf(scene.flags?.[ID], null);
+  const rooms = deep ? [] : indoorPolygonsOf(viewedRegions(scene.regions), regionAreas);
+  const mid = (i) => ({ x: origin.x + ((i % cols) + 0.5) * cell, y: origin.y + (Math.floor(i / cols) + 0.5) * cell });
+  const known = new Map();
+  const indoors = (i) => {
+    let v = known.get(i);
+    if (v === undefined) { try { v = deep || rooms.some((p) => pointInPolygon(mid(i), p)); } catch { v = false; } known.set(i, v); }
+    return v;
+  };
+  const walls = blockingWalls((scene.walls?.contents ?? []).map(wallView));
+  const openings = [], blocked = [];
+  for (const i of look) {
+    if (!indoors(i)) continue;
+    let breathes = false;
+    for (const n of smokeNeighbours(i, cols, rows)) {
+      const wall = wallBetween(mid(i), mid(n), walls);
+      // Out of the room: the smoke never goes that way, but where no wall stands between them the room breathes out
+      // there — an open door, a smashed window, the mouth of a cave. A sealed room has no opening and fills right up.
+      if (!indoors(n)) { blocked.push({ from: i, to: n }); if (!wall) breathes = true; continue; }
+      if (n > i && wall) blocked.push({ from: i, to: n });
+    }
+    if (breathes) openings.push(i);
+  }
+  const step = smokeStep({ cells: cellsIn.filter((c) => indoors(c.i)), sources: sourcesAll.filter((s) => indoors(s.i)), cols, rows, openings, blocked });
+  const next = { cells: step.cells.filter((c) => indoors(c.i)) };
+  const fields = smokeUpdatesFor(next, { scene })[0] ?? {};
+  // The geometry goes BESIDE the cells, key by key so Foundry merges it and nothing old is stranded: without it the
+  // fence would read the scene's grid size and its first level instead of the ones the cells were written with.
+  const grid = scene.flags?.[ID]?.[SMOKE_GRID_FLAG] ?? {};
+  const level = smokeLevelFor(scene, burning);
+  if (next.cells.length) {
+    const want = { cols, cell, ...(level ? { level } : {}) };
+    for (const [key, value] of Object.entries(want)) if (grid[key] !== value) fields[`flags.${ID}.${SMOKE_GRID_FLAG}.${key}`] = value;
+  } else if (Object.keys(grid).length) fields[`flags.${ID}.-=${SMOKE_GRID_FLAG}`] = null;
+  // A grid the stored cells no longer fit was dropped above: their keys go too, whatever this round wrote.
+  if (stale) for (const key of Object.keys(saved)) if (!(`flags.${ID}.smoke.${key}` in fields)) fields[`flags.${ID}.smoke.-=${key}`] = null;
+  if (Object.keys(fields).length) await scene.update(fields, SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke not written: ${e?.message ?? e}`));
+  await smokeRegionNow(scene, next.cells, geo, level);
+}
+// The region the smoke conceals in: one region per scene, flagged as ours, grown or shrunk to the smoke and taken away
+// with it. pf2e-visioner owns concealment; without its behaviour the region carries none and nothing is concealed.
+async function smokeRegionNow(scene, cells, geo, level) {
+  const region = viewedRegions(scene.regions).find((r) => r.flags?.[ID]?.smokeRegion === true) ?? null;
+  const shapes = smokeShapes(cells, geo);
+  if (!shapes.length) {
+    if (region) await scene.deleteEmbeddedDocuments("Region", [region.id], SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke region not removed: ${e?.message ?? e}`));
+    return;
+  }
+  const data = smokeRegionData(shapes, { levels: level ? [level] : [], visioner: smokeConceals() });
+  if (!region) {
+    await scene.createEmbeddedDocuments("Region", [data], SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke region not made: ${e?.message ?? e}`));
+    return;
+  }
+  // Whether the concealment is there at all can only change by remaking the region; the shape and the level are a
+  // plain update, and an unchanged round writes nothing at all.
+  const had = [...(region.behaviors ?? [])].some((b) => b.type === CONCEALMENT_BEHAVIOUR);
+  if (had !== (data.behaviors.length > 0)) {
+    await scene.deleteEmbeddedDocuments("Region", [region.id], SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke region not remade: ${e?.message ?? e}`));
+    await scene.createEmbeddedDocuments("Region", [data], SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke region not remade: ${e?.message ?? e}`));
+    return;
+  }
+  const now = [...(region.shapes ?? [])].map((s) => ({ type: s.type, x: s.x, y: s.y, width: s.width, height: s.height }));
+  const sameLevels = JSON.stringify([...(region.levels ?? [])].sort()) === JSON.stringify([...data.levels].sort());
+  if (sameLevels && JSON.stringify(now) === JSON.stringify(data.shapes)) return;
+  await scene.updateEmbeddedDocuments("Region", [{ _id: region.id, shapes: data.shapes, levels: data.levels }], SMOKE_NOTE)
+    .catch((e) => runtime?.trace("props", `smoke region not written: ${e?.message ?? e}`));
 }
 // The ticker: every scene with both switches on, each keeping its own count, on the active GM alone.
 async function fireRoundsNow() {
@@ -10274,7 +10446,10 @@ async function fireRoundsNow() {
     // round 1 is a round of its own and not one already run.
     fireLast.set(scene.id, fireNextLast({ combat, now }));
     fireRunning.add(scene.id);
-    try { await fireRound(scene); } catch (e) { runtime?.trace("props", `fire round: ${e?.message ?? e}`); }
+    // The same round feeds the smoke: the fire first, then what it has set going fills the rooms. No second clock.
+    let burning = [];
+    try { burning = (await fireRound(scene)) ?? []; } catch (e) { runtime?.trace("props", `fire round: ${e?.message ?? e}`); }
+    try { await smokeRound(scene, burning); } catch (e) { runtime?.trace("props", `smoke round: ${e?.message ?? e}`); }
     finally { fireRunning.delete(scene.id); }
   }
 }
@@ -13857,7 +14032,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
   // Breakable props: the GM's switch for this scene, the miss chance, and Repair (GM only).
   if (!root.querySelector(`[name="flags.${ID}.breakableProps"]`)) {
     const flags = app.document?.flags?.[ID] ?? {}, props = document.createElement("div");
-    props.innerHTML = propSceneFieldsHTML({ on: flags.breakableProps === true, chance: flags.propMissChance, breakWalls: flags.breakWalls, rubble: flags.rubbleDifficult === true, fireSpreads: flags.fireSpreads === true });
+    props.innerHTML = propSceneFieldsHTML({ on: flags.breakableProps === true, chance: flags.propMissChance, breakWalls: flags.breakWalls, rubble: flags.rubbleDifficult === true, fireSpreads: flags.fireSpreads === true, roomSmoke: flags.roomSmoke === true });
     const repair = props.querySelector('[data-action="animater-repair-props"]');
     repair.disabled = !game.user?.isGM;
     repair.addEventListener("click", async (event) => {
@@ -14088,6 +14263,7 @@ Hooks.on("renderAmbientLightConfig", (app, html) => {
     ${autoOnOff("sparks", "Sparks", "Sparks and embers rising from this light (\"Sparks from fires\").")}
     ${autoOnOff("fireSound", "Sound", "This fire heard close by (\"Fire sounds\"): crackling, or a pot bubbling, by its Fire kind.")}
     ${autoOnOff("chimney", "Chimney smoke", "A hearth in a room smokes from the roof above it while the roof is drawn (Auto). On: always smokes above the roofs (a forge). Off: never.", "A hearth in a room")}
+    <div class="form-group"><label data-tooltip="${esc("With the scene's Fires fill rooms with smoke on, this light's fire fills the room it stands in: thick smoke blocks sight, thin smoke conceals. Off for a hearth or a brazier, so a lit fireplace does not fog the inn; tick it for a fire that really is smoking the place out.")}">Fills the room with smoke</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.roomSmoke"${flags.roomSmoke === true ? " checked" : ""}></div></div>
     <p class="hint">Auto follows the light's animation: a torch, flame, fire, candle or flicker light is a fire. Each switch is its own: turning Heat haze off leaves the flame, smoke and sparks. Hover a name or a button for more.</p>`;
   // A click sets the hidden field and tells the form, so Foundry's live preview of the light follows.
   set.addEventListener("click", (event) => {
