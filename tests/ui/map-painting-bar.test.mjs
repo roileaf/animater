@@ -33,7 +33,7 @@ test('Floors: a swatch per floor, the brush and Smart edges; How alike, Texture 
   fakeDom();
   const { openBrushBar, brushChoices } = await import('../../scripts/ui/decor-brush-bar.mjs');
   let read = 0; const bar = openBrushBar({ onReadMap: () => { read++; } }), root = bar.element;
-  assert.equal(all(root, (n) => n.dataset?.floor).length, 13);
+  assert.equal(all(root, (n) => n.dataset?.floor).length, 14, 'every floor, then Cave');
   // Edges: Off, Colour (the default) or Model (the segmentation model's outline).
   const edges = all(root, (n) => n.dataset?.edges);
   assert.deepEqual(edges.map((b) => b.dataset.edges), ['off', 'colour', 'model']);
@@ -81,9 +81,11 @@ test('main: one Map painting button paints floors and decorations, saving each s
   const main = read('scripts/main.mjs');
   assert.match(main, /name: "animaterDecorate", title: "Map painting:[^"]*", icon: "fa-solid fa-paintbrush"/);
   assert.match(main, /\['toolDecorate','Show the Map painting button'/);
-  assert.match(main, /planFloorStroke\(\{ saved, floor: c\.floor, stroke: fl\.stroke, erase: fl\.erasing, width: fl\.map\.width, height: fl\.map\.height \}\)/);
+  assert.match(main, /const c = brushChoices\(\), saved = brushPool\(c\), m = fl\.map;/);
+  assert.match(main, /planFloorStroke\(\{ saved, floor: brushKey\(c\), stroke: fl\.stroke, erase: fl\.erasing, width: fl\.map\.width, height: fl\.map\.height \}\)/);
   assert.match(main, /rememberDecorStep\(\{ kind: "floor", updates, creates, removes \}\)/);
-  assert.match(main, /name: floorRegionName\(c\.floor, names\), floor: c\.floor, texture: c\.texture, overWater: c\.overWater, edge: c\.edge === BRUSH_EDGE\.usual \? "" : c\.edge \}/, 'a new region takes the Soft edge');
+  assert.match(main, /name: floorRegionName\(c\.floor, names\), floor: c\.floor, texture: c\.texture, pattern: c\.pattern, waterKind: c\.waterKind, overWater: c\.overWater, edge: c\.edge === BRUSH_EDGE\.usual \? "" : c\.edge \}/, 'a new region takes the Soft edge, its style and its water kind');
+  assert.match(main, /const data = c\.cave \? toCaveRegionData\(\{ loops: made\.loops \}, \{ \.\.\.opts, \.\.\.c\.cave, name: floorRegionName\(c\.cave\.cavern, names, caveName\) \}\)/, 'cave growth makes cave regions');
   assert.match(main, /state\.bar\?\.setTab\(e\.key === "1" \? "floors" : e\.key === "2" \? "decor" : "heights"\);/);
   // Roi: "we have no preview when hovering over the canvas?" Hovering shows what the next dab would take.
   assert.match(main, /if \(!state\.down\) \{ if \(floorsOn\(\) && fl\.map && !e\.shiftKey\) hoverFloor\(p\); else hideHover\(\); return; \}/);
@@ -112,7 +114,7 @@ test('main: one Map painting button paints floors and decorations, saving each s
   // Roi, of keeping off decorations: "i changed my mind ... the decorations should be above the floor". The brush paints
   // under them; only other floors' regions are kept off.
   assert.doesNotMatch(main, /decorObstacles/);
-  assert.match(main, /claimedMask = new Uint8Array\(fl\.map\.width \* fl\.map\.height\); for \(const s of fl\.saved\) if \(s\.floor !== floor\)/);
+  assert.match(main, /claimedMask = new Uint8Array\(fl\.map\.width \* fl\.map\.height\); for \(const s of pool\) if \(s\.floor !== floor\)/);
   // Roi: "i dont see preview when i select to show texture". A floor that will be painted previews in its own texture.
   assert.match(main, /if \(!m\.ui\.paintsTexture\(c\.floor, c\.texture, canvas\.scene\?\.flags\?\.\[ID\]\?\.floorTextures \?\? ""\)\) return null;/);
   assert.match(main, /tile = floorTextures\.tileImage\(c\.floor, style\)/);
@@ -189,4 +191,39 @@ test('main: the Heights tab raises, lays ramps and steps heights on the wheel; w
   assert.match(main, /box\.sortLayer = 656; box\.elevation = \(Number\(canvas\.level\?\.elevation\?\.base\) \|\| 0\) \+ low;/);
   assert.match(main, /smooth: \(canvas\.grid\?\.size \?\? 100\) \/ 12, bounds: canvas\.dimensions\?\.sceneRect \?\? null, sight: true \}\)\)/, 'no cliff walls along the map\'s edge');
   assert.match(main, /const heightsSceneOn = \(key, scene = canvas\?\.scene\) => scene\?\.flags\?\.\[ID\]\?\.\[key === "walls" \? "cliffWalls" : "heightShadows"\] !== false;/);
+});
+
+// Roi: "we need to add to the mapmaking brush the cave region options (and any other thing you think is worth adding there)".
+test('Floors: Cave holds fungus, crystals or mist in a colour and stage, size and how many under More; Water its kind; texture its style', async () => {
+  fakeDom();
+  const { openBrushBar, brushChoices, setBrushCave } = await import('../../scripts/ui/decor-brush-bar.mjs');
+  const bar = openBrushBar(); let root = bar.element;
+  find(root, (n) => n.dataset?.floor === 'cavern').listeners.click[0](); root = bar.element;
+  assert.deepEqual(brushChoices().cave, { cavern: 'fungus-green', caveStep: null, caveSize: null, caveAmount: null }, 'usual stage and sizes saved as the region\'s own');
+  assert.deepEqual(all(root, (n) => n.dataset?.caveKind).map((b) => b.dataset.caveKind), ['fungus', 'crystals', 'mist'], 'lava stays a floor');
+  assert.deepEqual(all(root, (n) => n.dataset?.caveTone).map((b) => b.dataset.caveTone), ['green', 'blue', 'violet']);
+  assert.deepEqual(all(root, (n) => n.dataset?.caveStep).map((b) => b.textContent), ['Dormant', 'Growing', 'In bloom']);
+  assert.ok(!find(root, (n) => n.textContent === 'Texture') && !find(root, (n) => n.textContent === 'Over water'), 'growth has no floor texture');
+  const extra = find(root, (n) => n.className?.includes('an-mp-extra'));
+  for (const label of ['Size', 'How many', 'Any growth', 'How alike']) assert.ok(find(extra, (n) => n.textContent === label), label);
+  find(root, (n) => n.dataset?.caveTone === 'violet').listeners.click[0]();
+  find(bar.element, (n) => n.dataset?.caveStep === '0').listeners.click[0]();
+  assert.deepEqual(brushChoices().cave, { cavern: 'fungus-violet', caveStep: 0, caveSize: null, caveAmount: null });
+  find(bar.element, (n) => n.dataset?.caveKind === 'crystals').listeners.click[0]();
+  assert.equal(brushChoices().cave.cavern, 'crystals-amethyst'); assert.equal(brushChoices().cave.caveStep, null, 'a new kind starts at its usual stage');
+  setBrushCave('fungus'); assert.equal(brushChoices().cave.cavern, 'fungus-violet', 'each kind keeps its colour');
+  setBrushCave('webs'); bar.setTab('decor'); bar.setTab('floors');
+  assert.equal(brushChoices().cave.cavern, 'webs'); assert.equal(all(bar.element, (n) => n.dataset?.caveTone).length, 0, 'cobwebs have no colour or stage');
+  setBrushCave('fungus');
+  // Water: what new water is; a painted floor: in which style.
+  find(bar.element, (n) => n.dataset?.floor === 'water').listeners.click[0]();
+  assert.equal(brushChoices().cave, null); assert.equal(brushChoices().waterKind, 'still');
+  assert.ok(find(bar.element, (n) => n.textContent === 'Water'));
+  find(bar.element, (n) => n.dataset?.floor === 'stone').listeners.click[0]();
+  assert.ok(find(bar.element, (n) => n.textContent === 'Style')); assert.equal(brushChoices().pattern, '');
+  bar.close();
+  const main = read('scripts/main.mjs');
+  assert.match(main, /fl\.caves = m\.ui\.savedCaveAreas\(canvas\.scene\?\.regions/);
+  assert.match(main, /const brushPool = \(c\) => \(c\.cave \? fl\.caves \?\? \[\] : fl\.saved\);/, 'growth keeps to its own regions, over the floors');
+
 });

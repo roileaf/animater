@@ -2005,3 +2005,37 @@ test("a placed D&D round area ripples only when its item deals damage", async ()
   assert.equal(storm[0][1].animaterShake.kind, "shock");
   assert.equal((await dndPlacedTags("Ice Storm", dndSpellItem("Ice Storm"))).length, 0, "the same area without damage");
 });
+
+test("an area set to play once and at turn start replays on its caster's turn while its template stays", async () => {
+  const templates = new Set(["t1"]);
+  const scene = { templates: { has: (id) => templates.has(id) } };
+  const template = { documentName: "MeasuredTemplate", id: "t1", parent: scene };
+  const fog = { id: "fog", name: "Incendiary Fog", systemId: "pf2e", stages: [{ kind: "cast", assets: ["jb2a.x"] }, { kind: "template", assets: ["jb2a.fog_cloud.01.complete.white"] }] };
+  const runtime = new AnimaterRuntime({ enabled: () => true, recipes: () => [], resolveRecipe: () => fog, areaLoopMode: () => "turn", database: { entryExists: () => true } });
+  const plays = [];
+  runtime.play = async (recipe, context) => { plays.push({ recipe, context }); return `s${plays.length}`; };
+  const caster = { id: "caster" };
+  await runtime.dispatch({ id: "e1", type: "use", actor: caster, template, item: { type: "spell", name: "Incendiary Fog", system: { duration: { value: "1 minute" } } } });
+  assert.equal(plays.length, 1);
+  assert.ok(!plays[0].recipe.stages.some((s) => s.persist), "placed once, nothing loops");
+  assert.equal(await runtime.replayAreas("someone-else"), 0, "another creature's turn leaves it alone");
+  assert.equal(await runtime.replayAreas("caster"), 1);
+  assert.deepEqual(plays[1].recipe.stages.map((s) => s.kind), ["template"], "only the area plays again");
+  assert.equal(plays[1].context.template, template);
+  templates.delete("t1");
+  assert.equal(await runtime.replayAreas("caster"), 0, "template removed: forgotten");
+  assert.equal(runtime.areaReplays.length, 0);
+});
+
+test("areas loop as before unless the world sets them to play once", async () => {
+  const template = { documentName: "MeasuredTemplate", id: "t1", parent: { templates: { has: () => true } } };
+  const fog = { id: "fog", name: "Incendiary Fog", systemId: "pf2e", stages: [{ kind: "template", assets: ["jb2a.fog_cloud.01.complete.white"] }] };
+  for (const [mode, persists] of [[undefined, true], ["loop", true], ["once", false]]) {
+    const runtime = new AnimaterRuntime({ enabled: () => true, recipes: () => [], resolveRecipe: () => fog, areaLoopMode: () => mode, database: { entryExists: () => true } });
+    const plays = [];
+    runtime.play = async (recipe) => { plays.push(recipe); return "s"; };
+    await runtime.dispatch({ id: "e", type: "use", actor: { id: "a" }, template, item: { type: "spell", name: "Incendiary Fog", system: { duration: { value: "1 minute" } } } });
+    assert.equal(plays[0].stages[0].persist === true, persists, String(mode));
+    assert.equal(runtime.areaReplays.length, 0);
+  }
+});

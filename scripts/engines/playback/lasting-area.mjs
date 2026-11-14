@@ -53,17 +53,43 @@ export function lastingAsset(key, exists = () => false) {
   return key;
 }
 
+// How lasting areas show (world setting areaLoopMode), in the catalogs' Lasting animation words:
+// loop until the template is removed, play once when placed, or play once and again briefly at the
+// start of the caster's turn while the template stays. Areas play for everyone from one client, so
+// the choice is the world's, not each device's.
+export const AREA_LOOP_MODES = Object.freeze({ loop: "Stay while placed", once: "Play once, then fade", turn: "Play once and at turn start" });
+export const areaLoopMode = (mode) => (Object.hasOwn(AREA_LOOP_MODES, mode) ? mode : "loop");
+
+// A lasting area layer set to play once: one-shot, and marked to replay at turn start when asked.
+const playedOnce = (s, mode) => {
+  const { persist: _persist, sustain: _sustain, ...rest } = s;
+  return { ...rest, oneShot: true, ...(mode === "turn" ? { areaReplay: true } : {}) };
+};
+
 // The first area layer persists (later layers are one-off flourishes). A recipe that
-// already marks a lasting area (D&D 5e) is left as it is.
-export function withLastingArea(recipe, event, { exists } = {}) {
+// already marks a lasting area (D&D 5e) is left as it is, unless the areas play once.
+export function withLastingArea(recipe, event, { exists, mode } = {}) {
   if (!recipe?.stages?.length || !event?.template) return recipe;
-  if (recipe.systemId === 'dnd5e') return recipe;
-  if (recipe.stages.some(s => s.kind === 'template' && s.persist)) return recipe;
+  const how = areaLoopMode(mode);
+  const marked = recipe.stages.some(s => s.kind === 'template' && s.persist);
+  if (marked || recipe.systemId === 'dnd5e') {
+    if (how === 'loop' || !marked) return recipe;
+    return { ...recipe, stages: recipe.stages.map(s => s.kind === 'template' && s.persist ? playedOnce(s, how) : s) };
+  }
   if (!isLastingArea(event.item)) return recipe;
   const i = recipe.stages.findIndex(s => s.kind === 'template');
   if (i < 0) return recipe;
   const stages = recipe.stages.slice();
   const s = stages[i];
-  stages[i] = { ...s, persist: true, oneShot: false, fadeOut: Math.max(s.fadeOut ?? 0, 800), ...(isEmanation(event.item) ? { followSource: true } : {}), assets: [...new Set((s.assets ?? []).map(k => lastingAsset(k, exists)))] };
+  // Played once, the area keeps its own clip (a .complete one grows and fades) instead of loop footage.
+  if (how !== 'loop') stages[i] = playedOnce(s, how);
+  else stages[i] = { ...s, persist: true, oneShot: false, fadeOut: Math.max(s.fadeOut ?? 0, 800), ...(isEmanation(event.item) ? { followSource: true } : {}), assets: [...new Set((s.assets ?? []).map(k => lastingAsset(k, exists)))] };
   return { ...recipe, stages };
+}
+
+// The layers that replay at the caster's turn start, on their own and right away.
+export function areaReplayRecipe(recipe) {
+  const unlinked = ({ after: _a, anchor: _b, offset: _c, afterStage: _d, timingAnchor: _e, startOffset: _f, startMode: _g, startRef: _h, delay: _i, ...s }) => s;
+  const stages = (recipe?.stages ?? []).filter(s => s.areaReplay).map(unlinked);
+  return stages.length ? { ...recipe, stages } : null;
 }

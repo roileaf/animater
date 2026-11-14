@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { colourAt, dabCells, planFloorStroke, floorRegionName, hoverLine } from '../../../scripts/engines/regions/floor-brush.mjs';
 import { readFileSync } from 'node:fs';
+import { caveName, toCaveRegionData, CAVE_MARK } from '../../../scripts/engines/regions/floor-detect.mjs';
 
 // Roi, of "On this level: Wood": "shouldnt this say what im hovering over?" Hovering says what is under the pointer.
 test('hovering says what floor region is under the pointer and what a dab would do there', () => {
@@ -9,7 +10,10 @@ test('hovering says what floor region is under the pointer and what a dab would 
   assert.equal(hoverLine('wood', 'wood'), 'Over: Wood · a dab grows it, Shift-drag rubs it out');
   assert.equal(hoverLine('stone', 'grass'), 'Over: Stone · Grass keeps off it (pick Stone to rub it out)');
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
-  assert.match(main, /setHoverText\(floorHoverLine\(floorUnder\(Math\.floor\(q\.y\) \* m\.width \+ Math\.floor\(q\.x\)\), c\.floor\)\);/);
+  assert.match(main, /setHoverText\(floorHoverLine\(floorUnder\(Math\.floor\(q\.y\) \* m\.width \+ Math\.floor\(q\.x\), brushPool\(c\)\), brushKey\(c\), brushName\(c\)\)\);/);
+  // Cave growth names itself (its own words, with brackets kept literal when numbering).
+  assert.equal(hoverLine(null, 'fungus-green', caveName), 'Over: no floor yet · a dab adds Glowing fungus (green)');
+  assert.equal(floorRegionName('fungus-green', ['Glowing fungus (green) 2'], caveName), 'Glowing fungus (green) 3');
   assert.match(main, /floorsOn\(\) && fl\.hoverText \? fl\.hoverText : parts\.length \? `On this level:/, 'off the map, the level count again');
 });
 import { areaPixels } from '../../../scripts/engines/regions/floor-detect.mjs';
@@ -84,7 +88,7 @@ test('rubbing out takes pixels only from the picked floor\'s regions, and remove
   assert.deepEqual(plan.removes, ['C'], 'the grass it covers goes; the water under the same stroke stays');
   assert.deepEqual(plan.updates.map((u) => u.regionId), ['A']);
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
-  assert.match(main, /fl\.claimed = erase \? notFloor\(c\.floor\) : claimedBy\(c\.floor\);/, 'and the stroke shows only over the picked floor');
+  assert.match(main, /fl\.claimed = erase \? notFloor\(brushKey\(c\), brushPool\(c\)\) : claimedBy\(brushKey\(c\), brushPool\(c\)\);/, 'and the stroke shows only over the picked floor (or growth)');
   const left = areaPixels(plan.updates[0].loops, W, H);
   assert.ok(left.length < a.pixels.length && left.length > 0);
   assert.ok(![...left].some((i) => i % W >= 26 && i % W < 28), 'the rubbed strip is gone');
@@ -141,4 +145,23 @@ test('new regions are named after their floor and numbered on', () => {
   assert.equal(floorRegionName('grass', []), 'Grass 1');
   assert.equal(floorRegionName('grass', ['Grass 1', 'Grass 3', 'Water 1']), 'Grass 4');
   assert.equal(floorRegionName('water', ['Grass 1']), 'Water 1');
+});
+
+// Roi: "we need to add to the mapmaking brush the cave region options". Cave growth is a region with no floor of its own, as
+// the region panel's Cave kind makes, under its own mark so Floor regions never reads it as water.
+test('cave growth regions: no floor, the growth and its stage, size and how many, under their own mark', async () => {
+  const sq = [{ hole: false, points: [0, 0, 10, 0, 10, 10, 0, 10] }];
+  const opts = { sceneRect: { x: 0, y: 0, width: 100, height: 100 }, imageWidth: 10, imageHeight: 10, levelId: 'L' };
+  const data = toCaveRegionData({ loops: sq }, { ...opts, cavern: 'crystals-rose', caveStep: 0, caveSize: 1.5, caveAmount: null });
+  assert.deepEqual(data.flags.animater, { floor: '', cavern: 'crystals-rose', generated: CAVE_MARK, caveStep: 0, caveSize: 1.5 });
+  assert.equal(data.name, 'Crystals (rose)'); assert.deepEqual(data.levels, ['L']); assert.equal(data.shapes[0].points[2], 100);
+  assert.equal(toCaveRegionData({ loops: sq }, { ...opts, cavern: 'lava' }).flags.animater.cavern, 'fungus-green', 'lava is a floor, not growth');
+  const { regionKindOf } = await import('../../../scripts/ui/region-panel-model.mjs');
+  assert.equal(regionKindOf(data.flags.animater, ''), 'cave', 'the region panel opens it as a cave');
+  const { savedCaveAreas, savedAreaProposals } = await import('../../../scripts/ui/floor-regions-ui.mjs');
+  const regions = [{ ...data, id: 'c1', levels: ['L'] }, { ...data, id: 'c2', levels: ['M'] }, { id: 'f1', levels: ['L'], shapes: data.shapes, flags: { animater: { floor: 'grass', generated: 'floor-detect' } } }];
+  const caves = savedCaveAreas(regions, { levelId: 'L', sceneRect: opts.sceneRect, width: 10, height: 10 });
+  assert.deepEqual(caves.map((c) => [c.regionId, c.floor, c.cave]), [['c1', 'crystals-rose', true]], 'only this level\'s');
+  assert.ok(caves[0].pixels.length > 50);
+  assert.deepEqual(savedAreaProposals(regions, { levelId: 'L', sceneRect: opts.sceneRect, width: 10, height: 10 }).map((p) => p.regionId), ['f1'], 'Floor regions leaves cave growth alone');
 });

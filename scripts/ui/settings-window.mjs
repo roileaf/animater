@@ -189,6 +189,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "npcAbilityGuess", when: PF2E },
     { world: "npcStrikeGuess", when: PF2E },
     { local: "lastingMode" },
+    { world: "areaLoopMode" },
   ] },
   { id: "interface", label: "Interface & performance", icon: "fa-solid fa-gauge-high", rows: [
     { local: "showControlButton" },

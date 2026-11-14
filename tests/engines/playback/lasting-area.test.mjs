@@ -54,3 +54,37 @@ test("PF2e/SF2e emanations last and follow the caster unless a spell effect draw
   assert.ok(!isLastingArea(emanation("Quick Ward", "", "")), "no duration, no loop");
   assert.ok(isLastingArea({ type: "spell", name: "Wall of Wind", system: { duration: { value: "", sustained: true } } }), "sustained counts as lasting");
 });
+
+test("lasting areas set to play once keep their own clip and never persist; turn start marks them to replay", async () => {
+  const { AREA_LOOP_MODES, areaLoopMode, areaReplayRecipe } = await import("../../../scripts/engines/playback/lasting-area.mjs");
+  assert.deepEqual(Object.keys(AREA_LOOP_MODES), ["loop", "once", "turn"]);
+  assert.equal(areaLoopMode(undefined), "loop", "unset keeps today's loop");
+  assert.equal(areaLoopMode("nonsense"), "loop");
+  const event = { template: { id: "t" }, item: spell("Incendiary Fog", "1 minute") };
+  const base = recipe([area(["jb2a.fog_cloud.01.complete.white"], { stageId: "fog" }), area(["jb2a.impact.001.orange"], { after: "fog", anchor: "end", offset: 200 })]);
+  const once = withLastingArea(base, event, { exists, mode: "once" });
+  assert.equal(once.stages[0].persist, undefined, "plays once");
+  assert.equal(once.stages[0].oneShot, true);
+  assert.deepEqual(once.stages[0].assets, ["jb2a.fog_cloud.01.complete.white"], "no loop footage when played once");
+  assert.equal(once.stages[0].areaReplay, undefined);
+  assert.equal(areaReplayRecipe(once), null, "nothing replays at turn start");
+  const turn = withLastingArea(base, event, { exists, mode: "turn" });
+  assert.equal(turn.stages[0].persist, undefined);
+  assert.equal(turn.stages[0].areaReplay, true);
+  const replay = areaReplayRecipe(turn);
+  assert.equal(replay.stages.length, 1, "only the area itself replays, not the cast or flourishes");
+  assert.deepEqual(replay.stages[0].assets, ["jb2a.fog_cloud.01.complete.white"]);
+  assert.equal(withLastingArea(base, event, { exists, mode: "loop" }).stages[0].persist, true, "loop is today's behaviour");
+});
+
+test("a recipe already marked lasting (D&D, a saved recipe) plays once too when the world asks", () => {
+  const item = spell("Wall of Fire", "1 minute");
+  const lasting = recipe([{ kind: "cast", assets: ["jb2a.x"] }, area(["jb2a.a.loop"], { persist: true, sustain: true, oneShot: false })], "dnd5e");
+  assert.equal(withLastingArea(lasting, { item, template: {} }, { mode: "loop" }), lasting);
+  const once = withLastingArea(lasting, { item, template: {} }, { mode: "turn" });
+  assert.equal(once.stages[1].persist, undefined);
+  assert.equal(once.stages[1].sustain, undefined);
+  assert.equal(once.stages[1].oneShot, true);
+  assert.equal(once.stages[1].areaReplay, true);
+  assert.equal(once.stages[0].areaReplay, undefined, "the cast is left alone");
+});

@@ -21,7 +21,7 @@ import { registeredMedia, mediaForReference } from '../media/media-library-model
 import { mediaSpan } from '../media/media-lifetime.mjs';
 import { staggerDelays } from './adaptive.mjs';
 import { stageTiers } from '../../core/quality.mjs';
-import { withLastingArea } from './lasting-area.mjs';
+import { withLastingArea, areaReplayRecipe } from './lasting-area.mjs';
 import { meleeClip, withOutcome } from '../../systems/outcome.mjs';
 import { centerOf, pickVariants } from './composition.mjs';
 import { alignSurfaceHits } from '../sound/hit-timing.mjs';
@@ -63,6 +63,13 @@ export const STALL_GRACE_MS = 5000;
 export const sameEffectName = (name) => String(name ?? "").replace(/^\s*(?:spell\s+)?effect\s*:\s*/i, "").trim().toLowerCase();
 // The placed document a lasting area is tied to. Foundry 14 keeps a MeasuredTemplate
 // as a Region with the same id; deleting either removes the Region.
+// The placed template (or its Region) is still on its scene.
+export function areaStillPlaced(template) {
+  const doc = templateDocument(template);
+  if (!doc) return false;
+  const placed = doc.documentName === "Region" ? doc.parent?.regions : doc.parent?.templates;
+  return typeof placed?.has === "function" ? placed.has(doc.id) : true;
+}
 export function templateDocument(template) {
   const doc = template?.document ?? template;
   if (!doc?.documentName || !doc.id) return null;
@@ -197,6 +204,9 @@ export class AnimaterRuntime {
     this.lasting = [];
     // Lasting plays still on the table, for the Activity page's Now playing: session -> row.
     this.running = new Map();
+    // Areas set to play once and at turn start (world setting areaLoopMode "turn"), replayed while their
+    // template stays: {actorId, recipe, context}. Only the client that played the area holds it.
+    this.areaReplays = [];
     // Hit streaks and strained Strikes (engines/playback/momentum.mjs), on the combat turn the host names.
     this.momentum = createMomentum({ now: () => this.host.now?.() ?? Date.now(), turnKey: () => this.host.turnKey?.() ?? null });
   }
@@ -219,6 +229,24 @@ export class AnimaterRuntime {
     for (const l of kept) if (round !== null) { l.firstRound ??= round; l.round = round; }
     if (kept.length) this.trace("Sustained", `${kept[0].itemName} stays on screen.`);
     return kept.length;
+  }
+  // A lasting area set to play once and at turn start: kept for its caster's turns while its template stays.
+  holdAreaReplay(recipe, event) {
+    const actorId = event.actor?.id ?? event.source?.actor?.id ?? event.source?.document?.actor?.id;
+    if (!actorId || !templateDocument(event.template)) return;
+    this.areaReplays.push({ actorId, recipe, context: { ...event, automatic: false, onPlayStart: undefined } });
+    if (this.areaReplays.length > 50) this.areaReplays.shift();
+  }
+  // The caster's turn starts: each of their areas still on the map plays its area once more, on its own.
+  // Areas whose template is gone are forgotten. Returns how many played.
+  async replayAreas(actorId) {
+    this.areaReplays = this.areaReplays.filter((r) => areaStillPlaced(r.context.template));
+    const due = this.areaReplays.filter((r) => r.actorId === actorId);
+    const played = await Promise.all(due.map(async (r) => {
+      try { return Boolean(await this.play(r.recipe, r.context)); }
+      catch (error) { this.trace("Blocked", error.message, r.recipe); return false; }
+    }));
+    return played.filter(Boolean).length;
   }
   // A combatant's turn ended (round: the round it was in): a sustained layer of theirs not played again during
   // that turn ends, and so does one held for its full minute (ten rounds). No round: combat ended, all of them end.
@@ -309,7 +337,9 @@ export class AnimaterRuntime {
     // A lasting PF2e/SF2e area stays on its template (D&D marks it in its catalog).
     const recipe = withLastingArea(applyEventElement(resolved, event.element), event, {
       exists: (key) => Boolean(this.host.database?.entryExists?.(key)),
+      mode: this.host.areaLoopMode?.(),
     });
+    const replay = areaReplayRecipe(recipe);
     // Damage riders (e.g. Sneak Attack) play alongside the event's own recipe.
     const riders = (this.host.riderRecipes?.(event, saved) ?? []).filter(Boolean);
     if (!recipe && !riders.length) {
@@ -330,7 +360,8 @@ export class AnimaterRuntime {
     await Promise.all([recipe, ...riders].filter(Boolean).map(async (next) => {
       try {
         // The event's own recipe tells it when it starts (its plan), e.g. for a placed area's impact.
-        await this.play(next, {...event,automatic:true}, next === recipe && typeof event.onPlayStart === "function" ? { onStart: event.onPlayStart } : undefined);
+        const session = await this.play(next, {...event,automatic:true}, next === recipe && typeof event.onPlayStart === "function" ? { onStart: event.onPlayStart } : undefined);
+        if (session && next === recipe && replay) this.holdAreaReplay(replay, event);
       } catch (error) {
         this.trace("Blocked", error.message, next);
       }
@@ -1036,6 +1067,7 @@ export class AnimaterRuntime {
     await this.host.endSounds?.({ name: `${ID}-${this.host.userId()}-*` });
     this.sessions.clear();
     this.running.clear();
+    this.areaReplays = [];
     this.trace("Stopped", "Your Animater effects ended.");
   }
   clearPreviewAreas() {
