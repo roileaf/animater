@@ -159,3 +159,55 @@ test('loose papers flutter in the wind: their edges lift, their middles stay dow
   assert.equal(DECOR_KINDS.papers.cloth, 'paper');
   assert.match(CLOTH_SHADER_SOURCES[0][1], /smoothstep\(0\.08, 0\.4, mask\) \* \(1\.0 - smoothstep\(0\.55, 0\.95, mask\)\), uEdge\)/);
 });
+
+
+// Roi: painting with the brush sometimes dropped the frame rate hard. Two reasons, both measured, both pinned here.
+
+// One: the lamps. A light whose id changes is destroyed, built again, and Foundry asked to redo its lighting and every
+// creature's vision. The ids used to count through the placement list, so a single dab renamed every lamp after it (of
+// twelve lamps in a test region, one dab kept none of them). An id now says where its light stands.
+test('a lamp keeps its id when another decoration is laid beside it', async () => {
+  const { decorLightList } = await import('../../../scripts/engines/motion/decorations.mjs');
+  const lamp = { kind: 'lampPost', x: 300, y: 300, size: 1, turn: 0, seed: 11 };
+  const other = { kind: 'lampPost', x: 800, y: 300, size: 1, turn: 0, seed: 12 };
+  const before = decorLightList('R1', [lamp, other], [lamp, other], {}).map((l) => l.id);
+  // The same two lamps, with something new sorted in ahead of them and the list in another order.
+  const later = [{ kind: 'bush', x: 100, y: 100, size: 1, turn: 0, seed: 99 }, other, lamp];
+  const after = decorLightList('R1', later, later, {}).map((l) => l.id);
+  assert.deepEqual([...after].sort(), [...before].sort(), 'both lamps answer to the names they had');
+  assert.notEqual(before[0], before[1], 'and two lamps are still told apart');
+});
+
+// Two: the drawing. A stroke syncs ten times a second, and every sync used to throw the whole region away and build it
+// again - every sprite and every shadow - which measured 12 to 18 ms in a region of a few hundred. A stroke that is only
+// adding to what it has laid now draws the new dabs alone.
+test('a dab draws itself, and leaves the region it lands in standing', async () => {
+  const { createDecorations } = await import('../../../scripts/engines/motion/decorations.mjs');
+  const { decorSettings } = await import('../../../scripts/engines/motion/decor-regions.mjs');
+  let made = 0, killed = 0;
+  class Container { constructor() { this.children = []; } addChild(c) { this.children.push(c); return c; } removeChild(c) { this.children = this.children.filter((k) => k !== c); } destroy() { killed++; } }
+  class Sprite extends Container { constructor(texture) { super(); made++; this.texture = texture; this.anchor = { set() {} }; this.position = { x: 0, y: 0, set(x, y) { this.x = x; this.y = y; } }; this.scale = { x: 1, y: 1, set(x, y) { this.x = x; this.y = y ?? x; } }; this.rotation = 0; } }
+  // A canvas that answers every call with nothing: the painter runs, the pictures are shapes nobody looks at.
+  const ctx = new Proxy({}, { get: (_, k) => (k === 'canvas' ? null : k === 'createLinearGradient' || k === 'createRadialGradient' || k === 'createPattern' ? () => ({ addColorStop() {} }) : k === 'measureText' ? () => ({ width: 0 }) : () => {}), set: () => true });
+  const make = (w, h) => ({ width: w, height: h, getContext: () => ctx });
+  const layer = () => stage, stage = new Container();
+  const deco = createDecorations({ PIXI: { Container, Sprite, Texture: { from: (c) => ({ width: c?.width ?? 8, height: c?.height ?? 8 }) } }, shadows: layer, ground: layer, above: layer, grid: () => 100, make });
+  const bush = (i) => ({ kind: 'bush', x: 200 + i * 200, y: 200, size: 1, turn: 0, seed: i + 1, flip: false });
+  // The brush pushes onto one array as it paints; this is that array.
+  const brushed = [bush(0), bush(1), bush(2)];
+  // As main.mjs hands it over while a stroke paints: the region's settings with the live array itself in place of its brushed.
+  const base = decorSettings({ on: true, where: 'surface', seed: 3, density: 0, kinds: {}, brushed: [] });
+  const spec = (list = brushed) => ({ id: 'R1', live: true, look: {}, areas: [[0, 0, 1000, 0, 1000, 1000, 0, 1000]], settings: { ...base, brushed: list } });
+  deco.sync([spec()]);
+  const first = made;
+  assert.ok(first >= 3, 'the three it started with are drawn');
+  made = 0; killed = 0;
+  brushed.push(bush(3));
+  deco.sync([spec()]);
+  assert.equal(killed, 0, 'nothing already on the map was thrown away');
+  assert.ok(made > 0 && made <= first / 2, `only the new dab was drawn (${made} of ${first})`);
+  // Rubbing out hands the sync a different array, and that still rebuilds: what it takes away has to go.
+  made = 0; killed = 0;
+  deco.sync([spec(brushed.slice(0, 2))]);
+  assert.ok(killed > 0, 'a stroke that rubs out builds the region again');
+});

@@ -138,15 +138,19 @@ export function decorShown(spec, grid) {
 /**
  * The lights a region's decorations carry (pure): each lamp post, brazier or candle among `placements` at its place, scaled with its
  * size. One not `shown` (broken) is out while it is a light prop (decor-break decorLightOut: its own Light prop, the region's
- * `prop`, its kind's), and still lit when set not to be. The ids count through every placement, so the others keep theirs.
+ * `prop`, its kind's), and still lit when set not to be.
+ *
+ * Each id says where its light stands, never which place it holds in the list. Counting through the list meant that one more
+ * decoration — a single dab of the brush — renamed every lamp after it, and a renamed light is destroyed, built again and
+ * Foundry asked to redo its lighting and its vision. Painting beside a row of lamp posts was dropping frames for that alone.
  */
 export function decorLightList(id, placements, shown, prop) {
   const out = [], standing = shown === placements ? null : new Set(shown);
-  placements.forEach((d, i) => {
-    const l = DECOR_KINDS[d.kind]?.light; if (!l || (standing && !standing.has(d) && decorLightOut(d, prop))) return;
+  for (const d of placements) {
+    const l = DECOR_KINDS[d.kind]?.light; if (!l || (standing && !standing.has(d) && decorLightOut(d, prop))) continue;
     const k = Math.sqrt(d.size / DECOR_KINDS[d.kind].size);
-    out.push({ id: `decor:${id}:${i}:${d.seed}`, x: d.x, y: d.y, dim: l.dim * k, bright: l.bright * k, color: l.color, animation: l.animation ?? null });
-  });
+    out.push({ id: `decor:${id}:${d.kind}:${Math.round(d.x)}:${Math.round(d.y)}:${d.seed}`, x: d.x, y: d.y, dim: l.dim * k, bright: l.bright * k, color: l.color, animation: l.animation ?? null });
+  }
   return out;
 }
 // A painted picture is its decoration's size plus 12% of padding each side (decor-paint paintDecor).
@@ -260,6 +264,53 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
     }
     if (r.castLayer) r.castLayer.alpha = sun ? Math.min(0.6, sun.strength) : 0;
   };
+  // One decoration drawn into a region's layers, keeping hold of what it made (`r.drawn`) so that one can be taken away on
+  // its own. The brush adds to a region dab by dab; without this the whole region — every sprite, every shadow — was thrown
+  // away and built again ten times a second, which is what made painting into a full region stutter.
+  const drawOne = (d, r, look, where, g, contact, cast) => {
+    const role = decorRole(d, where); if (!role || role === 'cavern') return null;
+    // (Standing ones take their snow from the snow layer over them, flat ones the ground's lying over them; a tree's crown has its own painted.)
+    const seenLook = role !== 'tree' && render ? { ...look, snow: 0 } : look; r.pictures.add(pictureOf(d, seenLook).key);
+    const { pic, scale } = picture(d, seenLook); if (!pic) return null;
+    const mine = { d, inLayers: [], inShadows: [] };
+    if (pic.shadow && role !== 'flat') {
+      const foot = place(new PIXI.Sprite(pic.shadow), d, pic, scale); foot.tint = 0x06070c; foot.position.set(d.x + g * 0.02, d.y + g * 0.03); foot.scale.set(foot.scale.x * 1.06, foot.scale.y * 1.06); contact.addChild(foot);
+      // The cast one: an outer holder turned to the sun (to stretch), the silhouette inside turned to the decoration's own way.
+      const holder = new PIXI.Container(), inner = new PIXI.Container(), sil = place(new PIXI.Sprite(pic.shadow), d, pic, scale); sil.position.set(0, 0); sil.rotation = 0; sil.tint = 0x06070c;
+      inner.addChild(sil); holder.addChild(inner); holder.decor = d; holder.inner = inner; holder.baseScale = sil.scale.x; holder.texture = pic.shadow; cast.addChild(holder); r.shadowSprites.push(holder);
+      const caster = { d, pic, scale, height: decorHeight(d), shadows: [] }; r.casters.push(caster);
+      mine.inShadows.push(foot, holder); mine.caster = caster;
+    }
+    if (role === 'tree') {
+      if (pic.trunk) { const trunk = ground().addChild(place(new PIXI.Sprite(pic.trunk), d, pic, scale)); r.sprites.push(trunk); mine.inLayers.push(trunk); }
+      const crown = above().addChild(where !== 'cave' && PIXI.Mesh ? clothMesh(pic, d, scale, 'crown') : place(new PIXI.Sprite(pic.art), d, pic, scale)); crown.decor = d; r.crowns.push(crown); r.sprites.push(crown); if (crown.shader) r.cloth.push(crown);
+      mine.inLayers.push(crown);
+    // Flat ones (moss, flowers, a puddle's mud) lie on the ground itself, under the lying snow; the rest stand over it.
+    } else if (DECOR_KINDS[d.kind].cloth && pic.cloth && where !== 'cave' && PIXI.Mesh) { const mesh = (role === 'flat' ? flat() : ground()).addChild(clothMesh(pic, d, scale, DECOR_KINDS[d.kind].cloth === 'paper' ? 'paper' : 'cloth')); r.sprites.push(mesh); r.cloth.push(mesh); mine.inLayers.push(mesh); }
+    else if (PLANTS.has(d.kind) && where !== 'cave' && PIXI.Mesh) { const mesh = (role === 'flat' ? flat() : ground()).addChild(clothMesh(pic, d, scale, 'plant')); r.sprites.push(mesh); r.cloth.push(mesh); mine.inLayers.push(mesh); }
+    else { const sprite = (role === 'flat' ? flat() : ground()).addChild(place(new PIXI.Sprite(pic.art), d, pic, scale)); r.sprites.push(sprite); mine.inLayers.push(sprite); }
+    r.drawn.push(mine);
+    return mine;
+  };
+  // One decoration taken off the map again, leaving the rest of its region standing (a scatter the brush has just covered).
+  const dropOne = (r, mine) => {
+    const gone = new Set([...mine.inLayers, ...mine.inShadows]);
+    for (const o of gone) { try { o.parent?.removeChild(o); o.destroy({ children: true }); } catch { /* gone with the canvas */ } }
+    r.sprites = r.sprites.filter((s) => !gone.has(s));
+    r.shadowSprites = r.shadowSprites.filter((s) => !gone.has(s));
+    r.crowns = r.crowns.filter((s) => !gone.has(s));
+    r.cloth = r.cloth.filter((s) => !gone.has(s));
+    if (mine.caster) r.casters = r.casters.filter((c) => c !== mine.caster);
+    r.drawn = r.drawn.filter((m) => m !== mine);
+    r.shown = r.shown.filter((d) => d !== mine.d);
+  };
+  // A scattered decoration the brush has just put something over: decor-regions' own rule (`clear`), so what a stroke clears
+  // as it goes is what the finished region keeps.
+  const covers = (hand, d, g) => !DECOR_KINDS[d.kind].flat && !DECOR_KINDS[hand.kind].flat
+    && (hand.x - d.x) ** 2 + (hand.y - d.y) ** 2 <= ((hand.size + d.size) * g * 0.42) ** 2;
+  // Which of the drawn are the GM's own (the region's Size and a kind's size scale one, so it is told by kind, place and seed):
+  // a dab covers the scatter, never another decoration somebody placed.
+  const handKey = (d) => `${d.kind}:${Math.round(d.x)}:${Math.round(d.y)}:${d.seed}`;
   return {
     /** A sprite of one decoration's picture, placed and turned as it would stand (for the brush's ghost), or null. */
     sprite(d, look = {}) { const { pic, scale } = picture(d, look); return pic?.art ? place(new PIXI.Sprite(pic.art), d, pic, scale) : null; },
@@ -276,37 +327,43 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
         const shape = (spec.areas ?? []).map((a) => [Array.from(a), a.holes ?? []]);
         const key = JSON.stringify([drawn, shape, lookKey(spec), g, spec.broken ?? [], !!spec.live]), had = regions.get(spec.id);
         if (had?.key === key) { had.prop = spec.settings?.prop; continue; }
+        // What the region is apart from what the brush has laid by hand: while a stroke paints, this is all that must match
+        // for the dabs so far to stand as they are.
+        const { brushed: fresh = [], ...rest } = drawn;
+        const restKey = JSON.stringify([rest, shape, lookKey(spec), g, spec.broken ?? [], !!spec.live]);
+        // A stroke adding to what it has already laid (the brush pushes onto one array; rubbing out makes a new one): draw
+        // only the new dabs and clear what they cover, rather than building the whole region again on every dab.
+        if (spec.live && had?.restKey === restKey && had.brushedRef === fresh && fresh.length > had.brushedCount) {
+          at = spec;
+          const added = fresh.slice(had.brushedCount), hidden = new Set(spec.settings?.off ?? []);
+          const grow = (d) => (spec.settings?.scale ?? 1) * (spec.settings?.kinds?.[d.kind]?.size ?? 1);
+          const tall = (d) => ((spec.settings?.height ?? 1) === 1 ? d : { ...d, tall: +((d.tall ?? 1) * spec.settings.height).toFixed(3) });
+          for (const raw of added) {
+            if (hidden.has(raw.kind) || !DECOR_KINDS[raw.kind]) continue;
+            const d = tall(grow(raw) === 1 ? raw : { ...raw, size: +(raw.size * grow(raw)).toFixed(3) });
+            for (const mine of [...had.drawn]) if (!mine.hand && covers(d, mine.d, g)) dropOne(had, mine);
+            had.shown.push(d); had.placements.push(d);
+            // (It goes on top of what is already drawn: a stroke's own order, which settles into the region's when it ends.)
+            const mine = drawOne(d, had, spec.look, had.where, g, had.contact, had.castLayer);
+            if (mine) mine.hand = true;
+          }
+          had.key = key; had.restKey = restKey; had.brushedCount = fresh.length; had.prop = spec.settings?.prop;
+          aim(had); at = null;
+          continue;
+        }
         if (had) dropRegion(had);
         at = spec;
         const { placements, shown } = decorShown(spec, g), where = spec.settings?.where ?? 'surface';
-        const r = { key, placements, shown, where, look: spec.look, prop: spec.settings?.prop, sprites: [], shadowSprites: [], crowns: [], cloth: [], castLayer: null, pictures: new Set() };
+        const r = { key, restKey, brushedRef: fresh, brushedCount: fresh.length, placements: [...placements], shown: [...shown], where, look: spec.look, prop: spec.settings?.prop, sprites: [], shadowSprites: [], crowns: [], cloth: [], castLayer: null, contact: null, drawn: [], pictures: new Set() };
         // Shadows: the soft dark at each standing one's foot whatever the light, then the cast ones in a layer of their own (one alpha for all, so overlaps never stack darker).
         const contact = new PIXI.Container(), cast = new PIXI.Container(), Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter;
         if (PIXI.BlurFilter) { contact.filters = [new PIXI.BlurFilter(g * 0.05)]; cast.filters = [new PIXI.BlurFilter(g * 0.015), ...(Alpha ? [new Alpha(1)] : [])]; }
-        contact.alpha = 0.5; r.castLayer = cast;
+        contact.alpha = 0.5; r.castLayer = cast; r.contact = contact;
         // The lights' shadows: a layer of their own, filled as the lights near them are told (lamps()).
         const lampLayer = new PIXI.Container(); if (PIXI.BlurFilter) lampLayer.filters = [new PIXI.BlurFilter(g * 0.02), ...(Alpha ? [new Alpha(1)] : [])]; lampLayer.alpha = 0.6;
         r.lampLayer = lampLayer; r.casters = [];
-        for (const d of shown) {
-          const role = decorRole(d, where); if (!role || role === 'cavern') continue;
-          // (Standing ones take their snow from the snow layer over them, flat ones the ground's lying over them; a tree's crown has its own painted.)
-          const seenLook = role !== 'tree' && render ? { ...spec.look, snow: 0 } : spec.look; r.pictures.add(pictureOf(d, seenLook).key);
-          const { pic, scale } = picture(d, seenLook); if (!pic) continue;
-          if (pic.shadow && role !== 'flat') {
-            const foot = place(new PIXI.Sprite(pic.shadow), d, pic, scale); foot.tint = 0x06070c; foot.position.set(d.x + g * 0.02, d.y + g * 0.03); foot.scale.set(foot.scale.x * 1.06, foot.scale.y * 1.06); contact.addChild(foot);
-            // The cast one: an outer holder turned to the sun (to stretch), the silhouette inside turned to the decoration's own way.
-            const holder = new PIXI.Container(), inner = new PIXI.Container(), sil = place(new PIXI.Sprite(pic.shadow), d, pic, scale); sil.position.set(0, 0); sil.rotation = 0; sil.tint = 0x06070c;
-            inner.addChild(sil); holder.addChild(inner); holder.decor = d; holder.inner = inner; holder.baseScale = sil.scale.x; holder.texture = pic.shadow; cast.addChild(holder); r.shadowSprites.push(holder);
-            r.casters.push({ d, pic, scale, height: decorHeight(d), shadows: [] });
-          }
-          if (role === 'tree') {
-            if (pic.trunk) r.sprites.push(ground().addChild(place(new PIXI.Sprite(pic.trunk), d, pic, scale)));
-            const crown = above().addChild(where !== 'cave' && PIXI.Mesh ? clothMesh(pic, d, scale, 'crown') : place(new PIXI.Sprite(pic.art), d, pic, scale)); crown.decor = d; r.crowns.push(crown); r.sprites.push(crown); if (crown.shader) r.cloth.push(crown);
-          // Flat ones (moss, flowers, a puddle's mud) lie on the ground itself, under the lying snow; the rest stand over it.
-          } else if (DECOR_KINDS[d.kind].cloth && pic.cloth && where !== 'cave' && PIXI.Mesh) { const mesh = (role === 'flat' ? flat() : ground()).addChild(clothMesh(pic, d, scale, DECOR_KINDS[d.kind].cloth === 'paper' ? 'paper' : 'cloth')); r.sprites.push(mesh); r.cloth.push(mesh); }
-          else if (PLANTS.has(d.kind) && where !== 'cave' && PIXI.Mesh) { const mesh = (role === 'flat' ? flat() : ground()).addChild(clothMesh(pic, d, scale, 'plant')); r.sprites.push(mesh); r.cloth.push(mesh); }
-          else r.sprites.push((role === 'flat' ? flat() : ground()).addChild(place(new PIXI.Sprite(pic.art), d, pic, scale)));
-        }
+        const byHand = new Set(fresh.map(handKey));
+        for (const d of shown) { const mine = drawOne(d, r, spec.look, where, g, contact, cast); if (mine && byHand.has(handKey(d))) mine.hand = true; }
         shadows().addChild(contact); shadows().addChild(cast); shadows().addChild(lampLayer); r.sprites.push(contact, cast, lampLayer);
         // Snow on the standing ones (not underground). (A tree's crown carries its own, painted, as it opens over the creatures.)
         // (Not while a stroke still paints it (`live`): baked once, when the stroke ends.)

@@ -2509,7 +2509,9 @@ const syncDecorations = () => {
   }
   decorations.sync(list);
   // The lamps, braziers and candles among them light the map: real light sources, the same on every screen.
-  try { decorLights.sync(decorations.lights()); } catch (err) { console.warn("Animater | decoration lights", err); }
+  // (Not while a stroke paints: every light that changes has Foundry redo its lighting and every creature's vision, and a
+  // stroke asks ten times a second. The lamps a stroke lays come on when it ends, with everything else it settles.)
+  if (!decorBrushing?.down) { try { decorLights.sync(decorations.lights()); } catch (err) { console.warn("Animater | decoration lights", err); } }
   lightDecorations();
   // Their trees join the canopy's shade: built again when they change.
   const key = JSON.stringify(decorations.trees().map((t) => [t.id, t.kind, Math.round(t.x), Math.round(t.y)]));

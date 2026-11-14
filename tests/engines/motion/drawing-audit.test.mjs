@@ -35,6 +35,9 @@ test('the clock and unrelated changes build nothing again; the brush and heights
   assert.match(main, /if \(options\?\.animaterGround\) return false;/, 'not the ground weather\'s saves');
   assert.match(main, /decorBrushSyncSoon\(\);/, 'a dab shows again at most every tenth of a second');
   assert.match(main, /if \(key !== decorTreesKey && !decorBrushing\)/, 'no canopy rebuild mid-stroke');
+  // Roi: the frame rate dropped hard while brushing. Every light that changes has Foundry redo its lighting and every
+  // creature's vision, and a stroke syncs ten times a second, so the lamps wait until the pointer comes up.
+  assert.match(main, /if \(!decorBrushing\?\.down\) \{ try \{ decorLights\.sync\(decorations\.lights\(\)\); \}/, 'no lighting churn mid-stroke');
   assert.match(main, /if \(key === heightsDrawn\.key && value === heightsDrawn\.value && roots\[1\] === heightsDrawn\.root\) return;/, 'heights drawn again only when they change');
   assert.doesNotMatch(main, /cacheAsBitmap = true/, 'shadows never cached as pictures: cached, their fades and cut-outs were lost');
   assert.match(main, /const decorBrushRoot = floorLayer\("decorBrush"\);/, 'one brush layer, made once');
