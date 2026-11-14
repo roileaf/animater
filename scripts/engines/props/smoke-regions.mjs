@@ -28,6 +28,36 @@ export function concealmentPlan(options) {
 
 const DOCUMENT_ID = /^[a-zA-Z0-9]{16}$/;
 
+// ---- Picking regions out of a scene the canvas has NOT drawn. ----
+// The round runs on every scene that has a fire on it, so most of the time it is looking at a scene nobody is standing
+// in. core/viewed-regions.mjs cannot help there: a region's `viewed` needs the scene's own `_view`, which only the
+// canvas scene has, so off-canvas it answers false for every region and the filter returns nothing at all. It is a
+// canvas-drawing helper and belongs where something is drawn. Here we say what we actually mean: the flag that marks a
+// region, and the level it is on.
+//
+// Whether a region counts for the level the smoke is on. A region that names no levels is on every floor, as Foundry
+// reads an empty SetField; with no level to compare against (a scene with none) nothing can be told apart, so all of
+// them count. This is both more correct than `viewed` — it is the region's own say, not whether a client is looking at
+// it — and it works on any scene.
+export function regionsOnLevel(regions, level = null) {
+  const list = Array.from(regions ?? []);
+  if (!level) return list;
+  return list.filter((region) => {
+    const own = Array.from(region?.levels ?? []);
+    return own.length === 0 || own.includes(level);
+  });
+}
+
+// Our own concealment region on a scene: the one carrying the flag smokeRegionData writes, on this level. Null for none.
+// The first in the scene's own order, so the same scene always answers with the same one.
+export const ownSmokeRegion = (regions, { level = null } = {}) =>
+  regionsOnLevel(regions, level).find((region) => region?.flags?.animater?.smokeRegion === true) ?? null;
+
+// The regions the GM marked "Open to the sky" (a hole in the roof, a shaft) that count for this level.
+export const skyRegionsOf = (regions, { level = null } = {}) =>
+  regionsOnLevel(regions, level).filter((region) => region?.flags?.animater?.openSky === true);
+
+
 // `levels`: the region's levels, each a real document id (a region's `levels` is a SetField of DocumentIdField over the
 // scene's Level collection, foundry.mjs:13489, :23108); any number, empty for none. `origin`: optional, copied onto every
 // shape when given.
@@ -51,4 +81,27 @@ export function smokeRegionData(shapes, options) {
     behaviors,
     flags: { animater: { smokeRegion: true } },
   };
+}
+
+// What a round's shapes mean for the scene's own smoke region (pure; the caller writes): {remove, create, update}, each
+// a list, any of them empty. An unchanged round asks for nothing at all.
+// Exactly ONE region of ours per scene and level: it is found, grown or shrunk, and taken away with the last of the
+// smoke. Found through ownSmokeRegion, never through `viewed`, or off-canvas it would be missed every round — and a
+// region that is missed is a region remade, so a fire burning on a scene nobody is looking at left one more
+// concealment region behind every round it burned.
+// Whether the concealment is there at all can only change by remaking the region, so that case removes and creates;
+// the shape and the level are a plain update. `remove` is always applied before `create`.
+export function smokeRegionPlan(regions, shapes, { level = null, visioner = false } = {}) {
+  const own = ownSmokeRegion(regions, { level });
+  const list = shapes ?? [];
+  const nothing = { remove: [], create: [], update: [] };
+  if (!list.length) return { ...nothing, remove: own ? [own.id] : [] };
+  const data = smokeRegionData(list, { levels: level ? [level] : [], visioner });
+  if (!own) return { ...nothing, create: [data] };
+  const had = Array.from(own.behaviors ?? []).some((b) => b?.type === CONCEALMENT_BEHAVIOUR);
+  if (had !== (data.behaviors.length > 0)) return { ...nothing, remove: [own.id], create: [data] };
+  const now = Array.from(own.shapes ?? []).map((sh) => ({ type: sh.type, x: sh.x, y: sh.y, width: sh.width, height: sh.height }));
+  const sameLevels = JSON.stringify(Array.from(own.levels ?? []).sort()) === JSON.stringify([...data.levels].sort());
+  if (sameLevels && JSON.stringify(now) === JSON.stringify(data.shapes)) return nothing;
+  return { ...nothing, update: [{ _id: own.id, shapes: data.shapes, levels: data.levels }] };
 }

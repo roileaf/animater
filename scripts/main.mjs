@@ -26,8 +26,8 @@ import { propMaterial, canBreak } from "./engines/props/prop-material.mjs";
 import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf } from "./engines/props/smoke-field.mjs";
 import { registerSmokeFence } from "./engines/props/smoke-fence.mjs";
 import { smokeGridOf, storedSmokeGrid } from "./engines/props/smoke-edges.mjs";
-import { smokeRegionData, CONCEALMENT_BEHAVIOUR } from "./engines/props/smoke-regions.mjs";
-import { smokeRoundPlan, smokeRoomAt, smokeOnlySave, smokeClearPlan, smokeRunsOn, smokeLeftovers } from "./engines/props/smoke-round.mjs";
+import { CONCEALMENT_BEHAVIOUR, smokeRegionPlan, skyRegionsOf, regionsOnLevel } from "./engines/props/smoke-regions.mjs";
+import { smokeRoundPlan, smokeRoomAt, smokeOnlySave, smokeClearPlan, smokeRunsOn, smokeLeftovers, smokeLevelFor } from "./engines/props/smoke-round.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls, blockingWalls, wallStop } from "./engines/props/prop-walls.mjs";
@@ -10318,10 +10318,18 @@ async function smokeRound(scene, burning = []) {
   else {
     const { cols, rows, cell, origin } = geo;
     const sources = smokeSourcesOf({ fires: burning, lights: smokeLightsOf(scene), grid: propGrid(scene), cell, origin, cols });
+    // The round runs on EVERY scene with a fire on it, so almost always on a scene the canvas has not drawn. Its
+    // regions are therefore picked by what they are — their own flags, and the level they name (smoke-regions.mjs
+    // regionsOnLevel) — and never by `viewed`, which needs the scene's own view and answers false for every region
+    // of every scene but the canvas's. Off-canvas that filter returned nothing: no cell was ever indoors, so the
+    // smoke never formed, and our own region was never found, so a new one was made every round it burned.
+    // (viewedRegions stays where something really is drawn on the viewed level.)
+    const level = smokeLevelFor(scene, sources);
+    const here = regionsOnLevel(scene.regions, level);
     // Indoors is a cell whose middle lies in a region that keeps the weather out, or every cell of an underground
     // scene. Each answer is worked out once a round, because it is a walk over polygons.
     const deep = undergroundOf(scene.flags?.[ID], null);
-    const rooms = deep ? [] : indoorPolygonsOf(viewedRegions(scene.regions), regionAreas);
+    const rooms = deep ? [] : indoorPolygonsOf(here, regionAreas);
     const mid = (i) => ({ x: origin.x + ((i % cols) + 0.5) * cell, y: origin.y + (Math.floor(i / cols) + 0.5) * cell });
     const known = new Map();
     const indoors = (i) => {
@@ -10333,8 +10341,7 @@ async function smokeRound(scene, burning = []) {
     const walled = (i, n) => wallBetween(mid(i), mid(n), walls);
     // A hole in the roof: every cell under a region the GM marked "Open to the sky" (a shaft, a broken roof) vents
     // upward whatever its walls do, and it is the one opening an inside room can have with no outdoor cell near it.
-    const shafts = viewedRegions(scene.regions).filter((r) => r.flags?.[ID]?.openSky === true)
-      .flatMap((r) => { try { return regionAreas(r) ?? []; } catch { return []; } });
+    const shafts = skyRegionsOf(here).flatMap((r) => { try { return regionAreas(r) ?? []; } catch { return []; } });
     const skies = new Map();
     const sky = (i) => {
       if (!shafts.length) return false;
@@ -10362,30 +10369,15 @@ async function smokeRound(scene, burning = []) {
 // The region the smoke conceals in: one region per scene, flagged as ours, grown or shrunk to the smoke and taken
 // away with it. pf2e-visioner owns concealment; without its behaviour the region carries none and nothing is
 // concealed.
+// The whole decision is smoke-regions.mjs's (smokeRegionPlan): one region of ours per scene and level, found by its own
+// flag so it is found on any scene, grown or shrunk to the smoke, remade only when the concealment itself comes or goes,
+// and taken away with the last of the smoke. An unchanged round writes nothing. Removals go before creations, so a
+// region being remade never overlaps the one it replaces.
 async function smokeRegionNow(scene, shapes, level) {
-  const region = viewedRegions(scene.regions).find((r) => r.flags?.[ID]?.smokeRegion === true) ?? null;
-  if (!shapes.length) {
-    if (region) await scene.deleteEmbeddedDocuments("Region", [region.id], SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke region not removed: ${e?.message ?? e}`));
-    return;
-  }
-  const data = smokeRegionData(shapes, { levels: level ? [level] : [], visioner: smokeConceals() });
-  if (!region) {
-    await scene.createEmbeddedDocuments("Region", [data], SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke region not made: ${e?.message ?? e}`));
-    return;
-  }
-  // Whether the concealment is there at all can only change by remaking the region; the shape and the level are a
-  // plain update, and an unchanged round writes nothing at all.
-  const had = [...(region.behaviors ?? [])].some((b) => b.type === CONCEALMENT_BEHAVIOUR);
-  if (had !== (data.behaviors.length > 0)) {
-    await scene.deleteEmbeddedDocuments("Region", [region.id], SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke region not remade: ${e?.message ?? e}`));
-    await scene.createEmbeddedDocuments("Region", [data], SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke region not remade: ${e?.message ?? e}`));
-    return;
-  }
-  const now = [...(region.shapes ?? [])].map((s) => ({ type: s.type, x: s.x, y: s.y, width: s.width, height: s.height }));
-  const sameLevels = JSON.stringify([...(region.levels ?? [])].sort()) === JSON.stringify([...data.levels].sort());
-  if (sameLevels && JSON.stringify(now) === JSON.stringify(data.shapes)) return;
-  await scene.updateEmbeddedDocuments("Region", [{ _id: region.id, shapes: data.shapes, levels: data.levels }], SMOKE_NOTE)
-    .catch((e) => runtime?.trace("props", `smoke region not written: ${e?.message ?? e}`));
+  const plan = smokeRegionPlan(scene.regions, shapes, { level, visioner: smokeConceals() });
+  if (plan.remove.length) await scene.deleteEmbeddedDocuments("Region", plan.remove, SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke region not removed: ${e?.message ?? e}`));
+  if (plan.create.length) await scene.createEmbeddedDocuments("Region", plan.create, SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke region not made: ${e?.message ?? e}`));
+  if (plan.update.length) await scene.updateEmbeddedDocuments("Region", plan.update, SMOKE_NOTE).catch((e) => runtime?.trace("props", `smoke region not written: ${e?.message ?? e}`));
 }
 // A fire round still writing would put back whatever is cleared or thinned while it is in flight. One wait, used by
 // everything that clears behind the round's back (Repair, a quench): never a second mechanism.
@@ -10400,14 +10392,20 @@ const afterFireRound = async (scene) => {
 // itself over the next rounds instead, which it does: with nothing burning the fade clears it on its own.
 async function clearSmokeNow(scene) {
   if (!scene || game.users?.activeGM?.isSelf !== true) return;
-  // A round in flight would write its pre-clear cells and region back after this: let it finish first.
+  // A round in flight would write its pre-clear cells and region back after this: let it finish first, then hold
+  // the scene itself, so none can start while this writes. (Still running after the wait: leave it be and say so;
+  // taking the lock then would free it under the round's feet.)
   await afterFireRound(scene);
-  const plan = smokeClearPlan(scene);
-  if (Object.keys(plan.fields).length) {
-    await scene.update(withDeletes(plan.fields, propDel()), SMOKE_NOTE)
-      .catch((e) => runtime?.trace("props", `smoke not cleared: ${e?.message ?? e}`));
-  }
-  await smokeRegionNow(scene, [], null);
+  if (fireRunning.has(scene.id)) { runtime?.trace("props", "smoke not cleared: a round is still writing"); return; }
+  fireRunning.add(scene.id);
+  try {
+    const plan = smokeClearPlan(scene);
+    if (Object.keys(plan.fields).length) {
+      await scene.update(withDeletes(plan.fields, propDel()), SMOKE_NOTE)
+        .catch((e) => runtime?.trace("props", `smoke not cleared: ${e?.message ?? e}`));
+    }
+    await smokeRegionNow(scene, [], null);
+  } finally { fireRunning.delete(scene.id); }
 }
 // The ticker: every scene with both switches on, each keeping its own count, on the active GM alone. Then any scene
 // still carrying smoke whose switches have since gone off, to take it away.

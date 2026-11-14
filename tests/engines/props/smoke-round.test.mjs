@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { smokeRoundPlan, smokeLevelFor, smokeShapes, smokeNeighbours, smokeOnlySave, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, ROOM_CAP } from "../../../scripts/engines/props/smoke-round.mjs";
 import { THICK, THIN, smokeOpeningsOf } from "../../../scripts/engines/props/smoke-field.mjs";
+import { smokeRegionPlan } from "../../../scripts/engines/props/smoke-regions.mjs";
+import { viewedRegions } from "../../../scripts/core/viewed-regions.mjs";
 import { propSceneFieldsHTML } from "../../../scripts/ui/prop-config.mjs";
 
 const A = "aaaaaaaaaaaaaaaa", B = "bbbbbbbbbbbbbbbb";
@@ -309,11 +311,24 @@ test("the room sizes survive the round's own write and go on a real scene edit",
   for (const name of ["updateScene", "deleteScene", "updateWall", "updateRegion", "canvasReady"]) assert.ok(list.includes(`"${name}"`), name);
 });
 
-test("the smoke never reads the scene's regions raw", () => {
+// Was: "the smoke never reads the scene's regions raw", which required viewedRegions here. That requirement was WRONG
+// for this code and has been withdrawn. viewedRegions filters on a region's `viewed`, which needs the scene's own
+// `_view`; only the canvas scene has one, so on every other scene it returns nothing — and the round runs on every
+// scene with a fire on it. The real rule, which this now guards, is that the smoke picks regions by what they ARE:
+// their own flag, and the level they name. (The project's actual guard on loose region reads,
+// tests/core/viewed-regions.test.mjs, bans a loop over canvas?.scene?.regions and is untouched by any of this.)
+test("the smoke picks regions by their flag and their level, never by whether a client is looking", () => {
   const from = main.indexOf("// ---- The smoke a fire fills"), to = main.indexOf("// The ticker: every scene with both switches on");
   const smoke = main.slice(from, to);
   assert.ok(from >= 0 && to > from);
-  assert.equal([...smoke.matchAll(/\.regions/g)].length, [...smoke.matchAll(/viewedRegions\(scene\.regions\)/g)].length);
+  assert.doesNotMatch(smoke, /viewedRegions\(/, "a drawing helper has no business on a scene nobody is looking at");
+  // Every region the round reads goes through the level filter first, and is chosen by flag from there.
+  assert.match(smoke, /const here = regionsOnLevel\(scene\.regions, level\);/);
+  assert.match(smoke, /indoorPolygonsOf\(here, regionAreas\)/);
+  assert.match(smoke, /skyRegionsOf\(here\)/);
+  assert.match(smoke, /smokeRegionPlan\(scene\.regions, shapes, \{ level, visioner: smokeConceals\(\) \}\)/);
+  // And viewedRegions is still used where something really is drawn on the canvas scene.
+  assert.match(main, /const regionsHere = \(\) => viewedRegions\(canvas\?\.scene\?\.regions\);/);
 });
 
 test("both switches are off by default and the scene's says what the smoke does", () => {
@@ -490,6 +505,9 @@ test("main.mjs wires its four call sites to the pure decisions, and to nothing e
   const clear = main.slice(main.indexOf("async function clearSmokeNow"), main.indexOf("// The ticker: every scene with both switches on"));
   assert.match(clear, /game\.users\?\.activeGM\?\.isSelf !== true\) return;/);
   assert.match(clear, /withDeletes\(plan\.fields, propDel\(\)\)/);
+  // It holds the scene while it writes, so no round can start under it, and lets it go however it ends.
+  assert.match(clear, /fireRunning\.add\(scene\.id\);[\s\S]{0,40}try \{/);
+  assert.match(clear, /\} finally \{ fireRunning\.delete\(scene\.id\); \}/);
   const smoke = main.slice(main.indexOf("// ---- The smoke a fire fills"), main.indexOf("// The ticker: every scene with both switches on"));
   assert.doesNotMatch(smoke, /Math\.random\(|Date\.now\(/);
   assert.doesNotMatch(smoke, /sceneOpenings\(/, "the drafts' list is a different list for a different job");
@@ -547,4 +565,23 @@ test("a hole in the roof is an opening of its own, with both sides indoors", () 
   // A sky over nothing, and a predicate that throws, both leave the room sealed.
   assert.deepEqual(plan({ scene: sc(), sources: [], sky: () => false }).openings, []);
   assert.deepEqual(plan({ scene: sc(), sources: [], sky: () => { throw new Error("no shape"); } }).openings, []);
+});
+
+// ---- The leftover pass on a scene the canvas has not drawn. ----
+// This is the case the pass exists for, and the one where `viewed` was guaranteed to fail rather than merely likely to.
+
+test("a non-active scene with a switch off loses its region along with its cells and its flag", () => {
+  const sc = switched({ fireSpreads: false });
+  // Its regions as they really read when nobody is standing in that scene: `viewed` false on every one of them.
+  const mine = { id: "mine", viewed: false, levels: [], shapes: [{ type: "rectangle", x: 0, y: 0, width: 100, height: 100 }],
+    behaviors: [], flags: { animater: { smokeRegion: true } } };
+  assert.deepEqual(viewedRegions([mine]), [], "the drawing helper finds nothing here");
+  // The round's decision: everything stored comes off, and no shapes at all.
+  const p = smokeRoundPlan({ activeGM: true, on: smokeRunsOn(sc), scene: sc, sources: FIRE, indoors: inRoom, walled: sealed, roomOf });
+  assert.deepEqual(p.fields, CLEARED, "the cells and the geometry, each by name");
+  assert.deepEqual(p.shapes, []);
+  // And those empty shapes take the region away, which they could not do while it was looked for through `viewed`.
+  assert.deepEqual(smokeRegionPlan([mine], p.shapes, { level: p.level }), { remove: ["mine"], create: [], update: [] });
+  // So after that pass the scene holds nothing of ours, and smokeHeldBy agrees it need not be visited again.
+  assert.equal(smokeHeldBy({ flags: { animater: { roomSmoke: true, breakableProps: true, fireSpreads: false } } }), false);
 });
