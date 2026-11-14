@@ -11,6 +11,11 @@ export const MAP_SORT = Object.freeze({
   decorShadows: 651,
   decorations: 655,
   heightFaces: 656,
+  // The painted carriers (main.mjs): on the map under the creatures, where the lighting reaches them. Drawn on the
+  // token itself they sat in Foundry's interface group, over the lighting, and a sled in a pitch-dark cave came out
+  // as bright as at noon (Roi: "why carriers arent affected by light\darkness\sun\moon?"). Tokens sort at 700, so a
+  // rider still stands over the wagon they are riding in.
+  carriers: 690,
   decorCrowns: 740,
   decorBrush: 1102,
 });

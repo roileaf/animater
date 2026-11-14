@@ -4207,6 +4207,34 @@ Hooks.on("updateToken", (doc, change) => { if (change?.flags?.[ID] && (ABOARD in
 // the way it is going, its wheels and its horse moving as far as it has rolled, and lit where it stands like every other
 // painted animal. Its own picture is put away while it wears one and comes straight back when the look is turned off.
 const CARRY_LOOK = `${ID}-vehicle`, CARRY_TEAM = `${ID}-team`, CARRY_ROPE = `${ID}-rope`;
+// Where the rig is drawn. Roi, of a sled standing in a pitch-dark cave as bright as at noon: "why carriers arent
+// affected by light\darkness\sun\moon?" — because it hung on the token, and Foundry draws the token layer in its
+// interface group, over the lighting (which is why nameplates and bars stay readable in the dark). A token's own
+// picture escapes that only because its mesh lives in the primary group instead, and the carrier hides that mesh.
+// So the rig is a holder of its own on the map, under the creatures, lit exactly as the painted decorations are.
+// Everything inside the holder keeps the token's own coordinates, as it had when it was the token's child.
+const carrierRootOf = floorLayer("carriers");
+const carrierRigs = new Map();
+const carrierRigOf = (token, make = true) => {
+  const id = token?.id ?? token?.document?.id;
+  if (!id) return null;
+  let rig = carrierRigs.get(id);
+  if (rig?.destroyed) { carrierRigs.delete(id); rig = null; }
+  if (!rig) {
+    if (!make || !globalThis.PIXI?.Container) return null;
+    rig = new globalThis.PIXI.Container(); rig.eventMode = "none"; rig.animaterCarrier = id;
+    carrierRigs.set(id, rig);
+  }
+  try { const root = carrierRootOf(); if (rig.parent !== root) root.addChild(rig); } catch { /* the canvas is going */ }
+  return rig;
+};
+const dropCarrierRig = (id) => {
+  const rig = carrierRigs.get(id);
+  if (!rig) return;
+  carrierRigs.delete(id);
+  try { rig.parent?.removeChild(rig); rig.destroy({ children: true }); } catch { /* gone with the canvas */ }
+};
+const dropAllCarrierRigs = () => { for (const id of [...carrierRigs.keys()]) dropCarrierRig(id); };
 // How rough the going is on each floor, for the way the body rides: a paved road or ice hardly throws it, a rutted track
 // or mud throws it about.
 const CARRIER_ROUGH = { stone: 0.25, wood: 0.3, ice: 0.15, snow: 0.5, sand: 0.7, dirt: 0.65, grass: 0.6, mud: 0.95, water: 0.4 };
@@ -4218,19 +4246,15 @@ const lookStateOf = (doc) => {
 };
 // The painted vehicle a token is wearing, for anything that works from a token's picture (its shadow, its reflection),
 // so those are of the wagon and not of the picture the token was given underneath it.
-const wornLook = (t) => { const worn = t?.children?.find((c) => c?.[CARRY_LOOK]); return worn && !worn.destroyed && worn.texture?.valid ? worn : null; };
+const wornLook = (t) => { const worn = carrierRigOf(t, false)?.children?.find((c) => c?.[CARRY_LOOK]); return worn && !worn.destroyed && worn.texture?.valid ? worn : null; };
 // How far the worn picture sits from the middle of its token, in canvas pixels. The wagon is slid along until its bed
 // is over the token's middle and the team leads out ahead of it, so anything working from the picture (its shadow, its
 // reflection) has to be slid the same way — Roi: "something about the shadow doesnt make sense", and it was the shadow
 // of a wagon standing where the wagon is not.
 const wornOffset = (t, worn) => ({ ox: (worn?.position?.x ?? 0) - (t?.w ?? 0) / 2, oy: (worn?.position?.y ?? 0) - (t?.h ?? 0) / 2 });
 const dropCarrierLook = (token) => {
-  // Every piece of the worn picture goes: the vehicle, the animals pulling it and the rope between them.
-  for (const key of [CARRY_LOOK, CARRY_TEAM, CARRY_ROPE]) {
-    for (const gone of (token?.children ?? []).filter((c) => c?.[key])) {
-      try { token.removeChild(gone); gone.destroy(); } catch { /* gone with the token */ }
-    }
-  }
+  // Every piece of the worn picture goes with its holder: the vehicle, the animals pulling it and the rope between them.
+  dropCarrierRig(token?.id ?? token?.document?.id);
   if (token?.mesh && !token.mesh.destroyed) token.mesh.renderable = true;
 };
 // How much of its cell a set covers, taken from its standing frame, so the picture does not swell and shrink as the wheels
@@ -4324,14 +4348,18 @@ const paintCarrierLook = (token, doc, step, grid) => {
   const zoom = Math.max(0.5, Math.min(3, Math.abs(canvas?.stage?.scale?.x) || 1));
   const tex = step.painted ? paintedTexture(step, wide * zoom) : artFrame(globalThis.PIXI, step.group ?? "vehicles", step.path);
   if (!tex?.width) return;
-  let art = token.children?.find((c) => c?.[CARRY_LOOK]);
+  const rig = carrierRigOf(token);
+  if (!rig) return;
+  // The holder stands where the token is drawn this frame, so everything inside it keeps the token's own coordinates.
+  rig.position.set(Number(token.position?.x ?? token.x) || 0, Number(token.position?.y ?? token.y) || 0);
+  let art = rig.children?.find((c) => c?.[CARRY_LOOK]);
   // A painted picture carries its own light and shade, as the decorations do, so it is a plain sprite; a baked frame
   // is lit where it stands and wants the lit one.
   const wantsLit = !step.painted;
-  if (art && (art.animaterLit ?? false) !== wantsLit) { try { token.removeChild(art); art.destroy(); } catch { /* gone */ } art = null; }
+  if (art && (art.animaterLit ?? false) !== wantsLit) { try { rig.removeChild(art); art.destroy(); } catch { /* gone */ } art = null; }
   if (!art) {
     art = wantsLit ? new animalPIXI.Sprite(tex) : new globalThis.PIXI.Sprite(tex);
-    art[CARRY_LOOK] = true; art.animaterLit = wantsLit; art.eventMode = "none"; art.anchor.set(0.5); token.addChildAt(art, 0);
+    art[CARRY_LOOK] = true; art.animaterLit = wantsLit; art.eventMode = "none"; art.anchor.set(0.5); rig.addChildAt(art, 0);
   } else if (art.texture !== tex) art.texture = tex;
   // What fills the token is the wagon, not the wagon and its horse: the ground a carrier covers is its bed, and the
   // team walks ahead of it, outside the token, as a rider's mount would. Measured off the standing frame (animaterBody,
@@ -4365,20 +4393,21 @@ const paintCarrierLook = (token, doc, step, grid) => {
   art.rotation = step.drawn ?? step.turn;
   art.alpha = token.mesh?.alpha ?? 1;
   art.visible = token.visible !== false;
-  paintCarrierTeam(token, step, grid, art, ahead);
+  rig.visible = token.visible !== false;
+  paintCarrierTeam(rig, step, grid, art, ahead);
   if (token.mesh && !token.mesh.destroyed) token.mesh.renderable = false;
 };
 // The team in the shafts: its own picture, walking its own stride, out in front of the vehicle on the ground it covers.
 // It is a sprite of its own rather than part of the wagon's picture, so it is drawn at its own size and casts its own
 // shadow where it stands (Roi, on one shadow cast for the pair: "you can see the horse is in front of the wagon, so the
 // shadows arent good").
-const paintCarrierTeam = (token, step, grid, art, ahead) => {
+const paintCarrierTeam = (rig, step, grid, art, ahead) => {
   // One in the shafts or a pack on the rope: the team is a list, and each animal is its own sprite at its own place.
   const team = step.team ?? [];
-  const had = (token.children ?? []).filter((c) => c?.[CARRY_TEAM]);
-  if (!team.length) { for (const gone of had) { try { token.removeChild(gone); gone.destroy(); } catch { /* gone */ } } return; }
+  const had = (rig.children ?? []).filter((c) => c?.[CARRY_TEAM]);
+  if (!team.length) { for (const gone of had) { try { rig.removeChild(gone); gone.destroy(); } catch { /* gone */ } } return; }
   // More than the team needs (a pack that shrank, or a wagon that was a sled): the spare sprites go.
-  for (const spare of had.slice(team.length)) { try { token.removeChild(spare); spare.destroy(); } catch { /* gone */ } }
+  for (const spare of had.slice(team.length)) { try { rig.removeChild(spare); spare.destroy(); } catch { /* gone */ } }
   const feet = Number(canvas?.scene?.grid?.distance) || 5;
   const square = squareMetres(feet, canvas?.scene?.grid?.units);
   // Across the way it is going, for the ones that run two abreast.
@@ -4387,7 +4416,7 @@ const paintCarrierTeam = (token, step, grid, art, ahead) => {
     const tex = artFrame(globalThis.PIXI, animal.group, animal.path);
     if (!tex?.width) return;
     let pull = had[i];
-    if (!pull) { pull = new animalPIXI.Sprite(tex); pull[CARRY_TEAM] = true; pull.eventMode = "none"; pull.anchor.set(0.5); token.addChildAt(pull, 0); }
+    if (!pull) { pull = new animalPIXI.Sprite(tex); pull[CARRY_TEAM] = true; pull.eventMode = "none"; pull.anchor.set(0.5); rig.addChildAt(pull, 0); }
     else if (pull.texture !== tex) pull.texture = tex;
     const real = drawnSize(tex.animaterMetres, grid, square);
     const box = tex.animaterBox, along = box ? Math.max(box.w, box.h) : tex.height;
@@ -4402,17 +4431,17 @@ const paintCarrierTeam = (token, step, grid, art, ahead) => {
     pull.alpha = art.alpha;
     pull.visible = art.visible;
   });
-  paintCarrierRope(token, step, grid, art, ahead, beside, team);
+  paintCarrierRope(rig, step, grid, art, ahead, beside, team);
 };
 // The traces: a sled is roped to its pack, not harnessed to it (Roi: "shouldnt there be a rope holding them to the
 // sled?"). One line from the sled's nose to each animal's hindquarters, drawn with the painted carriers' own hand —
 // dark, thin, and sagging a little, because a rope under a sled's pull is never a ruled line.
-const paintCarrierRope = (token, step, grid, art, ahead, beside, team) => {
-  const had = token.children?.find((c) => c?.[CARRY_ROPE]);
+const paintCarrierRope = (rig, step, grid, art, ahead, beside, team) => {
+  const had = rig.children?.find((c) => c?.[CARRY_ROPE]);
   const roped = team.filter((a) => a.rope);
-  if (!roped.length || !globalThis.PIXI?.Graphics) { if (had) { try { token.removeChild(had); had.destroy(); } catch { /* gone */ } } return; }
+  if (!roped.length || !globalThis.PIXI?.Graphics) { if (had) { try { rig.removeChild(had); had.destroy(); } catch { /* gone */ } } return; }
   let rope = had;
-  if (!rope) { rope = new globalThis.PIXI.Graphics(); rope[CARRY_ROPE] = true; rope.eventMode = "none"; token.addChildAt(rope, 0); }
+  if (!rope) { rope = new globalThis.PIXI.Graphics(); rope[CARRY_ROPE] = true; rope.eventMode = "none"; rig.addChildAt(rope, 0); }
   rope.clear();
   // Where each trace is made fast: the sled's own front corners, measured off the painted deck (Roi: "it doesnt
   // touch the sled lol", then, of the painted bridle it had been tying to: "traces to corners"). An animal running
@@ -4443,7 +4472,7 @@ const tickCarrierLooks = () => {
   const all = canvas?.tokens?.placeables;
   if (!all?.length) return;
   for (const token of all) {
-    try { if (kindOf(token.document) || token.children?.some((c) => c?.[CARRY_LOOK])) drawCarrierLook(token); } catch { /* one wagon's trouble is not the scene's */ }
+    try { if (kindOf(token.document) || carrierRigs.has(token.id)) drawCarrierLook(token); } catch { /* one wagon's trouble is not the scene's */ }
   }
   try { tickCarrierSounds(); } catch { /* a silent wagon still rolls */ }
 };
@@ -4583,7 +4612,8 @@ const ridingClear = (token) => {
 };
 Hooks.on("refreshToken", (token) => { try { drawCarrierLook(token); ridingClear(token); } catch { /* a wagon that will not draw is still a wagon */ } });
 Hooks.on("drawToken", (token) => { try { drawCarrierLook(token); ridingClear(token); } catch { /* nor at draw */ } });
-Hooks.on("destroyToken", (token) => { lookStates.delete(token?.document?.id); });
+// The rig stands on the map, not on the token, so it has to be taken away when the token goes.
+Hooks.on("destroyToken", (token) => { lookStates.delete(token?.document?.id); dropCarrierRig(token?.id ?? token?.document?.id); });
 // The kind and the look are flags, and a flag-only change brings no refresh round, so the picture is changed in hand.
 Hooks.on("updateToken", (doc, change) => {
   if (!change?.flags?.[ID]) return;
@@ -4602,8 +4632,11 @@ Hooks.on("updateToken", (doc, change) => {
 });
 Hooks.on("canvasReady", () => {
   lookStates.clear();
+  // (The map layer the rigs stood in went with the old scene; the holders in it are no use on the new one.)
+  carrierRigs.clear();
   try { canvas.app?.ticker?.remove(tickCarrierLooks); canvas.app?.ticker?.add(tickCarrierLooks); } catch { /* without a ticker the hooks still draw it */ }
 });
+Hooks.on("canvasTearDown", () => { dropAllCarrierRigs(); });
 // A passenger whose carrier has lost its list: the carrier deleted out from under it by a hand that bypassed the
 // hooks, its flag wiped, the scene imported, the module turned off and on again, or a loaded carrier copied so that
 // two of them claim the same people. Each passenger remembers what it was riding, so the ones nobody is carrying any
@@ -7864,7 +7897,7 @@ const carrierShadowOf = (t) => {
     ...(tall > 0 ? { shadowBody: tall } : {}),
     // The team in the shafts stands on its own ground in front of the wagon, so it throws a shadow of its own.
     shadowAlso: () => {
-      const pull = t?.children?.find((c) => c?.[CARRY_TEAM]);
+      const pull = carrierRigOf(t, false)?.children?.find((c) => c?.[CARRY_TEAM]);
       if (!pull || pull.destroyed || !pull.texture?.valid || pull.visible === false) return null;
       const dx = pull.position.x - (t.w ?? 0) / 2, dy = pull.position.y - (t.h ?? 0) / 2;
       const at = { x: (t.center?.x ?? 0) + dx, y: (t.center?.y ?? 0) + dy };
