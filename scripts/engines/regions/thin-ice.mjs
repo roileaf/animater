@@ -38,3 +38,42 @@ export function iceStep({ limit, size, squares = [], cracked = [], ended, name }
   else if (cracks.length) note = `The ice cracks under ${who}.`;
   return { cracks, breaks, note };
 }
+
+const ICE_FLAG = "flags.animater.thinIce";
+const SQUARE_KEY = /^-?\d+,-?\d+$/;
+
+// The keys of one stored map that are really squares and really present (a truthy marker), sorted so every client agrees.
+function squaresIn(map) {
+  if (!map || typeof map !== "object" || Array.isArray(map)) return [];
+  return Object.keys(map).filter((key) => SQUARE_KEY.test(key) && map[key]).sort();
+}
+
+// What a region has stored: `flags.animater.thinIce` holds two maps keyed by square (`{ cracks: { "3,4": 1 }, holes: {} }`),
+// because Foundry merges object flags and a key can only be removed by name. Returns the keys as sorted arrays.
+// A missing flag, a non-object, junk keys or empty markers read as nothing: a client never breaks on a malformed region.
+export function iceStateOf(doc) {
+  const stored = doc?.flags?.animater?.thinIce;
+  const flag = stored && typeof stored === "object" ? stored : {};
+  return { cracks: squaresIn(flag.cracks), holes: squaresIn(flag.holes) };
+}
+
+// One judged move (an iceStep result) as updates for scene.updateEmbeddedDocuments("Region", ...): [] when nothing changes.
+// A new crack is written at its own key; a break is added to holes, and deleted from cracks by name (`-=` with null, which the
+// caller converts) only if it was stored there. A crack on a square already cracked or already a hole changes nothing, and a
+// square in both lists breaks. The whole thinIce flag is never written, so no field depends on key order.
+export function iceUpdatesFor(step, { region } = {}) {
+  const id = region?.id ?? region?._id;
+  if (!id) return [];
+  const { cracks: stored, holes } = iceStateOf(region);
+  const broke = new Set((step?.breaks ?? []).filter((key) => !holes.includes(key)));
+  const fields = {};
+  for (const key of broke) {
+    if (stored.includes(key)) fields[`${ICE_FLAG}.cracks.-=${key}`] = null;
+    fields[`${ICE_FLAG}.holes.${key}`] = 1;
+  }
+  for (const key of step?.cracks ?? []) {
+    if (broke.has(key) || stored.includes(key) || holes.includes(key)) continue;
+    fields[`${ICE_FLAG}.cracks.${key}`] = 1;
+  }
+  return Object.keys(fields).length ? [{ _id: id, ...fields }] : [];
+}
