@@ -42,7 +42,7 @@ import { areaRefusal } from "./engines/props/prop-areas.mjs";
 import { createFireLooks, thingFires, charredCells, litCells } from "./engines/props/fire-looks.mjs";
 import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
-import { DECOR_BREAK_MESSAGE, DECOR_NAMES, decorPlaceOf, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
+import { DECOR_BREAK_MESSAGE, DECOR_NAMES, burningDecorIds, decorPlaceOf, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
 import { bulkBreakableUpdates, windowLike } from "./engines/props/wall-break-bulk.mjs";
@@ -2334,11 +2334,13 @@ const heightOf = (tiles, usual) => {
   const ups = tiles.map((t) => t.up).filter((u) => u > 0 && u < 60);
   return ups.length ? ups.reduce((a, b) => a + b, 0) / ups.length : usual;
 };
+// The trees on fire now (their region's saved decoration fires): the canopy thins their shade and leaves while they burn.
+const burningTrees = () => { const out = new Set(); try { for (const doc of canvas?.scene?.regions?.contents ?? []) for (const id of burningDecorIds(doc.id, decorFireOf(doc))) out.add(id); } catch { /* none */ } return out; };
 const rebuildCanopy = () => {
   try {
     if (!canvas?.ready || (!canopyOn() && !roofLightOn() && !leavesOn())) { canopyLight.clear(); return; }
     // (The decorations' trees with the tiles': the same shade, flecks and falling leaves.)
-    const { tree, roof } = sunlitTiles(), trees = canopyOn() || leavesOn() ? [...tree, ...decorations.trees()] : [], roofs = roofLightOn() && !shadowsOffHere() ? roof : [];
+    const { tree, roof } = sunlitTiles(), trees = canopyOn() || leavesOn() ? [...tree, ...decorations.trees({ burning: burningTrees() })] : [], roofs = roofLightOn() && !shadowsOffHere() ? roof : [];
     canopyHeight = heightOf(trees, 3); roofHeight = heightOf(roofs, 4);
     canopySunKey = sunKeyOf(sunNow);
     let water = []; try { water = surfacesHere().water; } catch { /* no flecks kept off */ }
@@ -10540,7 +10542,7 @@ const decorArtLook = (settings) => ({ ...decorLook(settings), snow: 0 });
 // What a decoration held, to spill from its wreck (grain from torn sacks and urns, water from a trough).
 const decorContents = (view) => view?.flags?.animater?.prop?.contents ?? "none";
 // A decoration's wreck as a tile, cut from that picture; null while it has none (art() gives null, decorWreckTile throws).
-const decorWreckOf = (view, settings) => { try { return decorWreckTile(view, decorations.art(view.decor.d, decorArtLook(settings))); } catch { return null; } };
+const decorWreckOf = (view, settings) => { try { return decorWreckTile(view, decorations.art(view.decor.d, decorArtLook(settings)), { grid: propGrid(canvas?.scene) }); } catch { return null; } };
 // The walls a decoration's wreckage stops at: those on its level that stop movement or sight, less open doors. A
 // decoration owns no walls.
 const decorStopWalls = (d) => {

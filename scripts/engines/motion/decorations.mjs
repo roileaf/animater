@@ -7,7 +7,7 @@
 // reads as another, so a region of hundreds costs a few dozen small pictures.
 
 import { gustAt } from './flame-wind.mjs';
-import { DECOR_KINDS, DECOR_VARIANTS, paintDecor, paintSeedOf, waterOutline } from './decor-paint.mjs';
+import { DECOR_KINDS, DECOR_VARIANTS, paintDecor, paintSeedOf, trunkRadius, waterOutline } from './decor-paint.mjs';
 import { CAVERN_KINDS, canopyKindOf, decorPlacements, decorRole } from './decor-regions.mjs';
 import { SNOW_LOOK } from './snow-look.mjs';
 import { decorKeyed, decorLightOut } from '../props/decor-break.mjs';
@@ -149,13 +149,26 @@ export function decorLightList(id, placements, shown, prop) {
   });
   return out;
 }
+// A painted picture is its decoration's size plus 12% of padding each side (decor-paint paintDecor).
+const CROWN_PAD = 1.24;
+/** The stump a broken tree leaves, in px across (pure): the trunk it was, as painted (decor-paint trunkRadius, in squares, times the grid). */
+export const treeStump = (kind, size, grid = 100) => Math.max(8, Math.round(2 * (trunkRadius(kind, Number(size)) ?? 0) * Number(grid)) || 0);
+/** The leaves a tree keeps while it burns (pure): a share of its own. This one factor alone thins the shade (canopy-light multiplies alpha by leaves, so alpha is left at 1) and the falling leaves with it. */
+export const burningLeaves = (leaves) => leaves * 0.4;
+/** One tree as the canopy's shade is fed it (pure): its crown's picture and place, kind, leaves (thinned while `burning`) and id. */
+export function treeFeed({ d, crown, region, kind, burning = null }) {
+  const lit = burning?.has(`${region}:${d.kind}:${Math.round(d.x)}:${Math.round(d.y)}`) === true;
+  return { texture: crown.texture, x: d.x, y: d.y, width: crown.width, height: crown.height, rotation: crown.rotation, anchorX: 0.5, anchorY: 0.5, alpha: 1, up: decorHeight(d), leaves: lit ? burningLeaves(kind.leaves) : kind.leaves, kind: kind.kind, seed: (d.seed >>> 0) % 997, id: `${region}:${d.seed}` };
+}
 /**
  * A broken decoration's wreck as a tile (pure), shaped as createPropWreckage reads one: its picture (`art`, from the engine's
  * art()) at its drawn size, centred where it stands, turned and mirrored as the painter draws it.
  */
-export function decorWreckTile(view, art, { elevation = 0 } = {}) {
-  const d = view.decor.d;
+export function decorWreckTile(view, art, { elevation = 0, grid = 0 } = {}) {
+  const d = view.decor.d, tree = !!DECOR_KINDS[d.kind]?.tree;
   return {
+    // A tree's tile is its crown (the picture burns away over it), but what it leaves is a stump: `stump` is that footprint in px.
+    ...(tree ? { tree: true, stump: treeStump(d.kind, d.size, grid > 0 ? grid : art.width / (d.size * CROWN_PAD)) } : {}),
     id: view.id, x: d.x, y: d.y, width: art.width, height: art.width, rotation: (turnOf(d) * 180) / Math.PI, elevation, sort: 0, levels: view.levels,
     texture: { src: view.texture.src, anchorX: 0.5, anchorY: 0.5, scaleX: d.flip && DECOR_KINDS[d.kind].flat ? -1 : 1, scaleY: 1 },
     flags: view.flags, decor: view.decor, art,
@@ -343,11 +356,12 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
       for (const r of regions.values()) for (const s of r.cloth) { const m = clothMotion(s.decor, air, clock, s.rotation), u = s.shader.uniforms; u.uTime = clock; u.uPush = m.push; u.uDir = m.dir; u.uAlpha = s.alpha; }
     },
     // The trees for the canopy's shade: each crown's picture where it stands, its height, kind and leaves.
-    trees() {
+    // `burning`: ids (decor-break burningDecorIds) of the trees on fire, whose shade thins and whose leaves fall fewer. (A broken tree has no crown left to list.)
+    trees({ burning = null } = {}) {
       const out = [];
       for (const [id, r] of regions) for (const c of r.crowns) {
         const d = c.decor, k = canopyKindOf(d.kind, r.look?.season); if (!k) continue;
-        out.push({ texture: c.texture, x: d.x, y: d.y, width: c.texture.width * Math.abs(c.scale.x), height: c.texture.height * Math.abs(c.scale.y), rotation: c.rotation, anchorX: 0.5, anchorY: 0.5, alpha: 1, up: decorHeight(d), leaves: k.leaves, kind: k.kind, seed: (d.seed >>> 0) % 997, id: `${id}:${d.seed}` });
+        out.push(treeFeed({ d, crown: { texture: c.texture, width: c.texture.width * Math.abs(c.scale.x), height: c.texture.height * Math.abs(c.scale.y), rotation: c.rotation }, region: id, kind: k, burning }));
       }
       return out;
     },
