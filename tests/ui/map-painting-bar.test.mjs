@@ -168,7 +168,7 @@ test('main: the Heights tab raises, lays ramps and steps heights on the wheel; w
   assert.match(main, /if \(waypoints\) waypoints\.forEach\(\(w, i\) => \{ w\.elevation = heights\[i\]; \}\);/, 'each waypoint at the ground there');
   assert.match(main, /if \(byHand\(changed\.elevation\) \|\| waypoints\?\.some\(\(w\) => byHand\(w\.elevation\)\)\) return;/, 'an elevation set by hand wins');
   assert.match(main, /seenOver\); if \(Number\.isFinite\(over\)\) \{ const eye = .*eye >= over - 0\.5\) return false;/, 'eyes up at a rim or higher see past it');
-  assert.match(main, /made\.push\(\{ c, move: open \? none : CONST\.WALL_MOVEMENT_TYPES\.NORMAL, sight: Number\.isFinite\(seenOver\) \? \(CONST\.WALL_SENSE_TYPES\?\.NORMAL \?\? 20\) : none, light: none, sound: none, levels, flags: \{ \[ID\]: \{ cliffOf: id, open,/, 'cliff walls stop movement (not on a hill) and sight from below, and are marked as theirs');
+  assert.match(main, /made\.push\(\{ c, move: open \? none : CONST\.WALL_MOVEMENT_TYPES\.NORMAL, sight: Number\.isFinite\(seenOver\) \? \(CONST\.EDGE_SENSE_TYPES\?\.NORMAL \?\? 20\) : none, light: none, sound: none, levels, flags: \{ \[ID\]: \{ cliffOf: id, open,/, 'cliff walls stop movement (not on a hill) and sight from below, and are marked as theirs');
   assert.match(main, /const of = wall\.flags\?\.\[ID\]\?\.cliffOf; if \(!of\) continue;/, 'no other wall is touched');
   // Roi: "my token cant cross the bridge now": in v14 an edge's object is the WallDocument itself.
   assert.match(main, /const wall = edge\?\.object\?\.document \?\? edge\?\.object, at = Number\(wall\?\.flags\?\.\[ID\]\?\.bridgeAt\);/, 'bridge walls read off the wall document');

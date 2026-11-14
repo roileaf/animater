@@ -266,7 +266,7 @@ import { openStepsWindow, refreshStepsWindow } from "./ui/region-steps-ui.mjs";
 import { createRegionPanel } from "./ui/region-panel.mjs";
 import { shownFloorOf, movedShapes } from "./ui/region-panel-model.mjs";
 import { createFarmLife } from "./engines/motion/farm-life.mjs";
-import { loadAnimalArt, restyle as restyleAnimals, litPIXI, setAnimalLight } from "./engines/motion/animal-art.mjs";
+import { loadAnimalArt, restyle as restyleAnimals, litPIXI, setAnimalLight, artFrame } from "./engines/motion/animal-art.mjs";
 import { regionAnimalCounts, regionHasAnimals, regionAnimalSize, townLevelOf, exactCountOf } from "./engines/motion/region-animals.mjs";
 import { cleanVariant, cleanVariants, variantLook, variantReaction, variantShake, variantSound, variantEditorHtml } from "./engines/motion/blast-variants.mjs";
 import { mediaForReference } from "./engines/media/media-library-model.mjs";
@@ -320,6 +320,11 @@ import {QUALITY_CHOICES,qualityRank,allowsMotion,allowsTokenFx,floorDetail, ligh
 import { separateBatchBuffers, gpuName } from './core/apple-gpu.mjs';
 import {ConditionBody,bodyTreatment} from './engines/motion/condition-body.mjs';
 import { IdleLife, breathes, idleKind, pickIdle } from "./engines/motion/idle-life.mjs";
+import { seaStrength, rollSeed, shipRoll, onDeck, carriedBy, deckShade, hullWash, tileMiddle } from "./engines/motion/ship-roll.mjs";
+import { ABOARD, KIND as CARRIER_KIND, STOW as CARRIER_STOW, RIDING as CARRIER_RIDING, CARRIER_KINDS, carrierKind, kindLabel, carrierAt, pulledOff, boardList, stillAboard, ridePlan, landPlan, boardLabel, capacityOf, overCapacity, tooBig } from "./engines/motion/carriers.mjs";
+import { LOOK as CARRIER_LOOK, CARRIER_LOOKS, lookStep, lookSize, lookFor, trueTall, trueSquares, framePath, squareMetres, drawnSize, idleFrame, headUp } from "./engines/motion/carrier-look.mjs";
+import { paintCarrier } from "./engines/motion/carrier-paint.mjs";
+import { rollFile, rollShape, lapFile, lapShape, paceGap, paceVoice, knocksFor, teamCall, callGap, carrierSoundFiles } from "./engines/sound/carrier-sound.mjs";
 import { WoundedLooks, bleedTier, tokenMoving } from "./engines/playback/wounded-looks.mjs";
 import { builtinPreset } from "./engines/tokenshade/presets.mjs";
 let conditionBody;
@@ -363,7 +368,7 @@ tokenFx.engine.drive = (token, sources) => {
     if (sources.includes("darkness")) {
       const at = token.center ?? { x: token.x, y: token.y };
       let dark = canvas.environment?.darknessLevel ?? 0;
-      try { dark = canvas.effects?.getDarknessLevel?.(at, token.document?.elevation ?? 0) ?? dark; } catch { /* scene darkness */ }
+      try { dark = canvas.effects?.getDarknessLevel?.({ x: at.x, y: at.y, elevation: token.document?.elevation ?? 0 }) ?? dark; } catch { /* scene darkness */ }
       // Standing in a light source counts as lit.
       try { if (canvas.effects?.testInsideLight?.({ ...at, elevation: token.document?.elevation ?? 0 })) dark *= 0.25; } catch { /* no light test */ }
       out.darkness = dark;
@@ -795,7 +800,7 @@ const syncLitLooksNow = () => {
   if (live) for (const token of canvas.tokens?.placeables ?? []) {
     if (!token.actor || !token.mesh || !token.visible) continue;
     let darkness = canvas.environment?.darknessLevel ?? 0;
-    try { darkness = canvas.effects?.getDarknessLevel?.(token.center, token.document?.elevation ?? 0) ?? darkness; } catch { /* older Foundry */ }
+    try { darkness = canvas.effects?.getDarknessLevel?.({ x: token.center.x, y: token.center.y, elevation: token.document?.elevation ?? 0 }) ?? darkness; } catch { /* older Foundry */ }
     const light = lightAround(token.center, lightsReaching(token), Math.max(0.15, darkness));
     const key = litKey(light);
     if (!key) continue;
@@ -1054,7 +1059,14 @@ const feelSkip = new Map();
 // Each creature's tracks (engines/motion/creature-gait.mjs), worked out once per actor and token name and forgotten
 // when an actor or a token's name or actor changes.
 const feelGaits = new Map();
+// A token told what kind of carrier it is goes by that before its name: a wagon called "Oleg's pride" still rolls on
+// wheels, and a mount still walks on hooves. Every kind says what it leaves behind, so none of them is left guessing from
+// its name: a wagon's two ruts with its team's hoofprints down the middle, a hand cart's narrower pair with boots between
+// them, a sled's two broad grooves, and a boat, which is on the water and leaves a wake rather than any track.
+const CARRIER_GAITS = { wagon: "wheels", cart: "barrow", sled: "runners", mount: "hooves", boat: "none" };
 const movementFeelGait = (d) => {
+  const told = CARRIER_GAITS[carrierKind(d.flags?.[ID]?.[CARRIER_KIND])];
+  if (told) return told;
   const key = `${d.actorId ?? ""}|${d.name ?? ""}`;
   let gait = feelGaits.get(key);
   if (gait === undefined) {
@@ -1392,35 +1404,37 @@ let lightingAge = 0;
 for (const hook of ["lightingRefresh", "createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "canvasReady"]) Hooks.on(hook, () => { lightingAge++; });
 // How far each creature's body is lifted from its place now, in pixels (ConditionBody's hover bob, through followBody).
 const bodyLift = new Map();
-const flierLight = (t) => {
-  const now = performance.now(), had = flierLights.get(t.id), c = t.center;
+// `at` and `key`: the light somewhere other than the token's own middle, kept under its own key — a wagon's team
+// stands two squares in front of its token, and a torch beside the wagon is not in the same direction from the horse.
+const flierLight = (t, at = null, key = null) => {
+  const now = performance.now(), had = flierLights.get(key ?? t.id), c = at ?? t.center;
   if (had && now - had.at < 150) return had.value;
   if (had && had.age === lightingAge && had.x === c.x && had.y === c.y && now - had.at < 2000) return had.value;
   let value = null;
   try {
     let darkness = canvas.environment?.darknessLevel ?? 0;
-    try { darkness = canvas.effects?.getDarknessLevel?.(t.center, t.document?.elevation ?? 0) ?? darkness; } catch { /* older Foundry */ }
+    try { darkness = canvas.effects?.getDarknessLevel?.({ x: c.x, y: c.y, elevation: t.document?.elevation ?? 0 }) ?? darkness; } catch { /* older Foundry */ }
     const reaching = lightsReaching(t, { own: true });
-    const lights = reaching.map((l) => { const one = lightAround(t.center, [l], 1); return one && { ...one, key: l.key, flicker: l.flicker }; })
+    const lights = reaching.map((l) => { const one = lightAround(c, [l], 1); return one && { ...one, key: l.key, flicker: l.flicker }; })
       .filter(Boolean).sort((a, b) => b.shine - a.shine).slice(0, LIGHT_SHADOWS);
     const up = ((Number(t.document?.elevation) || 0) - (Number(canvas.level?.elevation?.bottom) || 0)) / (Number(canvas.grid?.distance) || 1);
     const elev = t.document?.elevation ?? 0;
     let blocked = false;
-    try { blocked = surfaceAt(t.center, { elevation: elev, regions: regionsHere(), planes: planesHere(), contains: containsPlane }).blocksLight === true; } catch { blocked = false; }
-    const shade = shelteredAt(t.center, elev) || blocked ? 1 : wallQuads.length ? shadeAcross(t.center, t.w, wallQuads, { elevation: up }) : 0;
+    try { blocked = surfaceAt(c, { elevation: elev, regions: regionsHere(), planes: planesHere(), contains: containsPlane }).blocksLight === true; } catch { blocked = false; }
+    const shade = shelteredAt(c, elev) || blocked ? 1 : wallQuads.length ? shadeAcross(c, t.w, wallQuads, { elevation: up }) : 0;
     // In the pool of light under an opening to the sky, the sun or moon casts its shadow, even underground (where no
     // sun reaches anywhere else): as strong as the pool is there, and that light lifts the darkness.
-    const opened = skyOpenings.length ? skylightNow(canvas.grid.size) : null, open = opened ? skylightShare(t.center, skyOpenings, opened.shift, { grid: canvas.grid.size, inside: pointInPolygon }) : 0;
+    const opened = skyOpenings.length ? skylightNow(canvas.grid.size) : null, open = opened ? skylightShare(c, skyOpenings, opened.shift, { grid: canvas.grid.size, inside: pointInPolygon }) : 0;
     // In a patch of sunlight through a window: the sun casts its shadow there too, as strong as the light is.
-    const shaft = open > 0 || !sunNow || !shaftsNow.length ? { share: 0, points: null } : shaftOf(t.center, shaftsNow), lit = shaft.share;
+    const shaft = open > 0 || !sunNow || !shaftsNow.length ? { share: 0, points: null } : shaftOf(c, shaftsNow), lit = shaft.share;
     // (In window light the sun's shadow always peeks out from under the creature, as though from a little lower: under a high sun it would hide wholly beneath its token, and the patch would read as unlit.)
     const sky = open > 0 ? { ...skySunNow, height: Math.min(Number(skySunNow?.height) || 45, WINDOW_SUN_HIGHEST), strength: opened.strength * open } : lit > 0.05 ? { ...sunNow, height: Math.min(Number(sunNow.height) || 45, WINDOW_SUN_HIGHEST), strength: (Number(sunNow.strength) || 0) * lit } : null;
     if (sky) darkness *= 1 - open;
-    value = { light: lightAround(t.center, reaching, 1), lights, darkness, shade: sky ? 0 : shade, sky, ...shadowClips(t, reaching) };
+    value = { light: lightAround(c, reaching, 1), lights, darkness, shade: sky ? 0 : shade, sky, ...shadowClips(t, reaching) };
     // Lit through a window: its shadow lies only on that patch of light (the floor round it is the room's, out of the sun).
     if (sky && open <= 0 && shaft.points) { value.clips = { ...(value.clips ?? {}), sun: shaft.points }; value.window = true; }
   } catch { value = null; }
-  flierLights.set(t.id, { at: now, value, age: lightingAge, x: c.x, y: c.y });
+  flierLights.set(key ?? t.id, { at: now, value, age: lightingAge, x: c.x, y: c.y });
   return value;
 };
 Hooks.on("canvasTearDown", () => { flierLights.clear(); bodyLift.clear(); });
@@ -3321,9 +3335,9 @@ const syncCliffWalls = async (mine = false) => {
   }
   for (const wall of scene.walls ?? []) { const of = wall.flags?.[ID]?.cliffOf; if (!of) continue; if (!have.has(of)) have.set(of, []); have.get(of).push(wall); }
   const key = (list) => list.map((w) => `${Array.from(w.c).join(",")}@${[...(w.levels ?? [])].join(",")}#${w.bridge ?? w.flags?.[ID]?.bridgeAt ?? ""}L${w.ledge ?? w.flags?.[VISIONER]?.ledgeElevation ?? ""}S${w.seenOver ?? w.flags?.[ID]?.seenOver ?? ""}O${w.open ?? w.flags?.[ID]?.open ?? false}`).sort().join("|");
-  const gone = [], made = [], none = CONST.WALL_SENSE_TYPES?.NONE ?? 0;
+  const gone = [], made = [], none = CONST.EDGE_SENSE_TYPES?.NONE ?? 0;
   for (const [id, walls] of have) { const w = want.get(id); if (!w || key(walls) !== key(w)) gone.push(...walls.map((x) => x.id)); }
-  for (const [id, w] of want) { const had = have.get(id); if (had && key(had) === key(w)) continue; for (const { c, levels, bridge, ledge, open = false, seenOver = null } of w) made.push({ c, move: open ? none : CONST.WALL_MOVEMENT_TYPES.NORMAL, sight: Number.isFinite(seenOver) ? (CONST.WALL_SENSE_TYPES?.NORMAL ?? 20) : none, light: none, sound: none, levels, flags: { [ID]: { cliffOf: id, open, ...(Number.isFinite(seenOver) ? { seenOver } : {}), ...(bridge !== null && bridge !== undefined ? { bridgeAt: bridge } : {}) }, ...(ledge !== null && ledge !== undefined ? { [VISIONER]: { ledge: true, ledgeElevation: ledge } } : {}) } }); }
+  for (const [id, w] of want) { const had = have.get(id); if (had && key(had) === key(w)) continue; for (const { c, levels, bridge, ledge, open = false, seenOver = null } of w) made.push({ c, move: open ? none : CONST.WALL_MOVEMENT_TYPES.NORMAL, sight: Number.isFinite(seenOver) ? (CONST.EDGE_SENSE_TYPES?.NORMAL ?? 20) : none, light: none, sound: none, levels, flags: { [ID]: { cliffOf: id, open, ...(Number.isFinite(seenOver) ? { seenOver } : {}), ...(bridge !== null && bridge !== undefined ? { bridgeAt: bridge } : {}) }, ...(ledge !== null && ledge !== undefined ? { [VISIONER]: { ledge: true, ledgeElevation: ledge } } : {}) } }); }
   try { if (gone.length) await scene.deleteEmbeddedDocuments("Wall", gone); if (made.length) await scene.createEmbeddedDocuments("Wall", made); }
   catch (err) { console.warn("Animater | cliff walls", err); }
 };
@@ -3586,7 +3600,7 @@ const plainFloorOf = (region) => regionFloor({ name: region.name, flag: plainFlo
 // The lights the floors, water and snow answer. Each as strong as it really is against the sky there (movement-feel.mjs
 // LIGHT_LUX): a torch is nothing beside the noon sun, shows from dusk and is all the light by night; under a roof, where
 // daylight does not reach, always its whole.
-const lampAgainstSky = (x, y) => { let dark = Number(canvas.environment?.darknessLevel) || 0; try { dark = canvas.effects?.getDarknessLevel?.({ x, y }, canvas.level?.elevation?.base ?? 0) ?? dark; } catch { /* the scene's */ } return LIGHT_LUX.lamp / (LIGHT_LUX.lamp + skyLux(dark)); };
+const lampAgainstSky = (x, y) => { let dark = Number(canvas.environment?.darknessLevel) || 0; try { dark = canvas.effects?.getDarknessLevel?.({ x, y, elevation: canvas.level?.elevation?.base ?? 0 }) ?? dark; } catch { /* the scene's */ } return LIGHT_LUX.lamp / (LIGHT_LUX.lamp + skyLux(dark)); };
 const floorLightSources = () => { const out = []; for (const s of canvas.effects?.lightSources ?? []) { if (!s.active || s.sourceId === "globalLight" || s.isDarkness) continue; let strength = 1; try { strength = underCeiling({ x: s.x, y: s.y }) ? 1 : lampAgainstSky(s.x, s.y); } catch { /* whole */ } out.push({ x: s.x, y: s.y, radius: s.radius || s.data?.dim || 0, color: s.colorRGB ?? null, strength }); } return out; };
 // Whether a region's middle is under a roof, where the sun and moon don't reach.
 const roofedRegion = (areas) => { let x = 0, y = 0, n = 0; for (const area of areas) for (let i = 0; i + 1 < area.length; i += 2) { x += area[i]; y += area[i + 1]; n++; } return n > 0 && underCeiling({ x: x / n, y: y / n }); };
@@ -3804,6 +3818,808 @@ Hooks.on("deleteTile", (doc) => {
 });
 // A tile the waves break on, placed, moved, turned, hidden or gone: the sea round it again.
 for (const hook of ["createTile", "updateTile", "deleteTile"]) Hooks.on(hook, (doc, change) => { if (doc?.flags?.[ID]?.wavesBreak === true || change?.flags?.[ID]?.wavesBreak !== undefined) floorLooksSoon(); });
+// Ships rock with the sea (engines/motion/ship-roll.mjs): a tile ticked "Animater: rocks with the sea" rolls with the swell,
+// gently, harder in the wind and most in a storm. Only drawn: the tile turns a little, the tokens and tiles on its deck are
+// carried with it (tokens through conditionBody, over their own poses), the sun slides across its deck in painted steps and,
+// in a storm, spray comes over the low side. Its document, its walls and the tokens' places never change.
+// Roi chose "C: both, gently" from tools/fx-gallery/ship-rocking-mock.html.
+const shipsRockOn = () => { try { return !!canvas?.ready && hotSetting("shipRocking") !== false && hotSetting("shipRockingLocal") !== false && qualityRank(localQuality()) >= 2; } catch { return false; } };
+// A tile's picture as the roll needs it. Foundry v14 keeps the placement on doc.shape, where a tile hangs by an anchor
+// (its middle unless it was placed long ago); older tiles hang by their top-left corner, an anchor of 0.
+const tileRectOf = (doc) => ({ x: doc.x, y: doc.y, width: doc.width, height: doc.height, rotation: doc.shape?.rotation ?? doc.rotation ?? 0, anchorX: doc.shape?.anchorX ?? 0, anchorY: doc.shape?.anchorY ?? 0 });
+const shipPoses = new Map(), shipDecks = new Map(), shipRiders = new Map();
+let shipFrame = null, shipWarned = false;
+// Moved by `by(base)` ({ x, y, r }) from its natural place: what Foundry last set, unless the value there is still ours.
+const poseShipMesh = (mesh, by, was) => {
+  const baseX = was && mesh.position.x === was.setX ? was.baseX : mesh.position.x, baseY = was && mesh.position.y === was.setY ? was.baseY : mesh.position.y, baseR = was && mesh.rotation === was.setR ? was.baseR : mesh.rotation;
+  const d = by({ x: baseX, y: baseY });
+  mesh.position.set(baseX + d.x, baseY + d.y); mesh.rotation = baseR + d.r;
+  return { baseX, baseY, baseR, setX: mesh.position.x, setY: mesh.position.y, setR: mesh.rotation };
+};
+const unposeShipMesh = (mesh, was) => { if (!was || !mesh || mesh.destroyed) return; if (mesh.position.x === was.setX) mesh.position.x = was.baseX; if (mesh.position.y === was.setY) mesh.position.y = was.baseY; if (mesh.rotation === was.setR) mesh.rotation = was.baseR; };
+const dropShipDeck = (id) => {
+  const deck = shipDecks.get(id); shipDecks.delete(id);
+  for (const c of [deck?.box, deck?.under]) { try { c?.parent?.removeChild(c); c?.destroy({ children: true }); } catch { /* gone */ } }
+  try { deck?.outline?.destroy(true); } catch { /* gone */ }
+};
+// The ship's outline in plain white (its picture's alpha), once per picture: the shadow and foam on the water are drawn from it.
+const shipOutline = (texture) => {
+  const sprite = new PIXI.Sprite(texture), white = new PIXI.ColorMatrixFilter();
+  white.matrix = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0];
+  sprite.filters = [white];
+  const out = canvas.app.renderer.generateTexture(sprite, { region: new PIXI.Rectangle(0, 0, texture.width, texture.height), resolution: 0.5 });
+  sprite.destroy(); white.destroy();
+  return out;
+};
+// The deck's shade and a storm's spray, on its own picture (masked by it) just over the tile and under the creatures; the
+// hull's shadow and foam on the water (engines/motion/ship-roll.mjs hullWash) just under it.
+const shipDeckDraw = (tile, roll, strength) => {
+  const doc = tile.document, mesh = tile.mesh, texture = mesh?.texture;
+  if (!texture?.valid) { dropShipDeck(doc.id); return; }
+  let deck = shipDecks.get(doc.id);
+  if (!deck || deck.box.destroyed || deck.texture !== texture) {
+    dropShipDeck(doc.id);
+    const box = new PIXI.Container(), turn = new PIXI.Container(), mask = new PIXI.Sprite(texture), paint = new PIXI.Graphics();
+    box.eventMode = "none"; turn.addChild(paint, mask); paint.mask = mask; box.addChild(turn); canvas.primary.addChild(box);
+    const outline = shipOutline(texture), under = new PIXI.Container(), below = new PIXI.Container();
+    const shadow = new PIXI.Sprite(outline), ring = new PIXI.Sprite(outline), foam = new PIXI.Sprite(outline);
+    shadow.tint = 0x05141a; under.eventMode = "none"; below.addChild(shadow, ring, foam); under.addChild(below); canvas.primary.addChild(under);
+    deck = { box, turn, mask, paint, texture, outline, under, below, shadow, ring, foam }; shipDecks.set(doc.id, deck);
+    canvas.primary.sortDirty = true;
+  }
+  const { box, turn, mask, paint, under, below, shadow, ring, foam } = deck;
+  box.elevation = Number(doc.elevation) || 0; box.sortLayer = TILE_SORT_LAYER; box.sort = (Number(doc.sort) || 0) + 0.5;
+  under.elevation = box.elevation; under.sortLayer = TILE_SORT_LAYER; under.sort = (Number(doc.sort) || 0) - 0.5;
+  turn.position.copyFrom(mesh.position); turn.rotation = mesh.rotation; turn.scale.copyFrom(mesh.scale); turn.alpha = mesh.alpha ?? 1;
+  below.position.copyFrom(mesh.position); below.rotation = mesh.rotation; below.scale.copyFrom(mesh.scale); below.alpha = mesh.alpha ?? 1;
+  box.visible = under.visible = mesh.visible !== false && mesh.renderable !== false;
+  mask.anchor.copyFrom(mesh.anchor);
+  const tw = texture.width, th = texture.height, x0 = -mesh.anchor.x * tw, y0 = -mesh.anchor.y * th, wide = Math.abs(doc.width) >= Math.abs(doc.height);
+  // The water round the hull: squares of grid in the picture's own pixels, the roll's low side across its short axis.
+  const sq = (tw / Math.max(1, Math.abs(doc.width))) * (canvas.grid?.size ?? 100), wash = hullWash(roll.heel, strength);
+  const across = (sprite, along, side) => { sprite.position.set(wide ? along : side, wide ? side : along); };
+  for (const s of [shadow, ring, foam]) { s.width = tw; s.height = th; s.anchor.copyFrom(mesh.anchor); }
+  across(shadow, wash.shadow.x * sq, wash.shadow.y * sq); shadow.alpha = wash.shadow.alpha;
+  ring.scale.set(ring.scale.x * (1 + 2 * wash.foam.ring), ring.scale.y * (1 + 2 * wash.foam.ring)); ring.position.set(0, 0); ring.alpha = 0.22;
+  across(foam, 0, wash.foam.y * sq); foam.alpha = wash.foam.alpha;
+  paint.clear();
+  for (const band of deckShade(roll.heel)) {
+    paint.beginFill(band.dark ? 0x140a1e : 0xffe6aa, band.alpha);
+    if (wide) paint.drawRect(x0, y0 + band.from * th, tw, (band.to - band.from) * th); else paint.drawRect(x0 + band.from * tw, y0, (band.to - band.from) * tw, th);
+    paint.endFill();
+  }
+  if (strength > 1.5 && Math.abs(roll.heel) > 0.8) {
+    const low = roll.heel > 0, px = (tw / Math.max(1, Math.abs(doc.width))) * ((canvas.grid?.size ?? 100) / 100);
+    for (let i = 0; i < 26; i++) {
+      const along = Math.random(), across = Math.random() ** 2 * 0.3, a = low ? 1 - across : across, r = (1.5 + Math.random() * 3) * px;
+      paint.beginFill(0xf0faff, 0.15 + Math.random() * 0.3);
+      if (wide) paint.drawCircle(x0 + along * tw, y0 + a * th, r); else paint.drawCircle(x0 + a * tw, y0 + along * th, r);
+      paint.endFill();
+    }
+  }
+};
+const shipTick = () => {
+  shipFrame = null;
+  const tiles = shipsRockOn() ? (canvas.tiles?.placeables ?? []).filter((t) => t.document?.flags?.[ID]?.rocksWithSea === true && !t.document.hidden && t.mesh && !t.mesh.destroyed) : [];
+  const ships = new Set(tiles.map((t) => t.document.id)), posed = new Map();
+  const t = performance.now() / 1000, strength = seaStrength({ wind: skyWind, storm: skyStorm }), grid = canvas?.grid?.size ?? 100;
+  shipRiders.clear();
+  for (const tile of tiles) {
+    try {
+      const doc = tile.document, roll = shipRoll(t, strength, rollSeed(doc.id));
+      // Foundry puts a tile's picture in its place on its own refresh, which may not have run yet (a tile just made,
+      // a canvas still drawing): its mesh sits at 0, 0 then, and taking that for the ship's place would hold it in the
+      // map's corner until something refreshed it. Leave it be for a frame.
+      if (!tile.mesh.position.x && !tile.mesh.position.y && (doc.x || doc.y)) continue;
+      const rec = poseShipMesh(tile.mesh, () => ({ x: roll.drift.x * grid, y: roll.drift.y * grid, r: roll.tilt }), shipPoses.get(tile));
+      posed.set(tile, rec);
+      const centre = { x: rec.baseX, y: rec.baseY }, rect = tileRectOf(doc), floor = Number(doc.elevation) || 0, sort = Number(doc.sort) || 0;
+      for (const other of canvas.tiles.placeables) {
+        const od = other.document;
+        if (other === tile || ships.has(od?.id) || !other.mesh || other.mesh.destroyed || od.hidden) continue;
+        const up = Number(od.elevation) || 0;
+        if (up < floor || (up === floor && (Number(od.sort) || 0) <= sort)) continue;
+        if (!onDeck(tileMiddle(tileRectOf(od)), rect)) continue;
+        posed.set(other, poseShipMesh(other.mesh, (base) => carriedBy(base, centre, roll, grid), shipPoses.get(other)));
+      }
+      for (const token of canvas.tokens?.placeables ?? []) {
+        if (!token.mesh || token.destroyed || (Number(token.document?.elevation) || 0) < floor - 1) continue;
+        const at = token.center;
+        if (onDeck(at, rect)) shipRiders.set(token, { at, centre, roll });
+      }
+      shipDeckDraw(tile, roll, strength);
+    } catch (err) {
+      // Said out loud once: a ship that silently fails to rock looks like a feature that does nothing.
+      if (!shipWarned) { shipWarned = true; console.warn("Animater | ships rock with the sea", err); }
+      runtime?.trace?.("ships", `${tile?.document?.id ?? "?"}: ${err?.message ?? err}`);
+    }
+  }
+  for (const [tile, was] of shipPoses) if (!posed.has(tile)) unposeShipMesh(tile.mesh, was);
+  shipPoses.clear(); for (const [k, v] of posed) shipPoses.set(k, v);
+  for (const id of [...shipDecks.keys()]) if (!ships.has(id)) dropShipDeck(id);
+  if (shipRiders.size) conditionBody?.wake?.();
+  if (tiles.length) shipFrame = requestAnimationFrame(shipTick);
+};
+const shipsSoon = () => { if (!shipFrame) shipFrame = requestAnimationFrame(shipTick); };
+Hooks.on("canvasReady", () => { shipsSoon(); });
+for (const hook of ["createTile", "updateTile", "deleteTile"]) Hooks.on(hook, (doc, change) => { if (doc?.flags?.[ID]?.rocksWithSea === true || change?.flags?.[ID]?.rocksWithSea !== undefined) shipsSoon(); });
+Hooks.on("clientSettingChanged", (key) => { if (/shipRocking|quality/i.test(String(key ?? ""))) shipsSoon(); });
+Hooks.on("updateSetting", (setting) => { if (/shipRocking/.test(String(setting?.key ?? ""))) shipsSoon(); });
+Hooks.on("canvasTearDown", () => { if (shipFrame) cancelAnimationFrame(shipFrame); shipFrame = null; shipPoses.clear(); shipRiders.clear(); for (const id of [...shipDecks.keys()]) dropShipDeck(id); });
+// Carriers (engines/motion/carriers.mjs): the GM makes any token the wagon, picks who is getting in, and presses Load on
+// its HUD; they take their seats aboard it and ride with it wherever it goes, in plain sight, so their torches still
+// light the road, they still see out of it, and their own players can still see them. Unload puts them down round the
+// carrier, in the formation they got on with where that still fits beside it. Nothing is ever deleted, and a carrier
+// taken off the scene puts its passengers down first, so nobody can be stranded inside a token that is gone.
+//
+// A GM who does want them out of sight ticks Stow on the carrier, and the token's own configuration says plainly what
+// that costs: Foundry gives a hidden token no light and no vision, and shows it to nobody but the GM.
+const aboardOf = (doc) => (Array.isArray(doc?.flags?.[ID]?.[ABOARD]) ? doc.flags[ID][ABOARD] : []);
+const kindOf = (doc) => carrierKind(doc?.flags?.[ID]?.[CARRIER_KIND]);
+const stowOf = (doc) => doc?.flags?.[ID]?.[CARRIER_STOW] === true;
+// Whether this scene's grid is made of squares: the seats across a wagon's bed and the ring of places round it are
+// squares, and on a hex or gridless map they have to be a real ring instead.
+const squareGrid = () => canvas?.grid?.isSquare !== false;
+// Which way the GM is pointing, for the side to put them down on; nothing when there is no cursor to read.
+const unloadToward = (doc) => {
+  try {
+    const m = canvas?.mousePosition, grid = canvas?.grid?.size ?? 100;
+    if (!m || !Number.isFinite(m.x)) return null;
+    const c = { x: doc.x + (doc.width * grid) / 2, y: doc.y + (doc.height * grid) / 2 };
+    return Math.hypot(m.x - c.x, m.y - c.y) < grid * 0.75 ? null : Math.atan2(m.y - c.y, m.x - c.x);
+  } catch { return null; }
+};
+// Whether the carrier system is on at all for this world.
+const carriersOn = () => { try { return game.settings.get(ID, "carriers") !== false; } catch { return true; } };
+const carriersHere = (scene) => [...(scene?.tokens ?? [])].filter((t) => kindOf(t)).map((t) => ({ id: t.id, kind: kindOf(t), x: t.x, y: t.y, width: t.width, height: t.height }));
+const carrierCarrying = (doc) => doc?.parent?.tokens?.find((t) => t.id !== doc.id && aboardOf(t).some((q) => q.id === doc.id)) ?? null;
+const carrierHere = (doc) => (doc?.parent === canvas?.scene ? aboardOf(doc) : []);
+const riderData = (d) => ({ id: d.id, x: d.x, y: d.y, elevation: d.elevation, hidden: d.hidden, width: d.width, height: d.height, kind: kindOf(d), carries: aboardOf(d) });
+// Where a passenger may step out: on the scene, clear of the others, and not through a wall from the carrier.
+const landingFree = (doc) => (x, y, id) => {
+  const scene = doc.parent, rect = canvas?.dimensions?.sceneRect, grid = canvas?.grid?.size ?? 100;
+  if (rect && (x < rect.x || y < rect.y || x + grid > rect.x + rect.width || y + grid > rect.y + rect.height)) return false;
+  const aboard = new Set(aboardOf(doc).map((p) => p.id));
+  for (const other of scene.tokens) {
+    // A hidden token stands on its square like any other: a passenger used to be put down on top of an ambush.
+    if (other.id === id || other.id === doc.id || aboard.has(other.id)) continue;
+    if (Math.hypot(other.x - x, other.y - y) < grid * 0.6) return false;
+  }
+  try {
+    // From the middle of the carrier, not its corner: the corner of a two-square wagon parked along a wall is on the
+    // far side of it, and every good spot on the near side was being thrown away.
+    const from = { x: doc.x + (doc.width * grid) / 2, y: doc.y + (doc.height * grid) / 2 }, to = { x: x + grid / 2, y: y + grid / 2 };
+    if (CONFIG.Canvas.polygonBackends?.move?.testCollision(from, to, { type: "move", mode: "any" })) return false;
+  } catch { /* no canvas to ask: the spot stands */ }
+  return true;
+};
+// What a passenger's own update carries beside its place: the carrier it is riding, so a passenger whose carrier has
+// lost its list can still be found and put down (orphanRiders, below).
+const ridingFlag = (carrierId) => ({ [`flags.${ID}.${CARRIER_RIDING}`]: carrierId });
+const landedFlag = () => ({ [`flags.${ID}.-=${CARRIER_RIDING}`]: null });
+const carrierSaving = new Set();
+// `to` is where the carrier is going. Foundry v14 fires updateToken before the document itself moves: the change holds the
+// new place and doc.x still the old one, so a plan read off the document put everyone exactly where they already were.
+// `show` is for the moment the GM unticks Stow: the ride itself never touches whether anyone can be seen.
+const rideCarrier = async (doc, to = doc, { show = false } = {}) => {
+  const aboard = stillAboard(carrierHere(doc), (id) => !!doc.parent?.tokens?.get(id));
+  if (!aboard.length) return;
+  carrierSaving.add(doc.id);
+  try {
+    const plan = ridePlan(aboard, to, { stow: stowOf(doc), show, sort: doc.sort }).map((p) => ({ ...p, ...ridingFlag(doc.id) }));
+    await doc.parent.updateEmbeddedDocuments("Token", plan, { animater: { carrying: true }, animate: false, teleport: true });
+    if (aboard.length !== aboardOf(doc).length) await doc.setFlag(ID, ABOARD, aboard);
+  } catch (err) { ui.notifications?.warn(`Animater: the wagon's passengers did not follow it (${err?.message ?? err})`); }
+  finally { carrierSaving.delete(doc.id); }
+};
+// Who the party is, for a press with nothing picked out: the members of the world's party actor, and with them the
+// animals and the help — a familiar, an animal companion, an eidolon, a hireling, the guide the party has taken on.
+// They are player-owned too, and the druid's bear being left standing on the road while the wagon rolls away is not
+// anybody's idea of loading the party. Anything hostile stays where it is, as does anyone already riding something
+// else, and a carrier is never cargo.
+const PARTY_TYPES = new Set(["character", "familiar"]);
+const partyish = (t) => {
+  const actor = t.actor;
+  if (!actor?.hasPlayerOwner) return false;
+  if (PARTY_TYPES.has(actor.type)) return true;
+  // A player-owned npc on the party's side: the companion, the summon, the hired guard. Not the charmed ogre.
+  return t.disposition === CONST.TOKEN_DISPOSITIONS.FRIENDLY || t.disposition === CONST.TOKEN_DISPOSITIONS.SECRET;
+};
+const partyRiders = (doc) => {
+  const scene = doc?.parent;
+  if (!scene?.tokens) return [];
+  const members = game.actors?.party?.members ?? [];
+  const ids = members.length ? new Set(members.map((m) => m?.id ?? m)) : null;
+  const riding = new Set();
+  for (const t of scene.tokens) for (const p of aboardOf(t)) riding.add(p.id);
+  return scene.tokens.filter((t) => t.id !== doc.id && !riding.has(t.id) && !aboardOf(t).length && !kindOf(t)
+    && (ids ? ids.has(t.actor?.id) || partyish(t) : partyish(t)));
+};
+const loadCarrier = async (doc) => {
+  const aboard = stillAboard(carrierHere(doc), (id) => !!doc.parent?.tokens?.get(id));
+  // Roi: "when i have no token selected i want to press the button to carry all party members". Nothing picked out is
+  // not a mistake to be told off for — it is the common case, the whole party getting into the wagon.
+  const held = (canvas.tokens?.controlled ?? []).map((t) => t.document).filter((d) => d.id !== doc.id);
+  const picked = (held.length ? held : partyRiders(doc)).map(riderData);
+  const list = boardList(doc, picked, aboard, canvas?.grid?.size ?? 100, { square: squareGrid() });
+  if (list.length === aboard.length) {
+    const why = picked.some((p) => p.kind) ? " A carrier cannot be put inside another carrier: unload it and move it itself."
+      : picked.some((p) => p.carries?.length) ? " One of them is carrying somebody already." : "";
+    ui.notifications?.warn(`Animater: nobody to put aboard — select the tokens, or put the party's own tokens on the scene.${why}`); return;
+  }
+  // Said, never refused: the GM knows what they are doing with nine in a rowboat, and would rather be told than stopped.
+  const kind = kindOf(doc) || "party", over = overCapacity(kind, list.length);
+  if (over) ui.notifications?.info(`Animater: that is ${list.length} in a ${kindLabel(kind).toLowerCase()}, which holds ${capacityOf(kind)}.`);
+  const big = picked.filter((p) => tooBig(doc, p));
+  if (big.length) ui.notifications?.info(`Animater: ${big.length === 1 ? "one of them is" : `${big.length} of them are`} bigger than ${doc.name} itself.`);
+  carrierSaving.add(doc.id);
+  try {
+    // Loading a token the GM never marked makes it one on the spot, carrying and nothing more — so a wagon takes the
+    // party on one press, and from then on a token dropped on it climbs in by itself. The kind stays theirs to change.
+    const made = !kindOf(doc);
+    if (made) await doc.setFlag(ID, CARRIER_KIND, "party");
+    // Getting on is the moment visibility is settled — hidden if the GM asked for that, otherwise as visible as they
+    // were standing in the road, which also brings back anyone an older build had hidden by getting in.
+    const plan = ridePlan(list, doc, { stow: stowOf(doc), show: true, sort: doc.sort }).map((p) => ({ ...p, ...ridingFlag(doc.id) }));
+    await doc.parent.updateEmbeddedDocuments("Token", plan, { animater: { carrying: true }, animate: false, teleport: true });
+    await doc.setFlag(ID, ABOARD, list);
+    // Said plainly, because one stray press on the wrong HUD turns a crate into a carrier and takes the party with it.
+    ui.notifications?.info(made ? `Animater: ${doc.name} is a carrier now, with ${list.length - aboard.length} aboard.`
+      : `Animater: ${list.length - aboard.length} aboard ${doc.name}.`);
+  } catch (err) { ui.notifications?.warn(`Animater: nobody got aboard (${err?.message ?? err})`); }
+  finally { carrierSaving.delete(doc.id); }
+  canvas.tokens?.releaseAll();
+  doc.object?.layer?.hud?.render();
+};
+// `where` lets a carrier that is being deleted put its passengers down at the place it stood.
+const unloadCarrier = async (doc, where = doc) => {
+  const aboard = stillAboard(carrierHere(doc), (id) => !!doc.parent?.tokens?.get(id));
+  if (!aboard.length) { try { await doc.unsetFlag(ID, ABOARD); } catch { /* already gone */ } return; }
+  carrierSaving.add(doc.id);
+  try {
+    const down = landPlan(aboard, where, { grid: canvas?.grid?.size ?? 100, free: landingFree(doc), square: squareGrid(), toward: unloadToward(where) })
+      .map((p) => ({ ...p, ...landedFlag() }));
+    await doc.parent.updateEmbeddedDocuments("Token", down, { animater: { carrying: true }, teleport: true });
+    try { await doc.unsetFlag(ID, ABOARD); } catch { /* the carrier itself has gone: they are down, which is what matters */ }
+    ui.notifications?.info(`Animater: ${aboard.length} back on their feet.`);
+  } catch (err) { ui.notifications?.warn(`Animater: they are still aboard (${err?.message ?? err})`); }
+  finally { carrierSaving.delete(doc.id); }
+};
+Hooks.on("updateToken", (doc, change, options) => {
+  // One GM client does the moving. With two of them open (which is Roi's ordinary setup) both used to write the same
+  // passengers at the same moment, each with its own idea of the list, and each telling him about it.
+  if (options?.animater?.carrying || carrierSaving.has(doc.id) || !leadGM()) return;
+  if (!("x" in change || "y" in change || "elevation" in change) || !carrierHere(doc).length) return;
+  // Where it is going, read from the change: Foundry 14 brings this hook round before the document has moved, and a
+  // token in the middle of a move still reports the place it set out from — read off the document, the party rode a
+  // step behind the wagon all the way down the road. The move itself is handed to the next tick rather than made
+  // from inside the carrier's own movement, which keeps the passengers out of that operation's bookkeeping.
+  const to = { x: change.x ?? doc.x, y: change.y ?? doc.y, elevation: change.elevation ?? doc.elevation };
+  setTimeout(() => { void rideCarrier(doc, to); }, 0);
+});
+Hooks.on("deleteToken", (doc, options) => {
+  if (options?.animater?.carrying || !leadGM() || !aboardOf(doc).length) return;
+  void unloadCarrier(doc, { x: doc.x, y: doc.y, elevation: doc.elevation });
+});
+Hooks.on("renderTokenHUD", (hud, html) => {
+  const doc = hud?.object?.document, root = html instanceof HTMLElement ? html : html?.[0];
+  if (!doc || !root || !game.user.isGM || !carriersOn() || root.querySelector(`[data-action="${ID}-carry"]`)) return;
+  const aboard = stillAboard(carrierHere(doc), (id) => !!doc.parent?.tokens?.get(id));
+  const picked = (canvas.tokens?.controlled ?? []).filter((t) => t.id !== doc.id).length;
+  // Roi: "it's really hard to mount currently". So the button is on every token the GM opens with somebody selected, not
+  // only on one that has been marked a carrier first: pressing it makes this token a carrier and puts them in, one press.
+  // A token with nobody selected and nobody aboard still shows nothing, or every HUD would carry a dead button.
+  if (!aboard.length && !kindOf(doc) && !picked) return;
+  // With nothing picked out the button takes the party, but only on a token that is already a carrier: on every other
+  // HUD it would be a people button on a rock.
+  const party = picked || !kindOf(doc) ? 0 : partyRiders(doc).length;
+  const say = boardLabel(aboard, picked, party);
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "control-icon";
+  button.dataset.action = `${ID}-carry`;
+  // What it really does, in the order the GM meets it. Nothing here promises hiding: they ride in plain sight unless
+  // the carrier is set to stow them, and then the promise is the other way about.
+  const rides = stowOf(doc) ? "they ride hidden, with no light and no vision" : "they ride in plain sight, keeping their light and their vision";
+  button.dataset.tooltip = say.action === "unload" ? "Animater: put them down round the carrier, on the side you are pointing at"
+    : say.who === "party" ? `Animater: put the whole party aboard (${party}); ${rides}`
+    : say.action === "load" ? (kindOf(doc) ? `Animater: put the selected tokens aboard; ${rides}`
+      : `Animater: make this a carrier and put the selected tokens aboard; ${rides}`)
+    : "Animater: select who is getting aboard, or add the party's tokens to the scene";
+  button.innerHTML = `<i class="fa-solid ${say.action === "unload" ? "fa-person-walking-arrow-right" : "fa-people-group"}"></i>${say.count ? `<span class="an-carry-count">${say.count}</span>` : ""}`;
+  if (say.action === "none") button.classList.add("disabled");
+  button.addEventListener("click", (event) => {
+    event.preventDefault(); event.stopPropagation();
+    if (say.action === "load") void loadCarrier(doc); else if (say.action === "unload") void unloadCarrier(doc);
+  });
+  (root.querySelector(".col.left") ?? root.querySelector(".col.right") ?? root).append(button);
+});
+
+// The mock promised three more things, and a tool nobody can find is no tool: the carrier wears a badge saying how many
+// are inside it, the left-hand controls carry the same Load so it can take a keybind, and a passenger cannot be dragged
+// out from under the wagon that is carrying it.
+const CARRY_BADGE = `${ID}-aboard`;
+const drawCarryBadge = (token) => {
+  const many = aboardOf(token?.document).length;
+  let badge = token?.children?.find((c) => c?.[CARRY_BADGE]);
+  if (!many || !token || token.destroyed) { if (badge) { try { token.removeChild(badge); badge.destroy({ children: true }); } catch { /* gone with the token */ } } return; }
+  if (!badge) {
+    badge = new PIXI.Container(); badge[CARRY_BADGE] = true; badge.eventMode = "none";
+    const back = new PIXI.Graphics(), style = (CONFIG.canvasTextStyle ?? new PIXI.TextStyle()).clone();
+    style.fontSize = 22; style.fill = "#f4efe4"; style.stroke = "#120d08"; style.strokeThickness = 4;
+    const text = new PIXI.Text("", style);
+    text.anchor.set(0.5); badge.addChild(back, text); badge.back = back; badge.text = text;
+    token.addChild(badge);
+  }
+  badge.text.text = `${many}`;
+  const r = 13, w = token.w ?? canvas.grid.size;
+  badge.back.clear(); badge.back.beginFill(0x2a1f3c, 0.88); badge.back.lineStyle(2, 0xf0e6d2, 0.9); badge.back.drawCircle(0, 0, r); badge.back.endFill();
+  badge.position.set(w - r * 0.6, r * 0.6);
+  badge.visible = token.visible !== false;
+};
+// Drawn when the token is, and again the moment the list changes: setting a render flag does not bring refreshToken round
+// for a flag-only change, so the badge is redrawn in hand.
+Hooks.on("refreshToken", (token) => { try { drawCarryBadge(token); } catch { /* the badge is never worth an error */ } });
+Hooks.on("drawToken", (token) => { try { drawCarryBadge(token); } catch { /* nor at draw */ } });
+Hooks.on("updateToken", (doc, change) => { if (change?.flags?.[ID] && (ABOARD in change.flags[ID] || `-=${ABOARD}` in change.flags[ID])) { try { drawCarryBadge(doc.object); } catch { /* the badge is never worth an error */ } } });
+// The carrier wears its wagon. A carrier is an ordinary token, so Foundry draws whatever picture the GM gave it; this lays
+// the painted vehicle (assets/animals/vehicles.webp, baked the way the farm animals are) over the token instead, turned
+// the way it is going, its wheels and its horse moving as far as it has rolled, and lit where it stands like every other
+// painted animal. Its own picture is put away while it wears one and comes straight back when the look is turned off.
+const CARRY_LOOK = `${ID}-vehicle`, CARRY_TEAM = `${ID}-team`;
+// How rough the going is on each floor, for the way the body rides: a paved road or ice hardly throws it, a rutted track
+// or mud throws it about.
+const CARRIER_ROUGH = { stone: 0.25, wood: 0.3, ice: 0.15, snow: 0.5, sand: 0.7, dirt: 0.65, grass: 0.6, mud: 0.95, water: 0.4 };
+const lookStates = new Map();
+const lookStateOf = (doc) => {
+  let state = lookStates.get(doc.id);
+  if (!state) { state = { turn: ((Number(doc.rotation) || 0) * Math.PI) / 180 }; lookStates.set(doc.id, state); }
+  return state;
+};
+// The painted vehicle a token is wearing, for anything that works from a token's picture (its shadow, its reflection),
+// so those are of the wagon and not of the picture the token was given underneath it.
+const wornLook = (t) => { const worn = t?.children?.find((c) => c?.[CARRY_LOOK]); return worn && !worn.destroyed && worn.texture?.valid ? worn : null; };
+// How far the worn picture sits from the middle of its token, in canvas pixels. The wagon is slid along until its bed
+// is over the token's middle and the team leads out ahead of it, so anything working from the picture (its shadow, its
+// reflection) has to be slid the same way — Roi: "something about the shadow doesnt make sense", and it was the shadow
+// of a wagon standing where the wagon is not.
+const wornOffset = (t, worn) => ({ ox: (worn?.position?.x ?? 0) - (t?.w ?? 0) / 2, oy: (worn?.position?.y ?? 0) - (t?.h ?? 0) / 2 });
+const dropCarrierLook = (token) => {
+  for (const key of [CARRY_LOOK, CARRY_TEAM]) {
+    const gone = token?.children?.find((c) => c?.[key]);
+    if (gone) { try { token.removeChild(gone); gone.destroy(); } catch { /* gone with the token */ } }
+  }
+  if (token?.mesh && !token.mesh.destroyed) token.mesh.renderable = true;
+};
+// How much of its cell a set covers, taken from its standing frame, so the picture does not swell and shrink as the wheels
+// come round.
+const standFrame = (step) => artFrame(globalThis.PIXI, step.group ?? "vehicles", framePath(step.set, step.coat));
+// A painted carrier's picture, drawn at the size it is wanted and kept: a wagon is painted with the decorations' own
+// tools (carrier-paint.mjs), so it is as crisp zoomed in as on the table — but painting is not free, so one picture
+// is kept per set, coat, size step and turn of the tread, and reused until the map is zoomed past the next step.
+const paintedLooks = new Map();
+const TREADS = 6;
+const paintStep = (want) => Math.min(2048, Math.max(192, 2 ** Math.ceil(Math.log2(Math.max(1, want)))));
+const paintedTexture = (step, want) => {
+  const PIXI = globalThis.PIXI;
+  if (!PIXI?.Texture || typeof document === "undefined") return null;
+  const size = paintStep(want), tread = Math.floor((((step.rolled ?? 0) % 1) + 1) % 1 * TREADS) % TREADS;
+  const key = `${step.set}|${step.coat}|${size}|${step.decor ? 0 : tread}`;
+  const kept = paintedLooks.get(key);
+  if (kept) return kept;
+  let art = null;
+  try {
+    art = step.decor
+      // Turned to face up the picture, as every carrier's art is, instead of lying whichever way its seed scattered it.
+      ? paintDecor(step.decor, 7919 * (step.coat + 1) + step.decor.length, size, { turn: -Math.PI / 2 })
+      : paintCarrier(step.paint, 7919 * (step.coat + 1) + step.paint.length, size, { roll: tread / TREADS });
+  } catch { art = null; }
+  const tex = art?.canvas ? PIXI.Texture.from(art.canvas) : null;
+  if (tex) { tex.animaterPainted = true; paintedLooks.set(key, tex); }
+  return tex;
+};
+/** The painted pictures are let go when the scene changes, so a long session does not keep every size it ever drew. */
+const forgetPaintedLooks = () => { for (const tex of paintedLooks.values()) { try { tex.destroy(true); } catch { /* already gone */ } } paintedLooks.clear(); };
+Hooks.on("canvasReady", () => { forgetPaintedLooks(); });
+const drawCarrierLook = (token) => {
+  const doc = token?.document;
+  if (!token || token.destroyed || !doc) return;
+  if (!carriersOn()) { dropCarrierLook(token); return; }
+  const state = lookStateOf(doc), grid = canvas?.grid?.size ?? 100;
+  // Where it is this very frame, not where the document says it will end up: a wagon's wheels turn as it rolls, so the
+  // frames follow the drawn token along its journey.
+  const at = { x: Number(token.position?.x ?? token.x) || doc.x, y: Number(token.position?.y ?? token.y) || doc.y }, was = state.last ?? at;
+  // Foundry draws a moving token twice in the same frame (its own refresh and our ticker), and both land here. Read as
+  // two moments, the second finds the wagon exactly where the first left it and calls it stopped, so the wheels flicked
+  // between rolling and standing and never came round. The road is measured once a frame; a second draw in the same
+  // frame redraws what the first worked out. (This is what made the wheels look frozen on a wagon that was moving.)
+  const beat = performance.now();
+  const again = state.beat !== undefined && beat - state.beat < 4 && state.step;
+  if (again) { paintCarrierLook(token, doc, state.step, grid); return; }
+  state.beat = beat;
+  const rolling = Math.hypot(at.x - was.x, at.y - was.y) > 0.5;
+  state.last = at;
+  // How rough the going is and how laden it is: a rutted track throws it about where a paved road hardly does, and a
+  // wagon with the party inside it swings further and lands heavier than an empty one.
+  // Looked up once a square rather than once a frame: the ground does not change under a wagon within one square.
+  const square = `${Math.round(at.x / grid)}|${Math.round(at.y / grid)}`;
+  if (state.square !== square) {
+    state.square = square;
+    try { state.floor = movementFeelFloor(token.center ?? { x: at.x, y: at.y }, doc); } catch { state.floor = "dirt"; }
+    state.rough = CARRIER_ROUGH[state.floor] ?? 0.5;
+  }
+  const rough = state.rough ?? 0.5;
+  // How fast it is going, in squares a second, smoothed so one slow frame does not drop the rolling sound out. The
+  // moment it falls away from a good pace is the moment the brake goes on.
+  const now = performance.now(), since = Math.max(1, Math.min(250, now - (state.at ?? now - 16)));
+  const pace = (Math.hypot(at.x - was.x, at.y - was.y) / grid) * (1000 / since);
+  const before = state.speed ?? 0;
+  state.speed = before + (pace - before) * 0.25;
+  state.stopping = before > 0.7 && state.speed < 0.2;
+  state.at = now;
+  const load = Math.min(1, aboardOf(doc).length / 4);
+  const step = lookStep({ id: doc.id, kind: kindOf(doc), look: String(doc.flags?.[ID]?.[CARRIER_LOOK] ?? ""), from: rolling ? was : at, to: at, grid, moving: rolling, rough, load, now: beat }, state);
+  // How the body is riding is kept whether or not there is a picture to draw: the sounds are driven off it.
+  state.jolt = step.jolt ?? 0;
+  state.swing = Math.min(1, Math.abs(step.sway ?? 0) / 0.026);
+  state.load = load;
+  state.step = step;
+  paintCarrierLook(token, doc, step, grid);
+};
+// Drawing the picture itself, once the road has been read: kept apart so a second draw in the same frame paints what the
+// first worked out rather than reading the road again.
+const paintCarrierLook = (token, doc, step, grid) => {
+  if (!step.path && !step.painted) { dropCarrierLook(token); return; }
+  const feet = Number(canvas?.scene?.grid?.distance) || 5;
+  // A painted carrier is drawn as big as the thing really is, and painted at the size the screen is showing it at
+  // (the map's zoom), up to a sane ceiling.
+  const wide = step.painted ? (step.span / feet) * grid : 0;
+  const zoom = Math.max(0.5, Math.min(3, Math.abs(canvas?.stage?.scale?.x) || 1));
+  const tex = step.painted ? paintedTexture(step, wide * zoom) : artFrame(globalThis.PIXI, step.group ?? "vehicles", step.path);
+  if (!tex?.width) return;
+  let art = token.children?.find((c) => c?.[CARRY_LOOK]);
+  // A painted picture carries its own light and shade, as the decorations do, so it is a plain sprite; a baked frame
+  // is lit where it stands and wants the lit one.
+  const wantsLit = !step.painted;
+  if (art && (art.animaterLit ?? false) !== wantsLit) { try { token.removeChild(art); art.destroy(); } catch { /* gone */ } art = null; }
+  if (!art) {
+    art = wantsLit ? new animalPIXI.Sprite(tex) : new globalThis.PIXI.Sprite(tex);
+    art[CARRY_LOOK] = true; art.animaterLit = wantsLit; art.eventMode = "none"; art.anchor.set(0.5); token.addChildAt(art, 0);
+  } else if (art.texture !== tex) art.texture = tex;
+  // What fills the token is the wagon, not the wagon and its horse: the ground a carrier covers is its bed, and the
+  // team walks ahead of it, outside the token, as a rider's mount would. Measured off the standing frame (animaterBody,
+  // the widest run of the picture) so it holds steady while the wheels come round. Fitting the whole rig instead is
+  // what made a wagon on a one-square token look like a toy.
+  // Drawn at the size the thing really is: the bake records how much ground its cell holds, and the scene says what a
+  // square is worth. A wagon is a wagon whatever size token the GM gave it. (Fitting the picture to the token instead
+  // is what made a horse come out the size of a large dog beside a man.) Where a sheet predates the metres being
+  // recorded, it still fits by the drawn body as it used to.
+  const stand = step.painted ? null : standFrame(step), body = stand?.animaterBody ?? tex.animaterBody, box = stand?.animaterBox ?? tex.animaterBox;
+  const square = squareMetres(canvas?.scene?.grid?.distance, canvas?.scene?.grid?.units);
+  const real = step.painted ? wide : drawnSize(tex.animaterMetres, grid, square);
+  let over;
+  if (real > 0) over = real / (tex.width || 1);
+  else {
+    const size = lookSize(doc.width, doc.height, grid, { set: step.set, feet: Number(canvas?.scene?.grid?.distance) || 5 });
+    const along = body ? Math.max(body.w, body.h) : box ? Math.max(box.w, box.h) : tex.height;
+    over = along > 0 ? size.w / along : 1;
+  }
+  art.width = tex.width * over; art.height = tex.height * over;
+  // The body rides: it swings as it rolls, kicks when a wheel drops, and on a turn it swings wide before it comes straight.
+  // (the picture faces up, so its own heading is a quarter turn off the way it travels: that angle is sideways to the road)
+  const sideways = step.drawn ?? step.turn, shove = (step.shove ?? 0) * grid;
+  // Baked alone, a vehicle takes the middle of its own cell, so the picture needs no sliding. An older sheet with the
+  // horse in the same picture put the wagon at the back of it, and that one is slid along until the bed is over the
+  // token's middle.
+  const lead = real > 0 ? 0 : body ? ((body.y + body.h / 2) - tex.height / 2) * over : 0;
+  const ahead = (step.drawn ?? step.turn) - Math.PI / 2;
+  art.position.set((token.w ?? grid) / 2 + Math.cos(sideways) * shove + Math.cos(ahead) * lead,
+    (token.h ?? grid) / 2 + Math.sin(sideways) * shove + Math.sin(ahead) * lead);
+  art.rotation = step.drawn ?? step.turn;
+  art.alpha = token.mesh?.alpha ?? 1;
+  art.visible = token.visible !== false;
+  paintCarrierTeam(token, step, grid, art, ahead);
+  if (token.mesh && !token.mesh.destroyed) token.mesh.renderable = false;
+};
+// The team in the shafts: its own picture, walking its own stride, out in front of the vehicle on the ground it covers.
+// It is a sprite of its own rather than part of the wagon's picture, so it is drawn at its own size and casts its own
+// shadow where it stands (Roi, on one shadow cast for the pair: "you can see the horse is in front of the wagon, so the
+// shadows arent good").
+const paintCarrierTeam = (token, step, grid, art, ahead) => {
+  const team = step.team;
+  const had = token.children?.find((c) => c?.[CARRY_TEAM]);
+  if (!team) { if (had) { try { token.removeChild(had); had.destroy(); } catch { /* gone */ } } return; }
+  const tex = artFrame(globalThis.PIXI, team.group, team.path);
+  if (!tex?.width) return;
+  let pull = had;
+  if (!pull) { pull = new animalPIXI.Sprite(tex); pull[CARRY_TEAM] = true; pull.eventMode = "none"; pull.anchor.set(0.5); token.addChildAt(pull, 0); }
+  else if (pull.texture !== tex) pull.texture = tex;
+  const feet = Number(canvas?.scene?.grid?.distance) || 5;
+  const square = squareMetres(feet, canvas?.scene?.grid?.units);
+  const real = drawnSize(tex.animaterMetres, grid, square);
+  const box = tex.animaterBox, along = box ? Math.max(box.w, box.h) : tex.height;
+  const over = real > 0 ? real / (tex.width || 1) : along > 0 ? ((10 / feet) * grid) / along : 1;
+  pull.width = tex.width * over; pull.height = tex.height * over;
+  const out = (team.ahead / feet) * grid;
+  pull.position.set(art.position.x + Math.cos(ahead) * out, art.position.y + Math.sin(ahead) * out);
+  pull.rotation = art.rotation;
+  pull.alpha = art.alpha;
+  pull.visible = art.visible;
+};
+// Foundry brings refreshToken round once for a whole journey, so the wheels are turned frame by frame off the canvas's
+// own ticker instead, reading where each carrier is drawn at that moment. Nothing happens on a scene with no carrier.
+const tickCarrierLooks = () => {
+  if (!carriersOn()) return;
+  const all = canvas?.tokens?.placeables;
+  if (!all?.length) return;
+  for (const token of all) {
+    try { if (kindOf(token.document) || token.children?.some((c) => c?.[CARRY_LOOK])) drawCarrierLook(token); } catch { /* one wagon's trouble is not the scene's */ }
+  }
+  try { tickCarrierSounds(); } catch { /* a silent wagon still rolls */ }
+};
+// A carrier you can hear. Its rims are one sustained sound held under it while it moves, the way a river is held, with
+// the one-offs (the axle, the load, the harness, the brake, the canvas) fired off what the body is doing. It is only as
+// loud as it is near: the listener is the selected token, or the middle of the view with none.
+const carrierVoices = new Map();
+// A boat's lapping, held while it sits still, is a second sustained voice: it has to cross over with the wash rather
+// than take turns with it, or the water would go quiet in the moment the boat gets under way.
+const carrierIdleVoices = new Map();
+const carrierKnockAt = new Map();
+// One sustained sound held under a carrier: started when it is first wanted, faded rather than switched, and left
+// where it is when there is nothing to hold.
+const holdCarrierVoice = (voices, id, file, want, rate = 1) => {
+  let voice = voices.get(id);
+  if (!voice) { voice = { sound: null, target: 0, quietSince: 0, rampEnd: 0, file }; voices.set(id, voice); }
+  if (file && want > 0.004 && !voice.sound && !voice.starting && soundsOn()) {
+    voice.starting = true; voice.file = file;
+    void (async () => {
+      const sound = new foundry.audio.Sound(file, { context: game.audio.environment });
+      await sound.load(); await sound.play({ loop: true, volume: 0 });
+      voiceStarted(voice, sound, want, 450);
+    })().catch(() => {}).finally(() => { voice.starting = false; });
+  } else if (voice.sound) {
+    voiceAt(voice, want, 250);
+    try { voice.sound.playbackRate = rate; } catch { /* not every browser lets us */ }
+  }
+};
+const carrierEars = () => {
+  const ears = canvas.sounds?.getListenerPositions?.() ?? [];
+  if (ears.length) return ears;
+  const v = viewNow();
+  return [{ x: v.x + v.w / 2, y: v.y + v.h / 2 }];
+};
+// How much of a carrier reaches the listener: full beside it, nothing a few squares off, and quieter through a wall.
+const carrierReach = (token, ears, grid) => {
+  const at = token.center ?? { x: token.x, y: token.y };
+  let best = 0;
+  for (const ear of ears) {
+    const far = Math.hypot(ear.x - at.x, ear.y - at.y) / (grid * 9);
+    if (far >= 1) continue;
+    let heard = (1 - far) ** 1.6;
+    try { if (CONFIG.Canvas.polygonBackends.sound.testCollision(ear, at, { type: "sound", mode: "any" })) heard *= 0.35; } catch { /* no walls to ask about */ }
+    if (heard > best) best = heard;
+  }
+  return best;
+};
+const tickCarrierSounds = () => {
+  if (game.audio?.locked || !canvas?.ready) return;
+  const on = soundsOn() && bothSettingsOn("carrierSounds"), grid = canvas.grid?.size ?? 100;
+  const ears = on ? carrierEars() : [];
+  const live = new Set();
+  for (const token of canvas.tokens?.placeables ?? []) {
+    const doc = token.document, kind = kindOf(doc);
+    if (!on || !kind || token.visible === false) continue;
+    const state = lookStates.get(doc.id);
+    if (!state) continue;
+    live.add(doc.id);
+    const near = carrierReach(token, ears, grid);
+    // The rims, held under it while it rolls — or, for a boat, the wash along its hull.
+    const roll = rollFile(kind, state.floor ?? "dirt", doc.id);
+    const shape = rollShape({ speed: state.speed ?? 0, load: state.load ?? 0, rough: state.rough ?? 0.5, kind });
+    holdCarrierVoice(carrierVoices, doc.id, roll, roll && soundsOn() ? shape.volume * near * carrierVolume() : 0, shape.rate);
+    // And, for a boat alone, the water slapping the hull while it sits there: loudest at rest, gone once it is moving.
+    const idle = lapFile(kind, state.floor ?? "dirt", doc.id);
+    const idleWant = idle && soundsOn() ? lapShape({ speed: state.speed ?? 0, kind }).volume * near * carrierVolume() : 0;
+    holdCarrierVoice(carrierIdleVoices, doc.id, idle, idleWant);
+    // The one-offs. A knock is never worth two of itself in the same breath, so each carrier holds its own last time.
+    const now = performance.now(), last = carrierKnockAt.get(doc.id) ?? { knock: 0, jingle: 0, n: 0 };
+    const moving = (state.speed ?? 0) > 0.15;
+    const knocks = knocksFor({ jolt: now - last.knock > 260 ? state.jolt ?? 0 : 0, stopping: state.stopping === true,
+      covered: String(doc.flags?.[ID]?.[CARRIER_LOOK] ?? "") === "tilt", load: state.load ?? 0, swing: state.swing ?? 0, seed: doc.id, n: last.n, kind });
+    // What the kind does with the pace: a team jingles in the shafts, a boat's oars go in and pull. Nothing, for a
+    // carrier that is neither drawn nor rowed.
+    const gap = paceGap(kind, state.speed ?? 0);
+    if (moving && gap !== null && now - last.jingle > gap) {
+      const ring = paceVoice({ kind, speed: state.speed ?? 0, seed: doc.id, n: last.n });
+      if (ring) knocks.push(ring);
+      last.jingle = now;
+    }
+    // A horse waiting in the shafts calls now and then, when its head is up.
+    if (!moving && now - (last.call ?? now - callGap(doc.id, 0) / 2) > callGap(doc.id, last.n)) {
+      // A mount is itself the horse, so it calls as a team in the shafts does; either way only with its head up.
+      const call = teamCall({ kind, standing: true, headUp: headUp(idleFrame(now, doc.id)), seed: doc.id, n: last.n });
+      if (call) knocks.push(call);
+      last.call = now;
+    }
+    for (const knock of knocks) {
+      if (!knock?.file || ((knock.kind === "creak" || knock.kind === "hull") && !moving)) continue;
+      if (knock.kind !== "harness" && knock.kind !== "oar" && knock.kind !== "call") last.knock = now;
+      const volume = knock.volume * near * carrierVolume();
+      if (volume < 0.004 || !soundsOn()) continue;
+      try { void foundry.audio.AudioHelper.play({ src: knock.file, volume, loop: false }, false); } catch { /* one knock lost */ }
+    }
+    last.n += 1;
+    carrierKnockAt.set(doc.id, last);
+    state.stopping = false;
+  }
+  // A carrier that has gone, or gone quiet, lets its sound go with it.
+  for (const [id, voice] of carrierVoices) if (!live.has(id)) { stopVoice(voice, 300); carrierVoices.delete(id); carrierKnockAt.delete(id); }
+  for (const [id, voice] of carrierIdleVoices) if (!live.has(id)) { stopVoice(voice, 300); carrierIdleVoices.delete(id); }
+};
+const carrierVolume = () => { try { const n = Number(game.settings.get(ID, "carrierVolume")); return Number.isFinite(n) ? n : 1; } catch { return 1; } };
+// A passenger rides on the carrier's own squares, so it sits between the GM and the thing they want to take hold of:
+// clicking the wagon took whichever rider happened to be on top of it, and a wagon with the party aboard could not be
+// picked up at all. (Roi: "make it easy for the gm to select the carrier token(because they are all stacked)".) While
+// it is aboard, a passenger lets the click through to the carrier under it; it takes them again the moment it is put
+// down, and the GM can still reach it by name in the sidebar or by letting it out.
+const ridingClear = (token) => {
+  const doc = token?.document;
+  if (!doc || token.destroyed) return;
+  const on = doc.parent === canvas?.scene ? (canvas.scene?.tokens ?? []).find((t) => t !== doc && aboardOf(t).some((p) => p.id === doc.id)) : null;
+  // On a mount it is the other way round: the rider is the one the GM wants to take hold of, not the horse under it,
+  // and a rider nobody can click or target is not mounted — it has been swallowed.
+  const riding = !!on && kindOf(on) !== "mount";
+  // Set every time, not only when it changes: Foundry settles a token's own interactivity on each refresh, and a
+  // passenger left to remember that it had already stepped aside went back to taking the clicks.
+  if (!riding && token.animaterRiding !== true) return;
+  token.animaterRiding = riding;
+  try { token.eventMode = riding ? "none" : "static"; } catch { /* another build names it otherwise */ }
+};
+Hooks.on("refreshToken", (token) => { try { drawCarrierLook(token); ridingClear(token); } catch { /* a wagon that will not draw is still a wagon */ } });
+Hooks.on("drawToken", (token) => { try { drawCarrierLook(token); ridingClear(token); } catch { /* nor at draw */ } });
+Hooks.on("destroyToken", (token) => { lookStates.delete(token?.document?.id); });
+// The kind and the look are flags, and a flag-only change brings no refresh round, so the picture is changed in hand.
+Hooks.on("updateToken", (doc, change) => {
+  if (!change?.flags?.[ID]) return;
+  const keys = Object.keys(change.flags[ID]);
+  if (!keys.some((k) => k === CARRIER_LOOK || k === CARRIER_KIND || k === `-=${CARRIER_LOOK}` || k === `-=${CARRIER_KIND}`)) return;
+  try { if (doc.object) drawCarrierLook(doc.object); } catch { /* the look is never worth an error */ }
+});
+// Who is aboard is a flag too, and the ones who just got on or off need to know whether they are taking clicks.
+// Turning Stow on or off is a flag as well, and it has to reach the people already aboard: ticking it with the party
+// in the wagon and having nothing happen until the wagon next moves is the sort of thing that gets a GM killed.
+Hooks.on("updateToken", (doc, change) => {
+  const keys = change?.flags?.[ID] ? Object.keys(change.flags[ID]) : [];
+  if (!keys.length) return;
+  if (keys.some((k) => k === ABOARD || k === `-=${ABOARD}`)) { try { for (const t of canvas?.tokens?.placeables ?? []) ridingClear(t); } catch { /* no canvas to clear */ } }
+  if (keys.some((k) => k === CARRIER_STOW || k === `-=${CARRIER_STOW}`) && leadGM() && aboardOf(doc).length) void rideCarrier(doc, doc, { show: true });
+});
+Hooks.on("canvasReady", () => {
+  lookStates.clear();
+  try { canvas.app?.ticker?.remove(tickCarrierLooks); canvas.app?.ticker?.add(tickCarrierLooks); } catch { /* without a ticker the hooks still draw it */ }
+});
+// A passenger whose carrier has lost its list: the carrier deleted out from under it by a hand that bypassed the
+// hooks, its flag wiped, the scene imported, the module turned off and on again, or a loaded carrier copied so that
+// two of them claim the same people. Each passenger remembers what it was riding, so the ones nobody is carrying any
+// more can be put back on their feet instead of standing hidden and stacked for ever. One wrongly made visible is a
+// click to put right; one left hidden is never found at all, so that is the way this errs.
+const orphanRiders = async (scene) => {
+  if (!leadGM() || !scene?.tokens) return;
+  const claimed = new Set();
+  for (const t of scene.tokens) for (const p of aboardOf(t)) claimed.add(p.id);
+  const lost = scene.tokens.filter((t) => t.flags?.[ID]?.[CARRIER_RIDING] && !claimed.has(t.id));
+  if (!lost.length) return;
+  try {
+    await scene.updateEmbeddedDocuments("Token", lost.map((t) => ({ _id: t.id, hidden: false, ...landedFlag() })), { animater: { carrying: true } });
+    ui.notifications?.info(`Animater: ${lost.length} were still aboard a carrier that is gone, and are back on their feet.`);
+  } catch { /* they keep standing where they are, which is no worse than before */ }
+};
+Hooks.on("canvasReady", () => { try { void orphanRiders(canvas?.scene); } catch { /* nothing worth an error at load */ } });
+// Combat with the party in the wagon. Riding in plain sight is one thing — a stowed passenger cannot be seen, shot at
+// or reacted to, which is a quiet way to break an encounter — so the GM is told once, at the top of it.
+Hooks.on("combatStart", (combat) => {
+  try {
+    if (!leadGM() || !carriersOn()) return;
+    const scene = combat?.scene ?? canvas?.scene, stowed = [...(scene?.tokens ?? [])].filter((t) => stowOf(t) && aboardOf(t).length);
+    const many = stowed.reduce((n, t) => n + aboardOf(t).length, 0);
+    if (many) ui.notifications?.warn(`Animater: ${many} ${many === 1 ? "is" : "are"} stowed out of sight aboard ${stowed.map((t) => t.name).join(", ")} — nothing can see or target them.`);
+  } catch { /* the fight goes on */ }
+});
+// Aboard means aboard for a player: the carrier moves them, not their own hand. But getting out is theirs to do —
+// "I jump off the wagon" should not need the GM to click anything — so a player dragging their own token clear of the
+// carrier asks the active GM to put them down there, and the GM's client does the work.
+Hooks.on("preUpdateToken", (doc, change, options) => {
+  if (options?.animater?.carrying || game.user.isGM) return true;
+  if (!("x" in change || "y" in change)) return true;
+  const carrier = carrierCarrying(doc);
+  if (!carrier) return true;
+  const grid = canvas?.grid?.size ?? 100, to = { x: change.x ?? doc.x, y: change.y ?? doc.y };
+  const mid = { x: to.x + (doc.width * grid) / 2, y: to.y + (doc.height * grid) / 2 };
+  if (carriersOn() && pulledOff(mid, carrier, grid)) {
+    game.socket?.emit(`module.${ID}`, { type: CARRIER_OFF_MESSAGE, sender: clientId, uuid: doc.uuid, x: to.x, y: to.y });
+    ui.notifications?.info(`Animater: ${doc.name} is getting out of ${carrier.name}.`);
+  } else ui.notifications?.info(`Animater: ${doc.name} is aboard ${carrier.name}. Drag it clear of ${carrier.name} to get out.`);
+  return false;
+});
+const CARRIER_OFF_MESSAGE = "carrier-off";
+// Asked of the active GM: put this player's own token down off the carrier, where they dragged it. The id Foundry's
+// server attaches is the one that counts; the message's own word for who sent it could be anybody's.
+async function receiveCarrierOff(data, senderId) {
+  if (data?.type !== CARRIER_OFF_MESSAGE || !game.users.activeGM?.isSelf || !carriersOn()) return;
+  const user = senderId ? game.users.get(senderId) : null, doc = await fromUuid(String(data.uuid ?? ""));
+  if (!user || user.isGM || !doc || doc.documentName !== "Token" || !Number.isFinite(data.x) || !Number.isFinite(data.y)) return;
+  if (!doc.testUserPermission(user, "OWNER")) return;
+  const carrier = carrierCarrying(doc);
+  const grid = canvas?.grid?.size ?? 100, mid = { x: data.x + (doc.width * grid) / 2, y: data.y + (doc.height * grid) / 2 };
+  if (!carrier || !pulledOff(mid, carrier, grid)) return;
+  await dropOff(carrier, doc, { x: data.x, y: data.y });
+}
+// A token put down on a carrier climbs in; a passenger pulled clear of one steps out where it was dropped; one moved
+// about on the deck simply takes its new seat.
+Hooks.on("updateToken", (doc, change, options) => {
+  if (options?.animater?.carrying || !leadGM() || !carriersOn()) return;
+  if (!("x" in change || "y" in change)) return;
+  // v14 brings this round before the document has moved, so the place it is going to is in the change, not on the token:
+  // reading doc.x here asked whether it had been dropped on the carrier it just came from.
+  const grid = canvas?.grid?.size ?? 100, to = { x: change.x ?? doc.x, y: change.y ?? doc.y };
+  const mid = { x: to.x + (doc.width * grid) / 2, y: to.y + (doc.height * grid) / 2 };
+  const carrier = carrierCarrying(doc);
+  if (carrier) { void (pulledOff(mid, carrier, grid) ? dropOff(carrier, doc) : reseat(carrier, doc, to)); return; }
+  if (aboardOf(doc).length || kindOf(doc)) return;
+  const onto = carrierAt(mid, carriersHere(doc.parent).filter((c) => c.id !== doc.id), grid);
+  if (onto) void climbAboard(doc.parent.tokens.get(onto.id), doc);
+});
+// Put down on a wagon: it keeps the place on the deck where it was dropped.
+const climbAboard = async (carrier, doc) => {
+  if (!carrier || carrierSaving.has(carrier.id)) return;
+  const aboard = stillAboard(carrierHere(carrier), (id) => !!carrier.parent?.tokens?.get(id));
+  const list = boardList(carrier, [riderData(doc)], aboard, canvas?.grid?.size ?? 100, { square: squareGrid() });
+  if (list.length === aboard.length) return;
+  carrierSaving.add(carrier.id);
+  try {
+    const plan = ridePlan(list, carrier, { stow: stowOf(carrier), show: true, sort: carrier.sort }).map((p) => ({ ...p, ...ridingFlag(carrier.id) }));
+    await carrier.parent.updateEmbeddedDocuments("Token", plan, { animater: { carrying: true }, animate: false, teleport: true });
+    await carrier.setFlag(ID, ABOARD, list);
+    ui.notifications?.info(`Animater: ${doc.name} is aboard ${carrier.name}.`);
+  } catch (err) { ui.notifications?.warn(`Animater: ${doc.name} did not get aboard (${err?.message ?? err})`); }
+  finally { carrierSaving.delete(carrier.id); }
+};
+// Pulled clear of the wagon: it is out, and stays where the hand left it. `to` is for a hand that is not the GM's —
+// a player dragging their own token off, whose move was turned back so that the GM's client could make it.
+const dropOff = async (carrier, doc, to = null) => {
+  const was = aboardOf(carrier), left = was.filter((q) => q.id !== doc.id);
+  carrierSaving.add(carrier.id);
+  try {
+    await doc.update({ hidden: was.find((q) => q.id === doc.id)?.hidden === true, ...landedFlag(), ...(to ? { x: to.x, y: to.y } : {}) }, { animater: { carrying: true } });
+    await (left.length ? carrier.setFlag(ID, ABOARD, left) : carrier.unsetFlag(ID, ABOARD));
+    ui.notifications?.info(`Animater: ${doc.name} is out of ${carrier.name}.`);
+  } catch (err) { ui.notifications?.warn(`Animater: ${doc.name} is still aboard (${err?.message ?? err})`); }
+  finally { carrierSaving.delete(carrier.id); }
+};
+// Moved about on the deck: the same passenger, a new seat. It is the seat (`ax`, `ay`) that changes, which is what the
+// ride is drawn from; where it got on (`dx`, `dy`) is a different thing and is what it goes back to. Writing only the
+// second, as this did, meant dragging someone across the bed of the wagon moved them back on the next turn of a wheel.
+const reseat = async (carrier, doc, to = doc) => {
+  const list = aboardOf(carrier).map((q) => (q.id === doc.id ? { ...q, ax: to.x - carrier.x, ay: to.y - carrier.y } : q));
+  try { await carrier.setFlag(ID, ABOARD, list); } catch { /* it keeps its old seat */ }
+};
+Hooks.once("init", () => Hooks.on("getSceneControlButtons", (controls) => {
+  try {
+    if (!game.user?.isGM) return;
+    const group = Array.isArray(controls) ? controls.find((c) => c.name === "animater") : controls?.animater;
+    if (!group?.tools) return;
+    const tools = group.tools, tool = { name: "animaterCarry", title: "Carrier (Animater): put the selected tokens — or the whole party, with nothing selected — aboard the one you have targeted, or let them all out of it", icon: "fa-solid fa-people-group", order: Object.keys(tools).length + 10, button: true, visible: toolShown("toolCarry") && carriersOn(),
+      onChange: () => void carryFromControls() };
+    if (Array.isArray(tools)) tools.push(tool); else tools[tool.name] = tool;
+  } catch { /* another layout of the controls */ }
+}));
+// From the left-hand controls there is no token under the pointer to read, so the carrier is the one being targeted.
+const carryFromControls = async () => {
+  const aimed = [...(game.user.targets ?? [])];
+  if (aimed.length !== 1) { ui.notifications?.warn("Animater: target the carrier (T over it), then select who is getting in. Or select them and press the people button on the carrier's own HUD."); return; }
+  const doc = aimed[0].document;
+  if (aboardOf(doc).length) await unloadCarrier(doc); else await loadCarrier(doc);
+};
 const stepFlagsOf = (doc) => doc.flags?.[ID], saveStepFlags = (doc, flags) => doc.update({ flags: { [ID]: flags } }, { render: false });
 const regionTakesSeason = (own) => takesSeason(own, canvas.scene?.flags?.[ID]?.floorTextures);
 const openSteps = (doc) => openStepsWindow(foundry.applications.api.ApplicationV2, { id: ID, doc, floor: plainFloorOf(doc), flagsOf: stepFlagsOf, save: saveStepFlags, season: regionTakesSeason });
@@ -4817,6 +5633,30 @@ const openAnimalsPanel = () => {
   void animalsPanelApp.render({ force: true });
 };
 const toolShown = (key) => { try { return game.settings.get(ID, key) !== false; } catch { return true; } };
+Hooks.on("renderTokenConfig", (app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root || root.querySelector(`[name="flags.${ID}.${CARRIER_KIND}"]`)) return;
+  const doc = app.document ?? app.object, now = carrierKind(doc?.flags?.[ID]?.[CARRIER_KIND]);
+  const group = document.createElement("div");
+  group.className = "form-group";
+  const choices = Object.entries(CARRIER_KINDS).map(([k, label]) => `<option value="${k}"${k === now ? " selected" : ""}>${label}</option>`).join("");
+  group.innerHTML = `<label>Animater: carrier</label><div class="form-fields"><select name="flags.${ID}.${CARRIER_KIND}">${choices}</select></div><p class="hint">A carrier takes others along: drop a token on it and that one climbs in and rides wherever this goes, in plain sight, keeping its own light and vision; pull it off again and it gets out. Its own HUD loads or unloads the whole party at once. The kind is what its wheels, oars and sounds go by, and roughly how many it holds.</p>`;
+  const tab = root.querySelector('.tab[data-tab="character"]') ?? root.querySelector(".tab.active") ?? root.querySelector("form, .window-content") ?? root;
+  tab.append(group);
+  const picked = doc?.flags?.[ID]?.[CARRIER_LOOK] ?? "";
+  const look = document.createElement("div");
+  look.className = "form-group";
+  const looks = Object.entries(CARRIER_LOOKS).map(([k, label]) => `<option value="${k}"${k === picked ? " selected" : ""}>${label}</option>`).join("");
+  look.innerHTML = `<label>Animater: carrier look</label><div class="form-fields"><select name="flags.${ID}.${CARRIER_LOOK}">${looks}</select></div><p class="hint">The painted vehicle it wears on the map instead of its own picture, turned the way it is going, its wheels and its horse moving as it rolls. Automatic follows the kind: a wagon wears the open wagon, a cart the hand cart.</p>`;
+  tab.append(look);
+  // Hiding passengers is a real choice with a real price, so it is a tick the GM makes rather than what the wagon
+  // does by itself, and the price is written next to it: Foundry gives a hidden token no light source at all, no
+  // vision unless the system's party-vision setting is on, and shows it to nobody but the GM — not even its player.
+  const stow = document.createElement("div");
+  stow.className = "form-group";
+  stow.innerHTML = `<label>Animater: stow passengers out of sight</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.${CARRIER_STOW}"${doc?.flags?.[ID]?.[CARRIER_STOW] === true ? " checked" : ""}></div><p class="hint">Hide everyone aboard while they ride. Foundry puts out a hidden token's light, takes away its vision, and shows it to nobody but you — so a party that boards at night blinds itself. Leave this off unless the wagon is meant to be a surprise.</p>`;
+  tab.append(stow);
+});
 Hooks.on("getSceneControlButtons", (controls) => {
   try {
     if (!game.user?.isGM) return;
@@ -5405,7 +6245,7 @@ const wildKept = (kind, x, y) => keptOut(kind, { x, y });
 // A rat or bat may leave a region it keeps out of (one drawn round it), never go in.
 const ratBlocks = (a, b) => wallBlocks(a, b) || (keptOut("rats", b) && !keptOut("rats", a));
 const batBlocks = (a, b) => wallOnlyBlocks(a, b) || (keptOut("bats", b) && !keptOut("bats", a));
-// How many of each creature this scene has, and how big (Scene configuration â†’ Animater â†’ Creatures).
+// How many of each creature this scene has, and how big (Scene configuration → Animater → Creatures).
 const sceneCreatures = () => { const f = animalFlagsNow(), out = {}; for (const kind of ["rats", "bats", "moths", "crawlers", "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls", "squirrels", "snakes", "crows", "herons", "gulls", "hawks"]) { out[kind] = creatureAmount(f[kind]); out[`${kind}Size`] = creatureSize(f[`${kind}Size`], f.animalScale); } out.wolves = f.wolves ? creatureAmount(f.wolves) : 0; out.wolvesSize = creatureSize(f.wolvesSize, f.animalScale);
   // Crows, a hawk, herons and gulls left at Usual come as they always have (with the birds, the open country, the water birds);
   // chosen, as many as chosen.
@@ -5676,7 +6516,7 @@ const wildCast = (x, y, { width = 40, lift: flying = 0, body = 0, grounded = fal
     const lift = bird ? flying * birdHeightOf(animalFlagsNow().birdHeight) : flying;
     const point = { x, y }, elevation = canvas.level?.elevation?.base ?? 0, grid = canvas.grid.size;
     let darkness = canvas.environment?.darknessLevel ?? 0;
-    try { darkness = canvas.effects?.getDarknessLevel?.(point, elevation) ?? darkness; } catch { /* older Foundry */ }
+    try { darkness = canvas.effects?.getDarknessLevel?.({ x: point.x, y: point.y, elevation }) ?? darkness; } catch { /* older Foundry */ }
     const reaching = lightsReaching({ id: null, center: point, x, y, w: width, h: width, document: { elevation, width: width / grid, height: width / grid } }, { own: false });
     const lights = reaching.map((l) => { const one = lightAround(point, [l], 1); return one && { ...one, key: l.key }; }).filter(Boolean).sort((a, b) => b.shine - a.shine).slice(0, 2);
     const shade = wallQuads.length ? shadeAcross(point, width, wallQuads, { elevation: lift }) : 0, sun = shadowsOffHere() ? null : sunNow && shade > 0 ? { ...sunNow, strength: (Number(sunNow.strength) || 0) * (1 - shade) } : sunNow;
@@ -5842,6 +6682,7 @@ const tickWater = (seconds) => {
     const ringed = new Set();
     const tokens = (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.mesh && !t.mesh.destroyed && t.mesh.texture?.valid).map((t) => {
       let pic = null; if (rings) { try { pic = mirrorRings.of(t); } catch { pic = null; } if (pic) ringed.add(t.id); }
+      const worn = wornLook(t); if (worn) { const off = wornOffset(t, worn); pic = { texture: worn.texture, x: t.mesh.position.x + off.ox, y: t.mesh.position.y + off.oy, w: Math.abs(worn.width), h: Math.abs(worn.height) }; }
       return { id: t.id, texture: pic?.texture ?? t.mesh.texture, x: pic?.x ?? t.mesh.position.x, y: pic?.y ?? t.mesh.position.y, liveX: t.mesh.position.x, liveY: t.mesh.position.y, live: t.mesh.position, dry: (() => { try { return movementFeelFloor(t.center, t.document) !== "water"; } catch { return false; } })(), w: pic?.w ?? t.w, h: pic?.h ?? t.h, rotation: mirrorTokenTurn(t.document), alpha: t.mesh.alpha };
     });
     mirrorRings.keep(ringed);
@@ -6906,7 +7747,39 @@ const tokenCutOut = (token) => {
   }
   return cutOutArt({ ring, pixels: cutOutByTexture.get(key) });
 };
+// What a carrier's shadow should be measured by: the ground its picture covers, and how tall the thing really is (a
+// wagon is a low thing however big its token). Nothing for a token wearing no vehicle.
+const carrierShadowOf = (t) => {
+  const worn = wornLook(t);
+  if (!worn) return null;
+  const set = lookFor(kindOf(t?.document), String(t?.document?.flags?.[ID]?.[CARRIER_LOOK] ?? ""));
+  const feet = Number(canvas?.scene?.grid?.distance) || 5, tall = trueTall(set, feet), grid = canvas?.grid?.size ?? 100;
+  // How much of the picture is the thing standing on the ground: a wagon's picture is twenty feet across and its bed
+  // is ten of them, the rest shafts and air. The shadow is joined to the bed by this, not to the edge of the picture.
+  const core = (trueSquares(set, feet)?.long ?? 0) * grid;
+  return {
+    shadowWidth: Math.abs(worn.width) || undefined,
+    ...(core > 0 ? { shadowCore: core } : {}),
+    ...(tall > 0 ? { shadowBody: tall } : {}),
+    // The team in the shafts stands on its own ground in front of the wagon, so it throws a shadow of its own.
+    shadowAlso: () => {
+      const pull = t?.children?.find((c) => c?.[CARRY_TEAM]);
+      if (!pull || pull.destroyed || !pull.texture?.valid || pull.visible === false) return null;
+      const dx = pull.position.x - (t.w ?? 0) / 2, dy = pull.position.y - (t.h ?? 0) / 2;
+      const at = { x: (t.center?.x ?? 0) + dx, y: (t.center?.y ?? 0) + dy };
+      return { art: { texture: pull.texture, width: Math.abs(pull.width), height: Math.abs(pull.height), flipX: false, flipY: false, rotation: pull.rotation ?? 0, own: true },
+        // A draught horse is ten feet of animal in a picture that holds half as much again.
+        width: Math.abs(pull.width), core: (10 / feet) * grid, dx, dy,
+        // The light where the horse stands, not where the wagon does: a torch beside the bed is in another direction
+        // from a horse two squares in front of it, and its shadow was being thrown the wagon's way.
+        light: () => flierLight(t, at, `${t.id}|team`) };
+    },
+  };
+};
 const tokenArt = (t) => {
+  // A carrier wearing its painted wagon casts the wagon's shadow, not the shadow of the picture the token was given.
+  const worn = wornLook(t);
+  if (worn) return { texture: worn.texture, width: Math.abs(worn.width), height: Math.abs(worn.height), flipX: false, flipY: false, rotation: worn.rotation ?? 0, own: true, ...wornOffset(t, worn) };
   const mesh = t?.mesh;
   if (!mesh || mesh.destroyed || !mesh.texture) return null;
   let texture = mesh.texture;
@@ -6999,6 +7872,9 @@ const movementFeel = createMovementFeel({
         ring: d.ring?.enabled === true ? Math.min(0.7, Math.max(0.2, 0.5 * Math.abs(Number(d.texture?.scaleX) || 1) / (Number(t.ring?.scaleCorrection) || 1))) : false,
         // Its art as drawn now, for a flier's shadow in its own shape, and the light it is cast by.
         art: () => tokenArt(t),
+        // A token wearing a painted vehicle says how big and how tall the thing on it really is, so its shadow is of
+        // the wagon and not of a creature the size of its token.
+        ...carrierShadowOf(t),
         // Where it is drawn among the creatures at its elevation (its mesh's sort; another module may raise it, as
         // Tokener does for a top-down token lying over the creatures beneath it), read each frame.
         order: () => Number(t.mesh?.sort ?? d.sort) || 0,
@@ -11698,6 +12574,7 @@ Hooks.once("init", () => {
     ['toolDetectWater','Show the Floor regions button','In the Animater controls: propose water and other floor regions from this level\'s map (experimental).'],
     ['toolClouds','Show the Clouds button','In the Animater controls. Hidden, the Clouds over the map setting still turns them off and on.'],
     ['toolFlames','Show the Flames button','In the lighting controls. Hidden, each light still sets its own flame in its configuration.'],
+  ['toolCarry','Show the Carrier button','In the token controls: put the selected tokens aboard the token you have targeted, or let them all out. The same button is on a carrier\u2019s own token HUD either way.'],
   ]) registerSetting(key,{name,hint,scope:'client',config:true,type:Boolean,default:true,onChange:()=>ui.controls?.render({reset:true})});
   registerSetting("experimentalWaterRegions", {
     name: "Experimental: floor regions from the map",
@@ -12131,6 +13008,11 @@ Hooks.once("init", () => {
   registerSetting("weatherVolume", { name: "Weather volume", hint: "How loud rain, wind, hail and thunder are for you, in percent: 0 silent, 100 as recorded. Only on your screen; everyone sets their own.", scope: "client", config: true, type: Number, range: { min: 0, max: 100, step: 5 }, default: 100 });
   skyPair("riverSounds", "riverSoundsLocal", "River sounds", "Running water, gentle or swift, from any water region with a way to flow (the region's right-click panel → Water → Flows toward), quiet lapping by still water (Pond), and insects and slow mud bubbles instead where its Texture style is Swamp: loudest at the bank, fading with distance, silent while frozen. A region's Sound: Off quiets its own.", "");
   registerSetting("riverVolume", { name: "River volume", hint: "How loud running water is for you: 0 silent, 1 as recorded, 2 twice as loud.", scope: "client", config: true, type: Number, range: { min: 0, max: 2, step: 0.05 }, default: 1 });
+  skyPair("carrierSounds", "carrierSoundsLocal", "Carrier sounds", "A wagon or a cart you can hear as it rolls: its iron rims on whatever it is crossing, the axle creaking when a wheel drops, the load shifting behind it, the harness and trace chains jingling with the pace, the brake when it stops short, and a covered wagon's canvas pulling on its ropes. Loudest beside it, fading within a few squares. Only for a token set as a carrier (Token configuration → Animater: carrier).", "");
+  registerSetting("carriers", { name: "Carriers",
+    hint: "Tokens that carry other tokens: a wagon, a boat, a sled, a mount. The GM marks one (Token configuration → Animater: carrier), then loads the party aboard with the people button on its HUD; they ride in plain sight, keeping their own light and vision, and get out round it. Off: no carrier button, nothing climbs aboard, and no painted vehicle is drawn. Anyone already aboard stays where they are.",
+    scope: "world", config: true, type: Boolean, default: true });
+  registerSetting("carrierVolume", { name: "Carrier volume", hint: "How loud wagons and carts are for you: 0 silent, 1 as recorded, 2 twice as loud.", scope: "client", config: true, type: Number, range: { min: 0, max: 2, step: 0.05 }, default: 1 });
   skyPair("doorBurst", "doorBurstLocal", "Bats and rats bursting through doors", "A door set to it (Wall configuration → Animater door) sends a flock of bats or a run of rats through as it opens, over whoever opened it, with their sounds.");
   skyPair("verminSounds", "verminSoundsLocal", "Rat and bat sounds", "The rats' claws and squeaks, sharper when one bolts, and the bats' wings and chirps, quietly and a few at a time, only near enough to be heard, ringing in the room and muffled by walls. With Rats and bats on.", "");
   skyPair("fireSounds", "fireSoundsLocal", "Fire sounds", "Fire lights crackle close by, each by its Fire kind (Light configuration → Animater → Fire): a torch, a quieter lantern, a brazier, a campfire, a cooking pot bubbling over its fire. Torches and lanterns creatures hold crackle too. Loudest beside it, fading within a few squares, quieter through a wall. A light's Sound: Off quiets its own.", "");
@@ -12185,6 +13067,7 @@ Hooks.once("init", () => {
   skyPair("coast", "coastLocal", "The coast", "A water region marked as the sea (the region's right-click panel → Water) gets waves washing in and drawing back, wet sand that moves with the tide over the game's day, and crabs on the shore.");
   skyPair("waterfalls", "waterfallsLocal", "Waterfalls", "A water region marked as a waterfall (the region's right-click panel → Water) falls the way it flows, with foam at its foot, mist on the wind and a rainbow in the spray when the sun is out.");
   registerSetting("waterfallVolume", { name: "Waterfall volume", hint: "How loud waterfalls are for you: 0 silent, 1 as recorded, 2 twice as loud. Heard while River sounds are on; with Waterfalls off, a fall sounds as a river and River volume applies.", scope: "client", config: true, type: Number, range: { min: 0, max: 2, step: 0.05 }, default: 1 });
+  skyPair("shipRocking", "shipRockingLocal", "Ships rock with the sea", "A tile ticked \u201cAnimater: rocks with the sea\u201d (Tile configuration) rolls gently with the swell: it turns a little, what stands on its deck moves with it, the sun slides across the deck and, in a storm, spray comes over the low side. Calm on still air, harder in the wind, most in a storm. Only drawn: the tile, its walls and the tokens keep their places.");
   skyPair("movingWater", "movingWaterLocal", "Moving water", "Water that moves: waves run along a river's current and before the wind, the map seen through them bends, and the sun, the moon and flames glint on them. Every water region on every scene. Each screen's Animation quality sets how much is drawn: Full and Light in full, Balanced simpler, Low not at all.", "");
   skyPair("regionSteps", "regionStepsLocal", "Region steps", "The GM right-clicks a region on the map and moves it through its steps in its panel's Steps: grass goes from fresh to bloodied to burnt, a cave from dry to steam to lava. A region can also paint its floor for a bare map (Scene configuration, or its menu). A step can draw blood, wet or burnt on the floor, change what the floor walks as (its footsteps, sounds and prints), switch on a region effect such as mist or steam, and set a river's speed. The steps are set with Edit steps in the panel's Steps. Off stops the looks (the panel still opens); steps already chosen keep their floor and effects. Each screen's Animation quality sets how much it draws: Full and Light keep grass blades, moving flames and bubbles and shine on every look, Light with fewer torches; Balanced keeps floors catching the sun, moon and two lights; Low draws them still.");
   skyPair("waterMirror", "waterMirrorLocal", "Reflections on still water", "Creatures and tiles (trees, statues, walls of a ruin) on the bank mirror in still water and dripping pools, falling out across it from the nearest bank; nearby fires throw long lights across it, and the moon lays a broken path on it. Swift water shows none.");
@@ -13228,6 +14111,10 @@ Hooks.on("renderTileConfig", (app, html) => {
   group.innerHTML = `<label>Animater: waves break on it</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.wavesBreak"${on ? " checked" : ""}></div><p class="hint">The sea's waves crash against this tile on the side they come from, along the edge of its picture, and its far side lies calm. For a ship or a rock standing in moving sea.</p>`;
   const tab = root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector(".tab.active") ?? root.querySelector("form, .window-content") ?? root;
   tab.append(group);
+  const rocks = document.createElement("div");
+  rocks.className = "form-group";
+  rocks.innerHTML = `<label>Animater: rocks with the sea</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.rocksWithSea"${doc?.flags?.[ID]?.rocksWithSea === true ? " checked" : ""}></div><p class="hint">For a ship: it rolls gently with the swell, harder in the wind and most in a storm, and what stands on its deck moves with it. Only drawn: the tile, its walls and the tokens keep their places on the grid.</p>`;
+  tab.append(rocks);
 });
 Hooks.on("renderTileConfig", (app, html) => {
   const root = html instanceof HTMLElement ? html : html?.[0];
@@ -13655,7 +14542,8 @@ Hooks.once("ready", () => {
       e.pivot.set(-dx / (e.scale?.x || 1), -dy / (e.scale?.y || 1));
     }
   };
-  conditionBody = new ConditionBody({ tokenFx: () => tokenFx, busy: (token) => motions.active.has(token), enabled: () => allowsMotion(localQuality()), follow: followBody, cutOut: (token) => tokenCutOut(token) });
+  conditionBody = new ConditionBody({ tokenFx: () => tokenFx, busy: (token) => motions.active.has(token), enabled: () => allowsMotion(localQuality()), follow: followBody, cutOut: (token) => tokenCutOut(token),
+    carried: () => shipRiders.keys(), carry: (token) => { const s = shipRiders.get(token); return s ? carriedBy(s.at, s.centre, s.roll, canvas.grid?.size ?? 100, 0.8) : null; } });
   // Idle life: creatures in view breathe or hover through ConditionBody's lowest kinds.
   idleLife = new IdleLife({ body: conditionBody,
     // Bobbing on the swell: only a creature set to swim (its movement type). One standing or wading in a water region holds
@@ -13763,7 +14651,7 @@ Hooks.once("ready", () => {
     if (data?.type === CLEAR_BLOOD_MESSAGE) { if (data.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) { floorBlood.clear(data.level ?? null); bloodLoaded = bloodElsewhere(bloodLoaded.map(packMark), data.level ?? null).map(unpackMark); } return; }
     // A player's private roll reaches only its audience (core/privacy.mjs audienceOf).
     if (Array.isArray(data?.audience) && !data.audience.includes(game.user.id)) return;
-    if (data?.sender !== clientId) { showcaseTools?.receive(data,senderId); receiveKillCam(data, senderId); receiveDispel(data, senderId);void receiveMotion(data); void receiveOptionalFx(data); flash?.receive(data); receiveFinished(data); receiveMarksClear(data, senderId); receiveAreaMark(data); receiveActivityStop(data, senderId); void receiveTeleport(data, senderId).catch((e) => console.warn("Animater teleport:", e.message)); void receiveDisplace(data, senderId).catch((e) => console.warn("Animater finisher:", e.message)); void receiveMovePick(data, senderId).catch((e) => console.warn("Animater push/pull:", e.message)); }
+    if (data?.sender !== clientId) { showcaseTools?.receive(data,senderId); receiveKillCam(data, senderId); receiveDispel(data, senderId);void receiveMotion(data); void receiveOptionalFx(data); flash?.receive(data); receiveFinished(data); receiveMarksClear(data, senderId); receiveAreaMark(data); receiveActivityStop(data, senderId); void receiveTeleport(data, senderId).catch((e) => console.warn("Animater teleport:", e.message)); void receiveDisplace(data, senderId).catch((e) => console.warn("Animater finisher:", e.message)); void receiveMovePick(data, senderId).catch((e) => console.warn("Animater push/pull:", e.message)); void receiveCarrierOff(data, senderId).catch((e) => console.warn("Animater carrier:", e.message)); }
   });
   Hooks.on("canvasTearDown", () => {
     void persistentStates?.clear();

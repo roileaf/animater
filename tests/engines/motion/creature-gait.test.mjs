@@ -24,8 +24,8 @@ test('creatureGait: unsure is unknown (dust, no tracks), never none', () => {
   assert.equal(creatureGait({ system: 'daggerheart', actor: { type: 'adversary', name: 'Jagged Knife Lieutenant' }, name: 'Jagged Knife Lieutenant' }), 'unknown');
   assert.equal(creatureGait({}), 'unknown');
   assert.equal(creatureGait({ system: 'pf2e', actor: null, name: '' }), 'unknown');
-  // Wheels: dust and rumble, no prints.
-  for (const n of ['Clockwork Wheel', 'Supply Wagon', 'War Chariot']) assert.equal(creatureGait(pf2(['construct'], n)), 'unknown', n);
+  // Wheels have a gait of their own now: two ruts and a rumble, never a person's prints or boots.
+  for (const n of ['Clockwork Wheel', 'Supply Wagon', 'War Chariot', 'Merchant Caravan', 'Hand Cart']) assert.equal(creatureGait(pf2(['construct'], n)), 'wheels', n);
 });
 
 test('creatureGait: player characters wear boots unless their ancestry has other feet', () => {

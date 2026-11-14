@@ -1530,3 +1530,73 @@ test('every step is its own: turned outward by its foot, mirrored, varied in dep
   assert.ok(Math.abs(stepNoise('a', 1, 'x')) <= 1);
   assert.equal(steps('a', { gait: 'paws', shape: 'cat' })[0].gait, 'cat');
 });
+
+
+// Roi: a wagon should leave its own mark, not a person's prints. Wheels lay two ruts a wheel-track apart.
+test('wheels leave two long ruts, one per wheel track, and never a footprint', async () => {
+  const { tracksFor, TRACKS: T, STRIDE: S } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const grid = 100, width = 200, part = { color: 0x55443a, alpha: 1 };
+  assert.equal(T.wheels.feet, 'ruts');
+  const all = tracksFor('wheels', part, {}, { x: 0, y: 0, heading: 0, index: 1 }, { grid, width });
+  const marks = all.filter((m) => m.kind === 'rut');
+  assert.equal(marks.length, 2, 'one rut under each side');
+  // Rolling east, the two ruts sit either side of the line of travel, the same distance out.
+  assert.ok(marks.every((m) => Math.abs(Math.abs(m.y) - T.wheels.spread * width) < 0.001));
+  assert.equal(Math.sign(marks[0].y), -Math.sign(marks[1].y));
+  assert.ok(marks.every((m) => Math.abs(m.x + (grid * S) / 2) < 0.001), 'laid along the stride just rolled');
+  // Turned a quarter, they swing with it and stay a wheel-track apart.
+  const north = tracksFor('wheels', part, {}, { x: 0, y: 0, heading: Math.PI / 2, index: 2 }, { grid, width }).filter((m) => m.kind === 'rut');
+  assert.ok(Math.hypot(north[0].x - north[1].x, north[0].y - north[1].y) - 2 * T.wheels.spread * width < 0.001);
+  // A narrow cart lays narrower ruts than a wide wagon.
+  const narrow = tracksFor('wheels', part, {}, { x: 0, y: 0, heading: 0, index: 1 }, { grid, width: 100 }).filter((m) => m.kind === 'rut');
+  assert.ok(Math.abs(narrow[0].y) < Math.abs(marks[0].y));
+});
+
+// Roi, on the ruts beside the module's own footprints: "theres a huge quality difference". They were one flat stroke a
+// stride, each overlapping the last — a drawn line with the ink doubled at every join. A rut is a channel pressed into
+// the ground: it runs on unbroken from one stride to the next, it wanders as a wheel does, and it bites and lets go.
+test('the ruts run on unbroken from stride to stride, wandering and biting as they go', async () => {
+  const { tracksFor, STRIDE: S, rutWander, rutBite } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const grid = 100, width = 200, part = { color: 0x55443a, alpha: 1 };
+  const ruts = (index) => tracksFor('wheels', part, {}, { x: index * grid * S, y: 0, heading: 0, index }, { grid, width }).filter((m) => m.kind === 'rut');
+  const first = ruts(1), second = ruts(2);
+  // Each piece spans exactly the stride it walked: no overflow, so no stroke lies on top of the last one.
+  assert.ok(first.every((m) => Math.abs(m.radius - (grid * S) / 2) < 1e-9), 'exactly the stride, with nothing over');
+  // Where one ends is where the next begins, on both ruts, so the pair has no kink and no seam.
+  for (let i = 0; i < 2; i++) assert.ok(Math.abs(first[i].front - second[i].back) < 1e-9, 'one stride ends where the next starts');
+  assert.ok(first.some((m) => Math.abs(m.back) > 0), 'and it does not run dead straight');
+  assert.notEqual(rutWander(0, 1), rutWander(0, -1), 'the two wheels wander their own way');
+  // It presses deeper in some places than others, and never out of its range.
+  const bites = Array.from({ length: 40 }, (_, i) => rutBite(i / 4));
+  assert.ok(Math.max(...bites) - Math.min(...bites) > 0.3, 'it bites and lets go');
+  assert.ok(bites.every((b) => b >= 0 && b <= 1));
+  assert.ok(first.every((m) => m.bite >= 0 && m.bite <= 1 && m.thick > 0));
+});
+
+// Roi's mock: a wagon is pulled, so its track is two ruts with the team's hoofprints down the middle — ruts on their own
+// read as a thing that moves itself. A hand cart has a person between its shafts instead, and a sled has nobody in its
+// grooves at all.
+test('a wagon leaves its team between the ruts; a hand cart a person; a sled nobody', async () => {
+  const { tracksFor, TRACKS: T } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  const grid = 100, width = 200, part = { color: 0x55443a, alpha: 1 };
+  const at = { x: 0, y: 0, heading: 0, index: 1 };
+  const wagon = tracksFor('wheels', part, {}, at, { grid, width });
+  const team = wagon.filter((m) => m.kind !== 'rut');
+  assert.ok(team.length > 0, 'the horses print');
+  assert.ok(team.every((m) => m.gait === 'hooves'), 'and they are hooves');
+  const spread = T.wheels.spread * width;
+  assert.ok(team.every((m) => Math.abs(m.y) < spread), 'walking between the ruts, never outside them');
+  assert.ok(team.every((m) => m.alpha < 1), 'a shade fainter than a horse on its own');
+
+  const cart = tracksFor('barrow', part, {}, at, { grid, width });
+  assert.equal(cart.filter((m) => m.kind === 'rut').length, 2);
+  assert.ok(cart.filter((m) => m.kind !== 'rut').every((m) => m.gait === 'boots'), 'somebody pulls a hand cart');
+  assert.ok(Math.abs(cart.find((m) => m.kind === 'rut').y) < Math.abs(wagon.find((m) => m.kind === 'rut').y), 'narrower than a wagon');
+
+  const sled = tracksFor('runners', part, {}, at, { grid, width });
+  assert.equal(sled.length, 2, 'two grooves and nothing else');
+  assert.ok(sled.every((m) => m.kind === 'rut'));
+  // Both are clamped at the widest a rut may be drawn, so compare them on a token small enough to be under that.
+  const thin = (gait) => tracksFor(gait, part, {}, at, { grid, width: 50 }).find((m) => m.kind === 'rut').thick;
+  assert.ok(thin('runners') > thin('wheels'), 'a runner presses broader than a rim');
+});

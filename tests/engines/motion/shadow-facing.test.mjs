@@ -54,9 +54,13 @@ test('a flier\'s, or one under a light straight above, keeps the art as drawn fr
   assert.equal(pose.mirror, 1);
 });
 
-test('the sun, moon and lamps lay it so, and so do windows', () => {
+// Roi, asked whether a shadow should keep the way its subject points or lie over away from the light as a standing
+// thing's really does: "All creatures". Seen from straight above, lying over reads as having fallen over — a wagon's
+// shafts came out on the wrong side of its bed, and the horse in them lay across the road while facing up it.
+test('a shadow on the floor keeps its heading; one thrown on a wall still lies over', () => {
   const feel = readFileSync(new URL('../../../scripts/engines/motion/movement-feel.mjs', import.meta.url), 'utf8');
-  assert.match(feel, /laid: grounded && off > 0\.5/);
+  assert.match(feel, /laid: false/);
+  assert.ok(!/laid: grounded/.test(feel), 'nothing on the floor is laid over any more');
   const render = readFileSync(new URL('../../../scripts/engines/motion/movement-feel-render.mjs', import.meta.url), 'utf8');
   assert.match(render, /laidArt\(\{ along, laid: geom\.laid === true, rotation: art\.rotation \}\)/);
   const walls = readFileSync(new URL('../../../scripts/engines/motion/wall-shadows.mjs', import.meta.url), 'utf8');

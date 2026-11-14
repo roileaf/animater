@@ -299,3 +299,21 @@ test('with the shader engine a fallen creature tips over without turning, lies u
   assert.equal(t.mesh.sort, 5, 'back in its place');
   assert.ok(Math.abs(t.mesh.scale.y - 1) < 1e-9);
 });
+
+// Ships rock with the sea: tokens on a rocking deck are carried by it, over whatever pose they show, and never drift.
+test("a carried token moves with what carries it, over its own pose, and returns to its place when let go", () => {
+  let riding = [], off = { x: 4, y: -2, r: 0.01 };
+  const { body, step } = runner({ carried: () => riding, carry: () => off }), t = token(), sway = token();
+  riding = [t, sway];
+  body.wake(); step(16);
+  assert.deepEqual([t.mesh.position.x, t.mesh.position.y, t.mesh.rotation], [504, 298, 0.01], "carried with no pose of its own");
+  for (let i = 0; i < 30; i++) step(16);
+  assert.deepEqual([t.mesh.position.x, t.mesh.position.y, t.mesh.rotation], [504, 298, 0.01], "no drift, frame after frame");
+  body.add("s", sway, "sway"); step(650);
+  const swayed = sway.mesh.rotation;
+  off = { x: 0, y: 0, r: 0 }; step(16);
+  assert.ok(Math.abs(sway.mesh.rotation - (swayed - 0.01)) < 0.02, "the deck's turn adds to its sway, it doesn't replace it");
+  off = { x: 4, y: -2, r: 0.01 };
+  riding = []; step(16);
+  assert.deepEqual([t.mesh.position.x, t.mesh.position.y, t.mesh.rotation], [500, 300, 0], "let go: back where it stands");
+});

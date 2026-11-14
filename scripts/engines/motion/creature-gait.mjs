@@ -16,9 +16,12 @@
 //   ooze     one smooth, wide smear (oozes, slimes, jellies, puddings)
 //   roots    a knot of splayed root tendrils, left and right, with a leaf dropped now and then (leshies, treants, plants)
 //   legs     clusters of tiny dots (spiders, insects, centipedes, crabs, swarms)
-//   unknown  dust and footsteps but no prints: anything Animater cannot place, and wheeled things
+//   wheels   two long ruts, one per wheel track, and a rolling rumble instead of steps (wagons, carts, chariots)
+//   barrow   the same two ruts a hand's breadth apart, from a cart somebody pulls themselves (hand carts, barrows)
+//   runners  two broad smooth grooves and no prints between them, pressed by a sled's runners (sleds, sledges, travois)
+//   unknown  dust and footsteps but no prints: anything Animater cannot place
 //   none     nothing at all, not even dust or footsteps: incorporeal creatures (ghosts, wraiths, wisps)
-export const GAITS = Object.freeze(['boots', 'paws', 'padded', 'webbed', 'talons', 'dragon', 'hooves', 'claws', 'slither', 'ooze', 'legs', 'roots', 'unknown', 'none']);
+export const GAITS = Object.freeze(['boots', 'paws', 'padded', 'webbed', 'talons', 'dragon', 'hooves', 'claws', 'slither', 'ooze', 'legs', 'roots', 'wheels', 'barrow', 'runners', 'unknown', 'none']);
 
 // Short stems only match a whole word (plural allowed): "cat" never matches "catapult", "ant" never "giant".
 const words = (list) => new RegExp(`\\b(?:${list.split(/\s+/).filter(Boolean).join('|')})(?:s|es)?\\b`, 'i');
@@ -31,8 +34,8 @@ const tails = (list) => new RegExp(`(?:${list.split(/\s+/).filter(Boolean).join(
 const NAME_GAITS = [
   // Incorporeal by name (the PF2e incorporeal trait and D&D's Incorporeal Movement are read first, below).
   ['none', words('ghost spectre specter wraith phantom banshee poltergeist wisp will-o')],
-  // Wheels raise dust and rumble but leave no footprints.
-  ['unknown', words('wheel wheeled cart wagon chariot')],
+  // Wheels leave two ruts, not footprints, and rumble rather than step.
+  ['wheels', words('wheel wheeled cart carriage wagon waggon chariot caravan barrow handcart')],
   // Dragons (true dragons, wyverns, drakes, wyrms): heavy four-legged clawed prints with a tail drag, never a bird's.
   ['dragon', words('dragon wyvern drake wyrm wyrmling dracolisk')],
   ['dragon', tails('dragon drake wyrm')],

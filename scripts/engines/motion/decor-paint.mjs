@@ -1824,11 +1824,13 @@ const DRAFTS = {
       out.push(st); }
     return out;
   } },
+  // (`o.turn`: the way it lies, where the caller wants it set rather than scattered — a boat somebody is sailing has
+  // to point where it is going, and a decoration is turned any way the seed likes.)
   rowboat: { label: 'Rowboats', size: 2.6, height: 0.5, paint(g, s, rng, o) {
     // As the Moondock's: a hull of warm planks, pointed at the bow and square at the stern, a thick gunwale round it, inside the
     // floor planks running along it; a small decked triangle in the bow, a stern seat across the transom, two broad thwarts, iron
     // oarlocks on the gunwale; the oars laid across the boat from lock to lock, their blades out over the water; fish now and then.
-    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.85, W = s * 0.32;
+    const a = Number.isFinite(o.turn) ? o.turn : rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.85, W = s * 0.32;
     // Half-width along the hull, t 0 (stern) to 1 (bow): square-ish stern, full midships, a long taper to the point.
     const half = (t) => W * (t < 0.08 ? 0.78 + t * 2 : t < 0.5 ? 0.94 + 0.06 * Math.sin(((t - 0.08) / 0.42) * Math.PI * 0.5) : Math.pow(Math.cos(((t - 0.5) / 0.5) * Math.PI * 0.5), 0.75));
     const ring = (k, shrink = 0) => { const p = []; for (let i = 0; i <= 32; i++) { const t = i / 32; p.push(at(-L * k + t * L * 2 * k, -Math.max(0, half(t) * k - shrink))); } for (let i = 32; i >= 0; i--) { const t = i / 32; p.push(at(-L * k + t * L * 2 * k, Math.max(0, half(t) * k - shrink))); } return p; };
@@ -1934,6 +1936,10 @@ export function paintDecor(kind, seed, px, look = {}, make = defaultCanvas) {
   return { canvas, shadow, trunk, cloth, width: w, height: w };
 }
 const defaultCanvas = (w, h) => { if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h); const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+// The maps' painting kit, so anything else drawn in the same hand is drawn with the same tools rather than a second
+// set that drifts from it: carrier-paint.mjs paints the wagons with these. Roi, comparing a carrier with the
+// decorations beside it: "everything should have the same design system".
+export const PAINT_KIT = Object.freeze({ painted, inked, softShadow, boxAt, blob, trace, poly, line, wander, woodEnd, pick, shade, centre, reach, INK, INKD, defaultCanvas });
 
 // Where each decoration of a region goes: seeded scatter by kind and density over the region's bounds, kept inside the shape and
 // apart from each other. inside(x, y) answers whether a point is in the region. Returns [{ kind, x, y, size, turn, seed, flip }].

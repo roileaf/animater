@@ -132,6 +132,32 @@ const SHAPES = {
     }
     g.lineStyle(0);
   },
+  // A wheel's rut along +x: a channel pressed into the ground, which is a different thing from a line drawn on it.
+  // Roi: "compare this footprint of the wagon to the tokens footprints, theres a huge quality difference" — the ruts
+  // were one flat stroke of constant width while every print beside them is a painted shape. So: a dark core, two
+  // softer passes either side of it for an edge that fades the way every other mark here fades, and the earth the wheel
+  // pushed up on the outside catching the light. `bite` is how deep it is pressing just here, so the pair is never one
+  // even band; `back` and `front` are where it crosses its line at each end, shared with the stride either side so the
+  // ruts run on unbroken instead of each stroke overlapping the last.
+  rut(g, spec) {
+    const thick = Math.max(0.8, (spec.thick ?? 0.05) * R), bite = Math.max(0, Math.min(1, spec.bite ?? 1));
+    const back = (spec.back ?? 0) * R, front = (spec.front ?? 0) * R;
+    const lit = shade(spec.color, 1.5), deep = shade(spec.color, 0.7);
+    const pts = Array.from({ length: 9 }, (_, i) => { const t = i / 8; return [-R + 2 * R * t, back + (front - back) * t]; });
+    const stroke = (width, ink, alpha, off = 0) => {
+      if (!(alpha > 0.004)) return;
+      // Flush ends, not round ones: each stride's piece begins exactly where the last ended, and round caps would lay
+      // one on top of the other and bead the track with a dark dot at every join.
+      g.lineStyle({ width, color: ink, alpha, cap: 'butt', join: 'round' });
+      pts.forEach(([x, y], i) => (i ? g.lineTo(x, y + off) : g.moveTo(x, y + off)));
+      g.lineStyle(0);
+    };
+    stroke(thick * 0.8, lit, 0.15 * bite, -thick);
+    stroke(thick * 0.8, lit, 0.15 * bite, thick);
+    stroke(thick * 2.1, spec.color, 0.15 * bite);
+    stroke(thick * 1.25, spec.color, 0.24 * bite);
+    stroke(thick * 0.6, deep, 0.46 * bite);
+  },
   // A continuous track segment along +x: a snake's wavy groove, an ooze's smear or a lizard's tail drag.
   groove(g, spec) {
     if (spec.gait === 'ooze') { drawSoftEllipse(g, spec.color, R, (spec.ry ?? 0.5) * R, 3); return; }
@@ -392,9 +418,14 @@ export function createMovementFeelLayer({ PIXI, root, overRoot = null, silhouett
       node.sharp.tint = moving ? 0x000000 : 0xffffff; node.soft.visible = !moving;
       node.inner.filters = moving ? [node.blur ??= new PIXI.BlurFilter()] : null;
     }
-    const pose = silhouettePose(geom, { cast }), k = silhouetteScale({ artWidth: art.width * (shape.fill?.w ?? 1), artHeight: art.height * (shape.fill?.h ?? 1), width: geom.width }) * pose.size;
+    // `own`: art drawn at a size of its own rather than to fit its token (a carrier wearing its painted wagon, which
+    // is as long as the wagon really is and reaches past the token). It casts the shadow it is, unshrunk, and it is
+    // offset from the middle of its token (`ox`, `oy`) exactly as the picture is, or the shadow stands where the
+    // wagon does not.
+    const pose = silhouettePose(geom, { cast });
+    const k = (art.own === true ? 1 : silhouetteScale({ artWidth: art.width * (shape.fill?.w ?? 1), artHeight: art.height * (shape.fill?.h ?? 1), width: geom.width })) * pose.size;
     node.outer.visible = true;
-    node.outer.position.set(geom.fall?.x ?? geom.x, geom.fall?.y ?? geom.y);
+    node.outer.position.set((geom.fall?.x ?? geom.x) + (Number(art.ox) || 0), (geom.fall?.y ?? geom.y) + (Number(art.oy) || 0));
     // Laid on the floor along the light (`along`, radians): stretched out along it (`stretch`, a standing creature's
     // long shadow), squashed across it (the pose's `flat`), the art keeping its own turn inside.
     const along = Number(geom.along) || 0;
