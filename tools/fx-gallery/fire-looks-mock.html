@@ -1,0 +1,323 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Fire looks — now vs proposed</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #14110e; color: #e8ddcd; font: 14px/1.5 system-ui, sans-serif; }
+  header { padding: 14px 18px 6px; }
+  h1 { font-size: 16px; margin: 0 0 4px; font-weight: 600; }
+  p { margin: 0; color: #a79781; max-width: 70ch; }
+  .row { display: flex; gap: 14px; padding: 14px 18px 20px; flex-wrap: nowrap; }
+  figure { margin: 0; }
+  figcaption { padding: 6px 2px 0; color: #a79781; }
+  figcaption b { color: #e8ddcd; font-weight: 600; }
+  canvas { border-radius: 8px; display: block; box-shadow: 0 2px 14px #0008; }
+  .controls { padding: 0 18px 16px; display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  label { display: flex; gap: 6px; align-items: center; }
+  input[type=range] { width: 150px; }
+</style>
+
+<header>
+  <h1>Fire looks — what ships now, and what the reference photos ask for</h1>
+  <p>Same seeds, same squares, same clock on both sides. The left panel runs the drawing that is on main today; the right runs the proposed one. Nothing here touches the module.</p>
+</header>
+
+<div class="controls">
+  <label>Burning squares <input id="count" type="range" min="1" max="12" value="5"></label>
+  <label><input id="scorch" type="checkbox" checked> scorch under the flame</label>
+  <label><input id="smoke" type="checkbox" checked> smoke above</label>
+  <label><input id="dim" type="checkbox" checked> darken away from the fire</label>
+</div>
+
+<div class="row">
+  <figure><canvas id="now" width="360" height="360"></canvas>
+    <figcaption><b>Now</b> — 3–4 wide cones, ember orange on an orange map, ink at 0.45</figcaption></figure>
+  <figure><canvas id="next" width="360" height="360"></canvas>
+    <figcaption><b>Proposed v5</b> — currents bunched into knots, cooler channels between, uneven foot</figcaption></figure>
+</div>
+
+<script>
+const GRID = 88;
+// Seeded so both panels draw the identical fire; the module seeds from the square's own index.
+const seeded = (n) => () => (n = (n * 1664525 + 1013904223) >>> 0) / 4294967296;
+
+// ---- the map underneath, painted flat like the battlemap: tan ground, ink-outlined trees ----
+function ground(c, w, h) {
+  const g = c.createLinearGradient(0, 0, w, h);
+  g.addColorStop(0, "#b9793f"); g.addColorStop(.5, "#a8692f"); g.addColorStop(1, "#8d5526");
+  c.fillStyle = g; c.fillRect(0, 0, w, h);
+  const r = seeded(7);
+  for (let i = 0; i < 160; i++) {
+    c.globalAlpha = .05 + r() * .07; c.fillStyle = r() < .5 ? "#6b3d18" : "#d79b5c";
+    const x = r() * w, y = r() * h, s = 6 + r() * 26;
+    c.beginPath(); c.ellipse(x, y, s, s * .6, r() * 6.3, 0, 6.3); c.fill();
+  }
+  c.globalAlpha = 1;
+}
+function tree(c, x, y, s, r) {
+  c.save(); c.translate(x, y);
+  c.fillStyle = "#2f1d0e"; c.globalAlpha = .28;
+  c.beginPath(); c.ellipse(6, 8, s * .8, s * .5, 0, 0, 6.3); c.fill(); c.globalAlpha = 1;
+  for (let i = 0; i < 3; i++) {                       // stepped painted crown
+    const t = i / 3, w = s * (1 - t * .45), hgt = s * (1.25 - t * .3);
+    c.fillStyle = ["#6f8f3a", "#86a647", "#9dbb57"][i];
+    c.beginPath(); c.moveTo(-w * .6, 0); c.lineTo(0, -hgt); c.lineTo(w * .6, 0); c.closePath(); c.fill();
+  }
+  c.strokeStyle = "#241a10"; c.lineWidth = 1.6; c.globalAlpha = .85;
+  c.beginPath(); c.moveTo(-s * .6, 0); c.lineTo(0, -s * 1.25); c.lineTo(s * .6, 0); c.closePath(); c.stroke();
+  c.globalAlpha = 1; c.restore();
+}
+const TREES = (() => { const r = seeded(31), a = [];
+  for (let i = 0; i < 14; i++) a.push({ x: 24 + r() * 310, y: 50 + r() * 290, s: 19 + r() * 13 });
+  return a; })();
+const SQUARES = (() => { const r = seeded(99), a = [];
+  for (let i = 0; i < 12; i++) a.push({ x: 24 + Math.floor(r() * 3) * GRID, y: 56 + Math.floor(r() * 3) * GRID, seed: 1 + i * 7 });
+  return a; })();
+
+// ---- NOW: the drawing that is on main (fire-looks.mjs drawFlames), transcribed ----
+const EMBER = "#ff8a30", EMBER_CORE = "#ffd08a", INK = "#1b1410";
+function flamesNow(c, sq, ms) {
+  const rand = seeded(sq.seed), x = sq.x, y = sq.y, w = GRID, h = GRID;
+  const glow = .5 + .5 * Math.sin(ms / 420 + sq.seed);
+  const count = 3 + Math.floor(rand() * 2);
+  for (let i = 0; i < count; i++) {
+    const foot = x + w * (.18 + .64 * rand()), base = y + h * (.55 + .35 * rand());
+    const wide = w * (.16 + .1 * rand()), tall = h * (.34 + .3 * rand()) * (.75 + .35 * glow);
+    const lean = (rand() - .5) * w * .2 + Math.sin(2 * Math.PI * ms / 900 + i) * w * .05;
+    const tongue = (s) => [[foot - wide * s, base], [foot - wide * s * .45, base - tall * s * .55],
+      [foot + lean * s, base - tall * s], [foot + wide * s * .5, base - tall * s * .5], [foot + wide * s, base]];
+    const path = (p) => { c.beginPath(); c.moveTo(p[0][0], p[0][1]); p.slice(1).forEach(q => c.lineTo(q[0], q[1])); c.closePath(); };
+    c.globalAlpha = Math.min(1, .45 + .35 * glow); c.fillStyle = EMBER; path(tongue(1)); c.fill();
+    c.globalAlpha = Math.min(1, .4 + .4 * glow); c.fillStyle = EMBER_CORE; path(tongue(.5)); c.fill();
+    c.globalAlpha = .45; c.strokeStyle = INK; c.lineWidth = 1.1; path(tongue(1)); c.stroke();
+  }
+  c.globalAlpha = 1;
+}
+
+// ---- PROPOSED: read off the three reference photos ----
+// 1 tall and narrow, not squat: each tongue is 2-3x taller than wide.
+// 2 a ragged silhouette: every tongue splits into 2-3 tips that waver separately.
+// 3 the value runs hot at the FOOT and deep at the TIP: pale yellow -> orange -> red.
+// 4 contrast comes from DARK: scorch under the flame and smoke above it, never from a paler flame.
+// 5 the tongues crowd into a sheet along the square rather than standing apart.
+const HOT = "#fff6d8", MID = "#ff9a21", DEEP = "#d33c0e", SOOT = "#1a1209";
+// One tongue, drawn the way the photos read rather than the way the map is painted: two curved
+// flanks that pinch to a drawn-out tip, the tip curling off to one side. No steps, no hard corners.
+function limb(c, fx, fy, w, hgt, lean, t, curl) {
+  const sway = Math.sin(t / 300 + fx * .05) * w * .35;
+  const tipX = fx + lean + sway + curl, tipY = fy - hgt;
+  const midY = fy - hgt * .52, waist = w * .34;
+  c.beginPath();
+  c.moveTo(fx - w * .5, fy);
+  c.quadraticCurveTo(fx - waist + lean * .3, midY, tipX - w * .06, tipY);     // left flank
+  c.quadraticCurveTo(tipX + w * .1, tipY + hgt * .07, tipX + w * .02, tipY + hgt * .13); // the curled tip
+  c.quadraticCurveTo(fx + waist + lean * .3, midY, fx + w * .5, fy);          // right flank
+  c.closePath();
+}
+// A thin wisp that has torn free of the tip and is climbing on its own — the photos are full of them.
+function wisp(c, x, y, w, h, t) {
+  const s = Math.sin(t / 240 + x) * w * .8;
+  c.beginPath();
+  c.moveTo(x - w * .3, y);
+  c.quadraticCurveTo(x + s * .4, y - h * .55, x + s, y - h);
+  c.quadraticCurveTo(x + s * .5 + w * .25, y - h * .5, x + w * .3, y);
+  c.closePath();
+}
+// Contiguous burning squares in a row burn as ONE front, so the boiling edge runs across the whole
+// stretch instead of restarting at every grid line. Squares that only touch diagonally stay apart.
+function fronts(live) {
+  const byRow = new Map();
+  for (const s of live) { const k = s.y; (byRow.get(k) ?? byRow.set(k, []).get(k)).push(s); }
+  const out = [];
+  for (const [y, row] of byRow) {
+    row.sort((a, b) => a.x - b.x);
+    let run = [row[0]];
+    for (let i = 1; i < row.length; i++) {
+      if (row[i].x - run[run.length - 1].x === GRID) run.push(row[i]);
+      else { out.push({ y, run }); run = [row[i]]; }
+    }
+    out.push({ y, run });
+  }
+  return out;
+}
+
+function groundBits(c, sq, ms, opt) {
+  const rand = seeded(sq.seed), x = sq.x, y = sq.y, w = GRID, h = GRID;
+  const glow = .5 + .5 * Math.sin(ms / 420 + sq.seed);
+
+  if (opt.scorch) {                                     // 4: the dark anchor the photos all have
+    c.globalAlpha = .72; c.fillStyle = SOOT;
+    c.beginPath(); c.ellipse(x + w / 2, y + h * .78, w * .46, h * .22, 0, 0, 6.3); c.fill();
+    c.globalAlpha = .3;
+    c.beginPath(); c.ellipse(x + w / 2, y + h * .74, w * .62, h * .3, 0, 0, 6.3); c.fill();
+  }
+  c.globalAlpha = .5 + .3 * glow;                       // the glow the fire throws on the ground
+  const halo = c.createRadialGradient(x + w / 2, y + h * .6, 2, x + w / 2, y + h * .6, w * .95);
+  halo.addColorStop(0, "#ff9a2155"); halo.addColorStop(1, "#ff9a2100");
+  c.fillStyle = halo; c.beginPath(); c.arc(x + w / 2, y + h * .6, w * .95, 0, 6.3); c.fill();
+  c.globalAlpha = 1;
+  if (opt.smoke) {
+    const r2 = seeded(sq.seed * 3);
+    for (let i = 0; i < 7; i++) {
+      const t = (ms / 1400 + i / 7) % 1;
+      c.globalAlpha = .34 * (1 - t);
+      c.fillStyle = i % 2 ? "#2b241c" : "#3a3028";
+      const sx = x + w * (.3 + .4 * r2()) + Math.sin(t * 5 + i) * 14;
+      const sy = y + h * .5 - t * h * 1.5, rad = w * (.16 + .3 * t);
+      c.beginPath(); c.ellipse(sx, sy, rad, rad * .78, 0, 0, 6.3); c.fill();
+    }
+  }
+  c.globalAlpha = 1;
+}
+
+// One front of fire, drawn to an offscreen layer so its FOOT can be dissolved away: real fire has no
+// bottom edge, it is brightest where it meets the thing it is eating and has no line there at all.
+const layer = document.createElement("canvas");
+function frontFlame(dest, front, ms, opt) {
+  const x = front.run[0].x, w = GRID * front.run.length, y = front.y, h = GRID;
+  const sq = front.run[0], rand = seeded(sq.seed);
+  const glow = .5 + .5 * Math.sin(ms / 420 + sq.seed);
+  if (layer.width !== dest.canvas.width || layer.height !== dest.canvas.height) {
+    layer.width = dest.canvas.width; layer.height = dest.canvas.height;
+  }
+  const c = layer.getContext("2d");
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.clearRect(0, 0, layer.width, layer.height);
+
+  // NOT a row of tongues. In the photos a burning thing is ONE body of flame: a continuous mass
+  // whose top edge boils, with brightness varying inside it. Tongues only appear where the mass
+  // tears at the very top. So: build one body, then light it from within, then let the top fray.
+  const fy = y + h * .82, lift = h * (1.9 + .45 * glow);  // fire is taller than it is wide; a low mass reads as a hill
+  const sheetLean = Math.sin(ms / 1100) * w * .12;       // the whole sheet leans together, not limb by limb
+  const topAt = (u) => {                                 // the boiling upper boundary, as one function of x
+    const a = Math.sin(u * 6.1 + ms / 380 + sq.seed), b = Math.sin(u * 11.7 - ms / 260 + sq.seed * 2);
+    const c3 = Math.sin(u * 21.3 + ms / 170), d = Math.sin(u * 33.1 - ms / 130 + sq.seed);
+    // A broad plateau that only falls away at the very edges — a sheet of fire, not a dome.
+    const shoulder = Math.min(1, Math.max(0, Math.min(u, 1 - u) * 7));
+    const roll = .58 + .26 * a + .16 * b + .09 * c3 + .05 * d;
+    return fy - lift * shoulder * Math.max(.12, roll);
+  };
+  const body = () => {
+    c.beginPath(); c.moveTo(x + w * .03, fy);
+    for (let s = 0; s <= 28; s++) { const u = s / 28, px = x + w * (.03 + .94 * u) + sheetLean * u;
+      c.lineTo(px, topAt(u)); }
+    c.lineTo(x + w * .97, fy); c.closePath();
+  };
+  const gBody = c.createLinearGradient(0, fy, 0, fy - lift);
+  gBody.addColorStop(0, "#ffd982"); gBody.addColorStop(.2, "#ffb43a");
+  gBody.addColorStop(.5, MID); gBody.addColorStop(.8, DEEP); gBody.addColorStop(1, "#7d1a0400");
+  c.globalAlpha = .42; c.fillStyle = gBody; body(); c.fill();   // thin on its own: the brightness is built up below
+
+  c.save(); body(); c.clip();                            // everything below lives INSIDE the one body
+  c.globalCompositeOperation = "lighter";                // heat adds up, it does not stack like paint
+  // Columns rising inside the one mass. This is the structure the photos actually have: not separate
+  // flames side by side, and not a smooth blob either, but vertical currents within a single body.
+  // Currents bunch: fire gathers into a few hot knots with thinner stuff between, never an even comb.
+  const knots = [];
+  for (let k = 0; k < Math.max(2, Math.round(w / GRID) + 1); k++) {
+    knots.push({ u: .12 + .76 * rand(), pull: .5 + .5 * rand(), tall: .7 + .55 * rand() });
+  }
+  const cols = 6 + Math.floor(w / GRID) * 5;
+  for (let i = 0; i < cols; i++) {
+    const K = knots[Math.floor(rand() * knots.length)];
+    const u = Math.min(.97, Math.max(.03, K.u + (rand() - .5) * .26 * (1.3 - K.pull)));
+    const near = 1 - Math.min(1, Math.abs(u - K.u) * 5);          // nearer the knot, taller and hotter
+    const cx = x + w * u + Math.sin(ms / 700 + i * 1.7) * w * .025 + sheetLean * u;
+    const ch = lift * K.tall * (.3 + .62 * near) * (.85 + .2 * glow) * (.7 + .5 * rand());
+    const cw = w * (.03 + .035 * rand()) * (.8 + .5 * near);
+    const gc = c.createLinearGradient(0, fy, 0, fy - ch);
+    // Every column starts at the same foot, and in additive mode a dozen of them there blow out to
+    // white. So each one is nearly clear at its base and only gains weight once it has risen.
+    gc.addColorStop(0, "rgba(255,214,120,0.04)");
+    gc.addColorStop(.18, `rgba(255,190,90,${(.16 + .2 * near).toFixed(2)})`);
+    gc.addColorStop(.45, "#ff9d2a33"); gc.addColorStop(.78, "#e8500e1a"); gc.addColorStop(1, "#c6380000");
+    c.globalAlpha = .9; c.fillStyle = gc;
+    limb(c, cx, fy, cw * 2.4, ch, Math.sin(ms / 900 + i) * w * .02, ms + i * 120, 0); c.fill();
+  }
+  // Cooler channels: fire is not evenly bright across its width, and the gaps are what make the
+  // hot parts read as hot. Taken out of the layer, so they darken without drawing an edge.
+  c.globalCompositeOperation = "destination-out";
+  for (let i = 0; i < 3; i++) {
+    const u = .1 + .8 * rand(), cx = x + w * u + sheetLean * u, ch = lift * (.3 + .4 * rand());
+    const gd = c.createLinearGradient(0, fy - ch * .2, 0, fy - ch);
+    gd.addColorStop(0, "#0000"); gd.addColorStop(.5, "#00000055"); gd.addColorStop(1, "#0000");
+    c.fillStyle = gd; c.fillRect(cx - w * .035, fy - ch, w * .07, ch);
+  }
+  c.globalCompositeOperation = "lighter";
+  for (let i = 0; i < 9; i++) {                          // turbulence: soft lobes boiling inside the mass
+    const u = .12 + .76 * rand(), t = ms / (520 + 260 * rand()) + i;
+    const px = x + w * u + Math.sin(t) * w * .1, py = fy - lift * (.12 + .5 * rand()) - (ms / 9 % (h * .4));
+    const rad = w * (.1 + .16 * rand());
+    const gl = c.createRadialGradient(px, py, 1, px, py, rad);
+    gl.addColorStop(0, "#ffd87e66"); gl.addColorStop(1, "#ff6a0000");
+    c.globalAlpha = .5; c.fillStyle = gl; c.beginPath(); c.arc(px, py, rad, 0, 6.3); c.fill();
+  }
+  // The white heart is small and low: a hot seat at the base, never a glowing dome.
+  const gHeart = c.createLinearGradient(0, fy, 0, fy - lift * .26);
+  gHeart.addColorStop(0, "#ffe9a566"); gHeart.addColorStop(1, "#ffb43300");
+  c.globalAlpha = .26; c.fillStyle = gHeart;
+  c.beginPath(); c.ellipse(x + w / 2, fy, w * .3, lift * .2, 0, Math.PI, 0); c.fill();
+  c.restore();
+  c.globalCompositeOperation = "source-over";
+
+  for (let i = 0; i < 3; i++) {                          // only the TOP frays into separate licks
+    const u = .2 + .6 * rand(), bx = x + w * u + sheetLean, by = topAt(u) + h * .03;
+    const gw = c.createLinearGradient(0, by, 0, by - h * .34);
+    gw.addColorStop(0, "#ff9a2199"); gw.addColorStop(.6, "#e2500c55"); gw.addColorStop(1, "#c6380000");
+    c.globalAlpha = .55; c.fillStyle = gw;
+    wisp(c, bx, by, w * (.07 + .05 * rand()), h * (.22 + .18 * rand()), ms + i * 160); c.fill();
+  }
+
+  // Dissolve the foot. Fire has no bottom edge — it is brightest where it meets what it is eating
+  // and simply has no line there. Erasing it on this layer leaves the scorch beneath untouched.
+  c.globalAlpha = 1;
+  c.globalCompositeOperation = "destination-out";
+  // The erase boundary wanders, so the foot does not end on a level line either.
+  const rF = seeded(sq.seed + 5);
+  for (let s = 0; s < 14; s++) {
+    const u0 = s / 14, bx = x + w * u0, bw = w / 14 + 2;
+    const top = fy - h * (.18 + .26 * rF()) - Math.sin(u0 * 9 + ms / 500) * h * .05;
+    const g = c.createLinearGradient(0, fy + h * .12, 0, top);
+    g.addColorStop(0, "#000f"); g.addColorStop(.6, "#0008"); g.addColorStop(1, "#0000");
+    c.fillStyle = g; c.fillRect(bx, top, bw, fy + h * .12 - top);
+  }
+  c.globalCompositeOperation = "source-over";
+
+  dest.globalAlpha = 1;
+  dest.drawImage(layer, 0, 0);
+  // The heat goes back at the foot as light, in uneven seats under the knots — not one even band.
+  dest.save(); dest.globalCompositeOperation = "lighter";
+  const rS = seeded(sq.seed + 11);
+  for (let i = 0; i < front.run.length * 3; i++) {
+    const sx = x + w * (.08 + .84 * rS()), sr = w * (.05 + .07 * rS()) + GRID * .06;
+    const sy = fy - h * .02 + Math.sin(ms / 600 + i) * h * .01;
+    const gS = dest.createRadialGradient(sx, sy, 1, sx, sy, sr);
+    gS.addColorStop(0, `rgba(255,150,54,${(.13 + .1 * Math.sin(ms / 400 + i) ** 2).toFixed(2)})`);
+    gS.addColorStop(1, "#ff8a1a00");
+    dest.fillStyle = gS; dest.beginPath(); dest.arc(sx, sy, sr, 0, 6.3); dest.fill();
+  }
+  dest.restore();
+}
+
+function draw(canvas, kind) {
+  const c = canvas.getContext("2d"), w = canvas.width, h = canvas.height;
+  const opt = { scorch: scorch.checked, smoke: smoke.checked, dim: dim.checked };
+  const n = +count.value, live = SQUARES.slice(0, n);
+  const ms = performance.now();
+  ground(c, w, h);
+  for (const t of TREES) tree(c, t.x, t.y, t.s, 0);
+  if (kind === "next" && opt.dim) {                     // the photos are dark away from the fire
+    c.globalAlpha = .55; c.fillStyle = "#120c06"; c.fillRect(0, 0, w, h); c.globalAlpha = 1;
+    for (const sq of live) {
+      const g = c.createRadialGradient(sq.x + GRID / 2, sq.y + GRID / 2, 4, sq.x + GRID / 2, sq.y + GRID / 2, GRID * 2.1);
+      g.addColorStop(0, "#ffb45533"); g.addColorStop(1, "#ffb45500");
+      c.fillStyle = g; c.beginPath(); c.arc(sq.x + GRID / 2, sq.y + GRID / 2, GRID * 2.1, 0, 6.3); c.fill();
+    }
+  }
+  if (kind === "now") { for (const sq of live) flamesNow(c, sq, ms); return; }
+  for (const sq of live) groundBits(c, sq, ms, opt);     // scorch, halo and smoke, per square
+  for (const f of fronts(live)) frontFlame(c, f, ms, opt); // the fire itself, per continuous front
+}
+function frame() { draw(document.getElementById("now"), "now"); draw(document.getElementById("next"), "next"); requestAnimationFrame(frame); }
+frame();
+</script>
