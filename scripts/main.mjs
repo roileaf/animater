@@ -10328,12 +10328,25 @@ async function smokeRound(scene, burning = []) {
     };
     const walls = blockingWalls((scene.walls?.contents ?? []).map(wallView));
     const walled = (i, n) => wallBetween(mid(i), mid(n), walls);
+    // A hole in the roof: every cell under a region the GM marked "Open to the sky" (a shaft, a broken roof) vents
+    // upward whatever its walls do, and it is the one opening an inside room can have with no outdoor cell near it.
+    const shafts = viewedRegions(scene.regions).filter((r) => r.flags?.[ID]?.openSky === true)
+      .flatMap((r) => { try { return regionAreas(r) ?? []; } catch { return []; } });
+    const skies = new Map();
+    const sky = (i) => {
+      if (!shafts.length) return false;
+      let v = skies.get(i);
+      if (v === undefined) { try { v = shafts.some((a) => pointInPolygon(mid(i), a)); } catch { v = false; } skies.set(i, v); }
+      return v;
+    };
     // Where the room breathes out through its own walls (smoke-field.mjs smokeOpeningsOf): an open door, a window
-    // standing open, a smashed one, a hole battered through, each on the cells either side of it. indoor-air's own
-    // sceneOpenings is a different list for a different job (the drafts' way out, doors near the scene's edge only,
-    // never a window) and is deliberately not used here.
-    const openings = smokeOpeningsOf({ walls: scene.walls?.contents ?? [], grid: propGrid(scene), cell, origin, cols });
-    plan = smokeRoundPlan({ activeGM, on, scene, sources, indoors, walled, openings,
+    // standing open, a smashed one, a hole battered through — each counted only where it leads OUT, which is why it
+    // is handed the very same `indoors`. An inside door joins two rooms into one for the walk and carries the smoke
+    // next door by itself; vented as well, the smoke would leave the model and an inn would never fill.
+    // indoor-air's own sceneOpenings is a different list for a different job (the drafts' way out, doors near the
+    // scene's edge only, never a window) and is deliberately not used here.
+    const openings = smokeOpeningsOf({ walls: scene.walls?.contents ?? [], grid: propGrid(scene), cell, origin, cols, indoors });
+    plan = smokeRoundPlan({ activeGM, on, scene, sources, indoors, walled, openings, sky,
       roomOf: (i) => smokeRoomAt({ from: i, cols, rows, indoors, walled, cache: smokeRoomsOf(scene) }) });
   }
   if (!plan) return;

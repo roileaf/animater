@@ -148,8 +148,11 @@ export function smokeClearPlan(scene) {
 //   roomOf(i)       the room cell i sits in, as {id, size}: a name that is the same for every cell of that room, and
 //                   how many cells it holds, for the venting. The whole grid as one room when not given.
 //   openings  [i], the cells the scene's own walls stand open on (smoke-field.mjs smokeOpeningsOf): an open door, a
-//             window standing open, a smashed one, a hole battered through. Each room breathes out at the ones of its
-//             own, beside the ones it already has by standing open to the sky.
+//             window standing open, a smashed one, a hole battered through, each of them leading OUT of its room.
+//             Each room breathes out at the ones of its own.
+//   sky(i)    whether that cell lies under a region open to the sky — a hole in the roof, a shaft. An opening in its
+//             own right, wall or no wall, and the one case where a space with no outdoor cell anywhere near it does
+//             genuinely vent: upward. Nothing is open to the sky when not given.
 // Returns null only when this client must not write; otherwise
 // {fields, cells, shapes, level, grid, openings, rooms}. `fields` may be empty: an unchanged round writes nothing.
 //
@@ -161,7 +164,7 @@ export function smokeClearPlan(scene) {
 // another by the very walls the blocked pairs already encode, so this is not an approximation: it is the same answer,
 // worked out right. One room's openings must never vent another's, and a great hall must never be divided by the
 // cell count of the burning closet off it.
-export function smokeRoundPlan({ activeGM, on, scene, sources = [], indoors = () => true, walled = () => false, roomOf = null, openings: standsOpen = [] } = {}) {
+export function smokeRoundPlan({ activeGM, on, scene, sources = [], indoors = () => true, walled = () => false, roomOf = null, openings: standsOpen = [], sky = () => false } = {}) {
   if (activeGM !== true || !scene) return null;
   const saved = smokeCellsOf(scene);
   if (on !== true) return clearPlan(scene);
@@ -200,6 +203,7 @@ export function smokeRoundPlan({ activeGM, on, scene, sources = [], indoors = ()
   }
   const roomIdOf = (i) => (owner.has(i) ? owner.get(i) : (roomAt(i).id ?? ""));
   const walls = new Set((standsOpen ?? []).filter(inGrid));
+  const open = (i) => { try { return sky(i) === true; } catch { return false; } };
   for (const [i, id] of owner) {
     const group = rooms.get(id);
     let breathes = false;
@@ -211,9 +215,9 @@ export function smokeRoundPlan({ activeGM, on, scene, sources = [], indoors = ()
       if (roomIdOf(n) !== id) { group.blocked.push({ from: i, to: n }); continue; }
       if (n > i && wall) group.blocked.push({ from: i, to: n });
     }
-    // A wall of this room's own that stands open vents it too, wherever it stands: a window smashed deep inside a
-    // warren is an opening even though no cell of it touches the sky.
-    if (breathes || walls.has(i)) group.openings.push(i);
+    // A wall of this room's own that leads out vents it too, wherever it stands: a window smashed deep inside a
+    // warren is an opening even though no cell of it touches the sky. So does a hole in the roof over this cell.
+    if (breathes || walls.has(i) || open(i)) group.openings.push(i);
   }
   for (const c of held) rooms.get(owner.get(c.i))?.cells.push(c);
   for (const s of lit) rooms.get(owner.get(s.i))?.sources.push(s);

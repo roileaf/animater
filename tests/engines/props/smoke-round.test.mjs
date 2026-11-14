@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { smokeRoundPlan, smokeLevelFor, smokeShapes, smokeNeighbours, smokeOnlySave, smokeRoomAt, smokeClearPlan, ROOM_CAP } from "../../../scripts/engines/props/smoke-round.mjs";
-import { THICK, THIN } from "../../../scripts/engines/props/smoke-field.mjs";
+import { THICK, THIN, smokeOpeningsOf } from "../../../scripts/engines/props/smoke-field.mjs";
 import { propSceneFieldsHTML } from "../../../scripts/ui/prop-config.mjs";
 
 const A = "aaaaaaaaaaaaaaaa", B = "bbbbbbbbbbbbbbbb";
@@ -26,10 +26,10 @@ const roomOf = () => ({ id: "room", size: 25 });
 const FIRE = [{ i: 33, rate: 1, levels: [] }]; // the middle of the room
 const plan = (args) => smokeRoundPlan({ activeGM: true, on: true, indoors: inRoom, walled: sealed, roomOf, ...args });
 // Run the round over and over, feeding each round's cells back as the scene's saved smoke.
-const burn = (rounds, { sources = FIRE, walled = sealed, start = null } = {}) => {
+const burn = (rounds, { sources = FIRE, walled = sealed, start = null, openings = [] } = {}) => {
   let smoke = start, last = null;
   for (let n = 0; n < rounds; n++) {
-    last = plan({ scene: scene({ smoke, grid: smoke ? { cols: COLS, cell: CELL } : null }), sources, walled });
+    last = plan({ scene: scene({ smoke, grid: smoke ? { cols: COLS, cell: CELL } : null }), sources, walled, openings });
     smoke = Object.fromEntries(last.cells.map((c) => [String(c.i), Math.round(c.v * 10000) / 10000]));
   }
   return last;
@@ -404,8 +404,11 @@ test("a room with no source left empties on its own, cells, geometry and shapes"
 // ---- The wiring in main.mjs that no pure test can see. ----
 
 test("the round feeds it the walls' own openings, and not the drafts' list", () => {
-  assert.match(main, /const openings = smokeOpeningsOf\(\{ walls: scene\.walls\?\.contents \?\? \[\], grid: propGrid\(scene\), cell, origin, cols \}\);/);
-  assert.match(main, /plan = smokeRoundPlan\(\{ activeGM, on, scene, sources, indoors, walled, openings,/);
+  assert.match(main, /plan = smokeRoundPlan\(\{ activeGM, on, scene, sources, indoors, walled, openings, sky,/);
+  // The openings are told which side is a room, by the very same predicate the round uses: an inside door is no vent.
+  assert.match(main, /smokeOpeningsOf\(\{ walls: scene\.walls\?\.contents \?\? \[\], grid: propGrid\(scene\), cell, origin, cols, indoors \}\)/);
+  // A hole in the roof is an opening of its own, read off the GM's "Open to the sky" regions through viewedRegions.
+  assert.match(main, /viewedRegions\(scene\.regions\)\.filter\(\(r\) => r\.flags\?\.\[ID\]\?\.openSky === true\)/);
   // sceneOpenings counts open doors near the scene's edge for the drafts and never counts a window: it is not this list.
   const from = main.indexOf("// ---- The smoke a fire fills"), to = main.indexOf("// The ticker: every scene with both switches on");
   assert.ok(from >= 0 && to > from);
@@ -438,4 +441,57 @@ test("no smoke write uses a clock or a coin of its own", () => {
   const from = main.indexOf("// ---- The smoke a fire fills"), to = main.indexOf("// The ticker: every scene with both switches on");
   const smoke = main.slice(from, to);
   assert.doesNotMatch(smoke, /Math\.random\(|Date\.now\(/);
+});
+
+// ---- An inside door is not a vent. ----
+
+// A two-room inn in the same 10x10 scene: the whole of columns 1-5, rows 1-5, with a partition on x = 300 (the line
+// between columns 2 and 3). The taproom is columns 1-2, the back room columns 3-5, and the door between them, in row
+// 3, stands open. Open doors do not block, so the two rooms are ALREADY one room to the walk and the smoke crosses
+// the doorway by itself; the question is only whether the doorway also vents.
+const DOOR = [32, 33]; // col 2 / col 3 of row 3, the pair the inside door stands between
+const innWalled = (i, n) => {
+  if (inRoom(i) !== inRoom(n)) return true; // the inn's outside walls, all shut
+  const ci = i % COLS, cn = n % COLS;
+  if (Math.min(ci, cn) === 2 && Math.max(ci, cn) === 3) return !(DOOR.includes(i) && DOOR.includes(n));
+  return false;
+};
+const INN_WALLS = [{ c: [300, 300, 300, 400], door: 1, ds: 1 }]; // the inside door, open, in row 3
+const INN_GEO = { grid: CELL, cell: CELL, origin: { x: 0, y: 0 }, cols: COLS };
+const TAP_FIRE = [{ i: 22, rate: 1, levels: [] }]; // a fire in the taproom
+
+test("an inn with its inside door open fills with smoke instead of staying clear", () => {
+  // The openings as main.mjs really asks for them: handed the round's own indoors, so the inside door is no vent.
+  const right = smokeOpeningsOf({ walls: INN_WALLS, ...INN_GEO, indoors: inRoom });
+  assert.deepEqual(right, [], "an inside door leads nowhere out");
+  // What the wall-only list used to give: the cells either side of that door, vented as though they led outside.
+  const wrong = smokeOpeningsOf({ walls: INN_WALLS, ...INN_GEO, indoors: () => false });
+  assert.deepEqual(wrong.filter(inRoom).sort((a, b) => a - b), DOOR, "the bug's own list");
+
+  const filled = burn(15, { sources: TAP_FIRE, walled: innWalled, openings: right });
+  const inert = burn(15, { sources: TAP_FIRE, walled: innWalled, openings: wrong });
+  const thick = (p) => p.cells.filter((c) => c.v >= THICK).length;
+  const mass = (p) => p.cells.reduce((sum, c) => sum + c.v, 0);
+  assert.ok(thick(filled) >= 3, `the inn fills: ${thick(filled)} thick`);
+  assert.ok(thick(filled) > thick(inert), `${thick(filled)} thick against ${thick(inert)} when the doorway vented`);
+  assert.ok(mass(filled) > mass(inert) * 1.3, `${mass(filled)} against ${mass(inert)}`);
+  // And the smoke still gets next door through the open doorway, which is what a doorway is for: the back room is
+  // smoking by round 15 and hazy enough to conceal by round 20, having come through that one pair of cells.
+  assert.ok(filled.cells.filter((c) => c.i % COLS >= 3).length >= 3, "the back room is smoking");
+  const later = burn(20, { sources: TAP_FIRE, walled: innWalled, openings: right });
+  assert.ok(later.cells.some((c) => c.i % COLS >= 3 && c.v >= THIN), "the back room hazes over");
+});
+
+test("a hole in the roof is an opening of its own, with both sides indoors", () => {
+  const held = Object.fromEntries(burn(10).cells.map((c) => [String(c.i), Math.round(c.v * 10000) / 10000]));
+  const sc = () => scene({ smoke: held, grid: { cols: COLS, cell: CELL } });
+  const shut = plan({ scene: sc(), sources: [] });
+  const shaft = plan({ scene: sc(), sources: [], sky: (i) => i === 33 });
+  assert.deepEqual(shut.openings, [], "a sealed room with no shaft");
+  assert.deepEqual(shaft.openings, [33], "the cell under the shaft vents upward");
+  const mass = (p) => p.cells.reduce((sum, c) => sum + c.v, 0);
+  assert.ok(mass(shaft) < mass(shut) * 0.95, `${mass(shaft)} < ${mass(shut)}`);
+  // A sky over nothing, and a predicate that throws, both leave the room sealed.
+  assert.deepEqual(plan({ scene: sc(), sources: [], sky: () => false }).openings, []);
+  assert.deepEqual(plan({ scene: sc(), sources: [], sky: () => { throw new Error("no shape"); } }).openings, []);
 });

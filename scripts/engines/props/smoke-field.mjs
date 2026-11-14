@@ -105,35 +105,60 @@ export function wallStandsOpen(wall) {
 
 // The cells of the smoke grid an opening stands on: every cell each open wall runs through, and the cells half a cell
 // either side of it, because a wall is drawn along the line BETWEEN two squares and a doorway vents the rooms on both
-// of its sides. `walls` are the scene's walls ({c: [x1, y1, x2, y2], door, ds, flags}); `cell`, `origin` and `cols` are
-// the smoke grid the indices are read against (the same smokeGridOf the cells are stored with), and `grid` is the
-// scene's own square, which stands in for `cell` when none is given — the same shape smokeSourcesOf takes.
+// of its sides.
+//
+// An open wall is an opening only where it leads OUT: at least one of the two cells it stands between must be outdoors
+// (`indoors(i) !== true`), or off the map altogether, which is as far out as a cell can be. An open door between two
+// indoor rooms is NOT an opening, and this is the whole point of the predicate. Those two rooms are already ONE room
+// to the round's own walk — blockingWalls drops an open door, so no wall stands between them and the smoke diffuses
+// across the doorway by itself. Giving the doorway a vent as well would send that smoke out of the model instead of
+// next door, and an inn with its inside doors open would never fill at all.
+// (A cell under a region open to the sky is an opening in its own right, with no wall needed. That is not here: this
+// function is handed walls, and a shaft in a roof need have no wall anywhere near it. smokeRoundPlan takes its own
+// `sky` predicate for it.)
+//
+// `walls` are the scene's walls ({c: [x1, y1, x2, y2], door, ds, flags}); `cell`, `origin` and `cols` are the smoke grid
+// the indices are read against (the same smokeGridOf the cells are stored with), and `grid` is the scene's own square,
+// which stands in for `cell` when none is given — the same shape smokeSourcesOf takes.
+// `indoors(i)` says whether a cell is in a room. There is NO default: with no predicate the function cannot tell an
+// outside door from an inside one, so it answers [] and the smoke stays in. The permissive reading (every cell
+// outdoors, every open wall a way out) is a caller's to ask for in so many words, `indoors: () => false`, and is only
+// right where nothing at all is known of the rooms. It is deliberately not the silent default: as that, it quietly
+// vented every room an inn had and the smoke never built.
 // Returns [i], sorted, each cell once, nothing off the grid. Pure: no Foundry, no clock.
-export function smokeOpeningsOf({ walls = [], grid = 100, cell = null, origin = { x: 0, y: 0 }, cols = 1 } = {}) {
+export function smokeOpeningsOf({ walls = [], grid = 100, cell = null, origin = { x: 0, y: 0 }, cols = 1, indoors = null } = {}) {
   const square = Number(grid) > 0 ? Number(grid) : 100;
   const size = Number(cell) > 0 ? Number(cell) : square;
   const ox = Number(origin?.x) || 0, oy = Number(origin?.y) || 0;
   const wide = Number.isInteger(Number(cols)) && Number(cols) > 0 ? Number(cols) : 1;
   const out = new Set();
-  const put = (x, y) => {
+  if (typeof indoors !== "function") return [];
+  // The cell a point lands in, or null when that is off the map.
+  const cellAt = (x, y) => {
     const col = Math.floor((x - ox) / size), row = Math.floor((y - oy) / size);
-    if (col < 0 || col >= wide || row < 0) return;
-    out.add(row * wide + col);
+    return col < 0 || col >= wide || row < 0 ? null : row * wide + col;
   };
+  // Off the map is outside; on it, whatever the caller's rooms say.
+  const outside = (i) => i === null || indoors(i) !== true;
+  const put = (i) => { if (i !== null) out.add(i); };
   for (const w of walls ?? []) {
     const c = w?.c;
     if (!Array.isArray(c) || c.length !== 4 || !c.every((n) => Number.isFinite(Number(n)))) continue;
     if (!wallStandsOpen(w)) continue;
     const [x1, y1, x2, y2] = c.map(Number);
     const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
-    // Walked at half a cell at a time, so a long window names every cell along it and never steps over one.
+    // Walked at half a cell at a time, so a long window names every cell along it and never steps over one, and each
+    // step is taken at the MIDDLE of its stretch: a wall that ends exactly on a cell line belongs to the cells it runs
+    // along, not to the one it stops at, and an endpoint sample would claim a row the wall only touches the corner of.
     const steps = Math.max(1, Math.ceil((len * 2) / size));
     // Half a cell across the wall, either way: the squares it stands between.
     const nx = len > 0 ? (-dy / len) * (size / 2) : 0, ny = len > 0 ? (dx / len) * (size / 2) : 0;
-    for (let k = 0; k <= steps; k++) {
-      const t = k / steps, x = x1 + dx * t, y = y1 + dy * t;
-      put(x, y);
-      if (nx || ny) { put(x + nx, y + ny); put(x - nx, y - ny); }
+    for (let k = 0; k < steps; k++) {
+      const t = (k + 0.5) / steps, x = x1 + dx * t, y = y1 + dy * t;
+      const here = cellAt(x, y), near = cellAt(x + nx, y + ny), far = cellAt(x - nx, y - ny);
+      // Both sides indoors: an inside door or an inside window, which carries smoke next door without venting it.
+      if (!outside(near) && !outside(far)) continue;
+      put(here); put(near); put(far);
     }
   }
   return [...out].sort((a, b) => a - b);

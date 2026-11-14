@@ -257,10 +257,12 @@ test("stored zero and junk keys are deleted, not left for ever", () => {
 // ---- Where the smoke gets out: the openings of a scene's walls (smokeOpeningsOf). ----
 
 // A 10-wide grid of 50px cells over a scene whose own square is 100px.
-const G = { grid: 100, cell: 50, origin: { x: 0, y: 0 }, cols: 10 };
+// NOWHERE: no cell is in a room, so every open wall leads out. Said in so many words, never assumed.
+const NOWHERE = () => false;
+const G = { grid: 100, cell: 50, origin: { x: 0, y: 0 }, cols: 10, indoors: NOWHERE };
 
 test("an open door, and an open or broken window, are openings; a closed one is not", () => {
-  const g = { grid: 100, cell: 50, origin: { x: 0, y: 0 }, cols: 10 };
+  const g = { grid: 100, cell: 50, origin: { x: 0, y: 0 }, cols: 10, indoors: NOWHERE };
   const open = { c: [100, 100, 200, 100], door: 1, ds: 1 };
   const shut = { c: [300, 100, 400, 100], door: 1, ds: 0 };
   const broken = { c: [500, 100, 600, 100], door: 0, flags: { animater: { breakWall: { windowKind: "glass", broken: {} } } } };
@@ -289,9 +291,10 @@ test("only a wall that really stands open counts, and each kind is told apart", 
 });
 
 test("an opening stands on the cells BOTH sides of its wall, since a doorway vents either room", () => {
-  // The wall runs along y = 100, the line between row 1 and row 2 of 50px cells, across columns 2 and 3.
+  // The wall runs along y = 100, the line between row 1 and row 2 of 50px cells, from x = 100 to x = 200: columns 2
+  // and 3 of each row, and NOT column 4, which it only touches the corner of.
   const o = smokeOpeningsOf({ walls: [{ c: [100, 100, 200, 100], door: 1, ds: 1 }], ...G });
-  for (const i of [12, 13, 14, 22, 23, 24]) assert.ok(o.includes(i), `cell ${i} stands open`);
+  assert.deepEqual(o, [12, 13, 22, 23]);
   // Nothing a row further away.
   assert.ok(!o.includes(32) && !o.includes(2));
 });
@@ -299,7 +302,7 @@ test("an opening stands on the cells BOTH sides of its wall, since a doorway ven
 test("a shut scene has no openings at all", () => {
   assert.deepEqual(smokeOpeningsOf({ walls: [{ c: [100, 100, 200, 100], door: 1, ds: 0 }, { c: [0, 0, 0, 500] }], ...G }), []);
   assert.deepEqual(smokeOpeningsOf({ walls: [], ...G }), []);
-  assert.deepEqual(smokeOpeningsOf(), []);
+  assert.deepEqual(smokeOpeningsOf({ indoors: NOWHERE }), []);
 });
 
 test("the openings are sorted, told once each, and never off the grid", () => {
@@ -329,15 +332,62 @@ test("the openings are pure: the walls are untouched and the answer is the same 
 
 test("the scene's own square stands in for the cell size when none is given", () => {
   // grid 100, no cell: the cells are 100px, so the wall along y = 100 stands on rows 0 and 1 of columns 1 and 2.
-  const o = smokeOpeningsOf({ walls: [{ c: [100, 100, 200, 100], door: 1, ds: 1 }], grid: 100, cols: 10 });
-  for (const i of [1, 2, 11, 12]) assert.ok(o.includes(i), `cell ${i}`);
+  const o = smokeOpeningsOf({ walls: [{ c: [100, 100, 200, 100], door: 1, ds: 1 }], grid: 100, cols: 10, indoors: NOWHERE });
+  assert.deepEqual(o, [1, 11]);
 });
 
 test("an opening really does vent the room it stands in", () => {
   const walls = [{ c: [0, 100, 100, 100], door: 1, ds: 1 }];
-  const openings = smokeOpeningsOf({ walls, grid: 100, cell: 100, origin: { x: 0, y: 0 }, cols: 5 });
+  const openings = smokeOpeningsOf({ walls, grid: 100, cell: 100, origin: { x: 0, y: 0 }, cols: 5, indoors: NOWHERE });
   assert.ok(openings.length, "the doorway names cells");
   const shut = run({ cells: room(1.5), sources: [], cols: 5, rows: 5, openings: [], room: 25 }, 6);
   const vented = run({ cells: room(1.5), sources: [], cols: 5, rows: 5, openings, room: 25 }, 6);
   assert.ok(mass(vented) < mass(shut) * 0.9, `${mass(vented)} < ${mass(shut)}`);
+});
+
+// ---- An open wall is an opening only where it leads OUT. ----
+
+// A 10x10 grid of 100px cells. The house is columns 1-4, rows 1-4, and a partition runs down x = 300 inside it, so
+// columns 1-2 are the taproom and columns 3-4 the back room. Everything else is out of doors.
+const H = { grid: 100, cell: 100, origin: { x: 0, y: 0 }, cols: 10 };
+const inHouse = (i) => { const c = i % 10, r = (i - c) / 10; return c >= 1 && c <= 4 && r >= 1 && r <= 4; };
+const openDoor = (c) => ({ c, door: 1, ds: 1 });
+const smashedWindow = (c) => ({ c, door: 0, flags: { animater: { breakWall: { broken: { kind: "window" } } } } });
+
+test("a house wall's open door is an opening; an inside door between two rooms is not", () => {
+  // The front door stands in the house's west wall, x = 100 between row 2's outdoor cell 20 and indoor cell 21.
+  const front = smokeOpeningsOf({ walls: [openDoor([100, 200, 100, 300])], ...H, indoors: inHouse });
+  assert.ok(front.includes(21), "the cell inside the front door stands open");
+  // The inside door is in the partition at x = 300, between indoor cells 22 and 23. Both sides are rooms.
+  assert.deepEqual(smokeOpeningsOf({ walls: [openDoor([300, 200, 300, 300])], ...H, indoors: inHouse }), [],
+    "an inside door vents nothing: it carries the smoke next door instead");
+  // Told apart on the SAME scene, and by nothing but which side is a room.
+  const both = smokeOpeningsOf({ walls: [openDoor([100, 200, 100, 300]), openDoor([300, 200, 300, 300])], ...H, indoors: inHouse });
+  assert.ok(both.includes(21) && !both.includes(23), JSON.stringify(both));
+});
+
+test("a broken window in an outside wall is an opening; in an inside wall it is not", () => {
+  const outer = smokeOpeningsOf({ walls: [smashedWindow([100, 200, 100, 300])], ...H, indoors: inHouse });
+  assert.ok(outer.includes(21));
+  assert.deepEqual(smokeOpeningsOf({ walls: [smashedWindow([300, 200, 300, 300])], ...H, indoors: inHouse }), []);
+  // The same for a window swung open rather than smashed.
+  const swung = (c) => ({ c, door: 0, flags: { animater: { window: "glassWindow", windowOpen: true } } });
+  assert.ok(smokeOpeningsOf({ walls: [swung([100, 200, 100, 300])], ...H, indoors: inHouse }).includes(21));
+  assert.deepEqual(smokeOpeningsOf({ walls: [swung([300, 200, 300, 300])], ...H, indoors: inHouse }), []);
+});
+
+test("off the map is as far out as a cell can be: a door in the map's own edge still vents", () => {
+  const edge = (i) => i % 10 === 0 ? true : inHouse(i);
+  // x = 0 is the map's west edge: one side of this door is no cell at all.
+  assert.ok(smokeOpeningsOf({ walls: [openDoor([0, 200, 0, 300])], ...H, indoors: edge }).includes(20));
+});
+
+test("with no indoors predicate nothing is an opening, so the smoke stays in", () => {
+  const walls = [openDoor([100, 200, 100, 300]), smashedWindow([300, 200, 300, 300])];
+  assert.deepEqual(smokeOpeningsOf({ walls, ...H }), [], "no predicate: it cannot tell an outside door from an inside one");
+  for (const indoors of [null, undefined, true, "yes", {}]) {
+    assert.deepEqual(smokeOpeningsOf({ walls, ...H, indoors }), [], JSON.stringify(indoors));
+  }
+  // The permissive reading is a caller's to ask for in so many words.
+  assert.ok(smokeOpeningsOf({ walls, ...H, indoors: NOWHERE }).length > 0);
 });
