@@ -117,26 +117,31 @@ export function wallStandsOpen(wall) {
 // function is handed walls, and a shaft in a roof need have no wall anywhere near it. smokeRoundPlan takes its own
 // `sky` predicate for it.)
 //
-// `walls` are the scene's walls ({c: [x1, y1, x2, y2], door, ds, flags}); `cell`, `origin` and `cols` are the smoke grid
-// the indices are read against (the same smokeGridOf the cells are stored with), and `grid` is the scene's own square,
-// which stands in for `cell` when none is given — the same shape smokeSourcesOf takes.
+// `walls` are the scene's walls ({c: [x1, y1, x2, y2], door, ds, flags}); `cell`, `origin`, `cols` and `rows` are the
+// smoke grid the indices are read against (the same smokeGridOf the cells are stored with), and `grid` is the scene's
+// own square, which stands in for `cell` when none is given — the same shape smokeSourcesOf takes.
+// `rows` is what tells the map's BOTTOM edge from a row inside it. Without it the row is bounded only above, so a cell
+// below the map reads as an ordinary cell and `indoors` is asked about it: underground, where every cell is indoors,
+// that made a door in the bottom edge the one edge of four that did not vent. Left out, the bottom edge simply never
+// vents, which errs toward keeping the smoke in rather than toward losing it.
 // `indoors(i)` says whether a cell is in a room. There is NO default: with no predicate the function cannot tell an
 // outside door from an inside one, so it answers [] and the smoke stays in. The permissive reading (every cell
 // outdoors, every open wall a way out) is a caller's to ask for in so many words, `indoors: () => false`, and is only
 // right where nothing at all is known of the rooms. It is deliberately not the silent default: as that, it quietly
 // vented every room an inn had and the smoke never built.
 // Returns [i], sorted, each cell once, nothing off the grid. Pure: no Foundry, no clock.
-export function smokeOpeningsOf({ walls = [], grid = 100, cell = null, origin = { x: 0, y: 0 }, cols = 1, indoors = null } = {}) {
+export function smokeOpeningsOf({ walls = [], grid = 100, cell = null, origin = { x: 0, y: 0 }, cols = 1, rows = null, indoors = null } = {}) {
   const square = Number(grid) > 0 ? Number(grid) : 100;
   const size = Number(cell) > 0 ? Number(cell) : square;
   const ox = Number(origin?.x) || 0, oy = Number(origin?.y) || 0;
   const wide = Number.isInteger(Number(cols)) && Number(cols) > 0 ? Number(cols) : 1;
+  const tall = Number.isInteger(Number(rows)) && Number(rows) > 0 ? Number(rows) : Infinity;
   const out = new Set();
   if (typeof indoors !== "function") return [];
   // The cell a point lands in, or null when that is off the map.
   const cellAt = (x, y) => {
     const col = Math.floor((x - ox) / size), row = Math.floor((y - oy) / size);
-    return col < 0 || col >= wide || row < 0 ? null : row * wide + col;
+    return col < 0 || col >= wide || row < 0 || row >= tall ? null : row * wide + col;
   };
   // Off the map is outside; on it, whatever the caller's rooms say.
   const outside = (i) => i === null || indoors(i) !== true;

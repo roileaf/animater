@@ -27,7 +27,7 @@ import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf } from "./engines/props/s
 import { registerSmokeFence } from "./engines/props/smoke-fence.mjs";
 import { smokeGridOf, storedSmokeGrid } from "./engines/props/smoke-edges.mjs";
 import { smokeRegionData, CONCEALMENT_BEHAVIOUR } from "./engines/props/smoke-regions.mjs";
-import { smokeRoundPlan, smokeRoomAt, smokeOnlySave, smokeClearPlan } from "./engines/props/smoke-round.mjs";
+import { smokeRoundPlan, smokeRoomAt, smokeOnlySave, smokeClearPlan, smokeRunsOn, smokeLeftovers } from "./engines/props/smoke-round.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls, blockingWalls, wallStop } from "./engines/props/prop-walls.mjs";
@@ -10308,7 +10308,10 @@ const smokeRoomsOf = (scene) => {
 // fireRound found alight. Switched off, or with nothing stored and nothing burning, it costs a flag read.
 async function smokeRound(scene, burning = []) {
   if (!scene) return;
-  const activeGM = game.users?.activeGM?.isSelf === true, on = scene.flags?.[ID]?.roomSmoke === true;
+  // All three switches, not only "Fires fill rooms with smoke": the round rides the fire's tick, so Breakable props
+  // and Fire spreads are the smoke's switches too (smoke-round.mjs smokeRunsOn). Any of them off and the round's
+  // whole job is to clear what is stored.
+  const activeGM = game.users?.activeGM?.isSelf === true, on = smokeRunsOn(scene);
   const geo = activeGM && on ? smokeGridOf(scene.dimensions) : null;
   let plan;
   if (!geo) plan = smokeRoundPlan({ activeGM, on, scene });
@@ -10345,7 +10348,7 @@ async function smokeRound(scene, burning = []) {
     // next door by itself; vented as well, the smoke would leave the model and an inn would never fill.
     // indoor-air's own sceneOpenings is a different list for a different job (the drafts' way out, doors near the
     // scene's edge only, never a window) and is deliberately not used here.
-    const openings = smokeOpeningsOf({ walls: scene.walls?.contents ?? [], grid: propGrid(scene), cell, origin, cols, indoors });
+    const openings = smokeOpeningsOf({ walls: scene.walls?.contents ?? [], grid: propGrid(scene), cell, origin, cols, rows, indoors });
     plan = smokeRoundPlan({ activeGM, on, scene, sources, indoors, walled, openings, sky,
       roomOf: (i) => smokeRoomAt({ from: i, cols, rows, indoors, walled, cache: smokeRoomsOf(scene) }) });
   }
@@ -10384,6 +10387,11 @@ async function smokeRegionNow(scene, shapes, level) {
   await scene.updateEmbeddedDocuments("Region", [{ _id: region.id, shapes: data.shapes, levels: data.levels }], SMOKE_NOTE)
     .catch((e) => runtime?.trace("props", `smoke region not written: ${e?.message ?? e}`));
 }
+// A fire round still writing would put back whatever is cleared or thinned while it is in flight. One wait, used by
+// everything that clears behind the round's back (Repair, a quench): never a second mechanism.
+const afterFireRound = async (scene) => {
+  for (let i = 0; i < 100 && fireRunning.has(scene.id); i++) await new Promise((done) => { setTimeout(done, 50)?.unref?.(); });
+};
 // Everything the smoke has left on a scene, taken off it at once (smoke-round.mjs smokeClearPlan): the cells by name,
 // the geometry stored beside them by name, the concealment region, and — the flag being gone — every client's
 // sight-blocking fence with them (smoke-fence.mjs rebuilds from the stored flag on this very update). Repair asks for
@@ -10392,6 +10400,8 @@ async function smokeRegionNow(scene, shapes, level) {
 // itself over the next rounds instead, which it does: with nothing burning the fade clears it on its own.
 async function clearSmokeNow(scene) {
   if (!scene || game.users?.activeGM?.isSelf !== true) return;
+  // A round in flight would write its pre-clear cells and region back after this: let it finish first.
+  await afterFireRound(scene);
   const plan = smokeClearPlan(scene);
   if (Object.keys(plan.fields).length) {
     await scene.update(withDeletes(plan.fields, propDel()), SMOKE_NOTE)
@@ -10399,7 +10409,8 @@ async function clearSmokeNow(scene) {
   }
   await smokeRegionNow(scene, [], null);
 }
-// The ticker: every scene with both switches on, each keeping its own count, on the active GM alone.
+// The ticker: every scene with both switches on, each keeping its own count, on the active GM alone. Then any scene
+// still carrying smoke whose switches have since gone off, to take it away.
 async function fireRoundsNow() {
   if (!game.users?.activeGM?.isSelf) return;
   const now = fireNow();
@@ -10418,6 +10429,16 @@ async function fireRoundsNow() {
     let burning = [];
     try { burning = (await fireRound(scene)) ?? []; } catch (e) { runtime?.trace("props", `fire round: ${e?.message ?? e}`); }
     try { await smokeRound(scene, burning); } catch (e) { runtime?.trace("props", `smoke round: ${e?.message ?? e}`); }
+    finally { fireRunning.delete(scene.id); }
+  }
+  // Smoke left standing on a scene the fire round no longer visits: its switches were unticked with a room full, so
+  // fireScenesOf passes it by and nothing else would ever take the cells, the geometry, the concealment region or
+  // the clients' sight-blocking fence off it. Its round clears it (on === false), and once clear it is not listed
+  // again. Run on every tick rather than on the scene's round, because this is the GM having asked for it to stop.
+  for (const scene of smokeLeftovers(game.scenes?.contents ?? [], { activeGM: true })) {
+    if (fireRunning.has(scene.id)) continue;
+    fireRunning.add(scene.id);
+    try { await smokeRound(scene, []); } catch (e) { runtime?.trace("props", `smoke left behind: ${e?.message ?? e}`); }
     finally { fireRunning.delete(scene.id); }
   }
 }
@@ -10620,8 +10641,7 @@ async function runQuench(scene, cause, user) {
   return quenchGate.run(`${scene.id}:${area.uuid}`, () => quenchWrite(scene, area));
 }
 async function quenchWrite(scene, area) {
-  // A fire round still writing would put back what is cleared here: let it finish first.
-  for (let i = 0; i < 100 && fireRunning.has(scene.id); i++) await new Promise((done) => setTimeout(done, 50));
+  await afterFireRound(scene);
   const out = quenchPutOf(scene, area);
   const del = propDel();
   // The same water or cold thins the room smoke it falls through (fire-spread.mjs quenchSmokeUpdate), asked against

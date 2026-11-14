@@ -131,6 +131,33 @@ const clearPlan = (scene) => {
   return { fields, cells: [], shapes: [], level: null, grid: null, openings: [], rooms: [] };
 };
 
+// ---- Which scenes the smoke round must visit, and whether it may run on them. ----
+// The round rides the FIRE round's tick, and the fire round visits only scenes with Breakable props AND Fire spreads
+// on (fire-rounds.mjs fireScenesOf). So those two switches are the smoke's as surely as its own is: untick either one
+// with a room full and nothing would ever visit that scene again.
+// Whether the room smoke may run on a scene at all: all three.
+export const smokeRunsOn = (scene) => {
+  const own = scene?.flags?.animater;
+  return own?.roomSmoke === true && own?.breakableProps === true && own?.fireSpreads === true;
+};
+
+// Whether a scene still carries smoke state of ours: any cell key at all (a zero or a junk entry counts: it is a key
+// that is really there), or the geometry stored beside them.
+export const smokeHeldBy = (scene) => smokeKeysOf(scene).length > 0 || scene?.flags?.animater?.[SMOKE_GRID_FLAG] !== undefined;
+
+// The scenes that need a round although the fire round will not visit them: every scene still carrying smoke state
+// whose switches no longer let the smoke run. Their round's whole job is to take that state off.
+// This is the difference between one more tick of smoke and for ever. Without it, unticking Breakable props or Fire
+// spreads on a room full of smoke left the cells, the geometry, the concealment region AND every client's
+// sight-blocking fence standing — and the fence is rebuilt from the stored flag alone, inside Foundry's own
+// initializeEdges, referring to no switch at all, so it survived a reload on every client and blinded the players in
+// a room with no smoke drawn in it, with nothing short of editing flags by hand to undo it.
+// Only the active GM writes, so nobody else is given a list.
+export function smokeLeftovers(scenes, { activeGM = false } = {}) {
+  if (activeGM !== true) return [];
+  return (scenes ?? []).filter((s) => !smokeRunsOn(s) && smokeHeldBy(s));
+}
+
 // Everything the smoke left on a scene, taken off it: the cells deleted by name, the stored geometry removed by name,
 // and no shapes at all, so the caller takes the concealment region away with them. Repair asks for this, and so does a
 // scene whose grid has stopped making sense. The `-=` key form is the caller's to translate (withDeletes).
@@ -140,7 +167,8 @@ export function smokeClearPlan(scene) {
 
 // The round's whole decision.
 //   activeGM  this client may write (only the active GM ever does).
-//   on        the scene's "Fires fill rooms with smoke" switch.
+//   on        whether the smoke may run here at all: smokeRunsOn, which is all three switches, not just its own.
+//             Off, the round's whole job is to clear what is stored (clearPlan).
 //   scene     the scene view: {id, dimensions, flags, levels, initialLevel/firstLevel}.
 //   sources   [{i, rate, levels}] from smokeSourcesOf, already placed on this scene's smoke grid.
 //   indoors(i)      whether that cell is in a room (a region that keeps the weather out, or an underground scene).

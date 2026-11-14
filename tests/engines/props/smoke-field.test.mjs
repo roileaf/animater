@@ -391,3 +391,24 @@ test("with no indoors predicate nothing is an opening, so the smoke stays in", (
   // The permissive reading is a caller's to ask for in so many words.
   assert.ok(smokeOpeningsOf({ walls, ...H, indoors: NOWHERE }).length > 0);
 });
+
+test("underground, a door in the map's bottom edge vents like the other three", () => {
+  // An underground scene: every cell is indoors, so the only thing that can make an opening is a side that is off the
+  // map. A 10x10 grid of 100px cells, and a door lying in each of the four edges.
+  const deep = { grid: 100, cell: 100, origin: { x: 0, y: 0 }, cols: 10, rows: 10, indoors: () => true };
+  const door = (c) => [{ c, door: 1, ds: 1 }];
+  assert.ok(smokeOpeningsOf({ walls: door([100, 0, 200, 0]), ...deep }).includes(1), "the top edge");
+  assert.ok(smokeOpeningsOf({ walls: door([0, 100, 0, 200]), ...deep }).includes(10), "the west edge");
+  assert.ok(smokeOpeningsOf({ walls: door([1000, 100, 1000, 200]), ...deep }).includes(19), "the east edge");
+  assert.ok(smokeOpeningsOf({ walls: door([100, 1000, 200, 1000]), ...deep }).includes(91), "the bottom edge");
+  // Without rows the bottom edge cannot be told from a row inside the map, so it does not vent. Documented, and the
+  // safe way round: the smoke stays in rather than draining away through a wall that leads nowhere.
+  const { rows, ...unbounded } = deep;
+  assert.deepEqual(smokeOpeningsOf({ walls: door([100, 1000, 200, 1000]), ...unbounded }), []);
+  assert.ok(smokeOpeningsOf({ walls: door([100, 0, 200, 0]), ...unbounded }).includes(1), "the top edge still does");
+  // A silly rows is as good as none. (A numeric string is not silly: cols is read the same way.)
+  assert.ok(smokeOpeningsOf({ walls: door([100, 1000, 200, 1000]), ...deep, rows: "10" }).includes(91));
+  for (const bad of [0, -1, 2.5, null, undefined]) {
+    assert.deepEqual(smokeOpeningsOf({ walls: door([100, 1000, 200, 1000]), ...deep, rows: bad }), [], JSON.stringify(bad));
+  }
+});

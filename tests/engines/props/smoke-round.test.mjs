@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { smokeRoundPlan, smokeLevelFor, smokeShapes, smokeNeighbours, smokeOnlySave, smokeRoomAt, smokeClearPlan, ROOM_CAP } from "../../../scripts/engines/props/smoke-round.mjs";
+import { smokeRoundPlan, smokeLevelFor, smokeShapes, smokeNeighbours, smokeOnlySave, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, ROOM_CAP } from "../../../scripts/engines/props/smoke-round.mjs";
 import { THICK, THIN, smokeOpeningsOf } from "../../../scripts/engines/props/smoke-field.mjs";
 import { propSceneFieldsHTML } from "../../../scripts/ui/prop-config.mjs";
 
@@ -401,47 +401,100 @@ test("a room with no source left empties on its own, cells, geometry and shapes"
   assert.equal(p.level, null);
 });
 
-// ---- The wiring in main.mjs that no pure test can see. ----
+// ---- The smoke may run only while all three of its switches are on, and is cleared the moment one goes off. ----
+// Behavioural, over the pure modules: the round rides the FIRE round's tick, and the fire round visits only scenes
+// with Breakable props AND Fire spreads on (fire-rounds.mjs fireScenesOf). Untick either with a room full and nothing
+// would ever visit that scene again, so the cells, the geometry, the concealment region and — worst — the clients'
+// sight-blocking fence would stand for ever, blinding the players in a room with no smoke drawn in it.
 
-test("the round feeds it the walls' own openings, and not the drafts' list", () => {
-  assert.match(main, /plan = smokeRoundPlan\(\{ activeGM, on, scene, sources, indoors, walled, openings, sky,/);
-  // The openings are told which side is a room, by the very same predicate the round uses: an inside door is no vent.
-  assert.match(main, /smokeOpeningsOf\(\{ walls: scene\.walls\?\.contents \?\? \[\], grid: propGrid\(scene\), cell, origin, cols, indoors \}\)/);
-  // A hole in the roof is an opening of its own, read off the GM's "Open to the sky" regions through viewedRegions.
-  assert.match(main, /viewedRegions\(scene\.regions\)\.filter\(\(r\) => r\.flags\?\.\[ID\]\?\.openSky === true\)/);
-  // sceneOpenings counts open doors near the scene's edge for the drafts and never counts a window: it is not this list.
-  const from = main.indexOf("// ---- The smoke a fire fills"), to = main.indexOf("// The ticker: every scene with both switches on");
-  assert.ok(from >= 0 && to > from);
-  assert.doesNotMatch(main.slice(from, to), /sceneOpenings\(/);
+const switched = (own = {}) => ({ ...scene({ smoke: { 33: 2, 34: 1 }, grid: { cols: COLS, cell: CELL, level: A } }),
+  flags: { animater: { roomSmoke: true, breakableProps: true, fireSpreads: true, smoke: { 33: 2, 34: 1 }, smokeGrid: { cols: COLS, cell: CELL, level: A }, ...own } } });
+const CLEARED = { "flags.animater.smoke.-=33": null, "flags.animater.smoke.-=34": null, "flags.animater.-=smokeGrid": null };
+
+test("every one of the three switches has to be on for the smoke to run", () => {
+  assert.equal(smokeRunsOn(switched()), true);
+  for (const off of ["roomSmoke", "breakableProps", "fireSpreads"]) {
+    assert.equal(smokeRunsOn(switched({ [off]: false })), false, off + " off");
+    assert.equal(smokeRunsOn(switched({ [off]: undefined })), false, off + " unset");
+  }
+  assert.equal(smokeRunsOn(null), false);
+  assert.equal(smokeRunsOn({}), false);
 });
 
-test("Repair takes the smoke away with the props, and only the active GM writes it", () => {
+test("a scene with stored cells and Fire spreads off clears on its next round, region and geometry with it", () => {
+  const sc = switched({ fireSpreads: false });
+  // The round's own gate is smokeRunsOn, so this is the decision main.mjs reaches with that scene.
+  const p = smokeRoundPlan({ activeGM: true, on: smokeRunsOn(sc), scene: sc, sources: FIRE, indoors: inRoom, walled: sealed, roomOf });
+  assert.deepEqual(p.fields, CLEARED, "the cells AND the geometry, each by name");
+  assert.deepEqual(p.shapes, [], "no shapes, so the caller takes the concealment region away");
+  assert.equal(p.level, null);
+  assert.deepEqual(p.cells, [], "and nothing is put back");
+  // Nothing writes a whole object flag: Foundry merges those and would strand what was there.
+  for (const key of Object.keys(p.fields)) assert.ok(!/\.smoke$|\.smokeGrid$/.test(key), key);
+});
+
+test("the same for Breakable props off, and for the smoke's own switch", () => {
+  for (const off of ["breakableProps", "roomSmoke"]) {
+    const sc = switched({ [off]: false });
+    const p = smokeRoundPlan({ activeGM: true, on: smokeRunsOn(sc), scene: sc, sources: FIRE, indoors: inRoom, walled: sealed, roomOf });
+    assert.deepEqual(p.fields, CLEARED, off);
+    assert.deepEqual(p.shapes, [], off);
+  }
+});
+
+test("the round still reaches a scene the fire round has stopped visiting", () => {
+  // This is the half the clearing depends on: the fire round's list would not include these scenes at all.
+  const dead = switched({ fireSpreads: false }), live = switched(), empty = { ...switched({ fireSpreads: false }), flags: { animater: { fireSpreads: false } } };
+  const ids = (list) => list.map((x) => x.id);
+  assert.deepEqual(ids(smokeLeftovers([dead], { activeGM: true })), [dead.id], "switches off with smoke stored: listed");
+  assert.deepEqual(smokeLeftovers([live], { activeGM: true }), [], "still running: the fire round has it");
+  assert.deepEqual(smokeLeftovers([empty], { activeGM: true }), [], "nothing stored: nothing to clear");
+  assert.deepEqual(smokeLeftovers([dead], { activeGM: false }), [], "only the active GM writes");
+  assert.deepEqual(smokeLeftovers(null, { activeGM: true }), []);
+  // Once its round has cleared it, it is not listed again: that is what stops this running for ever.
+  const cleaned = { ...dead, flags: { animater: { roomSmoke: true, breakableProps: true, fireSpreads: false } } };
+  assert.deepEqual(smokeLeftovers([cleaned], { activeGM: true }), []);
+});
+
+test("a scene is held by its geometry alone, or by a stored zero, as surely as by a density", () => {
+  const held = (own) => smokeHeldBy({ flags: { animater: own } });
+  assert.equal(held({ smoke: { 3: 1.5 } }), true);
+  assert.equal(held({ smokeGrid: { cols: 10, cell: 100 } }), true, "geometry with no cells is still state");
+  assert.equal(held({ smoke: { 3: 0 } }), true, "a stored zero is a key that is really there");
+  assert.equal(held({ smoke: { 3: "x" } }), true, "and so is a junk entry");
+  assert.equal(held({ smoke: {} }), false);
+  assert.equal(held({}), false);
+  assert.equal(smokeHeldBy(null), false);
+});
+
+// ---- The one thing no pure test can reach. ----
+// Everything else about main.mjs's smoke is now tested through the pure modules above (the plan, the openings, the
+// clear, the thinning). What is left is only WHICH pure call main.mjs makes at each of its four call sites, and that
+// has no pure surface at all: the call sites live inside Foundry hooks, take live documents, and write through
+// scene.update. One test, by its source text, and nothing in it that the pure tests already cover.
+test("main.mjs wires its four call sites to the pure decisions, and to nothing else", () => {
+  // The round: all three switches as its gate, the openings told which side is a room, the sky and the openings in.
+  assert.match(main, /on = smokeRunsOn\(scene\)/);
+  assert.match(main, /smokeOpeningsOf\(\{ walls: scene\.walls\?\.contents \?\? \[\], grid: propGrid\(scene\), cell, origin, cols, rows, indoors \}\)/);
+  assert.match(main, /smokeRoundPlan\(\{ activeGM, on, scene, sources, indoors, walled, openings, sky,/);
+  // The leftover pass, on the same tick, so a scene the fire round has dropped is still cleared.
+  assert.match(main, /for \(const scene of smokeLeftovers\(game\.scenes\?\.contents \?\? \[\], \{ activeGM: true \}\)\)/);
+  // Repair, and the quench, each through the pure plan and each waiting out a round in flight on the ONE wait.
   assert.match(main, /await clearSmokeNow\(scene\);/);
-  const body = main.slice(main.indexOf("async function clearSmokeNow"), main.indexOf("// The ticker: every scene with both switches on"));
-  assert.match(body, /game\.users\?\.activeGM\?\.isSelf !== true\) return;/, "no other client writes");
-  assert.match(body, /smokeClearPlan\(scene\)/);
-  // Every `-=` write goes through withDeletes: the bare key form is deprecated in v14.
-  assert.match(body, /scene\.update\(withDeletes\(plan\.fields, propDel\(\)\), SMOKE_NOTE\)/);
-  assert.match(body, /await smokeRegionNow\(scene, \[\], null\);/, "the concealment region goes too");
-  // It is Repair that asks, after the props and their fires are back.
-  const repair = main.slice(main.indexOf("async function repairAllProps"));
-  assert.ok(repair.indexOf("await clearSmokeNow(scene);") < repair.indexOf("return r.tiles.length;"));
-});
-
-test("water and cold thin the smoke they cover, against the stored grid", () => {
-  const body = main.slice(main.indexOf("async function quenchWrite"), main.indexOf("async function receiveQuench"));
-  assert.match(body, /quenchSmokeUpdate\(scene, area\.testPoint, storedSmokeGrid\(scene, smokeCellsOf\(scene\)\) \?\? smokeGridOf\(scene\.dimensions\)\)/);
-  assert.match(body, /withDeletes\(thinned\.fields, del\)/, "the `-=` deletes go through withDeletes");
-  assert.match(body, /if \(!thinned\.cells\.length\) await smokeRegionNow\(scene, \[\], null\);/);
-  // The thinning happens whether or not anything was alight: the early return comes after it.
-  assert.ok(body.indexOf("const thinned =") < body.indexOf("if (!out.put.length) return thinnedAny;"));
-});
-
-test("no smoke write uses a clock or a coin of its own", () => {
-  const from = main.indexOf("// ---- The smoke a fire fills"), to = main.indexOf("// The ticker: every scene with both switches on");
-  const smoke = main.slice(from, to);
+  assert.match(main, /quenchSmokeUpdate\(scene, area\.testPoint, storedSmokeGrid/);
+  assert.equal([...main.matchAll(/await afterFireRound\(scene\);/g)].length, 2, "Repair and the quench, one mechanism");
+  const quench = main.slice(main.indexOf("async function quenchWrite"), main.indexOf("async function receiveQuench"));
+  assert.match(quench, /await afterFireRound\(scene\);/, "the quench waits on the one mechanism");
+  assert.doesNotMatch(quench, /fireRunning\.has/, "and keeps no poll of its own");
+  // Only the active GM writes, every `-=` goes through withDeletes, and no smoke write keeps a clock or a coin.
+  const clear = main.slice(main.indexOf("async function clearSmokeNow"), main.indexOf("// The ticker: every scene with both switches on"));
+  assert.match(clear, /game\.users\?\.activeGM\?\.isSelf !== true\) return;/);
+  assert.match(clear, /withDeletes\(plan\.fields, propDel\(\)\)/);
+  const smoke = main.slice(main.indexOf("// ---- The smoke a fire fills"), main.indexOf("// The ticker: every scene with both switches on"));
   assert.doesNotMatch(smoke, /Math\.random\(|Date\.now\(/);
+  assert.doesNotMatch(smoke, /sceneOpenings\(/, "the drafts' list is a different list for a different job");
 });
+
 
 // ---- An inside door is not a vent. ----
 
