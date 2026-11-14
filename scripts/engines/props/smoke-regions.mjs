@@ -27,15 +27,24 @@ export function concealmentPlan(options) {
 // silently inert. A caller passing a different count has a bug, so this THROWS rather than guess which level, or split the
 // shapes across regions, the caller meant. It is set whether or not visioner is present.
 //
-// PRIORITY: a darkness source whose priority is >= the region's suppresses the clip (radius 0), so a fire in a magically
-// dark room would show no smoke. We set a deliberately high priority so ordinary and magical darkness do not win. Value
-// chosen, not read from Foundry's source (not found locally): confirm in-world.
+// PRIORITY: clipping is suppressed (radius 0) when region priority <= a darkness source's priority (foundry.mjs ~75063), so
+// a fire in magical darkness would show no smoke. Restriction priority is NumberField({integer: true, initial: 0, min: 0})
+// with no maximum (foundry.mjs:25308), and light/darkness sources default to priority 0 with no maximum (foundry.mjs:16759).
+// 1000 therefore clears every default darkness source; only a GM-authored darkness source at 1000 or above suppresses it.
 export const SMOKE_RESTRICTION_PRIORITY = 1000;
+
+const DOCUMENT_ID = /^[a-zA-Z0-9]{16}$/;
 
 export function smokeRegionData(shapes, options) {
   const { levels, visioner, origin } = options ?? {};
   if (!Array.isArray(levels) || levels.length !== 1) {
     throw new Error("smokeRegionData: exactly one level is required (core skips the sight clip otherwise)");
+  }
+  // The level must be a real document id: a region's `levels` is SceneLevelsSetField (foundry.mjs:13489), a SetField of
+  // DocumentIdField({nullable: false}) over the scene's embedded Level collection (foundry.mjs:23108). A junk id is invalid
+  // data, and would leave the smoke drawn while the sight clip silently never runs.
+  if (typeof levels[0] !== "string" || !DOCUMENT_ID.test(levels[0])) {
+    throw new Error("smokeRegionData: the level must be a 16-character Foundry document id");
   }
   if (!origin || !Number.isFinite(origin.x) || !Number.isFinite(origin.y)) {
     throw new Error("smokeRegionData: a finite origin {x, y} is required (core would use the polygon centroid)");
