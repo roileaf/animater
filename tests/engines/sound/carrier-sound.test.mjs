@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
-import { ROLL_SOUNDS, KNOCK_SOUNDS, IDLE_SOUNDS, OAR_SOUNDS, rollSurface, rollFile, rollShape, jingleGap, jingle, strokeGap, paceGap, paceVoice, lapFile, lapShape, knocksFor, knocksOf, hasTeam, isRowed, teamCall, callGap, carrierSoundFiles } from '../../../scripts/engines/sound/carrier-sound.mjs';
+import { ROLL_SOUNDS, KNOCK_SOUNDS, IDLE_SOUNDS, OAR_SOUNDS, HOOF_SOUNDS, rollSurface, rollFile, rollShape, jingleGap, jingle, strokeGap, paceGap, paceVoice, lapFile, lapShape, knocksFor, knocksOf, hasTeam, isRowed, teamCall, callGap, carrierSoundFiles, hoofFile, hoofShape, mountPace, MOUNT_PACES, PACE_AT } from '../../../scripts/engines/sound/carrier-sound.mjs';
 
 const catalog = JSON.parse(readFileSync(new URL('../../../assets/sounds/vehicles/catalog.json', import.meta.url)));
 
@@ -38,7 +38,7 @@ test('each carrier keeps one voice, and the kinds that do not roll are silent', 
   assert.ok(ROLL_SOUNDS.wood.includes(rollFile('wagon', 'wood', 'w1')));
   assert.ok(ROLL_SOUNDS.barrow.includes(rollFile('cart', 'dirt', 'c1')), 'a hand cart has its own lighter one');
   assert.ok(ROLL_SOUNDS.wash.includes(rollFile('boat', 'water', 'b')), 'a boat holds the wash along its hull');
-  assert.equal(rollFile('mount', 'dirt', 'm'), null, 'a mount walks on hooves, which the gait already sounds');
+  assert.equal(rollFile('mount', 'dirt', 'm'), null, 'a mount has no rims: it has hooves, which are their own thing');
   assert.equal(rollFile('party', 'dirt', 'p'), null);
   assert.equal(rollFile('wagon', 'water', 'w1'), null, 'a wagon in the water is not rolling');
 });
@@ -150,6 +150,42 @@ test('a horse waiting in the shafts calls now and then, head up, and nothing els
   assert.ok(gaps.every((g) => g >= 26000 && g <= 60000));
   assert.ok(new Set(gaps).size > 5);
   assert.ok(!carrierSoundFiles().includes(call.file), 'it is an animal voice, not one of the vehicle clips');
+});
+
+// Roi: "horse(mount) sfx doesnt match galloping horse". It did not: a ridden horse made no sound of its own, and what
+// was heard was its footstep, a coconut clop paced by the creature's size and never by how fast it was going.
+test('a mount holds the hooves of the pace it has worked up to', () => {
+  assert.deepEqual(MOUNT_PACES, ['walk', 'trot', 'gallop']);
+  // The journey decides the pace: out of the gate at a walk, into a trot, galloping across a field.
+  assert.equal(mountPace(0), 'walk');
+  assert.equal(mountPace(PACE_AT.trot - 0.01), 'walk');
+  assert.equal(mountPace(PACE_AT.trot), 'trot');
+  assert.equal(mountPace(PACE_AT.gallop - 0.01), 'trot');
+  assert.equal(mountPace(PACE_AT.gallop), 'gallop');
+  assert.equal(mountPace(40), 'gallop');
+  assert.equal(mountPace(-5), 'walk', 'and nonsense is a standing start');
+  // Each pace is its own recording of a real horse, one kept voice per mount.
+  for (const pace of MOUNT_PACES) {
+    const file = hoofFile('mount', pace, 'm1');
+    assert.ok(HOOF_SOUNDS[pace].includes(file), pace);
+    assert.equal(hoofFile('mount', pace, 'm1'), file, 'the same horse sounds the same all the way');
+  }
+  const walks = new Set(Array.from({ length: 40 }, (_, i) => hoofFile('mount', 'walk', `m${i}`)));
+  assert.ok(walks.size > 1, 'two horses on a scene are not the same recording');
+  assert.notEqual(hoofFile('mount', 'gallop', 'm1'), hoofFile('mount', 'walk', 'm1'), 'and a gallop is not a walk');
+  for (const kind of ['wagon', 'cart', 'sled', 'boat', 'party']) {
+    assert.equal(hoofFile(kind, 'gallop', 'x'), null, `${kind} is not itself an animal`);
+  }
+  // It comes up with the horse and is never pitched far off its own pace.
+  assert.deepEqual(hoofShape({ speed: 0, pace: 'gallop' }), { volume: 0, rate: 1 }, 'standing still it is silent');
+  const easy = hoofShape({ speed: 0.3, pace: 'walk', seed: 'm' }), full = hoofShape({ speed: 1.4, pace: 'walk', seed: 'm' });
+  assert.ok(easy.volume > 0 && easy.volume < full.volume, 'it comes up as the horse gets going');
+  assert.ok(hoofShape({ speed: 2, pace: 'gallop', seed: 'm' }).volume > hoofShape({ speed: 2, pace: 'walk', seed: 'm' }).volume,
+    'a gallop carries further than a walk');
+  const rates = new Set(Array.from({ length: 20 }, (_, i) => hoofShape({ speed: 1, seed: `m${i}` }).rate));
+  assert.ok(rates.size > 1, 'two horses abreast do not fall into step');
+  for (const rate of rates) assert.ok(rate >= 0.97 && rate <= 1.03, 'and none of them is a recording run off its pace');
+  assert.ok(Array.from({ length: 20 }, (_, i) => hoofShape({ speed: 6, pace: 'gallop', seed: `m${i}` }).volume).every((v) => v <= 1));
 });
 
 test('the brake goes on when it stops short; the canvas speaks only on a covered wagon at full swing', () => {

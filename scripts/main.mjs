@@ -324,7 +324,7 @@ import { seaStrength, rollSeed, shipRoll, onDeck, carriedBy, deckShade, hullWash
 import { ABOARD, KIND as CARRIER_KIND, STOW as CARRIER_STOW, RIDING as CARRIER_RIDING, CARRIER_KINDS, carrierKind, kindLabel, pulledOff, boardList, stillAboard, ridePlan, landPlan, boardLabel, capacityOf, overCapacity, tooBig } from "./engines/motion/carriers.mjs";
 import { LOOK as CARRIER_LOOK, CARRIER_LOOKS, lookStep, lookSize, lookFor, trueTall, trueSquares, framePath, squareMetres, drawnSize, idleFrame, headUp } from "./engines/motion/carrier-look.mjs";
 import { paintCarrier } from "./engines/motion/carrier-paint.mjs";
-import { rollFile, rollShape, lapFile, lapShape, paceGap, paceVoice, knocksFor, teamCall, callGap, carrierSoundFiles } from "./engines/sound/carrier-sound.mjs";
+import { rollFile, rollShape, lapFile, lapShape, paceGap, paceVoice, knocksFor, teamCall, callGap, carrierSoundFiles, hoofFile, hoofShape, mountPace } from "./engines/sound/carrier-sound.mjs";
 import { WoundedLooks, bleedTier, tokenMoving } from "./engines/playback/wounded-looks.mjs";
 import { builtinPreset } from "./engines/tokenshade/presets.mjs";
 let conditionBody;
@@ -4238,7 +4238,7 @@ const drawCarrierLook = (token) => {
   const again = state.beat !== undefined && beat - state.beat < 4 && state.step;
   if (again) { paintCarrierLook(token, doc, state.step, grid); return; }
   state.beat = beat;
-  const rolling = Math.hypot(at.x - was.x, at.y - was.y) > 0.5;
+  const went = Math.hypot(at.x - was.x, at.y - was.y), rolling = went > 0.5;
   state.last = at;
   // How rough the going is and how laden it is: a rutted track throws it about where a paved road hardly does, and a
   // wagon with the party inside it swings further and lands heavier than an empty one.
@@ -4258,6 +4258,11 @@ const drawCarrierLook = (token) => {
   state.speed = before + (pace - before) * 0.25;
   state.stopping = before > 0.7 && state.speed < 0.2;
   state.at = now;
+  // How far it has come since it set off, in squares. A mount's pace is read off this rather than off one frame of
+  // speed (engines/sound/carrier-sound.mjs mountPace): a horse walks out, falls into a trot and is galloping by the
+  // time it is across the field. It forgets the journey once it has properly stopped, so the next one starts at a walk.
+  if (rolling) state.run = (state.run ?? 0) + went / grid;
+  else if (state.speed < 0.15) state.run = 0;
   const load = Math.min(1, aboardOf(doc).length / 4);
   const step = lookStep({ id: doc.id, kind: kindOf(doc), look: String(doc.flags?.[ID]?.[CARRIER_LOOK] ?? ""), from: rolling ? was : at, to: at, grid, moving: rolling, rough, load, now: beat }, state);
   // How the body is riding is kept whether or not there is a picture to draw: the sounds are driven off it.
@@ -4371,6 +4376,13 @@ const carrierKnockAt = new Map();
 const holdCarrierVoice = (voices, id, file, want, rate = 1) => {
   let voice = voices.get(id);
   if (!voice) { voice = { sound: null, target: 0, quietSince: 0, rampEnd: 0, file }; voices.set(id, voice); }
+  // A held sound can be asked for a different recording than the one playing: a horse breaking from a walk into a
+  // gallop. The one that is running goes out while the new one comes in, rather than the pace changing mid-stride.
+  if (voice.sound && file && voice.file !== file) {
+    stopVoice(voice, 250);
+    voice = { sound: null, target: 0, quietSince: 0, rampEnd: 0, file };
+    voices.set(id, voice);
+  }
   if (file && want > 0.004 && !voice.sound && !voice.starting && soundsOn()) {
     voice.starting = true; voice.file = file;
     void (async () => {
@@ -4414,9 +4426,12 @@ const tickCarrierSounds = () => {
     if (!state) continue;
     live.add(doc.id);
     const near = carrierReach(token, ears, grid);
-    // The rims, held under it while it rolls — or, for a boat, the wash along its hull.
-    const roll = rollFile(kind, state.floor ?? "dirt", doc.id);
-    const shape = rollShape({ speed: state.speed ?? 0, load: state.load ?? 0, rough: state.rough ?? 0.5, kind });
+    // The rims, held under it while it rolls — or, for a boat, the wash along its hull, or, for a mount, its own
+    // hooves at the pace the journey has worked it up to.
+    const pace = mountPace(state.run ?? 0);
+    const roll = kind === "mount" ? hoofFile(kind, pace, doc.id) : rollFile(kind, state.floor ?? "dirt", doc.id);
+    const shape = kind === "mount" ? hoofShape({ speed: state.speed ?? 0, pace, seed: doc.id })
+      : rollShape({ speed: state.speed ?? 0, load: state.load ?? 0, rough: state.rough ?? 0.5, kind });
     holdCarrierVoice(carrierVoices, doc.id, roll, roll && soundsOn() ? shape.volume * near * carrierVolume() : 0, shape.rate);
     // And, for a boat alone, the water slapping the hull while it sits there: loudest at rest, gone once it is moving.
     const idle = lapFile(kind, state.floor ?? "dirt", doc.id);
@@ -7861,6 +7876,9 @@ const movementFeel = createMovementFeel({
         // A token wearing a painted vehicle says how big and how tall the thing on it really is, so its shadow is of
         // the wagon and not of a creature the size of its token.
         ...carrierShadowOf(t),
+        // Which kind of carrier it is, if it is one at all: a mount has hooves of its own now, and they are held
+        // under it by the carrier sounds rather than stepped by its size.
+        carrier: kindOf(d) ?? null,
         // Where it is drawn among the creatures at its elevation (its mesh's sort; another module may raise it, as
         // Tokener does for a top-down token lying over the creatures beneath it), read each frame.
         order: () => Number(t.mesh?.sort ?? d.sort) || 0,
@@ -7887,6 +7905,9 @@ const movementFeel = createMovementFeel({
     // timing and tremor, silent.
     const soundOn = (key) => { try { return hotSetting(key) !== false; } catch { return true; } };
     if (!((token.preview || soundOn("footstepSounds")) && soundOn("footstepSoundsLocal"))) level = 0;
+    // A ridden horse keeps its own hooves instead (engines/sound/carrier-sound.mjs): the size-paced footstep would
+    // clop over the gallop. Silenced rather than skipped, so its tread still shakes the ground as it did.
+    if (!token.preview && token.carrier === "mount" && carriersOn() && bothSettingsOn("carrierSounds")) level = 0;
     // "Footsteps outside combat": quieter and closer, or silent, until initiative is rolled (not in the showcase).
     let calm = { gain: 1, range: null };
     try { if (!token.preview) calm = stepCalm(hotSetting("footstepsOutsideCombat"), game.combat); } catch { /* not registered yet */ }

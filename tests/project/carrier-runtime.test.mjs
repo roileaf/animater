@@ -39,6 +39,24 @@ test('walking onto a carrier boards nobody', () => {
   assert.match(main, /Walking onto a carrier boards nobody/, 'and the setting says so');
 });
 
+// Roi: "horse(mount) sfx doesnt match galloping horse". The hooves are held under the mount like a wagon's rims, and
+// the footstep that used to clop over them goes quiet while they play.
+test('a ridden horse sounds like the pace it is going, and only once', () => {
+  assert.match(main, /const pace = mountPace\(state\.run \?\? 0\)/, 'the pace comes off the journey so far');
+  assert.match(main, /kind === "mount" \? hoofFile\(kind, pace, doc\.id\) : rollFile\(/);
+  assert.match(main, /kind === "mount" \? hoofShape\(\{ speed: state\.speed \?\? 0, pace, seed: doc\.id \}\)/);
+  // The journey is measured as it is drawn, and forgotten once the horse has properly stopped.
+  assert.match(main, /if \(rolling\) state\.run = \(state\.run \?\? 0\) \+ went \/ grid;/);
+  assert.match(main, /else if \(state\.speed < 0\.15\) state\.run = 0;/);
+  // A held voice can be asked for a different recording: the walk goes out as the gallop comes in.
+  const hold = main.slice(main.indexOf('const holdCarrierVoice ='), main.indexOf('const carrierEars ='));
+  assert.match(hold, /if \(voice\.sound && file && voice\.file !== file\)/, 'the pace change swaps the recording');
+  assert.match(hold, /stopVoice\(voice, 250\)/);
+  // And the size-paced footstep is silenced under it, rather than skipped: its tread still shakes the ground.
+  assert.match(main, /token\.carrier === "mount" && carriersOn\(\) && bothSettingsOn\("carrierSounds"\)\) level = 0;/);
+  assert.match(main, /carrier: kindOf\(d\) \?\? null,/, 'the view says which carrier a token is');
+});
+
 test('a passenger remembers its carrier, so one whose carrier is gone can be found again', () => {
   assert.match(main, /const orphanRiders = async/);
   assert.match(main, /flags\.\$\{ID\}\.\$\{CARRIER_RIDING\}/);

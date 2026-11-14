@@ -29,6 +29,47 @@ export const ROLL_SOUNDS = Object.freeze({
   wash: of('wash-509322-a', 'wash-509322-b', 'wash-509323-a', 'wash-509323-b'),
 });
 
+// A mount has no rims and nothing in harness: what it has is its own hooves, and unlike a wheel they change with the
+// pace (Roi: "horse(mount) sfx doesnt match galloping horse" — it was a footstep paced by the creature's size, one
+// coconut clop every 450 ms whether the horse was stepping over a log or crossing a field at a run). So a mount holds
+// a recording of a real horse at the pace it is actually going, the way a wagon holds its rims.
+export const HOOF_SOUNDS = Object.freeze({
+  walk: of('walk-233345-a', 'walk-233345-b', 'walk-640199-a', 'walk-640199-b'),
+  trot: of('trot-182504-a', 'trot-182504-b'),
+  gallop: of('gallop-368583-a', 'gallop-684446-a'),
+});
+export const MOUNT_PACES = Object.freeze(['walk', 'trot', 'gallop']);
+// Where one pace gives way to the next, in squares covered since it set off. A horse is not told to gallop, it works
+// up to one: out of the gate at a walk, into a trot once it is going somewhere, and flat out across a field. Measuring
+// the journey rather than this frame's speed is also the only honest reading, because Foundry slides every token at
+// the same speed however far it is going.
+export const PACE_AT = Object.freeze({ trot: 2, gallop: 6 });
+export function mountPace(run = 0) {
+  const squares = Math.max(0, Number(run) || 0);
+  return squares >= PACE_AT.gallop ? 'gallop' : squares >= PACE_AT.trot ? 'trot' : 'walk';
+}
+/** The hooves a mount holds under it at this pace; null for a kind that is not itself an animal. */
+export function hoofFile(kind, pace = 'walk', seed = '') {
+  if (kind !== 'mount') return null;
+  return pick(HOOF_SOUNDS[pace] ?? HOOF_SOUNDS.walk, seed, `hoof:${pace}`);
+}
+// A gallop carries further than a walk, as it does in a field.
+const HOOF_VOLUME = { walk: 0.26, trot: 0.3, gallop: 0.34 };
+/**
+ * How loud the hooves run and at what pitch (pure). It fades in with the horse rather than switching on, and the
+ * recording is left at its own pace: the only pitch move is a couple of percent by seed, so two horses abreast do not
+ * fall into step with each other.
+ */
+export function hoofShape({ speed = 0, pace = 'walk', seed = '' } = {}) {
+  const s = Math.max(0, Number(speed) || 0);
+  if (s < 0.05) return { volume: 0, rate: 1 };
+  const volume = Math.min(1, (HOOF_VOLUME[pace] ?? HOOF_VOLUME.walk) * Math.min(1, s / 1.1));
+  let h = 2166136261;
+  const text = `hoof:${seed}`;
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return { volume: +volume.toFixed(3), rate: +(0.97 + (Math.abs(h) % 7) / 100).toFixed(3) };
+}
+
 // What a carrier says while it is standing still. Only a boat has anything: it sits on water, and water slaps a hull
 // whether or not anyone is rowing. Everything else is simply quiet, which is why this is its own small thing rather
 // than another entry in ROLL_SOUNDS.
@@ -238,5 +279,5 @@ export function jingle({ speed = 0, seed = '', n = 0, kind = 'wagon' } = {}) {
 /** Every file this engine can ask for, so they can be preloaded with the rest. */
 export const carrierSoundFiles = () => [
   ...Object.values(ROLL_SOUNDS).flat(), ...Object.values(IDLE_SOUNDS).flat(),
-  ...Object.values(KNOCK_SOUNDS).flat(), ...OAR_SOUNDS,
+  ...Object.values(KNOCK_SOUNDS).flat(), ...Object.values(HOOF_SOUNDS).flat(), ...OAR_SOUNDS,
 ];
