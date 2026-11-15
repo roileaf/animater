@@ -60,15 +60,17 @@ export function crackLines(key, { grid, seed = 0 } = {}) {
 
 // Points round the hole, and how wide it is: about the creature's size plus one square across, its radius never under
 // LOW of that, so shards placed inside LOW * half are always in the hole.
-const RING_POINTS = 16, LOW = 0.78;
+// A break is not a circle. Eleven points rather than sixteen, and each one free to sit anywhere from the rim to well inside
+// it, so the opening is angular and uneven — the shape ice leaves when it gives way, not a hole punched with a cutter.
+const RING_POINTS = 11, LOW = 0.6;
 // How a broken sheet comes apart: a square's worth into about five slabs, a Huge creature's hole into a dozen at most;
 // each shrunk a little about its middle so the water shows between them, slid a touch outward and swung a touch round.
 const PLATES_ONE = 4, PLATES_PER_SQUARE = 2.2, PLATES_MOST = 12;
-const PLATE_SHRINK_LOW = 0.80, PLATE_SHRINK_SPAN = 0.09, PLATE_DRIFT_LOW = 0.03, PLATE_DRIFT_SPAN = 0.06, PLATE_TURN = 0.26;
+const PLATE_SHRINK_LOW = 0.88, PLATE_SHRINK_SPAN = 0.07, PLATE_DRIFT_LOW = 0.012, PLATE_DRIFT_SPAN = 0.035, PLATE_TURN = 0.26;
 // Where the creature went through, the ice is gone: the plates nearest the middle sit furthest apart and most water shows
 // between them, while the ones out at the rim are still almost touching. A photograph of a hole in a river reads the same
 // way, and it is what tells a player at a glance where the hole is rather than where the ice merely cracked.
-const PLATE_CENTRE_OPEN = 0.34;
+const PLATE_CENTRE_OPEN = 0.13;
 // How a slab rides: its lift is a fraction of a square, so it is the same small movement on a map of 70-pixel squares as on
 // one of 200, and its swing is radians. Both are small — a plate the size of a creature barely moves on the water.
 const PLATE_SWAY = 0.012, PLATE_SWING = 0.016;

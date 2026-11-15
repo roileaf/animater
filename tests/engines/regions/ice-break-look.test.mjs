@@ -123,11 +123,11 @@ test("the plates and the water share the hole: a sheet come apart, not ice scatt
   const area = (pts) => Math.abs(pts.reduce((sum, a, i) => { const b = pts[(i + 1) % pts.length]; return sum + (a.x * b.y - b.x * a.y); }, 0)) / 2;
   const ice = plates.reduce((sum, plate) => sum + area(plate.points), 0);
   const hole = area(holeOutline("3,4", o));
-  // About half and half: enough ice that the pieces still read as one sheet come apart, enough water that a creature
-  // standing in it is plainly standing in water — which is the point of a hole, and was lost while the plates nearly
-  // tiled the ring they came from.
-  assert.ok(ice > hole * 0.4, `the pieces still read as one sheet: ${(ice / hole).toFixed(2)}`);
-  assert.ok(ice < hole * 0.75, `and the water is unmistakable: ${(ice / hole).toFixed(2)}`);
+  // Mostly ice, with the water showing through the seams. Both ends of this matter and both have been wrong: tiled to the
+  // rim, the hole reads as a shadow rather than water; opened too far, it reads as a blue disc with a ring of ice round it
+  // instead of a sheet come apart. About three quarters ice is the sheet, with the water unmistakable between the pieces.
+  assert.ok(ice > hole * 0.6, `the pieces still read as one sheet: ${(ice / hole).toFixed(2)}`);
+  assert.ok(ice < hole * 0.85, `and the water shows between them: ${(ice / hole).toFixed(2)}`);
 });
 
 test("the plates nearest the middle sit furthest apart: that is where the creature went through", () => {

@@ -21,7 +21,8 @@ test("a hole's area is a flat x, y list the water engine reads, with the ring's 
     assert.equal(spec.areas.length, 1);
     const flat = spec.areas[0];
     assert.ok(flat.every((n) => typeof n === "number" && Number.isFinite(n)), "numbers, not {x, y} objects");
-    assert.equal(flat.length, 32, "16 points as x, y pairs");
+    assert.equal(flat.length % 2, 0, "x, y pairs");
+    assert.ok(flat.length >= 16 && flat.length <= 40, `a few points round an angular opening, not a circle of them: ${flat.length / 2}`);
   }
   const ring = holeOutline("3,4", { grid: GRID, seed: 0, size: 2 });
   const spec = holes.find((h) => h.id === "reg1:ice:3,4");
