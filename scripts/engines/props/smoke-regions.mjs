@@ -90,6 +90,13 @@ export const ownSmokeRegion = (regions, { level = null } = {}) =>
 export const skyRegionsOf = (regions, { level = null } = {}) =>
   regionsOnLevel(regions, level).filter((region) => region?.flags?.animater?.openSky === true);
 
+// The regions the GM marked "Open sides" — roofed, but with no wall where the roof ends: a porch, a cart lodge, a
+// pavilion, a lean-to. Only inside one of these does the roof's own outline let smoke out. Everywhere else that
+// outline is sealed, because it is drawn by hand around a building whose WALLS are the enclosure and it steps across
+// squares wherever it runs diagonally; read as holes, those steps vent a shut room at a rate no door can match.
+export const openSideRegionsOf = (regions, { level = null } = {}) =>
+  regionsOnLevel(regions, level).filter((region) => region?.flags?.animater?.openSides === true);
+
 
 // `levels`: the region's levels, each a real document id (a region's `levels` is a SetField of DocumentIdField over the
 // scene's Level collection, foundry.mjs:13489, :23108); any number, empty for none. `origin`: optional, copied onto every
