@@ -11005,8 +11005,7 @@ let smokeLooksTimer = 0;
 // open, and one pass over the scene draws what the air holds. It draws into the bake's own layer at the bake's own depth,
 // and only ever one cloud is drawn: with no field (Drafts off, no WebGL, a scene the air is not worked out for) the
 // baked cloud paints exactly as it always has. The plume outside is NOT the cloud and is left to the bake either way.
-const smokeAirLook = createSmokeAirLook({ PIXI: globalThis.PIXI, layer: smokeLooksRoot,
-  render: (g, rt) => canvas.app.renderer.render(g, { renderTexture: rt, clear: true }) });
+const smokeAirLook = createSmokeAirLook({ PIXI: globalThis.PIXI, layer: smokeLooksRoot });
 // How long the billows' clock runs before it starts again (ms). The pass rolls by the SHARED clock, so two players
 // watching one cellar see the same billows at the same point in their roll — the cloud must never disagree between two
 // screens. The shared clock counts milliseconds from the epoch, though, and that many seconds is a number a shader's
@@ -11053,8 +11052,15 @@ const tickRoomAir = () => {
   // itself the same way. The sim is KEPT, not dropped: when the round clears the last cell what is already in the air
   // has to thin away over the next seconds, and dropping it here would take the cloud off the map in one frame.
   if (!roomAir.busy) { roomAirWait = 0; smokeAirLook.fill(null); return; }
-  if (roomAirWait >= 0.25) { roomAir.step(roomAirWait); roomAirWait = 0; smokeAirLook.fill(roomAir.pixels, airField.cols, airField.rows); }
+  // Always in steps of exactly 0.25 s, the remainder kept for the next tick. Stepping by whatever had gathered (0.26 s here,
+  // 0.31 s there) makes two clients integrate the same diffusion with different quanta, and their fields drift apart where
+  // prime() never re-anchors them. Do NOT "simplify" this to stepping the accumulated wait.
+  let stepped = false;
+  while (roomAirWait >= 0.25) { roomAir.step(0.25); roomAirWait -= 0.25; stepped = true; }
+  if (stepped) smokeAirLook.fill(roomAir.pixels, airField.cols, airField.rows);
   smokeAirLook.look({ now: (now % BILLOW_WRAP_MS) / 1000, grid: canvas.grid?.size ?? 100, bounds: canvas.dimensions?.sceneRect ?? null, amount: 1,
+    // The one per-client wall clock the pass reads: a DELTA since a hook every client receives within network latency, so it
+    // cannot drift apart between screens the way an absolute clock would.
     since: Math.min(1e3, (performance.now() - gustAt) / 1000) });
 };
 function syncSmokeLooksNow() {

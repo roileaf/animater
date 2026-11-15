@@ -98,14 +98,13 @@ void main(){
 const FADE_SECONDS = 2;
 
 /**
- * The pass. createSmokeAirLook({ PIXI, layer: () => container or null, render }) -> { draft(pixels, cols, rows),
+ * The pass. createSmokeAirLook({ PIXI, layer: () => container or null }) -> { draft(pixels, cols, rows),
  * fill(pixels, cols, rows), look({ now (seconds), grid, bounds: { x, y, width, height }, amount 0-1, since (seconds since a door
  * last opened) }), clear() }. fill is createSmokeAir().pixels (RGBA, the amount in alpha); draft is indoor-air.mjs draftPixels;
  * both change in place or are replaced, and null clears them. Nothing is drawn while there is no layer, no field, no bounds
  * or no smoke.
  */
-export function createSmokeAirLook({ PIXI, layer, render } = {}) {
-  void render;   // kept for the shape every pass of this kind is made with; this one bakes nothing
+export function createSmokeAirLook({ PIXI, layer } = {}) {
   let mesh = null, own = null, key = "";
   let fillGiven = null, fillTex = null, draftGiven = null, draftTex = null, draftWas = null;
   let draftChangedAt = null, draftMix = 1;
@@ -165,6 +164,9 @@ export function createSmokeAirLook({ PIXI, layer, render } = {}) {
       // A new draft fades in over FADE_SECONDS, counted from the first look after it came.
       if (draftMix < 1) {
         draftChangedAt ??= now;
+        // The caller's clock wraps (modulo four hours): a fade begun just before the wrap would see a negative age, clamp to 0 and
+        // hold the OLD draft for ever. Restart it from the wrap instead.
+        if (now < draftChangedAt) draftChangedAt = now;
         draftMix = Math.min(1, Math.max(0, (now - draftChangedAt) / FADE_SECONDS));
       }
       use();

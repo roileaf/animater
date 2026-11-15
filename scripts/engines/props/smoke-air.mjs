@@ -58,9 +58,12 @@ export function airStepSeconds(lastMs, nowMs, { cap = 6 } = {}) {
 }
 
 // Whether the indoor air is worked out on this map at all. The draft on its own is wanted underground, or wherever a
-// region opens onto the outside — air only moves where it has somewhere to go. A room's smoke wants it too: a cellar
-// on a surface map has no way out of its own, yet its smoke must still drift and pour through the door it is let out
-// of, rather than be repainted once a round. With the Drafts switch off nothing is worked out.
+// region opens onto the outside — air only moves where it has somewhere to go. A room's smoke wants it too, so it is
+// worked out as a sim rather than repainted once a round. What the reader gets differs by scene. With a draft (underground,
+// or a region that opens outside) the smoke is carried to the way out and drains through it. On a surface map with no
+// opening seeded (sceneOpenings seeds only an open door at the scene's edge or an opensOutside region) the draft field has
+// no seeds, so nothing pulls the smoke out of the room: it spreads, obeys walls and shut doors, and a door opening shoves
+// it through, but the billows roll in place. With the Drafts switch off nothing is worked out.
 export function airWantedFor({ drafts = false, underground = false, opensOutside = false, roomSmoke = false } = {}) {
   return drafts === true && (underground === true || opensOutside === true || roomSmoke === true);
 }

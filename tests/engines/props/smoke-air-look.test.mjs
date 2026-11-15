@@ -79,3 +79,13 @@ test('a field of another size reaches the shader, and clearing the field hides t
   look.fill(null);
   assert.equal(now.visible, false, 'hidden by fill(null), before any look');
 });
+
+test('a draft fade caught by the clock wrap finishes instead of freezing on the old draft', () => {
+  const { look, added } = shown();
+  look.draft(new Uint8Array(4 * 4 * 4), 4, 4);
+  look.look({ now: 14399.9, grid: 100, bounds, amount: 1 });
+  look.look({ now: 14399.95, grid: 100, bounds, amount: 1 });
+  look.look({ now: 0.1, grid: 100, bounds, amount: 1 });   // the shared clock wrapped
+  look.look({ now: 3, grid: 100, bounds, amount: 1 });
+  assert.equal(added[0].shader.uniforms.uDraftMix, 1, 'the new draft is fully in');
+});
