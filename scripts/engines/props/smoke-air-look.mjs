@@ -15,9 +15,11 @@
 
 import { GREYS } from "./smoke-look.mjs";
 
-// How quickly cover rises with the density the sim holds (0-1, 1 = THICK): 1 - e^(-rate * v). A full cell reaches 0.909
-// (THICK_COVER 0.9), a thin one (THIN / THICK, about 0.27) 0.48 (THIN_COVER 0.62). The shader is built from this same number.
-const COVER_RATE = 2.4;
+// How quickly cover rises with the density the sim holds (0-1, 1 = THICK): 1 - e^(-rate * v). A full cell reaches 0.967
+// (THICK_COVER 0.9), a thin one (THIN / THICK, about 0.27) 0.60 (THIN_COVER 0.62). The shader is built from this same number.
+// It was 2.4, which cleared both promises on paper and still read as haze on the map: a thin cell at 0.48 is a window with a
+// grey pane. The rate is as high as the thin tier's ceiling allows, so a cloud has a body and the two tiers still read apart.
+const COVER_RATE = 3.4;
 
 /**
  * The cover the pass paints for a held density `v` (0-1 as the sim holds it), 0-1: what the shader's alpha follows in the body
@@ -59,6 +61,13 @@ float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); 
 float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y); }
 float fbm(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a * noise(p); p = p * 2.03 + 17.0; a *= 0.5; } return s; }
+// The mist's own banks (cavern.mjs MIST_FRAG): a wide roll with a finer one through it, taken across a soft shoulder so it
+// never bands. It returns 0-1 and is never cut off, so what it draws has no edges of its own.
+float banksAt(vec2 p, vec2 drift){
+  float n = fbm(p / (uGrid * 2.0) + drift + 0.3 * vec2(fbm(p / (uGrid * 3.0) - drift), 0.0));
+  float n2 = fbm(p / (uGrid * 0.7) - drift * 1.6);
+  return smoothstep(0.28, 0.72, n * 0.75 + n2 * 0.25);
+}
 // airCover (smoke-air-look.mjs), the same curve: KEEP IN STEP.
 float cover(float v){ return 1.0 - exp(-${COVER_RATE.toFixed(4)} * clamp(v, 0.0, 1.0)); }
 // The four painted greys, palest (0) to darkest (3).
@@ -75,23 +84,22 @@ void main(){
   // Where the air runs (a doorway, a gust) the billows are carried with it; in a shut room they only roll where they are.
   float moving = smoothstep(0.12, 0.55, min(1.0, airHere(d) * 1.8));
   vec2 flow = (d.rg * 2.0 - 1.0) * moving;
-  vec2 rolling = q + warp * 1.4 + vec2(uTime * 0.02, -uTime * 0.015);
-  // Two phases of the same billows, each carried for a while and handed over as it runs out, half a period apart: they flow on
-  // without ever jumping back or being drawn into lines.
-  float p1 = fract(uTime * 0.1), p2 = fract(uTime * 0.1 + 0.5);
-  float roll = moving > 0.01 ? mix(fbm(rolling - flow * 2.0 * p1), fbm(rolling - flow * 2.0 * p2), abs(1.0 - 2.0 * p1)) : fbm(rolling);
-  // A fine ragged brush on the edge, so it is never a clean contour.
-  roll += (noise(px / (uGrid * 0.35) + uTime * 0.05) - 0.5) * 0.16;
-  // Billows with clear air between them while the smoke is thin; a full cell leaves none (the threshold sinks below every
-  // value the billows take), so what stands in thick smoke is hidden all through it.
-  float thr = 0.6 - 0.85 * fill;
-  float body = smoothstep(thr, thr + 0.16, roll);
-  float a = cover(fill) * body * uAmount;
-  // Stepped tone: four greys, no gradient. Deep in the thick the smoke is dark, toward its thin edge and in its pale
-  // billows it is lighter.
-  float folds = noise(q * 1.7 + warp * 2.0 + uTime * 0.02);
-  float tone = clamp(0.2 + 0.55 * fill + 0.45 * folds - 0.35 * (1.0 - body), 0.0, 0.999);
-  vec3 col = grey(int(floor(tone * 4.0)));
+  // The banks, drawn the way the cavern's mist draws them (cavern.mjs MIST_FRAG banksAt): two octaves of fbm, two carried
+  // phases crossfaded so the motion never snaps back — and NO threshold anywhere. A threshold is what cut a room of smoke
+  // into ribbons with clear air between them. Smoke filling a room is ONE body, thicker in some places than others, and the
+  // banks only say where it is thicker.
+  vec2 still = vec2(uTime * 0.035, -uTime * 0.025);
+  vec2 carried = flow * 2.4;
+  float p1 = fract(uTime * 0.1), p2 = fract(uTime * 0.1 + 0.5), w = abs(1.0 - 2.0 * p1);
+  vec2 bent = px + warp * uGrid * 0.8;
+  float banks = mix(banksAt(bent, still - carried * p1), banksAt(bent, still - carried * p2), w);
+  // Never below a third: the air between the banks is still full of smoke, which is what makes it read as a body and not
+  // as shapes. The banks ride on top of that floor.
+  float a = cover(fill) * (0.34 + 0.66 * banks) * uAmount;
+  // Soot, not fog. The palette's pale end carries the painted hand at the thin edge where you can still see through it;
+  // deeper in, the smoke goes down to near black, which is what every photograph of a room full of smoke shows and what
+  // the mist's one flat pale grey could never give.
+  vec3 col = mix(grey(1) * 0.92, vec3(0.055, 0.055, 0.062), clamp(fill * 0.9 + 0.2 * banks, 0.0, 1.0));
   gl_FragColor = vec4(col * a, a);
 }`;
 

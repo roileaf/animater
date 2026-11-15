@@ -24,7 +24,6 @@ import { readNote } from "./engines/props/prop-break.mjs";
 import { BURN_MS, burnLightData, fireTimers, unhideLights, firesOf } from "./engines/props/prop-lights.mjs";
 import { propMaterial, canBreak } from "./engines/props/prop-material.mjs";
 import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf, smokeWalls, THICK as SMOKE_THICK } from "./engines/props/smoke-field.mjs";
-import { registerSmokeFence } from "./engines/props/smoke-fence.mjs";
 import { smokeGridOf, storedSmokeGrid, smokeCellList, smokeLevelOf, smokeDensityAt } from "./engines/props/smoke-edges.mjs";
 import { createSmokeLooks, smokePuffs, smokeSheets, smokeSeedOf, airHazeFor, SMOKE_SORT_LAYER } from "./engines/props/smoke-look.mjs";
 import { ROOM_AIR, airSourcesOf, airPrimeOf, airStepSeconds, airWantedFor } from "./engines/props/smoke-air.mjs";
@@ -2084,7 +2083,13 @@ const rebuildDraft = () => {
     // smoke must still drift on the air instead of being repainted once a round.
     airLive = !!canvas?.ready && airWantedFor({ drafts: draftsOn(), underground: undergroundScene(), opensOutside: regions.some((r) => r.outside), roomSmoke: smokeRunsOn(canvas.scene) });
     if (!airLive) { airField = null; lampAir.draft(null); fillSmoke(); cavern.draft(null); fillMist(); return; }
-    const walls = (canvas.walls?.placeables ?? []).map((w) => w.document).map((d) => ({ c: d.c, move: d.move, door: d.door, ds: d.ds }));
+    // Through smokeWalls, not raw: a window Animater has swung open keeps `move` on its wall document on purpose (a body
+    // still cannot climb through it), and its open state lives in flags, so the air read an open window as a solid wall and
+    // the smoke in a room with one stood there instead of pouring out of it. smokeWalls is the one list that knows an
+    // opening when it sees one — an open door, an open or empty window frame, a wall broken through — and the round's own
+    // diffusion has always used it. The flags have to come across for it to answer at all.
+    const walls = smokeWalls((canvas.walls?.placeables ?? []).map((w) => w.document)
+      .map((d) => ({ c: d.c, move: d.move, sight: d.sight, door: d.door, ds: d.ds, flags: d.flags })));
     const bounds = canvas.dimensions.sceneRect, grid = canvas.grid.size;
     const openings = [...sceneOpenings({ walls, regions, bounds, grid }), ...previewOpenings];
     const field = draftField({ walls, bounds, grid, openings });
@@ -17175,6 +17180,10 @@ Hooks.once("ready", () => {
   catch (error) { console.warn("Animater walked path:", error?.message ?? error); }
 });
 
-// Thick smoke blocks sight (engines/props/smoke-fence.mjs): the fence is rebuilt from the stored grid inside Foundry's own
-// initializeEdges hook, so a scene save, level change or redraw cannot silently drop it.
-registerSmokeFence({ hooks: Hooks, moduleId: ID, cellsOf: smokeCellsOf, env: () => ({ Edge: foundry.canvas.geometry.edges.Edge, NORMAL: CONST.EDGE_SENSE_TYPES.NORMAL, canvas: globalThis.canvas }) });
+// Smoke does NOT block sight. It used to: thick cells raised a fence of sight-blocking edges (engines/props/smoke-fence.mjs)
+// rebuilt inside Foundry's own initializeEdges hook. Roi ruled that out at the table — smoke makes what stands in it
+// concealed and nothing more — and the fence cost more than the rule it enforced: vision stopped at the cloud, so a GM with
+// a token selected could not see the door and window controls on the far side of it, which is how it was found.
+// Concealment is unaffected: the round still grows its pf2e-visioner region over the smoke (smokeRegionNow).
+// The fence itself is left in the tree, unregistered and tested, because nothing else wants those edges and the day a
+// scene wants smoke that truly blinds, this line is the whole of it.

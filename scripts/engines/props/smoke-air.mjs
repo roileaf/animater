@@ -11,7 +11,7 @@ export const AIR_FULL = THICK;
 // slow, thin). A cellar's smoke is heavier than mist, so it runs faster along the draft, yet a room of many source
 // cells makes far more than one fire did, so each makes less. `wide` is 0: a stored cell is its own source and
 // nothing else (overlapping squares would sum their weights and pile up). The door's swing pushes it as it does mist.
-export const ROOM_AIR = { spread: 1.2, run: 1.6, fade: 0.012, made: 0.1, gain: 1.3, wide: 0, ease: 4, shove: 2 };
+export const ROOM_AIR = { spread: 1.0, run: 1.6, fade: 0.012, made: 0.22, gain: 1.3, wide: 0, ease: 4, shove: 2 };
 
 // The middle of a stored cell, in scene pixels, worked out as smoke-plume.mjs does: origin + (i % cols + 0.5) * cell.
 // Null for an index that is not a cell of the grid.
