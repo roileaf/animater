@@ -14,7 +14,7 @@ const PLATE_FACE = 0xeaf2f4, PLATE_SIDE = 0x79b9ce, PLATE_DEEP = 0x3f7d95;
 // too, so the engine's ripples run over this where the screen's quality allows them — but a creature standing in open water
 // has to read as standing in open water on every screen, at every quality, and on a map whose own light is warm enough to
 // turn pale ice sandy. So the hole is painted: deep water, a darker lip inside its edge where the ice shelves off.
-const WATER_DEEP = 0x12222c, WATER_RIM = 0x0a151c;
+const WATER_DEEP = 0x17465e, WATER_RIM = 0x0b2332;
 const PLATE_THICK = 0.05, PLATE_LEAN_X = 0.45, PLATE_LEAN_Y = 0.75;
 
 /** createIceBreakLook({ PIXI, layer, grid }): `layer()` gives the container to draw in (under the creatures), `grid()` the

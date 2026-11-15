@@ -7,7 +7,7 @@ body{margin:0;background:#15181c;color:#e6e8eb;font:14px/1.45 system-ui,Segoe UI
 h1{font-size:18px;margin:0 0 2px}p{color:#97a0ad;margin:0 0 12px}
 .row{display:flex;gap:16px;flex-wrap:wrap}
 figure{margin:0}figcaption{color:#97a0ad;font-size:12px;margin-top:4px}
-canvas{background:#2e2a26;border:1px solid #2c313a;border-radius:6px;display:block}
+canvas{background:#6b5a42;border:1px solid #2c313a;border-radius:6px;display:block}
 label{color:#97a0ad;margin-right:12px}input{vertical-align:middle}
 </style></head><body>
 <h1>Thin ice: the break</h1>
@@ -17,7 +17,7 @@ label{color:#97a0ad;margin-right:12px}input{vertical-align:middle}
 <script type="module">
 import { icePlates, holeOutline } from "/scripts/engines/regions/ice-break-look.mjs";
 // The painter's own colours and thickness (engines/regions/ice-break-draw.mjs), so this page shows what the map shows.
-const WATER="#16242c", FACE="#eaf2f4", SIDE="#79b9ce", DEEP="#3f7d95", INK="#1b1410", THICK=0.05, LEAN_X=0.45, LEAN_Y=0.75;
+const WATER="#17465e", FACE="#eaf2f4", SIDE="#79b9ce", DEEP="#3f7d95", INK="#1b1410", THICK=0.05, LEAN_X=0.45, LEAN_Y=0.75;
 const CASES=[["Medium, one square",1],["Large",2],["Huge",3]];
 const row=document.getElementById("row");
 const draw=()=>{

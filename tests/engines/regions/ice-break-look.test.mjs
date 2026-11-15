@@ -117,14 +117,17 @@ test("a break leaves the sheet in a few big plates, more of them for a bigger ho
   }
 });
 
-test("the plates nearly fill the hole they came from: a sheet come apart, not ice scattered on water", () => {
+test("the plates and the water share the hole: a sheet come apart, not ice scattered on a pond", () => {
   const size = 2, o = { grid: GRID, seed: 9, size };
   const plates = icePlates("3,4", o);
   const area = (pts) => Math.abs(pts.reduce((sum, a, i) => { const b = pts[(i + 1) % pts.length]; return sum + (a.x * b.y - b.x * a.y); }, 0)) / 2;
   const ice = plates.reduce((sum, plate) => sum + area(plate.points), 0);
   const hole = area(holeOutline("3,4", o));
-  assert.ok(ice > hole * 0.55, `the ice still covers most of its hole: ${(ice / hole).toFixed(2)}`);
-  assert.ok(ice < hole * 0.95, "but the water shows in the seams between the plates");
+  // About half and half: enough ice that the pieces still read as one sheet come apart, enough water that a creature
+  // standing in it is plainly standing in water — which is the point of a hole, and was lost while the plates nearly
+  // tiled the ring they came from.
+  assert.ok(ice > hole * 0.4, `the pieces still read as one sheet: ${(ice / hole).toFixed(2)}`);
+  assert.ok(ice < hole * 0.75, `and the water is unmistakable: ${(ice / hole).toFixed(2)}`);
 });
 
 test("the plates nearest the middle sit furthest apart: that is where the creature went through", () => {
