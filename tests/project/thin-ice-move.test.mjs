@@ -26,7 +26,7 @@ globalThis.game = {
   settings: { get: () => undefined },
   time: { serverTime: 0, worldTime: 0 },
   modules: { get: () => ({ api: null }) },
-  // A PF2e world, because the break whisper names that system's Swim action; a test below plays a world without one.
+  // A PF2e world, the one this is played in. Nothing thin ice does is said in chat, so no system's wording comes into it.
   system: { id: "pf2e" },
 };
 
@@ -160,8 +160,7 @@ test("a creature two sizes over the limit breaks the first square it entered, wi
   const { type, updates } = scene.writes[0];
   assert.equal(type, "Region");
   assert.deepEqual(updates, [{ _id: "reg1", [`${FLAG}.holes.2,3`]: 3 }]);
-  assert.deepEqual(whispers.map((w) => w.content), ["Torvald breaks through the ice into the water (swim)."]);
-  assert.deepEqual(whispers[0].whisper, ["gm1"], "the GMs alone");
+  assert.deepEqual(whispers, [], "a break is shown on the map, not written to the chat log");
 });
 
 test("one size over cracks every square it entered and breaks the one it stopped on", async () => {
@@ -312,24 +311,26 @@ test("a second, separate move from the very same square is walked whole", async 
   assert.deepEqual(ice.holes, [], "neither crossed ice that was already cracked");
 });
 
-test("two thin-ice regions over the same square break once, and the GM is told once", async () => {
+test("two thin-ice regions over the same square break once, in one batch", async () => {
   const scene = await walk([region("reg1"), region("reg2")], [[1, 1], [1, 2]], { size: "huge" });
   assert.equal(scene.writes.length, 1, "one batch");
   assert.equal(scene.writes[0].updates.length, 2, "each region keeps its own hole");
-  assert.deepEqual(whispers.map((w) => w.content), ["Torvald breaks through the ice into the water (swim)."], "one break, one whisper");
+  assert.deepEqual(whispers, []);
 });
 
-test("a break said once, over a crack said somewhere else in the same move", async () => {
-  // Two regions under one walk: it cracks the near one and goes through a crack already in the far one. Only the half of
-  // the move that broke is worth telling the GM about.
+test("one move that cracks one region and goes through another is written for both", async () => {
+  // Two regions under one walk: it cracks the near one and goes through a crack already in the far one. Each region
+  // keeps its own half of what the move did.
   const north = (point) => Math.floor(point.y / GRID) <= 2;
   const scene = await walk([
     region("reg1", { inside: north }),
     region("reg2", { inside: (p) => !north(p), thinIce: { cracks: { "1,3": 1 } } }),
   ], [[1, 1], [1, 2], [1, 3]], { name: "Bron", size: "lg" });
   assert.ok(scene.writes.length, "something was written");
-  assert.deepEqual(whispers.map((w) => w.content), ["Bron breaks through the ice into the water (swim)."]);
-  assert.equal(whispers.filter((w) => /breaks through/.test(w.content)).length, 1, "the break is said once, not once per region");
+  const wrote = scene.writes.flatMap((w) => w.updates);
+  assert.ok(wrote.some((u) => Object.keys(u).some((k) => k.includes("cracks.1,2"))), "the near region keeps its crack");
+  assert.ok(wrote.some((u) => Object.keys(u).some((k) => k.includes("holes.1,3"))), "and the far one the hole it already had a crack for");
+  assert.deepEqual(whispers, []);
 });
 
 test("a drag delivered square by square cracks its way across and only gives way where it stops", async () => {
@@ -338,18 +339,22 @@ test("a drag delivered square by square cracks its way across and only gives way
   const ice = stored(scene);
   assert.deepEqual(ice.cracks, ["1,2", "1,3", "1,4"], "a crack for each square it walked onto");
   assert.deepEqual(ice.holes, [], "and no hole: one step onto sound ice is never a hole, however the hook arrives");
-  assert.equal(whispers.filter((w) => /breaks through/.test(w.content)).length, 0);
+  assert.deepEqual(whispers, []);
 });
 
-test("the whisper names Swim in a PF2e world and stays quiet about it in a world without one", async () => {
+test("nothing thin ice does reaches the chat log, in any world", async () => {
+  // The break, the crack, and a walk that does both: a line per square turned the GM's log into a wall of the same
+  // sentence (Roi: "lets remove all these messages"). What the table sees is on the map. No system's wording is left
+  // to come back with, so the world's id is played both ways to be sure none of it hangs on the system.
   const was = game.system;
   try {
-    game.system = { id: "dnd5e" };
-    await walk([region("reg1")], [[1, 1], [1, 2], [1, 3]], { size: "huge" });
-    assert.deepEqual(whispers.map((w) => w.content), ["Torvald breaks through the ice into the water."], "no action it does not have");
-    game.system = { id: "pf2e" };
-    await walk([region("reg1")], [[1, 1], [1, 2], [1, 3]], { size: "huge" });
-    assert.deepEqual(whispers.map((w) => w.content), ["Torvald breaks through the ice into the water (swim)."]);
+    for (const id of ["pf2e", "dnd5e"]) {
+      game.system = { id };
+      await walk([region("reg1")], [[1, 1], [1, 2], [1, 3]], { size: "huge" });
+      assert.deepEqual(whispers, [], `a break was whispered in a ${id} world`);
+      await walk([region("reg1")], [[1, 1], [1, 2], [1, 3]], { name: "Bron", size: "lg" });
+      assert.deepEqual(whispers, [], `a crack was whispered in a ${id} world`);
+    }
   } finally { game.system = was; }
 });
 

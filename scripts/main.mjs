@@ -5134,15 +5134,13 @@ Hooks.on("canvasTearDown", () => { if (trackWriteTimer) { clearTimeout(trackWrit
 // hole reads as open water underfoot. Its own listener: the footprints' one above is off for most tables.
 const iceRegionsHere = () => regionsHere().filter((doc) => { try { return iceSettingsOf(doc).thin; } catch { return false; } });
 const iceSquareMid = (key, grid) => { const [col, row] = key.split(",").map(Number); return { x: (col + 0.5) * grid, y: (row + 0.5) * grid }; };
-// The GM's whisper and the one region batch: the deletion of a crack by name goes as the database's own operator (v14
-// deprecates the "-=key" form), and the options are built here, afresh for this write, because Foundry writes to them itself.
-const writeIceBreak = async (scene, updates, notes) => {
+// The one region batch: the deletion of a crack by name goes as the database's own operator (v14 deprecates the "-=key"
+// form), and the options are built here, afresh for this write, because Foundry writes to them itself. Nothing is said in
+// chat: a crossing shows itself on the map, in the word over the square and in the break, and a line per square turned the
+// GM's log into a wall of the same sentence (Roi: "lets remove all these messages").
+const writeIceBreak = async (scene, updates) => {
   try { await scene.updateEmbeddedDocuments("Region", updates.map((u) => withDeletes(u, propDel())), { animater: { thinIce: true } }); }
-  catch (err) { runtime?.trace?.("thin ice", `not written: ${err?.message ?? err}`); return; }
-  for (const note of notes) {
-    try { await ChatMessage.create({ whisper: game.users.filter((u) => u.isGM).map((u) => u.id), speaker: { alias: "Animater" }, content: note }); }
-    catch (err) { runtime?.trace?.("thin ice", `not whispered: ${err?.message ?? err}`); }
-  }
+  catch (err) { runtime?.trace?.("thin ice", `not written: ${err?.message ?? err}`); }
 };
 // How much of one move the ice has already walked, kept by token: how many of its waypoints were walked and what path
 // they were (thin-ice.mjs moveSince). Foundry may fire this hook again for the same move with a longer `passed` list, and
@@ -5155,23 +5153,18 @@ const ICE_MOVES_KEPT = 8;
 const iceMoveDone = new Map();
 const iceMoveSeen = (id, kept) => { iceMoveDone.delete(id); iceMoveDone.set(id, kept); while (iceMoveDone.size > ICE_MOVES_KEPT) iceMoveDone.delete(iceMoveDone.keys().next().value); };
 Hooks.on("canvasTearDown", () => { iceMoveDone.clear(); });
-// What a set of squares does to each thin-ice region under them, written in one batch with one whisper.
+// What a set of squares does to each thin-ice region under them, written in one batch.
 const judgeIce = (doc, { size, grid, base, regions, squares }) => {
-  const updates = [], cracked = [], broken = [];
+  const updates = [];
   for (const region of regions) {
     try {
       // Only the squares this region itself holds: the move may have crossed its edge.
       const mine = [];
       for (const key of squares) if (region.testPoint({ ...iceSquareMid(key, grid), elevation: base }) && mine[mine.length - 1] !== key) mine.push(key);
-      const { updates: wrote, note, broke } = iceMoveFor({ region, size, squares: mine, name: doc.name, system: game.system?.id });
-      updates.push(...wrote);
-      // One break, one whisper: two thin-ice regions over the same square would otherwise each tell the GM about it,
-      // and a break is the only thing worth saying when the same move also cracked ice somewhere else.
-      if (note) (broke ? broken : cracked).push(note);
+      updates.push(...iceMoveFor({ region, size, squares: mine }).updates);
     } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
   }
-  const notes = [...new Set(broken.length ? broken : cracked)];
-  if (updates.length) void writeIceBreak(canvas.scene, updates, notes);
+  if (updates.length) void writeIceBreak(canvas.scene, updates);
   return updates.length;
 };
 Hooks.on("moveToken", (doc, movement) => {

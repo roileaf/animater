@@ -33,12 +33,12 @@ test("two sizes over breaks the first square it enters, and no further", () => {
 
 test("a creature at or under the limit never cracks anything", () => {
   const r = iceStep({ limit: "lg", size: "med", squares: ["1,1", "1,2"], cracked: ["1,2"] });
-  assert.deepEqual(r, { cracks: [], breaks: [], note: null });
+  assert.deepEqual(r, { cracks: [], breaks: [] });
 });
 
 test("a creature exactly at the limit never cracks anything", () => {
   const r = iceStep({ limit: "med", size: "med", squares: ["1,1"], cracked: ["1,1"], ended: "1,1" });
-  assert.deepEqual(r, { cracks: [], breaks: [], note: null });
+  assert.deepEqual(r, { cracks: [], breaks: [] });
 });
 
 test("ending a move on a square it just cracked leaves it cracked, not broken", () => {
@@ -54,30 +54,16 @@ test("a square never lands in both lists", () => {
   for (const key of r.breaks) assert.ok(!r.cracks.includes(key));
 });
 
-test("a break is whispered by name, a crack more quietly, nothing at all is null", () => {
-  const broke = iceStep({ limit: "med", size: "huge", squares: ["3,4"], cracked: [], name: "Torvald", system: "pf2e" });
-  assert.equal(broke.note, "Torvald breaks through the ice into the water (swim).");
-  const cracked = iceStep({ limit: "med", size: "lg", squares: ["3,4"], cracked: [], name: "Torvald" });
-  assert.match(cracked.note, /Torvald/);
-  assert.match(cracked.note, /crack/);
-  assert.notEqual(cracked.note, broke.note);
-  assert.equal(iceStep({ limit: "med", size: "sm", squares: ["3,4"], cracked: [] }).note, null);
-});
-
-test("the whisper names a Swim action only where the system has one to name", () => {
-  const go = (system) => iceStep({ limit: "med", size: "huge", squares: ["3,4"], cracked: [], name: "Torvald", system }).note;
-  assert.equal(go("pf2e"), "Torvald breaks through the ice into the water (swim).");
-  assert.equal(go("PF2E"), "Torvald breaks through the ice into the water (swim).", "however the system id is cased");
-  assert.equal(go("sf2e"), "Torvald breaks through the ice into the water (swim).");
-  for (const system of ["dnd5e", "daggerheart", "drawsteel", "", undefined, null, 7, {}]) {
-    assert.equal(go(system), "Torvald breaks through the ice into the water.",
-      "a table whose game has no Swim action is told what happened, not told to take an action it does not have");
-  }
-});
-
-test("an unnamed creature still gets a plain whisper", () => {
-  const r = iceStep({ limit: "med", size: "huge", squares: ["3,4"], cracked: [], system: "pf2e" });
-  assert.equal(r.note, "A creature breaks through the ice into the water (swim).");
+test("a crossing is shown on the map and written nowhere: the judgement carries no words at all", () => {
+  // A line in chat for every square turned the GM's log into a wall of the same sentence, so there is none. What the
+  // table sees is the word over the square (ice-break-word.mjs) and the break itself. Nothing here carries text, and
+  // the keys are asserted whole so a note cannot quietly come back with a system's name for an action in it.
+  const broke = iceStep({ limit: "med", size: "huge", squares: ["3,4"], cracked: [] });
+  const cracked = iceStep({ limit: "med", size: "lg", squares: ["3,4"], cracked: [] });
+  const held = iceStep({ limit: "med", size: "sm", squares: ["3,4"], cracked: [] });
+  assert.deepEqual(broke.breaks, ["3,4"], "it still judges the break");
+  assert.deepEqual(cracked.cracks, ["3,4"], "and still judges the crack");
+  for (const r of [broke, cracked, held]) assert.deepEqual(Object.keys(r).sort(), ["breaks", "cracks"]);
 });
 
 test("crossing its own crack in the same move breaks it, and lists no square twice", () => {
@@ -102,8 +88,8 @@ test("a region with no cracked list yet does not throw", () => {
   const r = iceStep({ limit: "med", size: "lg", squares: ["3,4"] });
   assert.deepEqual(r.cracks, ["3,4"]);
   assert.deepEqual(r.breaks, []);
-  assert.deepEqual(iceStep({ limit: "med", size: "lg" }), { cracks: [], breaks: [], note: null });
-  assert.deepEqual(iceStep(), { cracks: [], breaks: [], note: null });
+  assert.deepEqual(iceStep({ limit: "med", size: "lg" }), { cracks: [], breaks: [] });
+  assert.deepEqual(iceStep(), { cracks: [], breaks: [] });
 });
 
 const FLAG = "flags.animater.thinIce";
@@ -303,14 +289,13 @@ test("how many squares each size takes up", () => {
 const iceRegion = (thinIce, { thin = true, holds = "med" } = {}) => ({ id: "reg1", flags: { animater: { iceThin: thin, iceHolds: holds, thinIce } } });
 
 test("a creature the ice holds writes nothing at all, not even an empty update", () => {
-  const out = iceMoveFor({ region: iceRegion({ cracks: { "1,1": 1 } }), size: "med", squares: ["1,1", "1,2"], ended: "1,2", name: "Pip" });
-  assert.deepEqual(out, { updates: [], note: null, broke: false });
+  const out = iceMoveFor({ region: iceRegion({ cracks: { "1,1": 1 } }), size: "med", squares: ["1,1", "1,2"] });
+  assert.deepEqual(out, { updates: [] });
 });
 
 test("a creature two sizes over breaks the first square it enters, and no other", () => {
-  const { updates, note } = iceMoveFor({ region: iceRegion({}), size: "huge", squares: ["3,4", "3,5"], ended: "3,5", name: "Torvald", system: "pf2e" });
+  const { updates } = iceMoveFor({ region: iceRegion({}), size: "huge", squares: ["3,4", "3,5"] });
   assert.deepEqual(updates, [{ _id: "reg1", [`${FLAG}.holes.3,4`]: 3 }]);
-  assert.equal(note, "Torvald breaks through the ice into the water (swim).");
 });
 
 test("the hole is as wide as the creature that fell through it, not as wide as the limit", () => {
@@ -322,45 +307,41 @@ test("the hole is as wide as the creature that fell through it, not as wide as t
 
 
 test("one size over cracks what it crosses, and goes through where the ice was cracked already", () => {
-  const first = iceMoveFor({ region: iceRegion({}), size: "lg", squares: ["1,1", "1,2", "1,3"], name: "Bron", system: "pf2e" });
+  const first = iceMoveFor({ region: iceRegion({}), size: "lg", squares: ["1,1", "1,2", "1,3"] });
   assert.deepEqual(first.updates, [{ _id: "reg1", [`${FLAG}.cracks.1,1`]: 1, [`${FLAG}.cracks.1,2`]: 1, [`${FLAG}.cracks.1,3`]: 1 }]);
-  assert.equal(first.note, "The ice cracks under Bron.");
-  assert.equal(first.broke, false);
-  // Walking back over what it cracked is what puts it in.
-  const back = iceMoveFor({ region: iceRegion({ cracks: { "1,1": 1, "1,2": 1, "1,3": 1 } }), size: "lg", squares: ["1,2"], name: "Bron", system: "pf2e" });
-  assert.equal(back.note, "Bron breaks through the ice into the water (swim).");
-  assert.equal(back.broke, true);
+  // Walking back over what it cracked is what puts it in: the crack goes by name and a hole takes its place.
+  const back = iceMoveFor({ region: iceRegion({ cracks: { "1,1": 1, "1,2": 1, "1,3": 1 } }), size: "lg", squares: ["1,2"] });
+  assert.deepEqual(back.updates, [{ _id: "reg1", [`${FLAG}.cracks.-=1,2`]: null, [`${FLAG}.holes.1,2`]: 2 }]);
 });
 
 test("a second heavy creature over another's cracks falls through them, and the crack is cleared by name", () => {
   const region = iceRegion({ cracks: { "1,1": 1, "1,2": 1 } });
-  const { updates, note } = iceMoveFor({ region, size: "lg", squares: ["1,1", "1,2"], ended: "1,2", name: "Bron" });
+  const { updates } = iceMoveFor({ region, size: "lg", squares: ["1,1", "1,2"] });
   assert.deepEqual(updates, [{
     _id: "reg1",
     [`${FLAG}.cracks.-=1,1`]: null, [`${FLAG}.holes.1,1`]: 2,
     [`${FLAG}.cracks.-=1,2`]: null, [`${FLAG}.holes.1,2`]: 2,
   }]);
-  assert.match(note, /breaks through the ice/);
 });
 
 test("a region the GM never marked as thin ice is left alone, whatever walks over it", () => {
   for (const thin of [false, undefined, "true", 1]) {
     const region = { id: "reg1", flags: { animater: { iceThin: thin, iceHolds: "med", thinIce: {} } } };
-    assert.deepEqual(iceMoveFor({ region, size: "grg", squares: ["1,1"], ended: "1,1" }), { updates: [], note: null, broke: false }, `thin ice off as ${JSON.stringify(thin)}`);
+    assert.deepEqual(iceMoveFor({ region, size: "grg", squares: ["1,1"], ended: "1,1" }), { updates: [] }, `thin ice off as ${JSON.stringify(thin)}`);
   }
 });
 
 test("iceMoveFor reads the region's own limit, and holds nothing against junk", () => {
-  assert.deepEqual(iceMoveFor({ region: iceRegion({}, { holds: "huge" }), size: "lg", squares: ["1,1"], ended: "1,1" }), { updates: [], note: null, broke: false });
+  assert.deepEqual(iceMoveFor({ region: iceRegion({}, { holds: "huge" }), size: "lg", squares: ["1,1"], ended: "1,1" }), { updates: [] });
   assert.equal(iceMoveFor({ region: iceRegion({}, { holds: "sm" }), size: "med", squares: ["1,1"], ended: "1,1" }).updates.length, 1);
-  assert.deepEqual(iceMoveFor({ region: iceRegion({}), size: "huge" }), { updates: [], note: null, broke: false });
-  assert.deepEqual(iceMoveFor({}), { updates: [], note: null, broke: false });
-  assert.deepEqual(iceMoveFor(), { updates: [], note: null, broke: false });
+  assert.deepEqual(iceMoveFor({ region: iceRegion({}), size: "huge" }), { updates: [] });
+  assert.deepEqual(iceMoveFor({}), { updates: [] });
+  assert.deepEqual(iceMoveFor(), { updates: [] });
 });
 
-test("nothing to write is nothing to whisper: a creature falling into a hole that is already there", () => {
+test("a creature falling into a hole that is already there writes nothing", () => {
   const region = iceRegion({ holes: { "1,1": 3 } });
-  assert.deepEqual(iceMoveFor({ region, size: "huge", squares: ["1,1"], ended: "1,1", name: "Torvald" }), { updates: [], note: null, broke: false });
+  assert.deepEqual(iceMoveFor({ region, size: "huge", squares: ["1,1"] }), { updates: [] });
 });
 
 test("where a creature's weight is read in its footprint, in squares from its own corner", () => {
