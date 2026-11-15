@@ -117,7 +117,7 @@ test("a break leaves the sheet in a few big plates, more of them for a bigger ho
   assert.ok(count(3) > count(1), "a bigger hole breaks into more");
   for (const size of [1, 2, 4]) {
     const ring = holeOutline("3,4", { grid: GRID, seed: 4, size });
-    for (const plate of icePlates("3,4", { grid: GRID, seed: 4, size })) {
+    for (const plate of icePlates("3,4", { grid: GRID, seed: 4, size }).filter((pl) => !pl.chip)) {
       assert.ok(plate.points.length >= 3, "a plate is a polygon");
       assert.ok(Math.abs(plate.turn) <= Math.PI, "a turn in radians, and a small one");
       assert.ok(inside(ring, plate.mid), "the plate sits in the hole it came from");
@@ -134,7 +134,7 @@ test("the creature leaves an opening its own size, with the ice shoved out aroun
     const c = centre("3,4", GRID);
     assert.ok(plates.length >= 3, `the sheet is still in pieces round it: ${plates.length}`);
     let nearest = Infinity;
-    for (const plate of plates) for (const pt of plate.points) nearest = Math.min(nearest, Math.hypot(pt.x - c.x, pt.y - c.y));
+    for (const plate of plates.filter((pl) => !pl.chip)) for (const pt of plate.points) nearest = Math.min(nearest, Math.hypot(pt.x - c.x, pt.y - c.y));
     const want = (squares / 2) * GRID;
     assert.ok(nearest > want * 0.7, `the opening is clear of ice: nearest ${(nearest / GRID).toFixed(2)} squares`);
     assert.ok(nearest < want * 1.45, `and no wider than the creature made it: ${(nearest / GRID).toFixed(2)} squares`);
@@ -361,4 +361,33 @@ test("every screen rides it the same way, and junk never throws", () => {
     const at = plateAt(plate, when);
     assert.ok(Number.isFinite(at.dx) && Number.isFinite(at.dy) && Number.isFinite(at.turn));
   }
+});
+
+test("a break leaves chips as well as slabs, floating in the opening it made", () => {
+  // A big creature takes ice down with it and some of it comes back up: small pieces loose in the water, not slabs.
+  const o = { grid: GRID, seed: 4, size: 4 };
+  const plates = icePlates("3,4", o);
+  const chips = plates.filter((pl) => pl.chip), slabs = plates.filter((pl) => !pl.chip);
+  assert.ok(chips.length >= 1 && chips.length <= 3, `a few chips, not a slick of them: ${chips.length}`);
+  assert.ok(slabs.length > chips.length, "the sheet is still mostly slabs");
+  const area = (pts) => Math.abs(pts.reduce((sum, a, i) => { const b = pts[(i + 1) % pts.length]; return sum + (a.x * b.y - b.x * a.y); }, 0)) / 2;
+  const biggest = Math.max(...slabs.map((pl) => area(pl.points)));
+  for (const chip of chips) assert.ok(area(chip.points) < biggest * 0.5, "a chip is a good deal smaller than a slab");
+});
+
+test("no edge of a slab is a perfectly straight run: ice breaks chipped", () => {
+  // Three points in a row on one line is a drawn shape, not a broken one. Every edge carries a bite or two out of it.
+  const plates = icePlates("3,4", { grid: GRID, seed: 6, size: 2 });
+  let straight = 0, corners = 0;
+  for (const plate of plates) {
+    const pts = plate.points;
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length], c2 = pts[(i + 2) % pts.length];
+      const cross = (b.x - a.x) * (c2.y - a.y) - (b.y - a.y) * (c2.x - a.x);
+      corners++;
+      if (Math.abs(cross) < 1e-6) straight++;
+    }
+  }
+  assert.ok(corners > 20, `enough corners to judge: ${corners}`);
+  assert.ok(straight / corners < 0.1, `hardly any three points in a row: ${straight} of ${corners}`);
 });

@@ -8,12 +8,21 @@ import { shardAt, plateAt } from "./ice-break-look.mjs";
 
 const INK = 0x1b1410, FROST = 0xdcecf2, SHARD = 0xe9f4f7, SHARD_EDGE = 0x5d7f8c;
 // A plate of ice seen from above. Ice is not a tile: it is see-through, so the dark water under it shows through and
-// colours it, and what catches the light is the broken edge rather than the whole face. An opaque pale face with a wide
-// band beneath it read as cardboard with a drop shadow, which is what it was.
-const PLATE_FACE = 0xdcecf4, PLATE_FACE_ALPHA = 0.62;
-const PLATE_SIDE = 0x9fd4e4, PLATE_DEEP = 0x2f6e88;
+// colours it, and what catches the light is the broken edge rather than the whole face.
+//
+// The colours are frankly blue rather than the white ice is in the hand. A map lit warm — a desert, a torch, a sunset —
+// multiplies this whole layer by its own light, and a near-white face comes out of that as sand-coloured card. Ice that
+// is blue to begin with comes out of it as pale ice. The cost is that on a cold blue map it is a little bluer than life,
+// which is the right way round: ice reads as ice either way, and card never does.
+const PLATE_FACE = 0x9ecfe8, PLATE_FACE_ALPHA = 0.72;
+const PLATE_SIDE = 0x6fb4d2, PLATE_DEEP = 0x245a74;
 // The lit broken edge, the line where ice meets water, and the flaws frozen into the sheet.
-const PLATE_RIM = 0xf6ffff, PLATE_EDGE = 0x2b4f60, PLATE_FLAW = 0x9ec6d6;
+const PLATE_RIM = 0xdff5ff, PLATE_EDGE = 0x1d4257, PLATE_FLAW = 0x76a8c0;
+// Where the light comes from, as a direction on the map. Only the edges that face it catch the bright line; a rim drawn
+// all the way round a slab is a border, and a border is what paper has.
+const LIGHT_X = -0.6, LIGHT_Y = -0.8;
+// How much paler one slab can be than another: the dry ones against the ones that tipped and came up wet.
+const PLATE_TONE = 0.16;
 // The water in the hole, painted here under the plates rather than left to the moving water alone. The hole is a water spec
 // too, so the engine's ripples run over this where the screen's quality allows them — but a creature standing in open water
 // has to read as standing in open water on every screen, at every quality, and on a map whose own light is warm enough to
@@ -96,10 +105,24 @@ export function createIceBreakLook({ PIXI, layer, grid = () => 100 }) {
       platesArt.lineStyle(0).beginFill(PLATE_SIDE, 0.85).drawPolygon(under.map((v, i) => v - (i % 2 ? thick * 0.45 : thick * 0.26))).endFill();
       // The ice itself, see-through, so the water under it does the colouring. This is the whole difference between ice
       // and a tile, and no amount of outlining makes an opaque face read as ice.
-      platesArt.lineStyle(0).beginFill(PLATE_FACE, PLATE_FACE_ALPHA).drawPolygon(flat).endFill();
-      // Where it broke, the edge is thick and catches the light; under it, the darker line where the ice meets the water.
-      platesArt.lineStyle(Math.max(1, 1.5 * k), PLATE_RIM, 0.7, 1).drawPolygon(flat);
-      platesArt.lineStyle(Math.max(1, 0.9 * k), PLATE_EDGE, 0.5, 0).drawPolygon(flat);
+      const tone = Number.isFinite(plate.tone) ? plate.tone : 0.5;
+      platesArt.lineStyle(0).beginFill(PLATE_FACE, PLATE_FACE_ALPHA * (1 - PLATE_TONE / 2 + tone * PLATE_TONE)).drawPolygon(flat).endFill();
+      // The line where the ice meets the water, all the way round.
+      platesArt.lineStyle(Math.max(1, 1.1 * k), PLATE_EDGE, 0.7, 0).drawPolygon(flat);
+      // And the bright broken edge, on the sides facing the light only.
+      platesArt.lineStyle(Math.max(1, 1.3 * k), PLATE_RIM, 0.5, 1);
+      for (let i = 0; i < flat.length; i += 2) {
+        const ax = flat[i], ay = flat[i + 1], bx = flat[(i + 2) % flat.length], by = flat[(i + 3) % flat.length];
+        const ex = bx - ax, ey = by - ay, run = Math.hypot(ex, ey);
+        if (!(run > 0)) continue;
+        // The outward normal of this edge, for a ring wound either way: take the one pointing away from the middle.
+        let nx = ey / run, ny = -ex / run;
+        const midX = (ax + bx) / 2 - plate.mid.x, midY = (ay + by) / 2 - plate.mid.y;
+        if (nx * midX + ny * midY < 0) { nx = -nx; ny = -ny; }
+        if (nx * LIGHT_X + ny * LIGHT_Y <= 0.15) continue;
+        platesArt.moveTo(ax, ay);
+        platesArt.lineTo(bx, by);
+      }
       // A flaw or two frozen into it, drawn between its own corners, so no two plates carry the same ones.
       if (pts.length >= 5) {
         platesArt.lineStyle(Math.max(1, 0.8 * k), PLATE_FLAW, 0.38, 0.5);

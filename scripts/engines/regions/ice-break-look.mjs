@@ -88,6 +88,12 @@ const PLATE_CENTRE_OPEN = 0.13;
 // out around it and their inner edges cut straight where they were pushed back. Without it the pieces closed over the
 // hole and a creature in the water looked like a creature on a heap of broken slabs.
 const PLATE_OPENING = 0.92;
+// Ice does not break along drawn lines. Every edge of a slab is chipped: a point or two set into it, shifted square to
+// the edge by a little, so no edge is ever a perfect straight run. Without this the pieces read as cut paper however
+// they are coloured, which is the single thing that gave the first design away.
+const PLATE_CHIP = 0.035, PLATE_CHIP_AT = 0.055;
+// A break leaves chips as well as slabs: a few small pieces floating loose in the opening the creature made.
+const PLATE_CHIPS_KEPT = 2, PLATE_CHIP_SIZE = 0.3;
 // How a slab rides: its lift is a fraction of a square, so it is the same small movement on a map of 70-pixel squares as on
 // one of 200, and its swing is radians. Both are small — a plate the size of a creature barely moves on the water.
 const PLATE_SWAY = 0.012, PLATE_SWING = 0.016;
@@ -149,11 +155,32 @@ function areaMid(poly) {
   return { area, mid: { x: cx / (3 * twice), y: cy / (3 * twice) } };
 }
 
+// An edge with a chip or two taken out of it: each run between two corners gets an extra point partway along, pushed
+// square to the run. Long edges get two, short ones one, so a big slab is as rough along its length as a small one.
+function chipped(poly, grid, next) {
+  const out = [];
+  for (let k = 0; k < poly.length; k++) {
+    const a = poly[k], b = poly[(k + 1) % poly.length];
+    out.push(a);
+    const dx = b.x - a.x, dy = b.y - a.y, run = Math.hypot(dx, dy);
+    if (!(run > grid * 0.08)) continue;
+    const nx = -dy / run, ny = dx / run;
+    const bites = run > grid * 0.5 ? 2 : 1;
+    for (let i = 1; i <= bites; i++) {
+      const along = (i / (bites + 1)) + (next() - 0.5) * PLATE_CHIP_AT;
+      const out_ = (next() - 0.5) * 2 * grid * PLATE_CHIP;
+      out.push({ x: a.x + dx * along + nx * out_, y: a.y + dy * along + ny * out_ });
+    }
+  }
+  return out;
+}
+
 /** The ice of a broken square as floating plates: the hole's own outline fractured along straight lines into a few slabs,
  *  each shrunk a little about its own middle and nudged outward, so the dark water shows in the seams between them and the
  *  pieces still read as one sheet come apart. [{ points: [{x, y}, ...], mid: {x, y}, turn, drift }], biggest first.
  *  `turn` is how far that slab has swung, `drift` how far it has slid out and `sway` how far it lifts on the water, all
- *  small and all in the caller's own pixels. Junk input gives []. Pure. */
+ *  small and all in the caller's own pixels. `chip` marks the small pieces floating loose in the opening rather than the
+ *  slabs ringing it. Junk input gives []. Pure. */
 export function icePlates(key, { grid, seed = 0, size } = {}) {
   const sq = parseKey(key);
   if (!sq || !validGrid(grid) || !(Number(size) > 0) || !Number.isFinite(size)) return [];
@@ -183,6 +210,7 @@ export function icePlates(key, { grid, seed = 0, size } = {}) {
   // inner edges straight, as ice shoved aside is. A piece that lay wholly inside it is gone — that is the ice the
   // creature took down with it.
   const open = (size / 2) * grid * PLATE_OPENING;
+  const chips = [];
   if (open > 0) {
     const kept = [];
     for (const piece of pieces) {
@@ -193,25 +221,37 @@ export function icePlates(key, { grid, seed = 0, size } = {}) {
       const at = { x: cx + dirX * open, y: cy + dirY * open };
       const poly = halfOf(piece.poly, at, Math.atan2(dirY, dirX) + Math.PI / 2, -1);
       const am = poly.length >= 3 ? areaMid(poly) : null;
-      if (am && am.area > grid * grid * 0.004) kept.push({ poly, ...am });
+      if (am && am.area > grid * grid * 0.004) { kept.push({ poly, ...am }); continue; }
+      // Nothing of it survived the opening: it went in with the creature. A couple of them come back up as loose chips,
+      // shrunk about their own middles and floating in the water, because a break leaves chips as well as slabs.
+      if (chips.length < PLATE_CHIPS_KEPT && piece.area > grid * grid * 0.01) {
+        const bit = piece.poly.map((pt) => ({ x: piece.mid.x + (pt.x - piece.mid.x) * PLATE_CHIP_SIZE, y: piece.mid.y + (pt.y - piece.mid.y) * PLATE_CHIP_SIZE }));
+        const bm = areaMid(bit);
+        if (bm) chips.push({ poly: bit, ...bm, chip: true });
+      }
     }
-    if (kept.length) pieces = kept;
+    if (kept.length) pieces = [...kept, ...chips];
   }
   pieces.sort((a, b) => b.area - a.area);
   return pieces.map((piece) => {
     const away = Math.atan2(piece.mid.y - cy, piece.mid.x - cx) || 0;
-    const drift = grid * (PLATE_DRIFT_LOW + next() * PLATE_DRIFT_SPAN);
-    const turn = (next() - 0.5) * PLATE_TURN;
     // How far out this plate sits, 0 in the middle of the hole and 1 at its rim.
     const out = Math.min(1, Math.hypot(piece.mid.x - cx, piece.mid.y - cy) / Math.max(1, ((size + 1) / 2) * grid));
+    // Shoved out from the middle, and the further out a piece already is the less it moved: the rim of the sheet is
+    // still joined to the ice around it, and a slab there that drifted could end up outside the hole it came from.
+    const drift = grid * (PLATE_DRIFT_LOW + next() * PLATE_DRIFT_SPAN) * (1 - out * 0.8);
+    const turn = (next() - 0.5) * PLATE_TURN;
     const shrink = (PLATE_SHRINK_LOW + next() * PLATE_SHRINK_SPAN) * (1 - PLATE_CENTRE_OPEN * (1 - out));
     const mid = { x: piece.mid.x + Math.cos(away) * drift, y: piece.mid.y + Math.sin(away) * drift };
     // Shrunk about its own middle and swung a little where it now sits: the seam between two slabs is water, not a line.
-    const points = piece.poly.map((pt) => {
+    const points = chipped(piece.poly, grid, next).map((pt) => {
       const dx = (pt.x - piece.mid.x) * shrink, dy = (pt.y - piece.mid.y) * shrink;
       return { x: mid.x + dx * Math.cos(turn) - dy * Math.sin(turn), y: mid.y + dx * Math.sin(turn) + dy * Math.cos(turn) };
     });
-    return { points, mid, turn, drift, sway: grid * PLATE_SWAY };
+    // How this one sits in the light: some slabs are tilted wet and dark, some are dry and pale. Without it a break is
+    // one flat colour cut into shapes, which is a mosaic rather than ice.
+    const tone = next();
+    return { points, mid, turn, drift, tone, chip: piece.chip === true, sway: grid * PLATE_SWAY };
   });
 }
 
