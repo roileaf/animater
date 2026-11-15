@@ -59,6 +59,10 @@ test("the game's clock saved as a setting builds none of the map's layers again"
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
   for (const call of ['lampSoon', 'draftSoon', 'floorLooksSoon', 'drawTracks', 'lifeSoon', 'syncCalendariaFlash', 'scheduleIdle', 'scheduleWounds']) assert.match(main, new RegExp(`if \\(!(isClockSave|quietSave)\\([^)]*\\)\\) (\\{ forgetPlanes\\(\\); )?${call}\\(`), call);
   assert.match(main, /if \((isClockSave\(first\)|quietSave\(first, changes, options\))\) return; canopySoon\(\); glowsSoon\(\);/);
-  // quietSave: a clock save, or a region write that only stores decoration breaks (decor-break.mjs decorOnlySave).
-  assert.match(main, /const quietSave = \(first, changes, options\) => isClockSave\(first\) \|\|/);
+  // quietSave is ONE exported composition (engines/props/quiet-writes.mjs): a clock save, a region write that only
+  // stores decoration breaks, or the smoke round's own scene and region writes. main.mjs imports it and keeps no copy,
+  // so what each clause does is tested on the real function (quiet-writes.test.mjs) instead of read off this file.
+  assert.match(main, /import \{ quietSave, isClockSave \} from "\.\/engines\/props\/quiet-writes\.mjs";/);
+  assert.doesNotMatch(main, /const quietSave = /, "no copy of the composition here");
+  assert.doesNotMatch(main, /const isClockSave = /, "nor of the clock test");
 });

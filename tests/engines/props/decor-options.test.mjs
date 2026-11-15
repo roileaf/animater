@@ -229,3 +229,25 @@ test("every screen plays the ignite over the spilled wreck it drew; a fire area 
   assert.match(apply, /if \(view && check\.explode && decorPlaceOf\(view\)\) void runBlastAt\(scene, \{ centre: decorPlaceOf\(view\),/);
   assert.match(main, /for \(const id of decorIgnites\(wanted, decorWrecksShown, decorWreckPowder\)\)/);
 });
+
+// Roi's cave: the bushes burning on both sides of a wall were painted decorations, and a decoration is judged with no
+// walls at all (it owns none and opens none). The scene's walls still have to be reached past for a fire area to
+// light one, which is what `fireWalls` carries in.
+test("a fire area cannot light a decoration behind a wall", () => {
+  const r = on({ brushed: [hand] }), barrel = viewOf(r, "barrel:300:300:h");
+  const far = { kind: "area", damageType: "fire", at: { x: 900, y: 300 } };
+  const across = [{ id: "div", c: [600, 0, 600, 1000], door: 0, move: 20, sight: 20, flags: {} }];
+  const req = ask(barrel, far);
+  assert.equal(validDecorBreakRequest(req, ctx(r)).ok, true, 'nothing in the way');
+  assert.deepEqual(validDecorBreakRequest(req, ctx(r, { fireWalls: across })), { ok: false, why: "wall" });
+  // An open door stops nothing, and another damage type is not held at all.
+  const open = [{ ...across[0], door: 1, ds: 1 }];
+  assert.equal(validDecorBreakRequest(req, ctx(r, { fireWalls: open })).ok, true);
+  const shove = ask(barrel, { kind: "area", damageType: "bludgeoning", at: far.at });
+  assert.equal(validDecorBreakRequest(shove, ctx(r, { fireWalls: across })).ok, true);
+  // The walls it is given are the scene's: main.mjs hands them over on both the asking and the writing side.
+  const main = read("scripts/main.mjs");
+  assert.equal((main.match(/fireWalls: scene\.walls\?\.contents \?\? \[\]/g) ?? []).length, 2);
+  // And the grass a fire area lights is held by the same rule.
+  assert.match(main, /const reaches = \(p\) => \(!walls\.length \|\| !Number\.isFinite\(from\?\.x\) \? true : !wallBetween\(from, p, walls\)\);/);
+});

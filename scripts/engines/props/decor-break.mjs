@@ -278,12 +278,12 @@ const decorIndex = createDecorIndex();
  * broken but not yet stored; `drawn` (decorDrawn) refuses one not drawn on the map. Refusals: off, missing, undrawn,
  * broken, then validBreakRequest's own.
  */
-export function validDecorBreakRequest({ key, cause, note } = {}, { region, scene, grid, sender, target, mover, roll, source, levels, area, now, lights = [], queued = [], index = decorIndex, drawn = null } = {}) {
+export function validDecorBreakRequest({ key, cause, note } = {}, { region, scene, grid, sender, target, mover, roll, source, levels, area, now, lights = [], queued = [], index = decorIndex, drawn = null, fireWalls = [] } = {}) {
   const no = (why) => ({ ok: false, why });
   if (scene?.flags?.animater?.breakableProps !== true) return no("off");
   if (region?.settings?.canBreak !== true) return no("off");
   // Spilled powder set off by a fire area; a decoration the spreading fire caught or burnt out (gmFireCause) breaks as any other does.
-  if (cause?.kind === "ignite" && !gmFireCause(cause)) return decorIgniteCheck({ key, cause, note }, { region, scene, grid, sender, area, now, index });
+  if (cause?.kind === "ignite" && !gmFireCause(cause)) return decorIgniteCheck({ key, cause, note }, { region, scene, grid, sender, area, now, index, fireWalls });
   const { keys, views } = index(region, grid), view = views.find((v) => v.decor.key === key);
   if (!view) return no("missing");
   if (drawn && !drawn(view)) return no("undrawn");
@@ -291,7 +291,9 @@ export function validDecorBreakRequest({ key, cause, note } = {}, { region, scen
   // The fire this decoration already carries (its region's decorFire, read through the accessor by the caller), so a
   // fire area knows not to light one that is burning.
   const alight = region?.fire && typeof region.fire === "object" ? region.fire[key] ?? null : null;
-  const out = validBreakRequest({ cause, note }, { tile: alight ? { ...view, fire: alight } : view, walls: [], scene, grid, sender, target, mover, roll, lights, source, levels, area, now });
+  // (`walls: []` as ever — a decoration owns no walls and opens none — but the scene's walls still have to be reached
+  // past for a fire area to light it: Roi's cave, where the fire crossed a wall.)
+  const out = validBreakRequest({ cause, note }, { tile: alight ? { ...view, fire: alight } : view, walls: [], fireWalls, scene, grid, sender, target, mover, roll, lights, source, levels, area, now });
   if (!out.ok) return out;
   const { d } = view.decor;
   // Caught rather than broken (Fire spreads): the fire to save under this key, and nothing broken at all.
@@ -305,10 +307,10 @@ export function validDecorBreakRequest({ key, cause, note } = {}, { region, scen
  * break says its powder spilled, only fire, and only an area that holds it (the GM's own record of the area). The entry comes back
  * rewritten with its powder exploded (decorBrokenAfter lets that one rewrite through) and `explode`, so its blast runs and chains.
  */
-function decorIgniteCheck({ key, cause, note }, { region, scene, grid, sender, area, now, index }) {
+function decorIgniteCheck({ key, cause, note }, { region, scene, grid, sender, area, now, index, fireWalls = [] }) {
   const view = decorBrokenViews(region, grid, index).find((v) => v.decor.key === key);
   if (!view) return { ok: false, why: "cause" };
-  const out = validBreakRequest({ cause, note }, { tile: view, walls: [], scene, grid, sender, area, now });
+  const out = validBreakRequest({ cause, note }, { tile: view, walls: [], fireWalls, scene, grid, sender, area, now });
   if (!out.ok) return out;
   const { d } = view.decor;
   return { ok: true, ignite: true, explode: true, fire: false, lightUpdates: [], entry: { key, kind: d.kind, x: Math.round(d.x), y: Math.round(d.y), note: out.note } };

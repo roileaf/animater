@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lookFor, coatOf, rollPhase, framePath, groupOf, isPainted, teamStep, packSize, SETS, headingOf, travelOf, lookStep, lookSize, trueSquares, bodyRide, leanTurn, CARRIER_LOOKS, COATS, ROLL_FRAMES, LOOK } from '../../../scripts/engines/motion/carrier-look.mjs';
+import { lookFor, coatOf, rollPhase, framePath, groupOf, isPainted, teamStep, packSize, SETS, headingOf, travelOf, lookStep, lookSize, trueSquares, bodyRide, leanTurn, CARRIER_LOOKS, COATS, ROLL_FRAMES, LOOK, breathAt, BREATH_PERIOD, BREATH_SWELL } from '../../../scripts/engines/motion/carrier-look.mjs';
 import { readFileSync } from 'node:fs';
 
 // Roi: "where is the wagon model it's supposed to get" — so a carrier wears the baked wagon, not its own picture.
@@ -238,4 +238,26 @@ test('the picture is as long as the token is, and never shorter than the vehicle
   assert.deepEqual(trueSquares('wagon', 5), { long: 2, wide: 2 });
   assert.deepEqual(trueSquares('cart', 5), { long: 2, wide: 1 });
   assert.equal(trueSquares('', 5), null);
+});
+
+// Roi, of the sled's pack standing still: "no idle animation". The wolves have one `rest` frame baked and no more,
+// so the standing round cannot come off the sheet — it comes from the body, as Animater's idle life breathes a
+// creature: one slow swell across the ribs, each animal on its own clock.
+test('a waiting team breathes, each on its own clock, and a moving one does not', () => {
+  const still = teamStep('sled', 0, 0, false, 0, 's1');
+  assert.ok(still.length >= 2);
+  assert.ok(still.every((a) => Number.isFinite(a.breath)), 'every one of them has a breath');
+  assert.equal(new Set(still.map((a) => a.breath)).size, still.length, 'and no two breathe as one body');
+  assert.ok(still.every((a) => a.breath >= 0 && a.breath <= 1));
+  // Moving, its legs are its life: nothing swells.
+  assert.ok(teamStep('sled', 0, 2, true, 0, 's1').every((a) => a.breath === 0));
+  // One breath, there and back, over its period.
+  const quarter = BREATH_PERIOD * 1000 / 4;
+  const round = [0, quarter, quarter * 2, quarter * 3, quarter * 4].map((ms) => breathAt(ms, 'w'));
+  assert.ok(Math.abs(round[0] - round[4]) < 1e-9, 'it comes back round');
+  assert.ok(round[1] !== round[3], 'and breathes out as well as in');
+  assert.ok(BREATH_SWELL > 0 && BREATH_SWELL <= 0.03, 'a breath, not a bellows');
+  // The same shape and size as any other body's idle breathing (condition-body idle-breathe).
+  const body = readFileSync(new URL('../../../scripts/engines/motion/condition-body.mjs', import.meta.url), 'utf8');
+  assert.match(body, /case 'idle-breathe': return \{ sy: 1 - 0\.025 \* k/);
 });

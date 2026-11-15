@@ -23,6 +23,14 @@ import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
 import { BURN_MS, burnLightData, fireTimers, unhideLights, firesOf } from "./engines/props/prop-lights.mjs";
 import { propMaterial, canBreak } from "./engines/props/prop-material.mjs";
+import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf, smokeWalls } from "./engines/props/smoke-field.mjs";
+import { registerSmokeFence } from "./engines/props/smoke-fence.mjs";
+import { smokeGridOf, storedSmokeGrid, smokeCellList, smokeLevelOf } from "./engines/props/smoke-edges.mjs";
+import { createSmokeLooks, smokePuffs, smokeSheets, smokeSeedOf, airHazeFor, SMOKE_SORT_LAYER } from "./engines/props/smoke-look.mjs";
+import { CONCEALMENT_BEHAVIOUR, smokeRegionPlan, skyRegionsOf, regionsOnLevel } from "./engines/props/smoke-regions.mjs";
+import { smokeRoundPlan, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, smokeLevelFor, createSmokeAlarm, smokeNote } from "./engines/props/smoke-round.mjs";
+import { smokeGathering } from "./engines/props/smoke-gather.mjs";
+import { quietSave, isClockSave } from "./engines/props/quiet-writes.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
 import { propsInArea, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls, blockingWalls, wallStop } from "./engines/props/prop-walls.mjs";
@@ -37,7 +45,7 @@ import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt
 import { DOOR_ATTACK_SYSTEMS, doorStats, doorCracked, doorHpLine, strikeReaches, strikeIdentifier, doorAttackOf, doorAttackCheck, doorAttackRoller, doorHitUpdate, strikeHasAmmo, pickDoorStamp } from "./engines/props/door-attack.mjs";
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
-import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsOf, dropLostDecorFire, regionBurns, createQuenchGate, quenchedBy, quenchUpdates, repairFireUpdates } from "./engines/props/fire-spread.mjs";
+import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsOf, dropLostDecorFire, regionBurns, createQuenchGate, quenchedBy, quenchUpdates, quenchSmokeUpdate, repairFireUpdates } from "./engines/props/fire-spread.mjs";
 import { areaRefusal } from "./engines/props/prop-areas.mjs";
 import { createFireLooks, thingFires, charredCells, litCells } from "./engines/props/fire-looks.mjs";
 import { iceBreakOf, iceHoleAt } from "./engines/regions/ice-break-look.mjs";
@@ -45,11 +53,11 @@ import { iceSettingsOf, iceStateOf, iceMoveFor, sizeNameOf, walkedLegs, squaresE
 import { createIceBreakLook } from "./engines/regions/ice-break-draw.mjs";
 import { iceBreakSound, newKeys } from "./engines/regions/ice-break-sound.mjs";
 import { iceWords } from "./engines/regions/ice-break-word.mjs";
-import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
+import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, wallBetween, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
 import { DECOR_BREAK_MESSAGE, DECOR_NAMES, burningDecorIds, decorPlaceOf, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
-import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML } from "./ui/prop-config.mjs";
+import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML, smokeLightFieldHTML, SMOKE_LIGHT_FLAG } from "./ui/prop-config.mjs";
 import { bulkBreakableUpdates, windowLike } from "./engines/props/wall-break-bulk.mjs";
 import { damageTypesOfItem, areaIdOf, areaOriginRefOf, placedRecordOf, typesBreaking, rollDamageTypes } from "./engines/props/area-damage.mjs";
 import { createPlayWatch, strikeMoment, momentWait } from "./engines/props/play-moments.mjs";
@@ -155,11 +163,16 @@ const hotSettings = frameSettings({ get: key => (settingPreview.has(key) ? setti
 const hotSetting = key => hotSettings.get(key);
 // Any setting written (this world's, this screen's, by Animater or another module): read afresh.
 for (const hook of ["updateSetting", "createSetting", "deleteSetting", "clientSettingChanged"]) Hooks.on(hook, () => hotSettings.invalidate());
-// Foundry keeps the game's clock in a setting, so every tick of it arrives as a setting saved: nothing to build again for that.
-const isClockSave = (first) => first?.key === "core.time";
+// (The clock save, the decoration break and the smoke round's own two writes all live in quiet-writes.mjs now.)
 // A region write that only stores or clears decoration breaks (decor-break.mjs decorOnlySave): the decoration painter and
 // wrecks follow it (their own updateRegion hook); the region rebuilds skip it, as they skip a clock save.
-const quietSave = (first, changes, options) => isClockSave(first) || (first?.documentName === "Region" && decorOnlySave(changes, options));
+// (The smoke round puts its own cells back on the scene, and its own concealment region back beside them, every few
+// seconds; both writes are the round talking to itself, so the rebuilds — and the round's own room-size cache — skip
+// them too. smoke-round.mjs smokeOnlySave for the scene, smoke-regions.mjs smokeRegionSave for the region.)
+// The whole composition — the clock save, the decoration break, the smoke round's own scene and region writes — is
+// quiet-writes.mjs's `quietSave`, which main.mjs imports and no test re-implements. It used to be spelled out here,
+// where the only thing that could check it was a source-text regex (in three different suites), and a test that
+// wrote its own copy of the composition would have gone on passing while this one lost a clause.
 // Invalidate before our own onChange callbacks (not only after Foundry's
 // update hook): quality routing and other synchronous readers need the new value.
 const registerSetting = (key, config) => game.settings.register(ID, key, {
@@ -327,7 +340,7 @@ import {ConditionBody,bodyTreatment} from './engines/motion/condition-body.mjs';
 import { IdleLife, breathes, idleKind, pickIdle } from "./engines/motion/idle-life.mjs";
 import { seaStrength, rollSeed, shipRoll, onDeck, carriedBy, deckShade, hullWash, tileMiddle } from "./engines/motion/ship-roll.mjs";
 import { ABOARD, KIND as CARRIER_KIND, STOW as CARRIER_STOW, RIDING as CARRIER_RIDING, SEATS as CARRIER_SEATS, CARRIER_KINDS, carrierKind, kindLabel, pulledOff, boardList, stillAboard, ridePlan, landPlan, boardLabel, capacityOf, overCapacity, tooBig, seatsOf, seatsLeft } from "./engines/motion/carriers.mjs";
-import { LOOK as CARRIER_LOOK, CARRIER_LOOKS, lookStep, lookSize, lookFor, trueTall, trueSquares, framePath, squareMetres, drawnSize, idleFrame, headUp, SETS as CARRIER_SETS } from "./engines/motion/carrier-look.mjs";
+import { LOOK as CARRIER_LOOK, CARRIER_LOOKS, lookStep, lookSize, lookFor, trueTall, trueSquares, framePath, squareMetres, drawnSize, idleFrame, headUp, BREATH_SWELL, SETS as CARRIER_SETS } from "./engines/motion/carrier-look.mjs";
 import { paintCarrier } from "./engines/motion/carrier-paint.mjs";
 import { rollFile, rollShape, lapFile, lapShape, paceGap, paceVoice, knocksFor, teamCall, callGap, carrierSoundFiles, hoofFile, hoofShape, mountPace } from "./engines/sound/carrier-sound.mjs";
 import { WoundedLooks, bleedTier, tokenMoving } from "./engines/playback/wounded-looks.mjs";
@@ -1965,7 +1978,7 @@ const lampSoon = () => { if (!lampTimer) lampTimer = setTimeout(rebuildLampAir, 
 let smokeAir = null, smokeWait = 0;
 const fillSmoke = () => {
   try {
-    if (!airField || !roomSmokeOn() || !undergroundScene()) { smokeAir = null; lampAir.smokeFill(null); return; }
+    if (!airField || !hazeSmokeOn()) { smokeAir = null; lampAir.smokeFill(null); return; }
     smokeAir ??= createSmokeAir();
     smokeAir.setup(airField, lampLights.filter((l) => l.fire).map((l) => l.smokeFrom));
     lampAir.smokeFill(smokeAir.pixels, airField.cols, airField.rows);
@@ -2013,7 +2026,12 @@ const rebuildLampAir = () => {
     lampLookAt = 0;
   } catch { lampAir.clear(); }
 };
-for (const hook of ["canvasReady", "createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "createWall", "updateWall", "deleteWall", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) lampSoon(); });
+// (updateScene is in the list because the scene's own switches decide whether the old haze stands down for the
+// simulated smoke: without it smokeAir went on stepping every frame, unseen, after the switch was ticked. It is
+// filtered through quietSave, not isClockSave alone, because the smoke round writes the scene every few seconds:
+// on isClockSave alone that write scheduled a whole light scan and lampAir.build on every smoking scene, which is
+// the opposite of what adding the hook was for. A real GM edit is not quiet and still rebuilds.)
+for (const hook of ["canvasReady", "createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "createWall", "updateWall", "deleteWall", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) lampSoon(); });
 Hooks.on("canvasTearDown", () => { clearTimeout(lampTimer); lampTimer = null; lampAir.clear(); lampLights = []; lampLightsKey = ""; });
 // What a token sees changing: the sparks of the fires it now sees (or no longer does) at once.
 Hooks.on("sightRefresh", () => { lampLookAt = 0; });
@@ -2022,6 +2040,13 @@ Hooks.on("sightRefresh", () => { lampLookAt = 0; });
 // out again when a door opens or shuts, or the walls or regions change.
 const draftsOn = () => bothSettingsOn("drafts"), roomSmokeOn = () => bothSettingsOn("roomSmoke");
 const undergroundScene = () => undergroundOf(canvas?.scene?.flags?.[ID], canvas?.level?.flags?.[ID]);
+// Whether the OLD rolling haze ("Smoke in the air") shows here. One smoke per scene, not two layered: the haze
+// stands down exactly where the simulation takes over, and nowhere else — cells the round really worked out instead
+// of a wash over the whole map. Anywhere the simulation is not running, including a scene that has the switch on but
+// not the two the round rides on, this is exactly the answer it has always given.
+// The whole rule, including whether the simulation runs here, is smoke-look.mjs's airHazeFor: it is handed the scene
+// and asks smokeRunsOn itself, so this cannot hand it the wrong question — which is precisely what it once did.
+const hazeSmokeOn = () => airHazeFor({ on: roomSmokeOn(), underground: undergroundScene() }, canvas?.scene);
 let draftTimer = null, gustAt = -Infinity, gustFrom = null, airLive = false, previewOpenings = [], airField = null;
 // How the air moves at a point now (0 still – 1 the fastest streams in a gust): how fast it runs there (a doorway on the
 // way out fast, a room's corner barely), and the gust once it has swept that far from the door that opened.
@@ -2177,7 +2202,7 @@ const lookLampAir = (now) => {
     // the fog); looked at with the list, a few times a second.
     const grid = canvas.grid.size, seen = (l) => { try { return canvas.visibility?.testVisibility?.({ x: l.x, y: l.y }, { tolerance: grid * 0.1 }) !== false && !flameCovered(`spark:${l.x},${l.y}`, l, canvas.level?.elevation?.base ?? 0); } catch { return true; } };
     lampAir.look({ fires: embersOn() || lean ? fireSparksOf(lampLights, view, grid).filter(seen) : [], embers: embersOn() ? 0.6 + 0.4 * dark : 0, motes: motesOn() ? dark : 0, wind: { x: 0.02, y: -0.01 },
-      air: airLive, since: (now - gustAt) / 1000, smoke: roomSmokeOn() && undergroundScene() ? 0.85 : 0, lean });
+      air: airLive, since: (now - gustAt) / 1000, smoke: hazeSmokeOn() ? 0.85 : 0, lean });
     gutterFlames(torchDraftOn() ? 1 : 0);
   } catch { /* the canvas mid-change */ }
 };
@@ -2527,7 +2552,9 @@ const syncDecorations = () => {
   }
   decorations.sync(list);
   // The lamps, braziers and candles among them light the map: real light sources, the same on every screen.
-  try { decorLights.sync(decorations.lights()); } catch (err) { console.warn("Animater | decoration lights", err); }
+  // (Not while a stroke paints: every light that changes has Foundry redo its lighting and every creature's vision, and a
+  // stroke asks ten times a second. The lamps a stroke lays come on when it ends, with everything else it settles.)
+  if (!decorBrushing?.down) { try { decorLights.sync(decorations.lights()); } catch (err) { console.warn("Animater | decoration lights", err); } }
   lightDecorations();
   // Their trees join the canopy's shade: built again when they change.
   const key = JSON.stringify(decorations.trees().map((t) => [t.id, t.kind, Math.round(t.x), Math.round(t.y)]));
@@ -4259,9 +4286,39 @@ Hooks.on("updateToken", (doc, change) => { if (change?.flags?.[ID] && (ABOARD in
 // the way it is going, its wheels and its horse moving as far as it has rolled, and lit where it stands like every other
 // painted animal. Its own picture is put away while it wears one and comes straight back when the look is turned off.
 const CARRY_LOOK = `${ID}-vehicle`, CARRY_TEAM = `${ID}-team`, CARRY_ROPE = `${ID}-rope`;
+// Where the rig is drawn. Roi, of a sled standing in a pitch-dark cave as bright as at noon: "why carriers arent
+// affected by light\darkness\sun\moon?" — because it hung on the token, and Foundry draws the token layer in its
+// interface group, over the lighting (which is why nameplates and bars stay readable in the dark). A token's own
+// picture escapes that only because its mesh lives in the primary group instead, and the carrier hides that mesh.
+// So the rig is a holder of its own on the map, under the creatures, lit exactly as the painted decorations are.
+// Everything inside the holder keeps the token's own coordinates, as it had when it was the token's child.
+const carrierRootOf = floorLayer("carriers");
+const carrierRigs = new Map();
+const carrierRigOf = (token, make = true) => {
+  const id = token?.id ?? token?.document?.id;
+  if (!id) return null;
+  let rig = carrierRigs.get(id);
+  if (rig?.destroyed) { carrierRigs.delete(id); rig = null; }
+  if (!rig) {
+    if (!make || !globalThis.PIXI?.Container) return null;
+    rig = new globalThis.PIXI.Container(); rig.eventMode = "none"; rig.animaterCarrier = id;
+    carrierRigs.set(id, rig);
+  }
+  try { const root = carrierRootOf(); if (rig.parent !== root) root.addChild(rig); } catch { /* the canvas is going */ }
+  return rig;
+};
+const dropCarrierRig = (id) => {
+  const rig = carrierRigs.get(id);
+  if (!rig) return;
+  carrierRigs.delete(id);
+  try { rig.parent?.removeChild(rig); rig.destroy({ children: true }); } catch { /* gone with the canvas */ }
+};
+const dropAllCarrierRigs = () => { for (const id of [...carrierRigs.keys()]) dropCarrierRig(id); };
 // How rough the going is on each floor, for the way the body rides: a paved road or ice hardly throws it, a rutted track
 // or mud throws it about.
 const CARRIER_ROUGH = { stone: 0.25, wood: 0.3, ice: 0.15, snow: 0.5, sand: 0.7, dirt: 0.65, grass: 0.6, mud: 0.95, water: 0.4 };
+// A waiting team breathes with the rest of the world's idle life, and stops with it.
+const idleLifeOn = () => bothSettingsOn("idleLife");
 const lookStates = new Map();
 const lookStateOf = (doc) => {
   let state = lookStates.get(doc.id);
@@ -4270,19 +4327,15 @@ const lookStateOf = (doc) => {
 };
 // The painted vehicle a token is wearing, for anything that works from a token's picture (its shadow, its reflection),
 // so those are of the wagon and not of the picture the token was given underneath it.
-const wornLook = (t) => { const worn = t?.children?.find((c) => c?.[CARRY_LOOK]); return worn && !worn.destroyed && worn.texture?.valid ? worn : null; };
+const wornLook = (t) => { const worn = carrierRigOf(t, false)?.children?.find((c) => c?.[CARRY_LOOK]); return worn && !worn.destroyed && worn.texture?.valid ? worn : null; };
 // How far the worn picture sits from the middle of its token, in canvas pixels. The wagon is slid along until its bed
 // is over the token's middle and the team leads out ahead of it, so anything working from the picture (its shadow, its
 // reflection) has to be slid the same way — Roi: "something about the shadow doesnt make sense", and it was the shadow
 // of a wagon standing where the wagon is not.
 const wornOffset = (t, worn) => ({ ox: (worn?.position?.x ?? 0) - (t?.w ?? 0) / 2, oy: (worn?.position?.y ?? 0) - (t?.h ?? 0) / 2 });
 const dropCarrierLook = (token) => {
-  // Every piece of the worn picture goes: the vehicle, the animals pulling it and the rope between them.
-  for (const key of [CARRY_LOOK, CARRY_TEAM, CARRY_ROPE]) {
-    for (const gone of (token?.children ?? []).filter((c) => c?.[key])) {
-      try { token.removeChild(gone); gone.destroy(); } catch { /* gone with the token */ }
-    }
-  }
+  // Every piece of the worn picture goes with its holder: the vehicle, the animals pulling it and the rope between them.
+  dropCarrierRig(token?.id ?? token?.document?.id);
   if (token?.mesh && !token.mesh.destroyed) token.mesh.renderable = true;
 };
 // How much of its cell a set covers, taken from its standing frame, so the picture does not swell and shrink as the wheels
@@ -4376,14 +4429,18 @@ const paintCarrierLook = (token, doc, step, grid) => {
   const zoom = Math.max(0.5, Math.min(3, Math.abs(canvas?.stage?.scale?.x) || 1));
   const tex = step.painted ? paintedTexture(step, wide * zoom) : artFrame(globalThis.PIXI, step.group ?? "vehicles", step.path);
   if (!tex?.width) return;
-  let art = token.children?.find((c) => c?.[CARRY_LOOK]);
+  const rig = carrierRigOf(token);
+  if (!rig) return;
+  // The holder stands where the token is drawn this frame, so everything inside it keeps the token's own coordinates.
+  rig.position.set(Number(token.position?.x ?? token.x) || 0, Number(token.position?.y ?? token.y) || 0);
+  let art = rig.children?.find((c) => c?.[CARRY_LOOK]);
   // A painted picture carries its own light and shade, as the decorations do, so it is a plain sprite; a baked frame
   // is lit where it stands and wants the lit one.
   const wantsLit = !step.painted;
-  if (art && (art.animaterLit ?? false) !== wantsLit) { try { token.removeChild(art); art.destroy(); } catch { /* gone */ } art = null; }
+  if (art && (art.animaterLit ?? false) !== wantsLit) { try { rig.removeChild(art); art.destroy(); } catch { /* gone */ } art = null; }
   if (!art) {
     art = wantsLit ? new animalPIXI.Sprite(tex) : new globalThis.PIXI.Sprite(tex);
-    art[CARRY_LOOK] = true; art.animaterLit = wantsLit; art.eventMode = "none"; art.anchor.set(0.5); token.addChildAt(art, 0);
+    art[CARRY_LOOK] = true; art.animaterLit = wantsLit; art.eventMode = "none"; art.anchor.set(0.5); rig.addChildAt(art, 0);
   } else if (art.texture !== tex) art.texture = tex;
   // What fills the token is the wagon, not the wagon and its horse: the ground a carrier covers is its bed, and the
   // team walks ahead of it, outside the token, as a rider's mount would. Measured off the standing frame (animaterBody,
@@ -4417,20 +4474,21 @@ const paintCarrierLook = (token, doc, step, grid) => {
   art.rotation = step.drawn ?? step.turn;
   art.alpha = token.mesh?.alpha ?? 1;
   art.visible = token.visible !== false;
-  paintCarrierTeam(token, step, grid, art, ahead);
+  rig.visible = token.visible !== false;
+  paintCarrierTeam(rig, step, grid, art, ahead);
   if (token.mesh && !token.mesh.destroyed) token.mesh.renderable = false;
 };
 // The team in the shafts: its own picture, walking its own stride, out in front of the vehicle on the ground it covers.
 // It is a sprite of its own rather than part of the wagon's picture, so it is drawn at its own size and casts its own
 // shadow where it stands (Roi, on one shadow cast for the pair: "you can see the horse is in front of the wagon, so the
 // shadows arent good").
-const paintCarrierTeam = (token, step, grid, art, ahead) => {
+const paintCarrierTeam = (rig, step, grid, art, ahead) => {
   // One in the shafts or a pack on the rope: the team is a list, and each animal is its own sprite at its own place.
   const team = step.team ?? [];
-  const had = (token.children ?? []).filter((c) => c?.[CARRY_TEAM]);
-  if (!team.length) { for (const gone of had) { try { token.removeChild(gone); gone.destroy(); } catch { /* gone */ } } return; }
+  const had = (rig.children ?? []).filter((c) => c?.[CARRY_TEAM]);
+  if (!team.length) { for (const gone of had) { try { rig.removeChild(gone); gone.destroy(); } catch { /* gone */ } } return; }
   // More than the team needs (a pack that shrank, or a wagon that was a sled): the spare sprites go.
-  for (const spare of had.slice(team.length)) { try { token.removeChild(spare); spare.destroy(); } catch { /* gone */ } }
+  for (const spare of had.slice(team.length)) { try { rig.removeChild(spare); spare.destroy(); } catch { /* gone */ } }
   const feet = Number(canvas?.scene?.grid?.distance) || 5;
   const square = squareMetres(feet, canvas?.scene?.grid?.units);
   // Across the way it is going, for the ones that run two abreast.
@@ -4439,14 +4497,17 @@ const paintCarrierTeam = (token, step, grid, art, ahead) => {
     const tex = artFrame(globalThis.PIXI, animal.group, animal.path);
     if (!tex?.width) return;
     let pull = had[i];
-    if (!pull) { pull = new animalPIXI.Sprite(tex); pull[CARRY_TEAM] = true; pull.eventMode = "none"; pull.anchor.set(0.5); token.addChildAt(pull, 0); }
+    if (!pull) { pull = new animalPIXI.Sprite(tex); pull[CARRY_TEAM] = true; pull.eventMode = "none"; pull.anchor.set(0.5); rig.addChildAt(pull, 0); }
     else if (pull.texture !== tex) pull.texture = tex;
     const real = drawnSize(tex.animaterMetres, grid, square);
     const box = tex.animaterBox, along = box ? Math.max(box.w, box.h) : tex.height;
     // A frame with no size baked into it is drawn at the length its set says the animal is: a wolf is five feet
     // nose to tail, not a draught horse's ten, and stretched to ten it was both too big and soft at the edges.
     const over = real > 0 ? real / (tex.width || 1) : along > 0 ? ((animal.feet / feet) * grid) / along : 1;
-    pull.width = tex.width * over; pull.height = tex.height * over;
+    // Standing, it breathes: the picture faces up the screen, so the swell is across its width, and it is only there
+    // while the pack waits (carrier-look breathAt). Off with the world's Idle life, like every other breathing body.
+    const swell = idleLifeOn() ? 1 - (Number(animal.breath) || 0) * BREATH_SWELL : 1;
+    pull.width = tex.width * over * swell; pull.height = tex.height * over;
     const out = (animal.ahead / feet) * grid, side = ((animal.across ?? 0) / feet) * grid;
     pull.position.set(art.position.x + Math.cos(ahead) * out + Math.cos(beside) * side,
       art.position.y + Math.sin(ahead) * out + Math.sin(beside) * side);
@@ -4454,17 +4515,17 @@ const paintCarrierTeam = (token, step, grid, art, ahead) => {
     pull.alpha = art.alpha;
     pull.visible = art.visible;
   });
-  paintCarrierRope(token, step, grid, art, ahead, beside, team);
+  paintCarrierRope(rig, step, grid, art, ahead, beside, team);
 };
 // The traces: a sled is roped to its pack, not harnessed to it (Roi: "shouldnt there be a rope holding them to the
 // sled?"). One line from the sled's nose to each animal's hindquarters, drawn with the painted carriers' own hand —
 // dark, thin, and sagging a little, because a rope under a sled's pull is never a ruled line.
-const paintCarrierRope = (token, step, grid, art, ahead, beside, team) => {
-  const had = token.children?.find((c) => c?.[CARRY_ROPE]);
+const paintCarrierRope = (rig, step, grid, art, ahead, beside, team) => {
+  const had = rig.children?.find((c) => c?.[CARRY_ROPE]);
   const roped = team.filter((a) => a.rope);
-  if (!roped.length || !globalThis.PIXI?.Graphics) { if (had) { try { token.removeChild(had); had.destroy(); } catch { /* gone */ } } return; }
+  if (!roped.length || !globalThis.PIXI?.Graphics) { if (had) { try { rig.removeChild(had); had.destroy(); } catch { /* gone */ } } return; }
   let rope = had;
-  if (!rope) { rope = new globalThis.PIXI.Graphics(); rope[CARRY_ROPE] = true; rope.eventMode = "none"; token.addChildAt(rope, 0); }
+  if (!rope) { rope = new globalThis.PIXI.Graphics(); rope[CARRY_ROPE] = true; rope.eventMode = "none"; rig.addChildAt(rope, 0); }
   rope.clear();
   // Where each trace is made fast: the sled's own front corners, measured off the painted deck (Roi: "it doesnt
   // touch the sled lol", then, of the painted bridle it had been tying to: "traces to corners"). An animal running
@@ -4495,7 +4556,7 @@ const tickCarrierLooks = () => {
   const all = canvas?.tokens?.placeables;
   if (!all?.length) return;
   for (const token of all) {
-    try { if (kindOf(token.document) || token.children?.some((c) => c?.[CARRY_LOOK])) drawCarrierLook(token); } catch { /* one wagon's trouble is not the scene's */ }
+    try { if (kindOf(token.document) || carrierRigs.has(token.id)) drawCarrierLook(token); } catch { /* one wagon's trouble is not the scene's */ }
   }
   try { tickCarrierSounds(); } catch { /* a silent wagon still rolls */ }
 };
@@ -4635,7 +4696,8 @@ const ridingClear = (token) => {
 };
 Hooks.on("refreshToken", (token) => { try { drawCarrierLook(token); ridingClear(token); } catch { /* a wagon that will not draw is still a wagon */ } });
 Hooks.on("drawToken", (token) => { try { drawCarrierLook(token); ridingClear(token); } catch { /* nor at draw */ } });
-Hooks.on("destroyToken", (token) => { lookStates.delete(token?.document?.id); });
+// The rig stands on the map, not on the token, so it has to be taken away when the token goes.
+Hooks.on("destroyToken", (token) => { lookStates.delete(token?.document?.id); dropCarrierRig(token?.id ?? token?.document?.id); });
 // The kind and the look are flags, and a flag-only change brings no refresh round, so the picture is changed in hand.
 Hooks.on("updateToken", (doc, change) => {
   if (!change?.flags?.[ID]) return;
@@ -4654,8 +4716,11 @@ Hooks.on("updateToken", (doc, change) => {
 });
 Hooks.on("canvasReady", () => {
   lookStates.clear();
+  // (The map layer the rigs stood in went with the old scene; the holders in it are no use on the new one.)
+  carrierRigs.clear();
   try { canvas.app?.ticker?.remove(tickCarrierLooks); canvas.app?.ticker?.add(tickCarrierLooks); } catch { /* without a ticker the hooks still draw it */ }
 });
+Hooks.on("canvasTearDown", () => { dropAllCarrierRigs(); });
 // A passenger whose carrier has lost its list: the carrier deleted out from under it by a hand that bypassed the
 // hooks, its flag wiped, the scene imported, the module turned off and on again, or a loaded carrier copied so that
 // two of them claim the same people. Each passenger remembers what it was riding, so the ones nobody is carrying any
@@ -8000,18 +8065,24 @@ const carrierShadowOf = (t) => {
     shadowWidth: Math.abs(worn.width) || undefined,
     ...(core > 0 ? { shadowCore: core } : {}),
     ...(tall > 0 ? { shadowBody: tall } : {}),
-    // The team in the shafts stands on its own ground in front of the wagon, so it throws a shadow of its own.
+    // The team stands on its own ground in front of the vehicle, so it throws a shadow of its own — one each. A sled's
+    // pack is two to four wolves and only the first of them had one (Roi: "only 1 wolf has shadows").
     shadowAlso: () => {
-      const pull = t?.children?.find((c) => c?.[CARRY_TEAM]);
-      if (!pull || pull.destroyed || !pull.texture?.valid || pull.visible === false) return null;
-      const dx = pull.position.x - (t.w ?? 0) / 2, dy = pull.position.y - (t.h ?? 0) / 2;
-      const at = { x: (t.center?.x ?? 0) + dx, y: (t.center?.y ?? 0) + dy };
-      return { art: { texture: pull.texture, width: Math.abs(pull.width), height: Math.abs(pull.height), flipX: false, flipY: false, rotation: pull.rotation ?? 0, own: true },
-        // A draught horse is ten feet of animal in a picture that holds half as much again.
-        width: Math.abs(pull.width), core: (10 / feet) * grid, dx, dy,
-        // The light where the horse stands, not where the wagon does: a torch beside the bed is in another direction
-        // from a horse two squares in front of it, and its shadow was being thrown the wagon's way.
-        light: () => flierLight(t, at, `${t.id}|team`) };
+      const team = (carrierRigOf(t, false)?.children ?? []).filter((c) => c?.[CARRY_TEAM]);
+      const out = [];
+      team.forEach((pull, i) => {
+        if (!pull || pull.destroyed || !pull.texture?.valid || pull.visible === false) return;
+        const dx = pull.position.x - (t.w ?? 0) / 2, dy = pull.position.y - (t.h ?? 0) / 2;
+        const at = { x: (t.center?.x ?? 0) + dx, y: (t.center?.y ?? 0) + dy };
+        out.push({ art: { texture: pull.texture, width: Math.abs(pull.width), height: Math.abs(pull.height), flipX: false, flipY: false, rotation: pull.rotation ?? 0, own: true },
+          // A draught horse is ten feet of animal in a picture that holds half as much again.
+          width: Math.abs(pull.width), core: (10 / feet) * grid, dx, dy,
+          // The light where this animal stands, not where the wagon does: a torch beside the bed is in another
+          // direction from a horse two squares in front of it, and its shadow was being thrown the wagon's way.
+          // Each one is aimed from its own place, so the pack's shadows fan out as the real ones would.
+          light: () => flierLight(t, at, `${t.id}|team:${i}`) });
+      });
+      return out;
     },
   };
 };
@@ -10446,15 +10517,18 @@ function fireSpillsOf(scene, lights) {
 // (fireAwake: the tiles' own flags, the regions' decorations and grass, the burning spills) and the round stops
 // there — no decoration views, no prop traits, no grass grids and no writes. Every scene that is switched on is
 // looked at every few seconds for as long as the world runs, so that look must stay this cheap.
+// It hands back what is burning on the scene when it ends ([{rect, levels}]: props, decorations, oil spills and grass
+// squares), so the smoke round that follows on the same tick has the sources without gathering them all over again.
+// Every early return is "nothing is burning": [], and the smoke there only thins.
 async function fireRound(scene) {
-  if (!game.users.activeGM?.isSelf || !propsOn(scene)) return;
+  if (!game.users.activeGM?.isSelf || !propsOn(scene)) return [];
   const lights = sceneLights(scene), spills = fireSpillsOf(scene, lights);
-  if (!fireAwake({ tiles: scene.tiles?.contents ?? [], regions: scene.regions?.contents ?? [], spills: spills.length })) return;
+  if (!fireAwake({ tiles: scene.tiles?.contents ?? [], regions: scene.regions?.contents ?? [], spills: spills.length })) return [];
   const grid = propGrid(scene), regions = fireRegionsOf(scene, grid);
   const { things, tiles, docs, decor } = fireThingsOf(scene, grid, regions);
   const alight = things.filter((t) => t.fire?.burning);
   const grassLit = regions.some((r) => Object.values(fireCellsOf(r.doc)).some((c) => c?.burning === true && c?.charred !== true));
-  if (!alight.length && !grassLit && !spills.length) return;
+  if (!alight.length && !grassLit && !spills.length) return [];
   const walls = blockingWalls((scene.walls?.contents ?? []).map(wallView));
   // The grass of every region that burns, each on its own grid, with the fire it has saved.
   for (const r of regions) {
@@ -10468,6 +10542,8 @@ async function fireRound(scene) {
   // Every burning grass square of the scene, as one source list for the props: each named by its own id (never by a
   // bare index, which means something different in every region) and placed on a grid wide enough to hold them all.
   const litSquares = regions.flatMap((r) => (r.grass ? r.squares.filter((c) => c.burning && !c.charred).map((c) => ({ ...c, rect: squareRect(r, c.i) })) : []));
+  // Everything alight on the scene this round, for the smoke that follows: where it is and which level it is on.
+  const burningNow = [...alight, ...spills, ...litSquares].map((t) => ({ rect: t.rect, levels: [...(t.levels ?? [])] }));
   const sceneCols = Math.max(1, ...litSquares.map((c) => Math.floor(c.rect.x / grid) + 1));
   const sceneCells = litSquares.map((c) => ({ i: Math.floor(c.rect.y / grid) * sceneCols + Math.floor(c.rect.x / grid), id: c.id, levels: c.levels, burning: true }));
   // The wind where the fire is: at a burning prop, else at a burning oil spill, else at a burning grass square (a
@@ -10553,8 +10629,186 @@ async function fireRound(scene) {
   }
   // Cooled right down or gone: it may be warned about again.
   for (const t of things) if (!t.fire && !step.heat.some((h) => h.id === t.id)) fireWarned.delete(`${scene.id}:${t.id}`);
+  return burningNow;
 }
-// The ticker: every scene with both switches on, each keeping its own count, on the active GM alone.
+// ---- The smoke a fire fills its room with, round by round (engines/props/smoke-round.mjs). ----
+// The GM's switch is the scene's "Fires fill rooms with smoke" (flags.animater.smokeFills), off by default: it suits a
+// closed inn or a mine, not an open market. The round's whole decision is pure and lives in smoke-round.mjs; all that
+// is here is looking the scene up, saying what is indoors and where the walls are, and writing what comes back.
+// Every write is the active GM's; each screen draws its own view of what is written (the fence, registerSmokeFence,
+// the region's concealment, and the painted cloud below).
+// (The scene flag is smokeFills and a light's own is smokeSource. NEITHER is the settings pair "Smoke in the air"
+// (skyPair("roomSmoke", "roomSmokeLocal")), which is a different, older, purely visual haze: three things shared the
+// name roomSmoke before any of this shipped, and the two new ones were renamed so the next reader is not caught.)
+// The marker every write of this round's is stamped with comes from smokeNote(), imported above: it is declared beside
+// the smokeOnlySave that reads it, in smoke-round.mjs, and never copied here, so the stamp and its reader cannot
+// drift apart. (Drift them and the round mistakes its own write back for a GM's map edit and throws the room cache
+// away every single tick.) It is a MAKER, not the constant: Foundry writes to an options object it is given
+// (createEmbeddedDocuments sets options.parent), so handing it the frozen SMOKE_NOTE threw on every region write and
+// the concealment region never once appeared. Every document call below gets its own fresh note.
+// Which lights make smoke: a fire light (a torch, flame, fire, candle or flicker) the GM ticked "Fills the room with
+// smoke" on. Off by default, so a lit hearth or brazier does not fog the inn. Each keeps its levels, so a light on
+// the cellar floor records its smoke there and not on whatever floor the scene opens on.
+const smokeLightsOf = (scene) => (scene?.lights?.contents ?? [])
+  .filter((d) => d.hidden !== true && d.flags?.[ID]?.[SMOKE_LIGHT_FLAG] === true && isFireLight(d.config ?? {}))
+  .map((d) => ({ x: d.x, y: d.y, smokes: true, levels: [...(d.levels ?? [])] }));
+// Whether a token in the smoke is concealed: only through pf2e-visioner's own region behaviour, and only when that
+// behaviour type is really registered. Installed is not enough.
+const smokeConceals = () => {
+  try { return game.modules?.get("pf2e-visioner")?.active === true && !!CONFIG.RegionBehavior?.dataModels?.[CONCEALMENT_BEHAVIOUR]; }
+  catch { return false; }
+};
+// The rooms of each scene, as smoke-round.mjs's own walk works them out (smokeRoomAt): each cell's room, by name and
+// by cell count, so one doorway on a closet is a gale and the same doorway on a great hall is a draught, and each
+// room is stepped on its own — a burning closet never vents the hall beside it nor lends it its cell count.
+// Kept per scene between rounds and thrown away whenever the walls, the regions or the scene really change (the
+// round's own write back is not a change: smokeOnlySave), since a walk over a whole cave is far too much every tick.
+let smokeRooms = new Map();
+for (const hook of ["canvasReady", "createWall", "updateWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion", "updateScene", "deleteScene"]) {
+  Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) smokeRooms = new Map(); });
+}
+// Everything the round works out about a scene's SHAPE — which cells are indoors, which pairs have a wall between
+// them, which lie under a hole in the roof — is smoke-gather.mjs's (smokeGathering), kept for as long as the room
+// walk is and thrown away with it. All that is here is the Foundry looking-up: the regions on the smoke's level,
+// the polygons of the ones that keep the weather out and of the ones open to the sky, and the walls that stop it.
+// Each is a thunk, so a scene with no smoke to decide about pays for none of them (smokeGathering asks at most
+// once per record), and so a test can drive the real gathering with fakes — which is the point: it lived here,
+// where no test could import it, and two of its keys collided unseen.
+const smokeShapeOf = (scene, geo, level, deep) => {
+  // The regions that count for the smoke's level, worked out ONCE for both lists below: they are two thunks and
+  // each is asked at most once per record, but both wanted the same filter, so both ran it.
+  let here = null;
+  const onLevel = () => (here ??= regionsOnLevel(scene.regions, level));
+  return smokeGathering({
+    cache: smokeRooms, sceneId: scene.id, geo, level, deep,
+    polygons: () => (deep ? [] : indoorPolygonsOf(onLevel(), regionAreas)),
+    // One malformed region is skipped, so it cannot stop a whole map's smoke; a broken helper is not caught here,
+    // and reaches smokeThrew, which tells the GM once. (smoke-gather.mjs says the same in full.)
+    shafts: () => skyRegionsOf(onLevel()).flatMap((r) => { try { return regionAreas(r) ?? []; } catch { return []; } }),
+    // smokeWalls, not blockingWalls: the walls that stop SMOKE. A window's state never reaches the wall document —
+    // opening one reshapes the live edge's light, sight and sound but never its `move`, and a smashed one keeps
+    // `move` on purpose, since a broken window still stops a body — so blockingWalls answers the same for a window
+    // shut, swung open or smashed. Smoke crossed none of them, while an open one was still counted an opening, so
+    // the smoke left the model instead of drifting into the next room.
+    walls: () => smokeWalls((scene.walls?.contents ?? []).map(wallView)),
+    // Both REQUIRED by smokeGathering, which throws without them rather than quietly answering "nothing": this
+    // one line going missing left the whole feature dead with 850 tests passing.
+    inside: pointInPolygon, crosses: wallBetween,
+  });
+};
+// One round of smoke on one scene, run by the active GM on the fire's own tick, straight after fireRound, with what
+// fireRound found alight. Switched off, or with nothing stored, nothing burning and no light set to smoke, it costs
+// a flag read and a pass over the scene's lights — and nothing of the scene's shape is looked at at all.
+async function smokeRound(scene, burning = []) {
+  if (!scene) return;
+  // All three switches, not only "Fires fill rooms with smoke": the round rides the fire's tick, so Breakable props
+  // and Fire spreads are the smoke's switches too (smoke-round.mjs smokeRunsOn). Any of them off and the round's
+  // whole job is to clear what is stored.
+  const activeGM = game.users?.activeGM?.isSelf === true, on = smokeRunsOn(scene);
+  const geo = activeGM && on ? smokeGridOf(scene.dimensions) : null;
+  // Nothing stored, nothing alight and no light set to smoke: there is nothing for the round to decide, and the
+  // plan's own early return would throw away everything gathered below. That gathering is the expensive half —
+  // the indoor polygons, a blocking-wall list over every wall, the sky polygons, the openings over every wall
+  // again — and it was paid every tick on every switched-on scene with no fire on it, which is most of them.
+  const lights = geo ? smokeLightsOf(scene) : [];
+  const idle = !burning.length && !lights.length && !smokeHeldBy(scene);
+  let plan;
+  if (!geo || idle) plan = smokeRoundPlan({ activeGM, on, scene });
+  else {
+    const { cols, rows, cell, origin } = geo;
+    const sources = smokeSourcesOf({ fires: burning, lights, grid: propGrid(scene), cell, origin, cols });
+    // The round runs on EVERY scene with a fire on it, so almost always on a scene the canvas has not drawn. Its
+    // regions are therefore picked by what they are — their own flags, and the level they name (smoke-regions.mjs
+    // regionsOnLevel) — and never by `viewed`, which needs the scene's own view and answers false for every region
+    // of every scene but the canvas's. Off-canvas that filter returned nothing: no cell was ever indoors, so the
+    // smoke never formed, and our own region was never found, so a new one was made every round it burned.
+    // (viewedRegions stays where something really is drawn on the viewed level.)
+    const level = smokeLevelFor(scene, sources);
+    // Indoors is a cell whose middle lies in a region that keeps the weather out, or every cell of an underground
+    // scene; a hole in the roof is a cell under a region the GM marked "Open to the sky" (a shaft, a broken roof),
+    // which vents upward whatever its walls do and is the one opening an inside room can have with no outdoor cell
+    // near it. All three are smoke-gather.mjs's, asked once per cell (per PAIR, for the walls) and kept.
+    const deep = undergroundOf(scene.flags?.[ID], null);
+    const work = smokeShapeOf(scene, geo, level, deep);
+    const { indoors, walled, sky } = work;
+    // Where the room breathes out through its own walls (smoke-field.mjs smokeOpeningsOf): an open door, a window
+    // standing open, a smashed one, a hole battered through — each counted only where it leads OUT, which is why it
+    // is handed the very same `indoors`. An inside door joins two rooms into one for the walk and carries the smoke
+    // next door by itself; vented as well, the smoke would leave the model and an inn would never fill.
+    // indoor-air's own sceneOpenings is a different list for a different job (the drafts' way out, doors near the
+    // scene's edge only, never a window) and is deliberately not used here.
+    const openings = smokeOpeningsOf({ walls: scene.walls?.contents ?? [], cell, origin, cols, rows, indoors });
+    plan = smokeRoundPlan({ activeGM, on, scene, sources, indoors, walled, openings, sky,
+      roomOf: (i) => smokeRoomAt({ from: i, cols, rows, indoors, walled, cache: work.rooms }) });
+  }
+  if (!plan) return;
+  if (Object.keys(plan.fields).length) {
+    // Told, not merely traced. This write failing is the user's whole symptom: no cells means no stored flag,
+    // so no sight-blocking fence and no drawn cloud — "I see no smoke in a closed room" — and it was swallowed
+    // into a trace line while the region write beside it threw loudly. Both were the same frozen-options bug.
+    // The alarm is the one the round already uses, so the two of them cannot between them spam a GM: whichever
+    // speaks first speaks, once for that scene, and every failure after it is traced as before.
+    await scene.update(withDeletes(plan.fields, propDel()), smokeNote())
+      .catch((e) => smokeThrew(scene, "smoke not written", e));
+  }
+  await smokeRegionNow(scene, plan.shapes, plan.level);
+}
+// The region the smoke conceals in: one region per scene, flagged as ours, grown or shrunk to the smoke and taken
+// away with it. pf2e-visioner owns concealment; without its behaviour the region carries none and nothing is
+// concealed.
+// The whole decision is smoke-regions.mjs's (smokeRegionPlan): one region of ours per scene and level, found by its own
+// flag so it is found on any scene, grown or shrunk to the smoke, remade only when the concealment itself comes or goes,
+// and taken away with the last of the smoke. An unchanged round writes nothing.
+// The plan's own `steps` carry the ORDER, so there is nothing here to put in the wrong one: a removal lands before the
+// creation that replaces it. Nothing is caught: a removal that the database refuses MUST stop the creation behind it,
+// or the scene is left carrying two concealment regions and only one of them comes off per later round. The throw goes
+// up to whoever asked — for the round, its own catch in fireRoundsNow, which traces it and tries again next round.
+async function smokeRegionNow(scene, shapes, level) {
+  const plan = smokeRegionPlan(scene.regions, shapes, { level, visioner: smokeConceals() });
+  for (const step of plan.steps) {
+    if (step.kind === "remove") await scene.deleteEmbeddedDocuments("Region", step.ids, smokeNote());
+    else if (step.kind === "create") await scene.createEmbeddedDocuments("Region", step.data, smokeNote());
+    else await scene.updateEmbeddedDocuments("Region", step.data, smokeNote());
+  }
+}
+// A fire round still writing would put back whatever is cleared or thinned while it is in flight. One wait, used by
+// everything that clears behind the round's back (Repair, a quench): never a second mechanism.
+const afterFireRound = async (scene) => {
+  for (let i = 0; i < 100 && fireRunning.has(scene.id); i++) await new Promise((done) => { setTimeout(done, 50)?.unref?.(); });
+};
+// Everything the smoke has left on a scene, taken off it at once (smoke-round.mjs smokeClearPlan): the cells by name,
+// the geometry stored beside them by name, the concealment region, and — the flag being gone — every client's
+// sight-blocking fence with them (smoke-fence.mjs rebuilds from the stored flag on this very update). Repair asks for
+// this, so a room that was smoked out is clear the moment the props are put back.
+// Only the active GM writes, as every other smoke write does. Another GM pressing Repair leaves the room to empty
+// itself over the next rounds instead, which it does: with nothing burning the fade clears it on its own.
+async function clearSmokeNow(scene) {
+  if (!scene || game.users?.activeGM?.isSelf !== true) return;
+  // A round in flight would write its pre-clear cells and region back after this: let it finish first, then hold
+  // the scene itself, so none can start while this writes. (Still running after the wait: leave it be and say so;
+  // taking the lock then would free it under the round's feet.)
+  await afterFireRound(scene);
+  if (fireRunning.has(scene.id)) { runtime?.trace("props", "smoke not cleared: a round is still writing"); return; }
+  fireRunning.add(scene.id);
+  try {
+    const plan = smokeClearPlan(scene);
+    if (Object.keys(plan.fields).length) {
+      await scene.update(withDeletes(plan.fields, propDel()), smokeNote())
+        .catch((e) => smokeThrew(scene, "smoke not cleared", e));
+    }
+    await smokeRegionNow(scene, [], null).catch((e) => smokeThrew(scene, "smoke region not cleared", e));
+  } finally { fireRunning.delete(scene.id); }
+}
+// A round of smoke that threw: traced as everything here is, and ALSO said once to the GM, per scene, per session
+// (smoke-round.mjs createSmokeAlarm, which holds the counting and is tested there). All that is here is this
+// client's three ways of speaking.
+const smokeThrew = createSmokeAlarm({
+  trace: (message) => runtime?.trace("props", message),
+  warn: (message, error) => console.warn(message, error),
+  notify: (message) => ui?.notifications?.warn(message),
+});
+// The ticker: every scene with both switches on, each keeping its own count, on the active GM alone. Then any scene
+// still carrying smoke whose switches have since gone off, to take it away.
 async function fireRoundsNow() {
   if (!game.users?.activeGM?.isSelf) return;
   const now = fireNow();
@@ -10569,7 +10823,20 @@ async function fireRoundsNow() {
     // round 1 is a round of its own and not one already run.
     fireLast.set(scene.id, fireNextLast({ combat, now }));
     fireRunning.add(scene.id);
-    try { await fireRound(scene); } catch (e) { runtime?.trace("props", `fire round: ${e?.message ?? e}`); }
+    // The same round feeds the smoke: the fire first, then what it has set going fills the rooms. No second clock.
+    let burning = [];
+    try { burning = (await fireRound(scene)) ?? []; } catch (e) { runtime?.trace("props", `fire round: ${e?.message ?? e}`); }
+    try { await smokeRound(scene, burning); } catch (e) { smokeThrew(scene, "smoke round", e); }
+    finally { fireRunning.delete(scene.id); }
+  }
+  // Smoke left standing on a scene the fire round no longer visits: its switches were unticked with a room full, so
+  // fireScenesOf passes it by and nothing else would ever take the cells, the geometry, the concealment region or
+  // the clients' sight-blocking fence off it. Its round clears it (on === false), and once clear it is not listed
+  // again. Run on every tick rather than on the scene's round, because this is the GM having asked for it to stop.
+  for (const scene of smokeLeftovers(game.scenes?.contents ?? [], { activeGM: true })) {
+    if (fireRunning.has(scene.id)) continue;
+    fireRunning.add(scene.id);
+    try { await smokeRound(scene, []); } catch (e) { smokeThrew(scene, "smoke left behind", e); }
     finally { fireRunning.delete(scene.id); }
   }
 }
@@ -10660,6 +10927,44 @@ const syncFireLooks = () => { clearTimeout(fireLooksTimer); fireLooksTimer = set
 for (const hook of ["canvasReady", "createTile", "updateTile", "deleteTile", "updateRegion", "createRegion", "deleteRegion", "updateScene"])
   Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) syncFireLooks(); });
 Hooks.on("canvasTearDown", () => { clearTimeout(fireLooksTimer); fireLooks.clear(); });
+// ---- What the room smoke looks like on the viewed map, for everyone (engines/props/smoke-look.mjs). ----
+// Painted stepped grey puffs standing in the very cells the active GM wrote, drifting from one round to the next
+// instead of jumping. Nothing here writes anything: it reads the scene's own stored cells, and it reads them against
+// the geometry they were WRITTEN with (storedSmokeGrid), exactly as the sight-blocking fence does, so a resize or a
+// grid change can never slide the cloud out from under the cells.
+// The cloud drifts; the fence does NOT. A sight-blocker that moved mid-round would pop the fog and rebuild every
+// client's vision every frame, so the edges stay on the round boundary (smoke-fence.mjs, untouched).
+// Its depth is SMOKE_SORT_LAYER, which smoke-look.mjs declares and gives its reasons for; there is no number here.
+const smokeLooks = createSmokeLooks({ PIXI: globalThis.PIXI, layer: floorLayer("smokeLooks", SMOKE_SORT_LAYER),
+  grid: () => canvas?.grid?.size ?? 100, now: () => fireNow() });
+let smokeLooksTimer = 0;
+function syncSmokeLooksNow() {
+  if (!canvas?.ready) return;
+  const scene = canvas.scene;
+  // The same three switches the round itself asks (smokeRunsOn): with any of them off there is no smoke to paint,
+  // and whatever is still stored is on its way off the scene this very round.
+  if (!scene || !smokeRunsOn(scene)) { smokeLooks.clear(); return; }
+  // The smoke is recorded on one level; a screen looking at another floor sees none of it.
+  const level = smokeLevelOf(scene);
+  if (level && canvas?.level?.id && canvas.level.id !== level) { smokeLooks.clear(); return; }
+  const cells = smokeCellsOf(scene);
+  const grid = storedSmokeGrid(scene, cells) ?? smokeGridOf(scene.dimensions);
+  if (!grid) { smokeLooks.clear(); return; }
+  // Seeded from the scene's own id, so every screen looking at this map paints the same cloud and the map next door
+  // wears a different brush. No clock and no dice: the drift and the sway are the shared clock's alone.
+  // The bodies are the cloud (one wash over all of it, one dark mass over what blocks sight); the puffs are the brush
+  // shading over them.
+  const list = smokeCellList(cells), geo = { cols: grid.cols, origin: grid.origin, cell: grid.cell, seed: smokeSeedOf(scene.id) };
+  smokeLooks.sync({ sheets: smokeSheets(list, geo), puffs: smokePuffs(list, geo) });
+}
+const syncSmokeLooks = () => { clearTimeout(smokeLooksTimer); smokeLooksTimer = setTimeout(() => propSafe("smoke looks", syncSmokeLooksNow), 60); };
+// The round's own write back is the new smoke, so unlike the fire's looks this is NOT filtered by quietSave: skipping
+// it would leave the cloud a round behind for ever. Only a clock save, which changes nothing of ours, is passed over.
+// initializeEdges is in the list because that is the hook the sight-blocking fence is rebuilt on, and it is what a
+// level switch fires: the paint and the blockers are asked the same question at the same moment, so the cloud is
+// never left showing another floor's smoke while the fence has already moved on.
+for (const hook of ["canvasReady", "initializeEdges", "updateScene"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) syncSmokeLooks(); });
+Hooks.on("canvasTearDown", () => { clearTimeout(smokeLooksTimer); smokeLooksTimer = 0; smokeLooks.clear(); });
 // A region repainted, reshaped or moved: its grass grid is laid out again next round, and its burning squares go
 // with the old grid. A square is saved by its index on the grid the shape had, so the same index names a different
 // patch of ground once the shape moves — keeping them would have the fire jump across the map on its own. The
@@ -10693,7 +10998,12 @@ function grassCatchOf(scene, area) {
     regions.push({ id: doc.id, burns: true, levels: [...(doc.levels ?? [])], cells: laid.indices.map((i) => ({ i, saved: saved[String(i)] ?? null,
       point: { x: laid.origin.x + (i % laid.cols) * grid + grid / 2, y: laid.origin.y + Math.floor(i / laid.cols) * grid + grid / 2 } })) });
   }
-  return areaCellsLit({ regions: tilesOnLevel(regions, area.levels), inArea: area.testPoint, fireSpreads: true, kind: "area", damageType: "fire" });
+  // A wall stops the area here too: a square it covers behind a wall never catches (prop-requests fireAreaBlocked is
+  // the same rule for the things standing on the grass).
+  const walls = blockingWalls((scene.walls?.contents ?? []).map(wallView)), from = area.at;
+  const reaches = (p) => (!walls.length || !Number.isFinite(from?.x) ? true : !wallBetween(from, p, walls));
+  const inArea = typeof area.testPoint === "function" ? (p) => area.testPoint(p) === true && reaches(p) : area.testPoint;
+  return areaCellsLit({ regions: tilesOnLevel(regions, area.levels), inArea, fireSpreads: true, kind: "area", damageType: "fire" });
 }
 async function applyGrassCatch(scene, cause, user) {
   if (!game.users.activeGM?.isSelf || !scene || !propsOn(scene) || scene.flags?.[ID]?.fireSpreads !== true) return false;
@@ -10839,11 +11149,21 @@ async function runQuench(scene, cause, user) {
   return quenchGate.run(`${scene.id}:${area.uuid}`, () => quenchWrite(scene, area));
 }
 async function quenchWrite(scene, area) {
-  // A fire round still writing would put back what is cleared here: let it finish first.
-  for (let i = 0; i < 100 && fireRunning.has(scene.id); i++) await new Promise((done) => setTimeout(done, 50));
+  await afterFireRound(scene);
   const out = quenchPutOf(scene, area);
-  if (!out.put.length) return false;
   const del = propDel();
+  // The same water or cold thins the room smoke it falls through (fire-spread.mjs quenchSmokeUpdate), asked against
+  // the grid the cells were INDEXED with and not the scene's size now. A drenched room is left thinner, not scoured,
+  // so it still hangs and fades on from there; with the last cell gone the concealment region goes with it. This runs
+  // whether or not anything was alight: water on a room full of smoke clears the air even with the fire already out.
+  const thinned = quenchSmokeUpdate(scene, area.testPoint, storedSmokeGrid(scene, smokeCellsOf(scene)) ?? smokeGridOf(scene.dimensions));
+  const thinnedAny = Object.keys(thinned.fields).length > 0;
+  if (thinnedAny) {
+    await scene.update(withDeletes(thinned.fields, del), smokeNote())
+      .catch((e) => smokeThrew(scene, "smoke not thinned", e));
+    if (!thinned.cells.length) await smokeRegionNow(scene, [], null).catch((e) => smokeThrew(scene, "smoke region not thinned away", e));
+  }
+  if (!out.put.length) return thinnedAny;
   if (out.tiles.length) await scene.updateEmbeddedDocuments("Tile", out.tiles.map((u) => withDeletes(u, del)), { animater: { propFire: true } })
     .catch((e) => runtime?.trace("props", `quench not written: ${e?.message ?? e}`));
   if (out.regions.length) await scene.updateEmbeddedDocuments("Region", out.regions.map((u) => withDeletes(u, del)), { animater: { propFire: true } })
@@ -11057,7 +11377,7 @@ async function requestDecorBreak(regionDoc, key, cause, { from, extra } = {}) {
   // GM's roll; anything else shows at once.
   const waiting = decorBrokenKeys(regionDoc);
   const here = validDecorBreakRequest({ key, cause: clean, note }, { region, scene, grid, sender: game.user, lights: sceneLights(scene), ...await propPlace(clean, scene, grid), ...areaPlace(clean, game.user),
-    roll: 0, queued: waiting, index: decorIndex, drawn: decorDrawnOn(scene) });
+    roll: 0, queued: waiting, index: decorIndex, drawn: decorDrawnOn(scene), fireWalls: scene.walls?.contents ?? [] });
   if (!here.ok) return false;
   if (scene === canvas?.scene && !here.catches && clean.kind !== "ignite" && (clean.kind !== "miss" || clean.outcome === "criticalFailure")) breakDecorHere(regionDoc, view, here.entry.note);
   game.socket.emit(`module.${ID}`, { type: DECOR_BREAK_MESSAGE, sender: clientId, sceneId: scene.id, regionId: regionDoc.id, key, cause: clean, note });
@@ -11073,7 +11393,7 @@ async function applyDecorBreak(scene, regionDoc, key, cause, rawNote, user) {
     // Read after the wait: the region as it stands now, with the breaks queued or in flight for it.
     const region = decorRegionOf(regionDoc);
     const check = validDecorBreakRequest({ key, cause, note: rawNote }, { region, scene, grid, sender: user, lights: sceneLights(scene), ...place, ...blastPlace(cause, scene), ...areaPlace(cause, user),
-      roll: Math.random(), queued: queuedDecorKeys(regionDoc.id), index: decorIndex, drawn: decorDrawnOn(scene) });
+      roll: Math.random(), queued: queuedDecorKeys(regionDoc.id), index: decorIndex, drawn: decorDrawnOn(scene), fireWalls: scene.walls?.contents ?? [] });
     if (!check.ok) { runtime?.trace("props", `decoration not broken: ${check.why}`); return false; }
     // Caught fire instead of breaking (Fire spreads): its region keeps the fire under its key, and its flames are lit.
     if (check.catches) {
@@ -11360,6 +11680,8 @@ async function repairAllProps(scene = canvas?.scene) {
   for (const mark of [...fireWarned]) if (mark.startsWith(`${scene.id}:`)) fireWarned.delete(mark);
   if (r.deleteLights?.length) await deletePropFires(scene, r.deleteLights);
   if (r.deleteRegions?.length) await deletePropRegions(scene, r.deleteRegions);
+  // The rooms the fires smoked out are clear again: the cells, their geometry, the concealment region and the fence.
+  await clearSmokeNow(scene);
   return r.tiles.length;
 }
 // What breaks props (engines/props/prop-triggers.mjs): an area's damage roll, a missed melee strike, a forced path.
@@ -14243,7 +14565,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
   // Breakable props: the GM's switch for this scene, the miss chance, and Repair (GM only).
   if (!root.querySelector(`[name="flags.${ID}.breakableProps"]`)) {
     const flags = app.document?.flags?.[ID] ?? {}, props = document.createElement("div");
-    props.innerHTML = propSceneFieldsHTML({ on: flags.breakableProps === true, chance: flags.propMissChance, breakWalls: flags.breakWalls, rubble: flags.rubbleDifficult === true, fireSpreads: flags.fireSpreads === true });
+    props.innerHTML = propSceneFieldsHTML({ on: flags.breakableProps === true, chance: flags.propMissChance, breakWalls: flags.breakWalls, rubble: flags.rubbleDifficult === true, fireSpreads: flags.fireSpreads === true, smokeFills: flags.smokeFills === true });
     const repair = props.querySelector('[data-action="animater-repair-props"]');
     repair.disabled = !game.user?.isGM;
     repair.addEventListener("click", async (event) => {
@@ -14474,6 +14796,7 @@ Hooks.on("renderAmbientLightConfig", (app, html) => {
     ${autoOnOff("sparks", "Sparks", "Sparks and embers rising from this light (\"Sparks from fires\").")}
     ${autoOnOff("fireSound", "Sound", "This fire heard close by (\"Fire sounds\"): crackling, or a pot bubbling, by its Fire kind.")}
     ${autoOnOff("chimney", "Chimney smoke", "A hearth in a room smokes from the roof above it while the roof is drawn (Auto). On: always smokes above the roofs (a forge). Off: never.", "A hearth in a room")}
+    ${smokeLightFieldHTML({ on: flags[SMOKE_LIGHT_FLAG] === true })}
     <p class="hint">Auto follows the light's animation: a torch, flame, fire, candle or flicker light is a fire. Each switch is its own: turning Heat haze off leaves the flame, smoke and sparks. Hover a name or a button for more.</p>`;
   // A click sets the hidden field and tells the form, so Foundry's live preview of the light follows.
   set.addEventListener("click", (event) => {
@@ -16699,3 +17022,7 @@ Hooks.once("ready", () => {
   try { wrapRulerHighlight(CONFIG.Token?.rulerClass, () => { try { return hotSetting("walkedPathHighlight"); } catch { return "fade"; } }, { libWrapper: globalThis.libWrapper, target: "CONFIG.Token.rulerClass.prototype._getGridHighlightStyle" }); }
   catch (error) { console.warn("Animater walked path:", error?.message ?? error); }
 });
+
+// Thick smoke blocks sight (engines/props/smoke-fence.mjs): the fence is rebuilt from the stored grid inside Foundry's own
+// initializeEdges hook, so a scene save, level change or redraw cannot silently drop it.
+registerSmokeFence({ hooks: Hooks, moduleId: ID, cellsOf: smokeCellsOf, env: () => ({ Edge: foundry.canvas.geometry.edges.Edge, NORMAL: CONST.EDGE_SENSE_TYPES.NORMAL, canvas: globalThis.canvas }) });

@@ -44,7 +44,7 @@ test('the brush bar and the region panel each have a Height slider', async () =>
 test('sun shadows, lamp shadows and the canopy all take the painted height', () => {
   const src = readFileSync(new URL('../../../scripts/engines/motion/decorations.mjs', import.meta.url), 'utf8');
   assert.match(src, /const reach = shadowReach\(decorHeight\(d\), sun\.length, grid\(\)\)/);
-  assert.match(src, /r\.casters\.push\(\{ d, pic, scale, height: decorHeight\(d\), shadows: \[\] \}\)/);
+  assert.match(src, /const caster = \{ d, pic, scale, height: decorHeight\(d\), shadows: \[\] \}; r\.casters\.push\(caster\);/);
   assert.match(src, /up: decorHeight\(d\)/);
   assert.doesNotMatch(src, /shadowReach\(k\.height/);
 });
