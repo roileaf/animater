@@ -4877,7 +4877,7 @@ Hooks.on("canvasTearDown", () => { regionDrag = null; });
 // The menu stands by the spot it was opened for: when the map moves under it, it goes.
 Hooks.on("canvasPan", () => { regionPanel.close(); });
 Hooks.on("deleteRegion", (doc) => { if (regionPanel.doc === doc) regionPanel.close(); });
-Hooks.on("canvasTearDown", () => { clearTimeout(floorLooksTimer); forgetPlanes(); dropTileBoxes(); floorLooks.clear(); floorTextures.clear(); floorMotion.clear(); waterEngine.clear(); floorShadows.clear(); iceBreakLook.clear(); forgetIceHeard(); forgetIceResting(); regionPanel.close(); });
+Hooks.on("canvasTearDown", () => { clearTimeout(floorLooksTimer); forgetPlanes(); dropTileBoxes(); floorLooks.clear(); floorTextures.clear(); floorMotion.clear(); waterEngine.clear(); floorShadows.clear(); iceBreakLook.clear(); forgetIceHeard(); regionPanel.close(); });
 // The region with a floor under a point, the last listed as the floor's own lookup has it.
 const floorRegionAt = (point) => {
   const elevation = Number(canvas.level?.elevation?.base) || 0, regions = regionsHere();
@@ -5132,16 +5132,15 @@ const ICE_MOVES_KEPT = 8;
 const iceMoveDone = new Map();
 const iceMoveSeen = (id, kept) => { iceMoveDone.delete(id); iceMoveDone.set(id, kept); while (iceMoveDone.size > ICE_MOVES_KEPT) iceMoveDone.delete(iceMoveDone.keys().next().value); };
 Hooks.on("canvasTearDown", () => { iceMoveDone.clear(); });
-// What a set of squares does to each thin-ice region under them, written in one batch with one whisper. `ended` is the square
-// the creature came to rest on, or null while it is still walking.
-const judgeIce = (doc, { size, grid, base, regions, squares, ended }) => {
+// What a set of squares does to each thin-ice region under them, written in one batch with one whisper.
+const judgeIce = (doc, { size, grid, base, regions, squares }) => {
   const updates = [], cracked = [], broken = [];
   for (const region of regions) {
     try {
       // Only the squares this region itself holds: the move may have crossed its edge.
       const mine = [];
       for (const key of squares) if (region.testPoint({ ...iceSquareMid(key, grid), elevation: base }) && mine[mine.length - 1] !== key) mine.push(key);
-      const { updates: wrote, note, broke } = iceMoveFor({ region, size, squares: mine, ended: mine.includes(ended) ? ended : null, name: doc.name, system: game.system?.id });
+      const { updates: wrote, note, broke } = iceMoveFor({ region, size, squares: mine, name: doc.name, system: game.system?.id });
       updates.push(...wrote);
       // One break, one whisper: two thin-ice regions over the same square would otherwise each tell the GM about it,
       // and a break is the only thing worth saying when the same move also cracked ice somewhere else.
@@ -5151,35 +5150,6 @@ const judgeIce = (doc, { size, grid, base, regions, squares, ended }) => {
   const notes = [...new Set(broken.length ? broken : cracked)];
   if (updates.length) void writeIceBreak(canvas.scene, updates, notes);
   return updates.length;
-};
-// A creature one size over cracks the ice as it walks and goes through where it stops. Where it stops is not something the
-// move hook can be asked — it fires repeatedly while the creature is still going — so it is read from the token itself once
-// the moving has stopped: a short quiet, then wherever the token now stands is the resting place. Each new firing pushes the
-// wait back, so one drag asks once, at the end. Nothing is broken that the creature did not already crack: the ice's own
-// judgement decides (thin-ice.mjs iceStep), and a square it never walked on has no crack to fall through.
-const ICE_REST_MS = 180;
-const iceResting = new Map();
-const forgetIceResting = () => { for (const timer of iceResting.values()) clearTimeout(timer); iceResting.clear(); };
-const restIceSoon = (doc) => {
-  const id = doc?.id; if (!id) return;
-  clearTimeout(iceResting.get(id));
-  iceResting.set(id, setTimeout(() => { iceResting.delete(id); try { restIceNow(id); } catch (err) { runtime?.trace?.("thin ice", `rest: ${err?.message ?? err}`); } }, ICE_REST_MS));
-};
-const restIceNow = (id) => {
-  if (!game.user?.isActiveGM || !canvas?.ready) return;
-  const doc = canvas.scene?.tokens?.get(id); if (!doc) return;
-  const regions = iceRegionsHere(); if (!regions.length) return;
-  const size = sizeNameOf(doc.actor, doc); if (!size) return;
-  const grid = canvas.grid.size, base = canvas.level?.elevation?.base ?? 0;
-  // Where its weight falls where it now stands, as the same square key the walk is written in.
-  const at = { x: doc.x + weightOffset(doc.width) * grid, y: doc.y + weightOffset(doc.height) * grid };
-  const key = `${Math.floor(at.x / grid)},${Math.floor(at.y / grid)}`;
-  // Only a square this creature has already cracked gives way under it. You go through where you stop because you cracked
-  // it getting there — not merely because you stopped. That keeps a creature heavy enough to go straight through from
-   // punching a second hole wherever it came to rest, and keeps a creature the ice holds from ever breaking anything.
-  const cracked = regions.filter((region) => { try { return iceStateOf(region).cracks.includes(key); } catch { return false; } });
-  if (!cracked.length) return;
-  judgeIce(doc, { size, grid, base, regions: cracked, squares: [key], ended: key });
 };
 Hooks.on("moveToken", (doc, movement) => {
   try {
@@ -5200,12 +5170,10 @@ Hooks.on("moveToken", (doc, movement) => {
     const legs = walkedLegs(since.ways, { from: since.from, base, mid });
     const squares = squaresEntered(legs, grid);
     if (!squares.length) return;
-    // Cracks only, never a break from this firing's last waypoint. Foundry fires this hook again and again as a creature
-    // walks, and nothing in what it hands over reliably says whether the walk is finished: the last waypoint of a firing
-    // mid-walk is simply where the creature is at this instant. Taking it as a resting place broke the ice under the very
-    // first square. Where the creature really came to rest is answered below, by looking at where it actually ended up.
-    judgeIce(doc, { size, grid, base, regions, squares, ended: null });
-    restIceSoon(doc);
+    // Nothing here waits on a move ending, and nothing needs to: fresh ice cracks, ice already cracked gives way. Foundry
+    // fires this hook again and again as a creature walks, and no reading of where a firing happens to stop can be trusted;
+    // taking one as a resting place broke the ice under the very first square a creature stepped on.
+    judgeIce(doc, { size, grid, base, regions, squares });
   } catch { /* a token mid-change */ }
 });
 // Refreeze (the region panel's button, the GM's own): every crack and every hole this region has stored goes by name, so

@@ -111,7 +111,8 @@ const waypoint = (col, row, wide) => ({ x: col * GRID, y: row * GRID, width: wid
 
 // One step onto the ice, judged and written by the GM's own listener, then the creature standing where it landed.
 const fellThrough = async (size, wide, from, to) => {
-  region.flags.animater.thinIce = {};
+  // A creature one size over goes through ice that is already cracked, so the square it steps onto is cracked already.
+  region.flags.animater.thinIce = { cracks: { [`${to[0]},${to[1]}`]: 1 } };
   const token = creature(size, wide, ...to);
   tokens.length = 0; tokens.push(token);
   canvas.level = { id: `level${++level}`, elevation: { base: 0 } };
