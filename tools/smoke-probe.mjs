@@ -91,9 +91,41 @@ export function smokeProbe(scene = globalThis.canvas?.scene) {
     }
   }
   const at = (i) => `(${i % cols},${Math.floor(i / cols)})`;
+  // When the stored cells and the room model disagree — cells stored and growing while none of them reads as
+  // indoors — the fault is in what "indoors" was asked of, not in the smoke. These say what was asked.
+  const mid = (i) => ({ x: origin.x + ((i % cols) + 0.5) * cell, y: origin.y + (Math.floor(i / cols) + 0.5) * cell });
+  const bbox = (area) => {
+    const xs = [], ys = [];
+    for (let k = 0; k + 1 < area.length; k += 2) { xs.push(area[k]); ys.push(area[k + 1]); }
+    return xs.length ? { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys), points: xs.length } : null;
+  };
+  const regionRows = Array.from(scene.regions ?? []).map((r) => {
+    let areas = [];
+    try { areas = regionAreas(r) ?? []; } catch { areas = []; }
+    return {
+      name: r.name, levels: Array.from(r.levels ?? []).length,
+      suppressWeather: Array.from(r.behaviors ?? []).some((b) => b?.type === "suppressWeather" && !b.disabled),
+      onThisLevel: onLevel.includes(r), hasPolygonTree: !!r.polygonTree?.children,
+      areas: areas.length, bbox: areas.length ? bbox(areas[0]) : null,
+    };
+  });
+  const diagnosis = {
+    levelUsed: level, storedGridLevel: scene.flags?.[ID]?.smokeGrid?.level ?? null,
+    storedGrid: scene.flags?.[ID]?.smokeGrid ?? null,
+    thisClientIsActiveGM: globalThis.game?.users?.activeGM?.isSelf === true,
+    canvasScene: globalThis.canvas?.scene?.name ?? null,
+    regions: regionRows,
+    // Where the smoke actually is, against where the roof actually is.
+    sampleCells: stored.slice(0, 6).map((c) => ({ i: c.i, at: at(c.i), v: c.v, mid: mid(c.i), indoors: indoors(c.i) })),
+    // The same question with the level filter dropped, which is the likeliest thing to differ between two clients.
+    indoorsIgnoringLevel: (() => {
+      const all = indoorPolygonsOf(Array.from(scene.regions ?? []), regionAreas);
+      return { polygons: all.length, storedInside: stored.filter((c) => all.some((p) => pointInPolygon(mid(c.i), p))).length };
+    })(),
+  };
   const report = {
     scene: scene.name, on: smokeRunsOn(scene), grid: { cols, rows, cell }, underground: deep === true,
-    indoorRegions: polys.length, skyRegions: skyRegionsOf(onLevel).length,
+    indoorRegions: polys.length, skyRegions: skyRegionsOf(onLevel).length, diagnosis,
     storedCells: stored.length, storedIndoors: inside.length,
     thick: inside.filter((c) => c.v >= THICK).length, thin: inside.filter((c) => c.v >= THIN && c.v < THICK).length,
     rooms: [...rooms.values()].map((r) => {
