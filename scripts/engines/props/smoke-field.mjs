@@ -14,8 +14,14 @@ const SPREAD = 0.1;
 const PULL = 2;
 // Nothing may leave across one edge faster than this, so four edges together never move more than a cell holds.
 const EDGE_MAX = 0.2;
-// The share lost every round from every cell, so a room with no source empties.
-const FADE = 0.1;
+// The share lost every round from every cell with nowhere to go: soot settling out of still air onto the floor and
+// the walls. It is SMALL on purpose. Smoke shut in a room does not disperse — there is nowhere for it to disperse
+// to — so a room with the door shut and the windows shut stays full, and the way to clear it is to open something.
+// That is the whole point of the openings: at 10% a round (what this was) a sealed, cap-full room fell under the
+// sight-blocking tier in twenty rounds whatever the GM did, and shutting a window changed nothing a player could
+// see. At 2% that room is still thick after twenty rounds, clears in about fifty once a door is opened, and empties
+// on its own in around 260 — long, but never never, so a map is not fogged for the rest of the session.
+const FADE = 0.02;
 // The share lost every round from a cell that is an opening (an open door, a broken window).
 const LEAK = 0.35;
 // The openings also let the whole room breathe out. How much is a share of how far the room stands open
@@ -285,8 +291,8 @@ export function smokeStep({ cells = [], sources = [], cols, rows, openings = [],
 
 // What the GM stores. The smoke lives on the scene at flags.animater.smoke as an object keyed by cell index ({[i]: density}),
 // a keyed flag like feature 1's fireCells. Densities are stored to 4 decimals. The rounding gate (an unchanged rounded value writes nothing)
-// must never stall decay: a cell loses at least FADE (10%) a round, so it stalls only when 10% of it is under half a store
-// unit, i.e. below 0.0005, far under DROP_FLOOR (0.02), where smokeStep has already dropped it. At 2 decimals a cell near
+// must never stall decay: a cell loses at least FADE (2%) a round, so it stalls only when 2% of it is under half a store
+// unit, i.e. below 0.0025, still well under DROP_FLOOR (0.02), where smokeStep has already dropped it. At 2 decimals a cell near
 // 0.03 rounded back to itself for ever and its smoke was never cleared.
 const STORE_PLACES = 10000;
 const SMOKE_FLAG = "flags.animater.smoke";

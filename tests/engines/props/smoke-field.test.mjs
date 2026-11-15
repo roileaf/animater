@@ -67,10 +67,31 @@ test("the vent is taken once a round, so a door and a window do not compound int
   assert.ok(peak(lit([])) > peak(lit([2])), "sealed holds more than one opening");
 });
 
-test("with no source the room clears, and a cleared cell is dropped", () => {
+test("with no source a wisp settles out, and a cleared cell is dropped", () => {
   let cells = [{ i: 5, v: 0.5 }];
   for (let n = 0; n < 40; n++) cells = smokeStep({ cells, sources: [], cols: 5, rows: 5 }).cells;
   assert.deepEqual(cells, []);
+});
+
+// The whole reason the openings exist. A room with every way out shut keeps what it holds: smoke in still air has
+// nowhere to disperse to, it only settles, and settling is slow. Opening one way out is what clears it, and the
+// difference has to be plain within a fight's worth of rounds or shutting a window changes nothing a player sees.
+// This is the behaviour that was wrong in play: a 10%-a-round fade emptied a sealed room on its own, so the doors
+// and windows were decoration. Guard the gap, not the exact figures.
+test("a shut room holds its smoke through a fight; one way out is what clears it", () => {
+  const full = () => Array.from({ length: 25 }, (_, i) => ({ i, v: DENSITY_CAP }));
+  const after = (openings, steps) => {
+    let cells = full();
+    for (let n = 0; n < steps; n++) cells = smokeStep({ cells, sources: [], cols: 5, rows: 5, openings, room: 25 }).cells;
+    return Math.max(0, ...cells.map((c) => c.v));
+  };
+  // Twenty rounds is two minutes of game time — a long fight. Shut, the room is still blocking sight at the end.
+  assert.ok(after([], 20) >= THICK, `shut after 20 rounds: ${after([], 20)}`);
+  // The same twenty rounds with one door open leave it far thinner. Both figures may move with tuning; the gap is
+  // the claim, so this asserts the ratio rather than either number.
+  assert.ok(after([12], 20) < after([], 20) / 2, `open ${after([12], 20)} vs shut ${after([], 20)}`);
+  // And the shut room is not sealed for ever — it settles out eventually, it just takes its time.
+  assert.equal(after([], 400), 0);
 });
 
 test("no returned cell is at or below the drop floor", () => {
@@ -92,11 +113,16 @@ test("a source in an open room goes thick at its own cell within a few steps, th
   assert.ok(thinAt !== null && thinAt <= 5, `neighbour thin at ${thinAt}`);
 });
 
-test("a steady source reaches thick beside it in the long run, and a bigger rate is denser", () => {
-  const settle = (rate) => run({ cells: [], sources: [{ i: 12, rate }], cols: 5, rows: 5 }, 60);
-  const lo = settle(1), hi = settle(2);
-  assert.ok(lo.find((c) => c.i === 13).v > THIN);
-  assert.ok(hi.find((c) => c.i === 12).v > lo.find((c) => c.i === 12).v);
+test("a steady source reaches thick beside it in the long run, and a bigger rate is denser sooner", () => {
+  const settle = (rate, steps) => run({ cells: [], sources: [{ i: 12, rate }], cols: 5, rows: 5 }, steps);
+  assert.ok(settle(1, 60).find((c) => c.i === 13).v > THIN);
+  // Compared BEFORE the cap, not after it. In a sealed room a settle rate of 2% no longer carries smoke off fast
+  // enough for the source cell to balance below DENSITY_CAP, so by round 60 rate 1 and rate 2 both sit exactly at
+  // the cap and the comparison says nothing. What a bigger rate buys is getting there sooner, which is what this
+  // pins: at round 3 neither has capped and the denser source is plainly denser.
+  const lo = settle(1, 3), hi = settle(2, 3);
+  assert.ok(hi.find((c) => c.i === 12).v > lo.find((c) => c.i === 12).v,
+    `${hi.find((c) => c.i === 12).v} > ${lo.find((c) => c.i === 12).v}`);
 });
 
 test("a source behind a wall does not fill the far side, and mass is conserved apart from fade", () => {
@@ -158,10 +184,14 @@ test("a sealed source crosses thick, then plateaus at the cap instead of growing
 test("a smaller cap is honoured, and a capped room with one opening still empties", () => {
   const small = smokeStep({ cells: [{ i: 12, v: 3 }], sources: [{ i: 12, rate: 5 }], cols: 5, rows: 5, cap: 2 });
   assert.ok(small.cells.every((c) => c.v <= 2));
+  // A cap-full room with one door open: the venting, not the settling, is what empties it. The bound is 60 rounds
+  // (six minutes of game time) rather than the 40 it was, because settling now takes 2% a round instead of 10% and
+  // the opening is doing nearly all the work. What matters is that an opened room clears in minutes; a sealed one
+  // takes about 260 rounds, which is the next test's business.
   let cells = room(DENSITY_CAP), n = 0;
-  while (cells.length && n < 60) { n++; cells = smokeStep({ cells, sources: [], cols: 5, rows: 5, openings: [12] }).cells; }
+  while (cells.length && n < 100) { n++; cells = smokeStep({ cells, sources: [], cols: 5, rows: 5, openings: [12] }).cells; }
   assert.equal(cells.length, 0);
-  assert.ok(n <= 40, `emptied in ${n}`);
+  assert.ok(n <= 60, `emptied in ${n}`);
 });
 
 const sceneWith = (smoke) => ({ flags: { animater: { smoke } } });
@@ -242,11 +272,15 @@ test("closed loop: a uniform thin room written, read and stepped actually clears
   for (const start of [0.03, 0.05, 0.2, 1.5]) {
     let scene = sceneWith(Object.fromEntries(Array.from({ length: 25 }, (_, i) => [i, start])));
     let rounds = 0;
-    for (; rounds < 200 && Object.keys(smokeCellsOf(scene)).length; rounds++) {
+    // 400 rounds, not the 200 it was: this room is SEALED, and a sealed room now loses only the 2% a round that
+    // settles out of still air, so it takes about 260 rounds to empty from the cap instead of about 50. The point
+    // of the test is unchanged — the store must not stall a decaying room at some rounded value for ever — and the
+    // bound is still finite on purpose, so "never clears" would still fail here rather than hang.
+    for (; rounds < 400 && Object.keys(smokeCellsOf(scene)).length; rounds++) {
       const step = smokeStep({ cells: toCells(smokeCellsOf(scene)), sources: [], cols: 5, rows: 5 });
       scene = applyTo(scene, smokeUpdatesFor(step, { scene }));
     }
-    assert.ok(rounds < 200, `room at ${start} never cleared`);
+    assert.ok(rounds < 400, `room at ${start} never cleared`);
     assert.deepEqual(scene.flags.animater.smoke, {}, `room at ${start} left keys stored`);
   }
 });

@@ -46,10 +46,10 @@ test("a round writes its cells, and the geometry they were indexed with, beside 
   assert.ok(p.cells.every((c) => inRoom(c.i)));
   // Worked out by hand, not read back off the plan. One round on an empty sealed room: the source puts SOURCE (2) x
   // rate (1) into its own cell, each of the four touching cells takes SPREAD (0.1) of the 2 that stands between it
-  // and the full one, so 0.2 goes out of 33 four times over, and what is left fades by FADE (0.1): a sealed room
-  // vents nothing. (2 - 4 x 0.2) x 0.9 = 1.08, and the flag stores four decimals.
-  assert.equal(p.fields["flags.animater.smoke.33"], 1.08);
-  assert.equal(p.fields["flags.animater.smoke.32"], 0.18); // 0.2 x 0.9
+  // and the full one, so 0.2 goes out of 33 four times over, and what is left settles by FADE (0.02): a sealed room
+  // vents nothing. (2 - 4 x 0.2) x 0.98 = 1.176, and the flag stores four decimals.
+  assert.equal(p.fields["flags.animater.smoke.33"], 1.176);
+  assert.equal(p.fields["flags.animater.smoke.32"], 0.196); // 0.2 x 0.98
   assert.equal(p.fields["flags.animater.smokeGrid.cols"], COLS);
   assert.equal(p.fields["flags.animater.smokeGrid.cell"], CELL);
   assert.equal(p.fields["flags.animater.smokeGrid.level"], A);
@@ -86,12 +86,15 @@ test("the fire going out clears the cells and the geometry with them", () => {
   assert.ok(p.cells.length, "the room is smoking");
   let smoke = Object.fromEntries(p.cells.map((c) => [String(c.i), Math.round(c.v * 10000) / 10000]));
   let rounds = 0;
-  while (Object.keys(smoke).length && rounds < 60) {
+  // This room is sealed, so nothing vents and only settling (FADE, 2% a round) takes the smoke away: it clears in
+  // hundreds of rounds, not tens. The bound is finite on purpose — what is under test is that the cells and the
+  // geometry beside them are both cleared when the last of it goes, not how long that takes.
+  while (Object.keys(smoke).length && rounds < 400) {
     rounds++;
     p = plan({ scene: scene({ smoke, grid: { cols: COLS, cell: CELL, level: A }, levels: [{ id: A }] }), sources: [] });
     smoke = Object.fromEntries(p.cells.map((c) => [String(c.i), Math.round(c.v * 10000) / 10000]));
   }
-  assert.ok(rounds < 60, `cleared in ${rounds} rounds`);
+  assert.ok(rounds < 400, `cleared in ${rounds} rounds`);
   assert.equal(p.fields["flags.animater.-=smokeGrid"], null);
   assert.deepEqual(p.shapes, []);
 });
@@ -154,7 +157,7 @@ test("each room is stepped on its own: the closet's opening never vents the hall
   const alone = smokeRoundPlan({ activeGM: true, on: true, scene: scene(), ...twoRooms, sources: [FIRES[0]] });
   const hallOf = (p) => p.cells.filter((c) => HALL.has(c.i)).map((c) => [c.i, c.v]);
   assert.deepEqual(hallOf(both), hallOf(alone));
-  assert.equal(both.fields["flags.animater.smoke.33"], 1.08, "the sealed hall vents nothing, closet or no closet");
+  assert.equal(both.fields["flags.animater.smoke.33"], 1.176, "the sealed hall vents nothing, closet or no closet");
   // And the closet is vented by its own 1-in-3 share, not by the hall's 25 cells.
   const shut = smokeRoundPlan({ activeGM: true, on: true, scene: scene(), ...rooms(false), sources: FIRES });
   const keeps = (p) => p.cells.find((c) => c.i === 73).v;
@@ -424,12 +427,14 @@ test("a room with no source left empties on its own, cells, geometry and shapes"
   let smoke = Object.fromEntries(burn(20).cells.map((c) => [String(c.i), Math.round(c.v * 10000) / 10000]));
   assert.ok(Object.keys(smoke).length, "the room is full");
   let p = null, rounds = 0;
-  while (Object.keys(smoke).length && rounds < 120) {
+  // Sealed again, so this is settling alone at 2% a round: hundreds of rounds, not the 120 it was. The claim is
+  // that the room does empty and takes its geometry, shapes and level with it when it does.
+  while (Object.keys(smoke).length && rounds < 500) {
     rounds++;
     p = plan({ scene: scene({ smoke, grid: { cols: COLS, cell: CELL, level: A }, levels: [{ id: A }] }), sources: [] });
     smoke = Object.fromEntries(p.cells.map((c) => [String(c.i), Math.round(c.v * 10000) / 10000]));
   }
-  assert.ok(rounds < 120, "emptied in " + rounds + " rounds");
+  assert.ok(rounds < 500, "emptied in " + rounds + " rounds");
   assert.equal(p.fields["flags.animater.-=smokeGrid"], null, "the geometry goes with the last cell");
   assert.deepEqual(p.shapes, [], "and the concealment region with it");
   assert.equal(p.level, null);
@@ -563,12 +568,15 @@ test("an inn with its inside door open fills with smoke instead of staying clear
   const inert = burn(15, { sources: TAP_FIRE, walled: innWalled, openings: wrong });
   const thick = (p) => p.cells.filter((c) => c.v >= THICK).length;
   const mass = (p) => p.cells.reduce((sum, c) => sum + c.v, 0);
-  // THE agreed figures for the inn, pinned to the number: five thick cells and 12.7698 of smoke in all at fifteen
-  // rounds, against one thick and 5.2568 when that inside doorway was vented as though it led outside.
-  assert.equal(thick(filled), 5, "the inn fills");
-  assert.equal(Math.round(mass(filled) * 10000) / 10000, 12.7698, "and holds exactly this much smoke");
-  assert.equal(thick(inert), 1, "the bug's own answer, kept so the difference cannot quietly close");
-  assert.equal(Math.round(mass(inert) * 10000) / 10000, 5.2568);
+  // THE agreed figures for the inn, pinned to the number: six thick cells and 18.2532 of smoke in all at fifteen
+  // rounds, against three thick and 7.4018 when that inside doorway was vented as though it led outside.
+  // (They were 5/12.7698 and 1/5.2568 while a sealed cell lost 10% a round. Both sides of the comparison rose when
+  // settling dropped to 2%, which is the point of that change; the GAP is what this test is for, and the four
+  // assertions below it hold it open.)
+  assert.equal(thick(filled), 6, "the inn fills");
+  assert.equal(Math.round(mass(filled) * 10000) / 10000, 18.2532, "and holds exactly this much smoke");
+  assert.equal(thick(inert), 3, "the bug's own answer, kept so the difference cannot quietly close");
+  assert.equal(Math.round(mass(inert) * 10000) / 10000, 7.4018);
   assert.ok(thick(filled) > thick(inert), `${thick(filled)} thick against ${thick(inert)} when the doorway vented`);
   assert.ok(mass(filled) > mass(inert) * 1.3, `${mass(filled)} against ${mass(inert)}`);
   // And the smoke still gets next door through the open doorway, which is what a doorway is for: the back room is
