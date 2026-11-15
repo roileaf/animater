@@ -15,10 +15,11 @@ label{color:#97a0ad;margin-right:12px}input{vertical-align:middle}
 <div><label>seed <input id="sd" type="range" min="0" max="40" value="7"></label></div>
 <div class="row" id="row"></div>
 <script type="module">
-import { icePlates, holeOutline } from "/scripts/engines/regions/ice-break-look.mjs";
+import { icePlates, holeOutline, crackLines } from "/scripts/engines/regions/ice-break-look.mjs";
 // The painter's own colours and thickness (engines/regions/ice-break-draw.mjs), so this page shows what the map shows.
 const WATER="#17465e", FACE="#eaf2f4", SIDE="#79b9ce", DEEP="#3f7d95", INK="#1b1410", THICK=0.05, LEAN_X=0.45, LEAN_Y=0.75;
 const CASES=[["Medium, one square",1],["Large",2],["Huge",3]];
+const CRACK_DARK="#14303c", CRACK_LIP="#f2fbfd";
 const row=document.getElementById("row");
 const draw=()=>{
   row.innerHTML="";
@@ -39,6 +40,18 @@ const draw=()=>{
     g.beginPath(); ring.forEach((p,i)=>i?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y)); g.closePath();
     g.fillStyle=WATER; g.fill();
     const plates=icePlates(key,{grid,seed,size});
+    // the cracked squares round the hole, as the map draws them
+    const k=grid/100, lip=Math.max(.6,.9*k);
+    for(const key of ["0,1","1,0","2,1","1,2"]){
+      for(const line of crackLines(key,{grid,seed})){
+        const P=line.map(off);
+        const run=(dx,dy)=>{g.beginPath();P.forEach((p,i)=>i?g.lineTo(p.x+dx,p.y+dy):g.moveTo(p.x+dx,p.y+dy));g.stroke();};
+        g.lineCap="round";
+        g.lineWidth=Math.max(1,.9*k); g.strokeStyle=CRACK_LIP; g.globalAlpha=.5; run(lip,lip);
+        g.lineWidth=Math.max(1,1.1*k); g.strokeStyle=CRACK_DARK; g.globalAlpha=.85; run(0,0);
+        g.globalAlpha=1;
+      }
+    }
     const thick=grid*THICK;
     for(const plate of plates){
       const P=plate.points.map(off);

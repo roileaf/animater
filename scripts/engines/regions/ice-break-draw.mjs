@@ -15,6 +15,8 @@ const PLATE_FACE = 0xeaf2f4, PLATE_SIDE = 0x79b9ce, PLATE_DEEP = 0x3f7d95;
 // has to read as standing in open water on every screen, at every quality, and on a map whose own light is warm enough to
 // turn pale ice sandy. So the hole is painted: deep water, a darker lip inside its edge where the ice shelves off.
 const WATER_DEEP = 0x17465e, WATER_RIM = 0x0b2332;
+// The split itself, and the lip of ice beside it that catches the light.
+const CRACK_DARK = 0x14303c, CRACK_LIP = 0xf2fbfd;
 const PLATE_THICK = 0.05, PLATE_LEAN_X = 0.45, PLATE_LEAN_Y = 0.75;
 
 /** createIceBreakLook({ PIXI, layer, grid }): `layer()` gives the container to draw in (under the creatures), `grid()` the
@@ -30,16 +32,22 @@ export function createIceBreakLook({ PIXI, layer, grid = () => 100 }) {
     if (waterArt.parent !== root) { root.addChild(waterArt); root.addChild(cracksArt); root.addChild(platesArt); root.addChild(shardsArt); }
     return true;
   };
+  // A crack is a split in the ice, so it is drawn as one: a thin dark fissure, with a paler lip just below and right of it
+  // where the ice has lifted. Drawn the other way round — a thick pale line with a dark edge — it read as rope or twigs
+  // lying on the surface, which is what it was.
   const drawCracks = (cracks) => {
-    const k = (grid() || 100) / 100;
+    const k = (grid() || 100) / 100, lip = Math.max(0.6, 0.9 * k);
     cracksArt.clear();
+    const run = (line, dx, dy) => {
+      cracksArt.moveTo(line[0].x + dx, line[0].y + dy);
+      for (let i = 1; i < line.length; i++) cracksArt.lineTo(line[i].x + dx, line[i].y + dy);
+    };
     for (const { lines } of cracks) for (const line of lines) {
       if (line.length < 2) continue;
-      for (const [width, colour, alpha] of [[3.2 * k, INK, 0.55], [1.5 * k, FROST, 0.9]]) {
-        cracksArt.lineStyle(width, colour, alpha, 0.5);
-        cracksArt.moveTo(line[0].x, line[0].y);
-        for (let i = 1; i < line.length; i++) cracksArt.lineTo(line[i].x, line[i].y);
-      }
+      cracksArt.lineStyle(Math.max(1, 0.9 * k), CRACK_LIP, 0.5, 0.5);
+      run(line, lip, lip);
+      cracksArt.lineStyle(Math.max(1, 1.1 * k), CRACK_DARK, 0.85, 0.5);
+      run(line, 0, 0);
     }
   };
   const drawShards = () => {

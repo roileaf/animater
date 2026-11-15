@@ -95,10 +95,18 @@ test("cracks are several jagged lines that stay inside their own square", () => 
   }
 });
 
-test("cracks start near the middle of their square", () => {
-  const c = centre("-1,2", GRID);
-  for (const line of crackLines("-1,2", { grid: GRID, seed: 2 })) {
-    assert.ok(Math.hypot(line[0].x - c.x, line[0].y - c.y) < GRID * 0.2);
+test("every crack starts where the weight fell, or on another crack", () => {
+  // A fracture radiates from the point it was struck and branches off itself; nothing starts in mid-air.
+  for (const seed of [0, 2, 5, 9]) {
+    const c = centre("-1,2", GRID);
+    const lines = crackLines("-1,2", { grid: GRID, seed });
+    const points = lines.flat();
+    for (const line of lines) {
+      const head = line[0];
+      const fromMiddle = Math.hypot(head.x - c.x, head.y - c.y) < GRID * 0.2;
+      const onAnother = points.some((p) => p !== head && Math.hypot(p.x - head.x, p.y - head.y) < 1e-9);
+      assert.ok(fromMiddle || onAnother, `a crack starts at the middle or on another: ${JSON.stringify(head)}`);
+    }
   }
 });
 

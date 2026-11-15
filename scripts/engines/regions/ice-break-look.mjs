@@ -32,37 +32,50 @@ export function crackLines(key, { grid, seed = 0 } = {}) {
   const sq = parseKey(key);
   if (!sq || !validGrid(grid)) return [];
   const next = stream(sq, seed, 1);
-  const x0 = sq.col * grid, y0 = sq.row * grid, margin = grid * 0.03;
+  const x0 = sq.col * grid, y0 = sq.row * grid, margin = grid * 0.04;
   const clamp = (v, lo) => Math.min(lo + grid - margin, Math.max(lo + margin, v));
   const cx = x0 + grid / 2, cy = y0 + grid / 2;
-  const count = 4 + Math.floor(next() * 3);
+  // A few long runs rather than a bush of short ones. Ice fractures in straight lines that change direction at a break,
+  // not in twigs: three or four main cracks out of the point the weight fell on, each nearly straight, with the odd
+  // branch off one of them. The old shape read as sticks lying on the ice.
+  const count = 3 + Math.floor(next() * 2);
   const lines = [];
-  for (let k = 0; k < count; k++) {
-    let angle = ((k + next() * 0.6) / count) * Math.PI * 2;
-    let x = cx + (next() - 0.5) * grid * 0.12, y = cy + (next() - 0.5) * grid * 0.12;
+  const run = (fromX, fromY, angle, steps, step) => {
+    let x = fromX, y = fromY, a = angle;
     const line = [{ x, y }];
-    const steps = 3 + Math.floor(next() * 2);
     for (let s = 0; s < steps; s++) {
-      angle += (next() - 0.5) * 1.1; // each step veers, so the crack zigzags
-      // Short enough that the clamp below stops deciding where a crack goes: four steps of the usual length reach about
-      // 0.42 of a grid from the middle, inside the 0.47 the clamp allows (only four at their very longest, all pointing
-      // the same way, would reach past it, and each step veers). At the length this was, a crack reached 0.74 and was
-      // pinned flat against the square's edge — which read as a straight run down the grid line, and lined up with the
-      // next cracked square's along their shared border.
-      const len = grid * 0.09 * (0.7 + next() * 0.6);
-      x = clamp(x + Math.cos(angle) * len, x0); y = clamp(y + Math.sin(angle) * len, y0);
+      a += (next() - 0.5) * CRACK_VEER; // a crack holds its line, then turns at a break
+      // Kept short enough that the clamp below does not decide where a crack goes: at their longest these reach about
+      // 0.44 of a grid from the middle, inside the 0.46 the clamp allows. A crack that reached the edge was pinned flat
+      // against it, which read as a straight run down the grid line and lined up with the next cracked square’s.
+      const len = grid * step * (0.75 + next() * 0.5);
+      x = clamp(x + Math.cos(a) * len, x0); y = clamp(y + Math.sin(a) * len, y0);
       line.push({ x, y });
     }
-    lines.push(line);
+    return { line, end: { x, y }, angle: a };
+  };
+  for (let k = 0; k < count; k++) {
+    const angle = ((k + next() * 0.5) / count) * Math.PI * 2;
+    const from = { x: cx + (next() - 0.5) * grid * 0.1, y: cy + (next() - 0.5) * grid * 0.1 };
+    const main = run(from.x, from.y, angle, CRACK_STEPS, CRACK_STEP);
+    lines.push(main.line);
+    // One crack in two throws a shorter one off where it turned: a fracture branches, it does not only radiate.
+    if (next() < 0.5 && main.line.length > 2) {
+      const at = main.line[1 + Math.floor(next() * (main.line.length - 2))];
+      lines.push(run(at.x, at.y, main.angle + (next() < 0.5 ? -1 : 1) * (0.6 + next() * 0.5), 2, CRACK_STEP * 0.7).line);
+    }
   }
   return lines;
 }
+
 
 // Points round the hole, and how wide it is: about the creature's size plus one square across, its radius never under
 // LOW of that, so shards placed inside LOW * half are always in the hole.
 // A break is not a circle. Eleven points rather than sixteen, and each one free to sit anywhere from the rim to well inside
 // it, so the opening is angular and uneven — the shape ice leaves when it gives way, not a hole punched with a cutter.
 const RING_POINTS = 11, LOW = 0.6;
+// How a crack runs: nearly straight, turning a little at each break along it, in a few long steps rather than many short.
+const CRACK_STEPS = 3, CRACK_STEP = 0.13, CRACK_VEER = 0.55;
 // How a broken sheet comes apart: a square's worth into about five slabs, a Huge creature's hole into a dozen at most;
 // each shrunk a little about its middle so the water shows between them, slid a touch outward and swung a touch round.
 const PLATES_ONE = 4, PLATES_PER_SQUARE = 2.2, PLATES_MOST = 12;
