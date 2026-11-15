@@ -1,0 +1,3 @@
+# Candidate audio stays out of git: nothing ships until Roi picks on the audition page.
+# Re-make it with tools in C:	mp\props-sounds-work (fetch.py, final_ice.py, ice_specs*.json).
+*.ogg
