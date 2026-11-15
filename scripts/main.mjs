@@ -2076,16 +2076,32 @@ let draftTimer = null, gustAt = -Infinity, gustFrom = null, airLive = false, pre
 //
 // It costs what the round already pays: smokeShapeOf is cached per scene and geometry (smokeRooms), so on the GM's client
 // this is the round's own cached rooms, and on anyone else's it is built once per scene.
-const roomWaysOut = () => {
+// Returns { ways, reaches }: the openings as points marked `inner` (a room's own way out), and the test draftField holds
+// that walk to — a field cell is reached only while it is still inside a room. Empty and null where there is nothing to say.
+const roomWaysOut = (bounds, grid) => {
+  const none = { ways: [], reaches: null };
   try {
     const scene = canvas?.scene;
-    if (!scene || !smokeRunsOn(scene)) return [];
+    if (!scene || !smokeRunsOn(scene)) return none;
     const geo = smokeGridOf(scene.dimensions);
-    if (!geo) return [];
+    if (!geo) return none;
     const { indoors } = smokeShapeOf(scene, geo, smokeLevelOf(scene), undergroundScene());
-    return smokeOpeningsOf({ walls: scene.walls?.contents ?? [], cell: geo.cell, origin: geo.origin, cols: geo.cols, rows: geo.rows, indoors })
-      .map((i) => ({ x: geo.origin.x + ((i % geo.cols) + 0.5) * geo.cell, y: geo.origin.y + (Math.floor(i / geo.cols) + 0.5) * geo.cell }));
-  } catch { return []; }   // a scene whose rooms cannot be worked out keeps the air it had, never no air at all
+    const mid = (i) => ({ x: geo.origin.x + ((i % geo.cols) + 0.5) * geo.cell, y: geo.origin.y + (Math.floor(i / geo.cols) + 0.5) * geo.cell });
+    const ways = smokeOpeningsOf({ walls: scene.walls?.contents ?? [], cell: geo.cell, origin: geo.origin, cols: geo.cols, rows: geo.rows, indoors })
+      .map((i) => ({ ...mid(i), inner: true }));
+    if (!ways.length) return none;
+    // The air field's own cells are half a grid square (draftField's res); this takes one back to the smoke cell under it and
+    // asks the rooms about THAT. A cell off the smoke grid is outside by definition.
+    const cell = grid / 2, cols = Math.max(1, Math.ceil(bounds.width / cell));
+    const reaches = (k) => {
+      const i = k % cols, j = (k - i) / cols;
+      const x = bounds.x + (i + 0.5) * cell, y = bounds.y + (j + 0.5) * cell;
+      const gi = Math.floor((x - geo.origin.x) / geo.cell), gj = Math.floor((y - geo.origin.y) / geo.cell);
+      if (gi < 0 || gj < 0 || gi >= geo.cols || gj >= geo.rows) return false;
+      return indoors(gj * geo.cols + gi) === true;
+    };
+    return { ways, reaches };
+  } catch { return none; }   // a scene whose rooms cannot be worked out keeps the air it had, never no air at all
 };
 // How the air moves at a point now (0 still – 1 the fastest streams in a gust): how fast it runs there (a doorway on the
 // way out fast, a room's corner barely), and the gust once it has swept that far from the door that opened.
@@ -2125,8 +2141,9 @@ const rebuildDraft = () => {
     // sceneOpenings is handed the UNFILTERED list on purpose: it looks for a door standing open near the map's edge, and
     // those are precisely the walls smokeWalls takes out. Handed the filtered list it found none, and the scene's own ways
     // out went with them.
-    const openings = [...sceneOpenings({ walls: seen, regions, bounds, grid }), ...roomWaysOut(), ...previewOpenings];
-    const field = draftField({ walls, bounds, grid, openings });
+    const rooms = roomWaysOut(bounds, grid);
+    const openings = [...sceneOpenings({ walls: seen, regions, bounds, grid }), ...rooms.ways, ...previewOpenings];
+    const field = draftField({ walls, bounds, grid, openings, reaches: rooms.reaches });
     field.openings = openings;
     // The gust of a door opened lately sweeps out from it.
     field.delays = gustFrom && performance.now() - gustAt < 12000 ? gustDelays(field, gustFrom, { grid }) : null;
