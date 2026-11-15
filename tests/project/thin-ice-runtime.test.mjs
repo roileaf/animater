@@ -12,7 +12,11 @@ test("a region with two holes contributes two water specs with their own stable 
   assert.equal(holes.length, 2);
   assert.deepEqual(holes.map((h) => h.id), ["reg1:ice:-2,5", "reg1:ice:3,4"]);
   assert.ok(holes.every((h) => h.id !== "reg1"), "never the region's own id");
-  assert.ok(holes.every((h) => h.watery === true && h.keeps === true && h.kind === "still"));
+  assert.ok(holes.every((h) => h.watery === true && h.keeps === true), "water, and water that does not freeze over again");
+  // How the water LOOKS is not the hole's to say: a hole is a hole in a particular body of water and shows that water,
+  // so main.mjs lays the region's own kind, current and bed under these. Said here, a hole came out a flat colour that
+  // a bright map turned the shade of the ground while the river a step away was plainly water.
+  assert.ok(holes.every((h) => !("kind" in h) && !("current" in h) && !("bed" in h)), "it never dictates the look of the water it opens");
 });
 
 test("a hole's area is a flat x, y list the water engine reads, with the ring's own points", () => {

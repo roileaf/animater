@@ -3910,9 +3910,21 @@ const movingWaterList = () => {
     try { list.push({ id: pool.id, areas: pool.areas, watery: true, over: [], kind: "still", followsWind: false, edge: 1, depth: pool.deep ? { hold: 1.6, dark: 0.72 } : { hold: 1.35, dark: 0.4 }, bed: { texture: decorPondBed(), key: "decor-pond", edge: 1, colourOnly: true }, beach: false, sand: null, map: mapRect, waves: null, angle: null, current: 0, keeps: false, roofed: roofedRegion(pool.areas) }); } catch { /* one pool never breaks the rest */ }
   }
   // Thin ice that has given way: a hole of dark water in the ice, one spec for each, flat areas as every region's are.
+  // The hole shows the water the ice froze over, so it is drawn as that water: the region's own kind, current and bed,
+  // with only the hole's own deep dark laid over them. The bed is read from the region's WATER floor, not the floor its
+  // steps are showing, because the floor its steps are showing is the ice the hole was broken through.
   if (on) for (const region of drawnRegions()) {
     try {
-      for (const hole of iceBreakOf(region, { grid: canvas.grid?.size ?? 100 }).holes) list.push({ ...hole, bed: { texture: decorPondBed(), key: "decor-pond", edge: 1, colourOnly: true }, map: mapRect, roofed: roofedRegion(hole.areas) });
+      const holes = iceBreakOf(region, { grid: canvas.grid?.size ?? 100 }).holes;
+      if (!holes.length) continue;
+      const own = region.flags?.[ID] ?? {}, style = textureStyleOf(own, "water");
+      const tile = floorLevel.show && regionStepsOn() && showsTexture(own, sceneChoice) ? floorTextures.tile("water", style) : null;
+      // Its tile may still be loading, and a hole with no water at all would be a hole showing the map: a plain dark
+      // pond stands in until it is there.
+      const bed = tile ? { texture: tile, key: `water/${style}`, edge: stepEdge(own), colourOnly: true } : { texture: decorPondBed(), key: "decor-pond", edge: 1, colourOnly: true };
+      const kind = waterKindOf(own), toward = waterFlows(kind) ? own.flowTo || "s" : "";
+      const look = { kind, followsWind: toward === "wind", angle: toward in WIND_FROM ? ((WIND_FROM[toward] - 90) * Math.PI) / 180 : null, current: riverCurrent(stepFlags(own)?.current), bed };
+      for (const hole of holes) list.push({ ...look, ...hole, map: mapRect, roofed: roofedRegion(hole.areas) });
     } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
   }
   return list;

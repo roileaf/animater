@@ -321,12 +321,17 @@ const seedOfId = (id) => { let n = 7; for (const ch of String(id)) n = (Math.imu
 // The water engine reads an area as flat x, y pairs: [{x, y}, ...] -> [x, y, x, y, ...].
 const flatten = (ring) => ring.flatMap((p) => [p.x, p.y]);
 
-// Still, deep, dark water that never freezes with the rest of the region: the same look the decorations' cave pools have. The
-// caller adds what only the screen has (the bed's colour texture, the map's rectangle, whether a roof is over it).
-const holeLook = { watery: true, over: [], kind: "still", followsWind: false, edge: 1, depth: { hold: 1.6, dark: 0.72 }, beach: false, sand: null, waves: null, angle: null, current: 0, keeps: true };
+// What is a hole's own, and nothing else: it goes through to the deep, it ends at a break line, and it does not freeze
+// over again with the rest of the region. How the water LOOKS is not here — a hole is a hole in a particular body of
+// water, and it shows that water: the caller lays the region's own look under this (its kind, its current, the tile its
+// bed is painted from), along with what only the screen has (the map's rectangle, whether a roof is over it). Given a
+// look of its own it came out a flat colour that a bright map turned the shade of the ground, while the river a step
+// away was plainly water (Roi: "this ice shows the map, while without it it only shows the water engine").
+const holeLook = { watery: true, over: [], edge: 1, depth: { hold: 1.6, dark: 0.72 }, beach: false, sand: null, waves: null, keeps: true };
 // What fire melts is the same water, shallower and softer at its edge: meltwater standing in the ice, not a hole torn
-// through to the deep, and it fades into the ice it ate away rather than ending at a break line.
-const meltLook = { ...holeLook, edge: 2.2, depth: { hold: 1.1, dark: 0.45 } };
+// through to the deep, and it fades into the ice it ate away rather than ending at a break line. It lies still in the
+// ice it ate rather than running with the river, so this one does say how it moves.
+const meltLook = { ...holeLook, edge: 2.2, kind: "still", followsWind: false, angle: null, current: 0, depth: { hold: 1.1, dark: 0.45 } };
 
 /** A region's areas with its holes cut out of them, so whatever paints the region's floor leaves the openings alone
  *  (flat x, y pairs, each area's cuts on its own `holes`, as Foundry's region tree gives them). `inside(point, area)`
