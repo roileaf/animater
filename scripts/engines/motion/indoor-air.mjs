@@ -64,7 +64,11 @@ function cellsOf({ walls = [], bounds, grid = 100, res = 2 }) {
 }
 
 // The shortest way through the air from `seeds` (cell indices) to every cell (in cells; −1 where the air cannot go).
-function walkOut(cells, seeds) {
+// `reaches(k)`, when given, says which cells the walk may step INTO: the seeds themselves are always reached, and a cell
+// it refuses stops the walk there. A doorway out of a room is a way out for the room, not for the open ground beyond it,
+// and without this the distance ran on past the door across the whole map, so every outdoor cell was given a draft
+// pointing back at the door and smoke that got out was carried straight back in and drained.
+function walkOut(cells, seeds, reaches = null) {
   // Full precision: a distance stored rounded would look stale when taken back off the heap, and its cell never walked on.
   const { cols, rows, open } = cells, dist = new Float64Array(cols * rows).fill(-1), h = heap();
   for (const k of seeds) { if (dist[k] === 0) continue; dist[k] = 0; h.push(0, k); }
@@ -74,6 +78,7 @@ function walkOut(cells, seeds) {
     STEPS.forEach(([di, dj, len], s) => {
       if (!open(k, s)) return;
       const nk = (j + dj) * cols + (i + di), nd = d + len;
+      if (reaches && !reaches(nk)) return;
       if (dist[nk] < 0 || nd < dist[nk] - 1e-6) { dist[nk] = nd; h.push(nd, nk); }
     });
   }
@@ -84,15 +89,26 @@ function walkOut(cells, seeds) {
 // ({ x, y }) where the outside comes in. Returns { cols, rows, x, y, cell, dist (Float32Array, cells to the way out, −1
 // sealed, 0 the opening), dir (Float32Array, x, y per cell: toward the outside), speed (Float32Array, 0 still – 1 the
 // fastest streams) }.
-export function draftField({ walls = [], bounds, grid = 100, openings = [], res = 2 } = {}) {
+export function draftField({ walls = [], bounds, grid = 100, openings = [], res = 2, reaches = null } = {}) {
   const cells = cellsOf({ walls, bounds, grid, res }), { cols, rows, cell, at, open } = cells, n = cols * rows;
   const inside = ({ x, y }, p) => { let hit = false; for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > y) !== (p[j + 1] > y) && x < ((p[j] - p[i]) * (y - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) hit = !hit; return hit; };
-  const seeds = [];
+  // An opening marked `inner` is a room's own way out — a door or a window in its wall. The air INSIDE runs to it; the open
+  // ground outside does not, and `reaches` is what holds that walk to the inside. Everything else (a door at the map's edge,
+  // a region that leads out) is a way out for the whole map and reaches wherever the walls let it.
+  const seeds = [], held = [];
+  const put = (list, k) => list.push(k);
   for (const o of openings) {
-    if (Array.isArray(o)) { for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) if (inside(at(i, j), o)) seeds.push(j * cols + i); }
-    else if (o && Number.isFinite(o.x)) { const i = Math.floor((o.x - bounds.x) / cell), j = Math.floor((o.y - bounds.y) / cell); if (i >= 0 && j >= 0 && i < cols && j < rows) seeds.push(j * cols + i); }
+    const mine = o && !Array.isArray(o) && o.inner === true && reaches ? held : seeds;
+    if (Array.isArray(o)) { for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) if (inside(at(i, j), o)) put(seeds, j * cols + i); }
+    else if (o && Number.isFinite(o.x)) { const i = Math.floor((o.x - bounds.x) / cell), j = Math.floor((o.y - bounds.y) / cell); if (i >= 0 && j >= 0 && i < cols && j < rows) put(mine, j * cols + i); }
   }
-  const dist = walkOut(cells, seeds), dir = new Float32Array(n * 2), flow = new Float32Array(n), speed = new Float32Array(n);
+  const dist = walkOut(cells, seeds);
+  // The rooms' own ways out, walked only as far as the inside goes, and taken wherever they are the nearer way out.
+  if (held.length) {
+    const innerDist = walkOut(cells, held, reaches);
+    for (let k = 0; k < n; k++) if (innerDist[k] >= 0 && (dist[k] < 0 || innerDist[k] < dist[k])) dist[k] = innerDist[k];
+  }
+  const dir = new Float32Array(n * 2), flow = new Float32Array(n), speed = new Float32Array(n);
   // Each cell's own air, drained downhill (toward the way out), split among its lower neighbours by how steeply each falls;
   // farthest first, so every cell has all it gathers before it passes it on.
   const order = []; for (let k = 0; k < n; k++) if (dist[k] > 0) order.push(k);
