@@ -836,3 +836,22 @@ test("the plume keeps pouring after the cloud has settled, and stops when the ve
     looks.clear();
   });
 });
+
+// The air pass draws the room's own cloud on a drafty scene, and the bake is then handed the plume ALONE, with no
+// cloud to paint (main.mjs syncSmokeLooksNow: sheets null, puffs empty). What leaves by the doorway must still pour:
+// the plume is not the cloud, and the air indoors has nothing to do with it.
+test("a plume with no cloud of its own still pours", () => {
+  withFrames(({ frame, pending }) => {
+    const { PIXI, made, makeCanvas } = fakePixi();
+    const root = new PIXI.Container();
+    let ms = 0;
+    const looks = createSmokeLooks({ PIXI, layer: () => root, grid: () => CELL, now: () => ms, makeCanvas });
+    looks.sync({ sheets: null, puffs: [], plume: { list: [{ i: 5, dx: 0, dy: -1, v: 3 }], cols: 10, cell: CELL, origin: { x: 0, y: 0 }, seed: 5 } });
+    assert.ok(pending.size > 0, "the frame loop runs for a vent with no cloud behind it");
+    ms = 9000; frame();
+    const out = showing(made);
+    assert.ok(out.length > 0, `the plume is painted: ${out.length} sprites`);
+    assert.ok(out.some((s) => s.y < 0), "and it crosses the threshold the cloud may not");
+    looks.clear();
+  });
+});
