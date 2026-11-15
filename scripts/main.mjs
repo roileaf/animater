@@ -3757,9 +3757,13 @@ const playIceBreak = (region, keys, grid) => {
   }
 };
 const syncIceBreak = () => {
-  const cracks = [], shards = [], plates = [], holes = [], grid = canvas.grid?.size ?? 100;
+  // `holes` here is the fallback water this layer paints itself, and only where the moving water is not drawing it: the ice
+  // sits above the water engine, so a fill painted here would hide the engine’s own ripples in the very hole they belong in.
+  // With the engine running the hole is its spec and its water; with it off, or the screen too slow for it, this paints a
+  // flat one so a creature in open water still reads as being in open water.
+  const cracks = [], shards = [], plates = [], holes = [], grid = canvas.grid?.size ?? 100, wet = movingWaterOn();
   for (const region of drawnRegions()) {
-    try { const broken = iceBreakOf(region, { grid }); cracks.push(...broken.cracks); holes.push(...broken.holes); shards.push(...broken.shards); plates.push(...broken.plates); } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
+    try { const broken = iceBreakOf(region, { grid }); cracks.push(...broken.cracks); shards.push(...broken.shards); plates.push(...broken.plates); if (!wet) holes.push(...broken.holes); } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
     // Heard and said after the drawing is gathered, and never for a hole fire melted open: nobody fell through that one.
     try {
       const thin = iceSettingsOf(region).thin, id = `${canvas.scene?.id ?? "?"}:${region?.id ?? "?"}`;

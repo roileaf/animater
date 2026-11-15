@@ -178,13 +178,14 @@ test("the break is painted again after the map is put away and brought back", ()
   assert.ok(drew.some(([what]) => what === "lineTo"), "and painted again on the map that came back, with nothing stored changed");
 });
 
-test("a hole is painted as open water in the ice layer, whatever the screen draws of moving water", () => {
+test("with the moving water running, the hole is left to it: its ripples belong in the hole, not under a flat fill", () => {
   show([iceRegion({ holes: { "3,4": 2 } })]);
-  const fills = drew.filter(([what]) => what === "drawPolygon");
-  assert.ok(fills.length > 0, "the hole and its plates are filled polygons");
-  assert.ok(api.debug.iceDrawn().water > 0, "the hole is painted here");
-  assert.ok(api.debug.iceDrawn().holes > 0, "and still goes to the moving water as well, for its ripples");
+  const drawn = api.debug.iceDrawn();
+  assert.ok(drawn.holes > 0, "the hole goes to the moving water as its own spec");
+  assert.equal(drawn.water, 0, "and this layer paints none of its own over it: it sits above the engine and would hide it");
+  assert.ok(drawn.plates > 0, "the broken sheet is still drawn here, over the engine’s water");
 });
+
 
 test("the ice is drawn even where the screen draws no moving water at all", () => {
   // Moving water off, or a quality too low for it: a creature standing in open water must still read as standing in it.
