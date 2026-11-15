@@ -61,6 +61,17 @@ export function crackLines(key, { grid, seed = 0 } = {}) {
 // Points round the hole, and how wide it is: about the creature's size plus one square across, its radius never under
 // LOW of that, so shards placed inside LOW * half are always in the hole.
 const RING_POINTS = 16, LOW = 0.78;
+// How a broken sheet comes apart: a square's worth into about five slabs, a Huge creature's hole into a dozen at most;
+// each shrunk a little about its middle so the water shows between them, slid a touch outward and swung a touch round.
+const PLATES_ONE = 4, PLATES_PER_SQUARE = 2.2, PLATES_MOST = 12;
+const PLATE_SHRINK_LOW = 0.88, PLATE_SHRINK_SPAN = 0.08, PLATE_DRIFT_LOW = 0.01, PLATE_DRIFT_SPAN = 0.04, PLATE_TURN = 0.26;
+// Where the creature went through, the ice is gone: the plates nearest the middle sit furthest apart and most water shows
+// between them, while the ones out at the rim are still almost touching. A photograph of a hole in a river reads the same
+// way, and it is what tells a player at a glance where the hole is rather than where the ice merely cracked.
+const PLATE_CENTRE_OPEN = 0.16;
+// How a slab rides: its lift is a fraction of a square, so it is the same small movement on a map of 70-pixel squares as on
+// one of 200, and its swing is radians. Both are small — a plate the size of a creature barely moves on the water.
+const PLATE_SWAY = 0.012, PLATE_SWING = 0.016;
 
 /** The hole a creature falls through: a jagged ring about `size` + 1 squares across (`size` in squares: 1 Medium, 2 Large...),
  *  centred on the square it broke, as [{x, y}, ...]. It is star-shaped: one radius per angle, the angles strictly rising round
@@ -82,20 +93,89 @@ export function holeOutline(key, { grid, seed = 0, size } = {}) {
   return ring;
 }
 
-/** Loose pieces of ice floating in the hole: [{x, y, r, turn}], the centre in pixels, a radius r in pixels and a turn in
- *  radians. About three more for each square of size; every shard sits well inside the hole. */
-export function shards(key, { grid, seed = 0, size } = {}) {
+// ---- the ice that broke, as plates ----
+
+// Ice does not shatter into chips. It fractures along a few long straight lines into a handful of big angular slabs that
+// still read as one sheet come apart: the pieces nearly fit together, the water shows in the widening seams between them,
+// and each slab is pale on top with its thickness showing along one edge. That is what every photograph of a broken river
+// or lake looks like, and it is what these return.
+
+// Where a straight cut through a polygon leaves the half on one side of it. The cut goes through `at` along `angle`;
+// `keep` is +1 for one side and -1 for the other. Sutherland-Hodgman against a single half-plane, so a convex piece stays
+// convex and a ring that does not cross itself stays one piece.
+function halfOf(poly, at, angle, keep) {
+  const nx = -Math.sin(angle) * keep, ny = Math.cos(angle) * keep;
+  const side = (pt) => (pt.x - at.x) * nx + (pt.y - at.y) * ny;
+  const out = [];
+  for (let k = 0; k < poly.length; k++) {
+    const a = poly[k], b = poly[(k + 1) % poly.length], sa = side(a), sb = side(b);
+    if (sa >= 0) out.push(a);
+    if ((sa >= 0) !== (sb >= 0)) {
+      const t = sa / (sa - sb);
+      out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+    }
+  }
+  return out.length >= 3 ? out : [];
+}
+
+// A polygon's area (twice it, signed) and its middle of mass. A sliver of no area has no middle, and is dropped.
+function areaMid(poly) {
+  let twice = 0, cx = 0, cy = 0;
+  for (let k = 0; k < poly.length; k++) {
+    const a = poly[k], b = poly[(k + 1) % poly.length], f = a.x * b.y - b.x * a.y;
+    twice += f; cx += (a.x + b.x) * f; cy += (a.y + b.y) * f;
+  }
+  const area = Math.abs(twice) / 2;
+  if (!(area > 0)) return null;
+  return { area, mid: { x: cx / (3 * twice), y: cy / (3 * twice) } };
+}
+
+/** The ice of a broken square as floating plates: the hole's own outline fractured along straight lines into a few slabs,
+ *  each shrunk a little about its own middle and nudged outward, so the dark water shows in the seams between them and the
+ *  pieces still read as one sheet come apart. [{ points: [{x, y}, ...], mid: {x, y}, turn, drift }], biggest first.
+ *  `turn` is how far that slab has swung, `drift` how far it has slid out and `sway` how far it lifts on the water, all
+ *  small and all in the caller's own pixels. Junk input gives []. Pure. */
+export function icePlates(key, { grid, seed = 0, size } = {}) {
   const sq = parseKey(key);
   if (!sq || !validGrid(grid) || !(Number(size) > 0) || !Number.isFinite(size)) return [];
+  const ring = holeOutline(key, { grid, seed, size });
+  if (ring.length < 3) return [];
   const next = stream(sq, seed, 3);
-  const cx = (sq.col + 0.5) * grid, cy = (sq.row + 0.5) * grid, reach = ((size + 1) / 2) * grid * LOW * 0.45;
-  const count = 3 + Math.round(size * 3);
-  const out = [];
-  for (let k = 0; k < count; k++) {
-    const angle = next() * Math.PI * 2, dist = Math.sqrt(next()) * reach;
-    out.push({ x: cx + Math.cos(angle) * dist, y: cy + Math.sin(angle) * dist, r: grid * (0.06 + next() * 0.1), turn: (next() - 0.5) * Math.PI * 2 });
+  const cx = (sq.col + 0.5) * grid, cy = (sq.row + 0.5) * grid;
+  // A bigger hole breaks into more pieces, but never into confetti: a sheet comes apart into slabs you can count.
+  const want = Math.max(3, Math.min(PLATES_MOST, Math.round(PLATES_ONE + size * PLATES_PER_SQUARE)));
+  let pieces = [{ poly: ring, ...(areaMid(ring) ?? { area: 0, mid: { x: cx, y: cy } }) }];
+  // Always split the biggest piece left, which is how a sheet really goes: the long cut crosses the whole thing first.
+  for (let n = 1; n < want; n++) {
+    pieces.sort((a, b) => b.area - a.area);
+    const big = pieces.shift();
+    if (!big || !(big.area > 0)) break;
+    // Through a point near its middle, so no cut shaves off a sliver.
+    const at = { x: big.mid.x + (next() - 0.5) * grid * 0.22, y: big.mid.y + (next() - 0.5) * grid * 0.22 };
+    const angle = next() * Math.PI;
+    const halves = [halfOf(big.poly, at, angle, 1), halfOf(big.poly, at, angle, -1)].map((poly) => {
+      const am = areaMid(poly);
+      return am && poly.length >= 3 ? { poly, ...am } : null;
+    }).filter(Boolean);
+    if (halves.length < 2) { pieces.push(big); break; } // the cut missed: leave this piece whole
+    pieces.push(...halves);
   }
-  return out;
+  pieces.sort((a, b) => b.area - a.area);
+  return pieces.map((piece) => {
+    const away = Math.atan2(piece.mid.y - cy, piece.mid.x - cx) || 0;
+    const drift = grid * (PLATE_DRIFT_LOW + next() * PLATE_DRIFT_SPAN);
+    const turn = (next() - 0.5) * PLATE_TURN;
+    // How far out this plate sits, 0 in the middle of the hole and 1 at its rim.
+    const out = Math.min(1, Math.hypot(piece.mid.x - cx, piece.mid.y - cy) / Math.max(1, ((size + 1) / 2) * grid));
+    const shrink = (PLATE_SHRINK_LOW + next() * PLATE_SHRINK_SPAN) * (1 - PLATE_CENTRE_OPEN * (1 - out));
+    const mid = { x: piece.mid.x + Math.cos(away) * drift, y: piece.mid.y + Math.sin(away) * drift };
+    // Shrunk about its own middle and swung a little where it now sits: the seam between two slabs is water, not a line.
+    const points = piece.poly.map((pt) => {
+      const dx = (pt.x - piece.mid.x) * shrink, dy = (pt.y - piece.mid.y) * shrink;
+      return { x: mid.x + dx * Math.cos(turn) - dy * Math.sin(turn), y: mid.y + dx * Math.sin(turn) + dy * Math.cos(turn) };
+    });
+    return { points, mid, turn, drift, sway: grid * PLATE_SWAY };
+  });
 }
 
 // How a melt is drawn: more points round it than a break has and only a little wander in them, with a few slow lobes.
@@ -146,6 +226,13 @@ export function slushRing(key, { grid, seed = 0, size } = {}) {
 
 /** Where a floating shard is `seconds` in: it bobs about its place and turns slowly, each shard out of step with the others by
  *  its own seeded turn, so every client sees the same drift at the same time. Pure; {x, y, turn}. */
+/** How a plate rides the water: a slow lift and a slow swing, far smaller than a loose chip's, because a slab of ice the
+ *  size of a creature does not bob about. { dx, dy, turn } to add to where it sits. Pure, on the shared clock. */
+export function plateAt(plate, seconds) {
+  const t = Number(seconds) || 0, phase = (Number(plate?.turn) || 0) * 3.1 + (Number(plate?.drift) || 0) * 0.37;
+  const sway = Number(plate?.sway) > 0 ? Number(plate.sway) : 0;
+  return { dx: Math.sin(t * 0.37 + phase) * sway, dy: Math.cos(t * 0.29 + phase * 1.3) * sway, turn: Math.sin(t * 0.21 + phase) * PLATE_SWING };
+}
 export function shardAt(shard, seconds) {
   const phase = shard.turn * 2.3 + shard.r, t = Number(seconds) || 0, sway = shard.r * 0.45;
   return { x: shard.x + Math.sin(t * 0.9 + phase) * sway, y: shard.y + Math.cos(t * 0.7 + phase * 1.7) * sway, turn: shard.turn + Math.sin(t * 0.5 + phase) * 0.4 };
@@ -227,17 +314,19 @@ export function iceHoleAt(point, { regions = [], grid, inside = () => true } = {
 }
 
 export function iceBreakOf(region, { grid } = {}) {
-  const none = { holes: [], cracks: [], shards: [] };
+  const none = { holes: [], cracks: [], shards: [], plates: [] };
   if (!region?.id || !validGrid(grid)) return none;
   const { thin, holds } = iceSettingsOf(region);
   if (!thin) return none;
   const { cracks, holes } = iceStateOf(region);
   const seed = seedOfId(region.id);
-  const out = { holes: [], cracks: [], shards: [] };
+  const out = { holes: [], cracks: [], shards: [], plates: [] };
   for (const { key, melted, size, ring } of iceHoleRings(region, { grid })) {
     const id = `${region.id}:ice:${key}`;
     out.holes.push({ id, areas: [flatten(ring)], ...(melted ? meltLook : holeLook) });
-    out.shards.push({ id, list: melted ? slushRing(key, { grid, seed, size }) : shards(key, { grid, seed, size }) });
+    // A melt leaves slush round its rim; a break leaves the sheet itself in plates, floating where it came apart.
+    if (melted) out.shards.push({ id, list: slushRing(key, { grid, seed, size }) });
+    else out.plates.push({ id, list: icePlates(key, { grid, seed, size }) });
   }
   for (const key of cracks) {
     if (holes.includes(key)) continue; // a square that gave way is a hole, not a crack

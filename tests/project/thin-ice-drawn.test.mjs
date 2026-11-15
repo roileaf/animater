@@ -137,20 +137,34 @@ test("a cracked square reaches the crack painter, and lines are really drawn for
   assert.equal(drew.filter(([what]) => what === "lineTo").length, 0, "and nothing is painted on ice that never cracked");
 });
 
-test("the shards in a hole drift on the shared clock, frame by frame", () => {
+test("the plates of a broken sheet ride the water on the shared clock, frame by frame", () => {
   show([iceRegion({ holes: { "3,4": 2 } })]);
-  assert.ok(api.debug.iceDrawn().shards > 0, "the hole's shards were handed over");
+  assert.ok(api.debug.iceDrawn().plates > 0, "the sheet was handed over in plates");
   game.time.serverTime = 0;
   drew.length = 0;
   frame();
   const first = drew.filter(([what]) => what === "drawPolygon").map(([, , pts]) => pts.join(","));
-  assert.ok(first.length > 0, "the shards are painted on a frame");
+  assert.ok(first.length > 0, "the plates are painted on a frame");
   game.time.serverTime = 4000;
   drew.length = 0;
   frame();
   const later_ = drew.filter(([what]) => what === "drawPolygon").map(([, , pts]) => pts.join(","));
-  assert.equal(later_.length, first.length, "the same shards");
+  assert.equal(later_.length, first.length, "the same plates");
   assert.notDeepEqual(later_, first, "in another place: they ride the water on the clock every screen shares");
+});
+
+test("a break is drawn as a few big plates, not as a scatter of chips", () => {
+  show([iceRegion({ holes: { "3,4": 2 } })]);
+  const drawn = api.debug.iceDrawn();
+  assert.ok(drawn.plates >= 3 && drawn.plates <= 12, `slabs you can count: ${drawn.plates}`);
+  assert.equal(drawn.shards, 0, "a break leaves no loose chips: that is what a fire melt leaves");
+});
+
+test("what a fire melted leaves slush round its rim, not plates", () => {
+  show([iceRegion({ holes: { "3,4": "melt" } })]);
+  const drawn = api.debug.iceDrawn();
+  assert.ok(drawn.shards > 0, "slush");
+  assert.equal(drawn.plates, 0, "nothing broke: the fire ate it");
 });
 
 test("the break is painted again after the map is put away and brought back", () => {

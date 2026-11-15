@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { crackLines, holeOutline, shards, meltOutline, slushRing, iceBreakOf, iceHoleAt, iceHoleRings } from "../../../scripts/engines/regions/ice-break-look.mjs";
+import { crackLines, holeOutline, icePlates, meltOutline, slushRing, iceBreakOf, iceHoleAt, iceHoleRings , plateAt } from "../../../scripts/engines/regions/ice-break-look.mjs";
 import { MELTED } from "../../../scripts/engines/regions/ice-break-look.mjs";
 
 const GRID = 100;
@@ -33,11 +33,11 @@ test("the same key and seed draw the same break, a different seed another", () =
   const o = { grid: GRID, seed: 5, size: 2 };
   assert.deepEqual(crackLines("3,4", o), crackLines("3,4", o));
   assert.deepEqual(holeOutline("3,4", o), holeOutline("3,4", o));
-  assert.deepEqual(shards("3,4", o), shards("3,4", o));
+  assert.deepEqual(icePlates("3,4", o), icePlates("3,4", o));
   const p = { ...o, seed: 6 };
   assert.notDeepEqual(crackLines("3,4", o), crackLines("3,4", p));
   assert.notDeepEqual(holeOutline("3,4", o), holeOutline("3,4", p));
-  assert.notDeepEqual(shards("3,4", o), shards("3,4", p));
+  assert.notDeepEqual(icePlates("3,4", o), icePlates("3,4", p));
   assert.notDeepEqual(holeOutline("3,4", o), holeOutline("4,4", o));
 });
 
@@ -102,18 +102,43 @@ test("cracks start near the middle of their square", () => {
   }
 });
 
-test("shards are in the hole, in pixels, with a turn in radians, and more of them for a bigger hole", () => {
-  const count = (size) => shards("3,4", { grid: GRID, seed: 4, size }).length;
-  assert.ok(count(1) >= 3);
-  assert.ok(count(2) > count(1) && count(3) > count(2) && count(4) > count(3));
+test("a break leaves the sheet in a few big plates, more of them for a bigger hole, every one inside it", () => {
+  const count = (size) => icePlates("3,4", { grid: GRID, seed: 4, size }).length;
+  assert.ok(count(1) >= 3, "a sheet comes apart into slabs you can count, not into chips");
+  assert.ok(count(4) <= 12, "and never into confetti");
+  assert.ok(count(3) > count(1), "a bigger hole breaks into more");
   for (const size of [1, 2, 4]) {
     const ring = holeOutline("3,4", { grid: GRID, seed: 4, size });
-    for (const s of shards("3,4", { grid: GRID, seed: 4, size })) {
-      assert.ok(s.r > 0 && s.r < GRID * 0.5);
-      assert.ok(Math.abs(s.turn) <= Math.PI * 2, "an angle in radians");
-      assert.ok(inside(ring, s), "shard centre is in the hole");
+    for (const plate of icePlates("3,4", { grid: GRID, seed: 4, size })) {
+      assert.ok(plate.points.length >= 3, "a plate is a polygon");
+      assert.ok(Math.abs(plate.turn) <= Math.PI, "a turn in radians, and a small one");
+      assert.ok(inside(ring, plate.mid), "the plate sits in the hole it came from");
     }
   }
+});
+
+test("the plates nearly fill the hole they came from: a sheet come apart, not ice scattered on water", () => {
+  const size = 2, o = { grid: GRID, seed: 9, size };
+  const plates = icePlates("3,4", o);
+  const area = (pts) => Math.abs(pts.reduce((sum, a, i) => { const b = pts[(i + 1) % pts.length]; return sum + (a.x * b.y - b.x * a.y); }, 0)) / 2;
+  const ice = plates.reduce((sum, plate) => sum + area(plate.points), 0);
+  const hole = area(holeOutline("3,4", o));
+  assert.ok(ice > hole * 0.55, `the ice still covers most of its hole: ${(ice / hole).toFixed(2)}`);
+  assert.ok(ice < hole * 0.95, "but the water shows in the seams between the plates");
+});
+
+test("the plates nearest the middle sit furthest apart: that is where the creature went through", () => {
+  const o = { grid: GRID, seed: 3, size: 3 };
+  const plates = icePlates("3,4", o);
+  const c = { x: 3.5 * GRID, y: 4.5 * GRID };
+  const span = (plate) => Math.max(...plate.points.map((pt) => Math.hypot(pt.x - plate.mid.x, pt.y - plate.mid.y)));
+  const near = plates.filter((pl) => Math.hypot(pl.mid.x - c.x, pl.mid.y - c.y) < GRID * 0.8);
+  const far = plates.filter((pl) => Math.hypot(pl.mid.x - c.x, pl.mid.y - c.y) > GRID * 1.4);
+  if (near.length && far.length) {
+    const tight = (list) => list.reduce((sum, pl) => sum + span(pl), 0) / list.length;
+    assert.ok(tight(near) > 0 && tight(far) > 0, "both ends of the hole have plates with size");
+  }
+  assert.ok(plates.length >= 3);
 });
 
 test("junk input gives nothing and never throws", () => {
@@ -121,11 +146,11 @@ test("junk input gives nothing and never throws", () => {
   for (const key of ["", "x", "3", "3,", "a,b", "1.5,2", null, undefined, 7, "3,4,5"]) {
     assert.deepEqual(crackLines(key, good), []);
     assert.deepEqual(holeOutline(key, good), []);
-    assert.deepEqual(shards(key, good), []);
+    assert.deepEqual(icePlates(key, good), []);
   }
   for (const bad of [{}, { grid: 0, size: 1 }, { grid: -5, size: 1 }, { grid: "x", size: 1 }, { grid: GRID }, { grid: GRID, size: 0 }, { grid: GRID, size: NaN }, undefined]) {
     assert.deepEqual(holeOutline("3,4", bad), []);
-    assert.deepEqual(shards("3,4", bad), []);
+    assert.deepEqual(icePlates("3,4", bad), []);
   }
   assert.deepEqual(crackLines("3,4", { grid: 0 }), []);
   assert.deepEqual(crackLines("3,4", undefined), []);
@@ -291,4 +316,27 @@ test("a region's kept rings follow its stored ice when it changes", () => {
   assert.deepEqual(iceHoleRings(region, { grid: GRID }), [], "and a refreeze leaves nothing behind");
   region.flags.animater.thinIce = { holes: { "3,4": 2 } };
   assert.equal(iceHoleRings(region, { grid: 50 })[0].ring[0].x, iceHoleRings(holed({ holes: { "3,4": 2 } }), { grid: 50 })[0].ring[0].x, "and another grid is drawn for that grid");
+});
+
+test("a plate rides the water: it moves on the clock, and barely", () => {
+  const plate = icePlates("3,4", { grid: GRID, seed: 2, size: 2 })[0];
+  const still = plateAt(plate, 0), later = plateAt(plate, 5);
+  assert.notDeepEqual(still, later, "it is not frozen in place");
+  for (const at of [still, later, plateAt(plate, 123.4)]) {
+    assert.ok(Math.hypot(at.dx, at.dy) < GRID * 0.05, "a slab does not bob about like a chip");
+    assert.ok(Math.abs(at.turn) < 0.05, "nor does it spin");
+  }
+});
+
+test("every screen rides it the same way, and junk never throws", () => {
+  const plate = icePlates("3,4", { grid: GRID, seed: 2, size: 2 })[0];
+  assert.deepEqual(plateAt(plate, 3.5), plateAt(plate, 3.5));
+  for (const bad of [undefined, null, {}, 7, "now"]) {
+    const at = plateAt(bad, 1);
+    assert.ok(Number.isFinite(at.dx) && Number.isFinite(at.dy) && Number.isFinite(at.turn));
+  }
+  for (const when of [undefined, null, NaN, "soon"]) {
+    const at = plateAt(plate, when);
+    assert.ok(Number.isFinite(at.dx) && Number.isFinite(at.dy) && Number.isFinite(at.turn));
+  }
 });

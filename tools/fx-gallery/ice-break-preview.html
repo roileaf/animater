@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Thin ice: the break, drawn</title>
+<style>
+:root{color-scheme:dark}
+body{margin:0;background:#15181c;color:#e6e8eb;font:14px/1.45 system-ui,Segoe UI,sans-serif;padding:16px}
+h1{font-size:18px;margin:0 0 2px}p{color:#97a0ad;margin:0 0 12px}
+.row{display:flex;gap:16px;flex-wrap:wrap}
+figure{margin:0}figcaption{color:#97a0ad;font-size:12px;margin-top:4px}
+canvas{background:#2e2a26;border:1px solid #2c313a;border-radius:6px;display:block}
+label{color:#97a0ad;margin-right:12px}input{vertical-align:middle}
+</style></head><body>
+<h1>Thin ice: the break</h1>
+<p>Plates fractured from the hole's own outline, shrunk about their middles so the water shows in the seams. The brown is the map under it.</p>
+<div><label>seed <input id="sd" type="range" min="0" max="40" value="7"></label></div>
+<div class="row" id="row"></div>
+<script type="module">
+import { icePlates, holeOutline } from "/scripts/engines/regions/ice-break-look.mjs";
+// The painter's own colours and thickness (engines/regions/ice-break-draw.mjs), so this page shows what the map shows.
+const WATER="#16242c", FACE="#eaf2f4", SIDE="#79b9ce", DEEP="#3f7d95", INK="#1b1410", THICK=0.05, LEAN_X=0.45, LEAN_Y=0.75;
+const CASES=[["Medium, one square",1],["Large",2],["Huge",3]];
+const row=document.getElementById("row");
+const draw=()=>{
+  row.innerHTML="";
+  const seed=+document.getElementById("sd").value;
+  for(const [label,size] of CASES){
+    const grid=100, pad=grid, w=(size+3)*grid, h=(size+3)*grid;
+    const fig=document.createElement("figure");
+    const c=document.createElement("canvas"); c.width=w; c.height=h;
+    const g=c.getContext("2d");
+    // the map's own grid, so the scale reads
+    g.strokeStyle="rgba(255,255,255,.06)";
+    for(let x=0;x<=w;x+=grid){g.beginPath();g.moveTo(x,0);g.lineTo(x,h);g.stroke();}
+    for(let y=0;y<=h;y+=grid){g.beginPath();g.moveTo(0,y);g.lineTo(w,y);g.stroke();}
+    const key="1,1";
+    const off=(pt)=>({x:pt.x-(1*grid)+pad/2,y:pt.y-(1*grid)+pad/2});
+    const ring=holeOutline(key,{grid,seed,size}).map(off);
+    // the water the hole is
+    g.beginPath(); ring.forEach((p,i)=>i?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y)); g.closePath();
+    g.fillStyle=WATER; g.fill();
+    const plates=icePlates(key,{grid,seed,size});
+    const thick=grid*THICK;
+    for(const plate of plates){
+      const P=plate.points.map(off);
+      const path=(a,dx=0,dy=0)=>{g.beginPath();a.forEach((p,i)=>i?g.lineTo(p.x+dx,p.y+dy):g.moveTo(p.x+dx,p.y+dy));g.closePath();};
+      path(P,thick*LEAN_X,thick*LEAN_Y); g.fillStyle=DEEP; g.fill();
+      path(P,thick*(LEAN_X-0.18),thick*(LEAN_Y-0.3)); g.fillStyle=SIDE; g.fill();
+      path(P); g.fillStyle=FACE; g.fill();
+      g.lineWidth=1.4; g.strokeStyle=INK; g.globalAlpha=.7; g.stroke(); g.globalAlpha=1;
+    }
+    fig.append(c);
+    const cap=document.createElement("figcaption"); cap.textContent=`${label} — ${plates.length} plates`;
+    fig.append(cap); row.append(fig);
+  }
+};
+for(const id of ["sd"]) document.getElementById(id).addEventListener("input",draw);
+draw();
+</script></body></html>

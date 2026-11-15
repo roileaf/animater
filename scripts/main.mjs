@@ -3728,7 +3728,7 @@ const waterEngine = createWaterEngine({ PIXI: globalThis.PIXI, root: floorLayer(
 const floorShadows = createFloorShadows({ PIXI: globalThis.PIXI, root: floorDrawRoot("floorShadows"), edges: floorLayer("floorEdges"), grid: () => canvas.grid?.size ?? 100 });
 // Thin ice breaking (engines/regions/ice-break-look.mjs, ice-break-draw.mjs): the cracks and the floating shards, painted on the floor under the creatures, read from what the GM stored on the region so every screen draws the same. The holes are water, in movingWaterList.
 const iceBreakLook = createIceBreakLook({ PIXI: globalThis.PIXI, layer: floorLayer("iceBreak", 643), grid: () => canvas.grid?.size ?? 100 });
-const iceDrawn = { holes: 0, cracks: 0, shards: 0 };
+const iceDrawn = { holes: 0, cracks: 0, shards: 0, plates: 0 };
 // What each screen has already heard give way and already shown a word for, per region, so each happens the moment it does
 // and never again. A region this screen has not seen before is learned quietly (newKeys): coming to a map whose ice is
 // already broken says and plays nothing, and a reload with it.
@@ -3757,9 +3757,9 @@ const playIceBreak = (region, keys, grid) => {
   }
 };
 const syncIceBreak = () => {
-  const cracks = [], shards = [], grid = canvas.grid?.size ?? 100, wet = movingWaterOn();
+  const cracks = [], shards = [], plates = [], grid = canvas.grid?.size ?? 100, wet = movingWaterOn();
   for (const region of drawnRegions()) {
-    try { const broken = iceBreakOf(region, { grid }); cracks.push(...broken.cracks); if (wet) shards.push(...broken.shards); /* (shards float on a hole, and a hole is moving water) */ } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
+    try { const broken = iceBreakOf(region, { grid }); cracks.push(...broken.cracks); if (wet) { shards.push(...broken.shards); plates.push(...broken.plates); } /* (the broken ice floats on a hole, and a hole is moving water) */ } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
     // Heard and said after the drawing is gathered, and never for a hole fire melted open: nobody fell through that one.
     try {
       const thin = iceSettingsOf(region).thin, id = `${canvas.scene?.id ?? "?"}:${region?.id ?? "?"}`;
@@ -3772,7 +3772,7 @@ const syncIceBreak = () => {
       if (broke.fresh.length || cracked.fresh.length) showIceWords({ broke: broke.fresh, cracked: cracked.fresh }, grid);
     } catch (err) { runtime?.trace?.("thin ice", `heard: ${err?.message ?? err}`); }
   }
-  try { iceBreakLook.sync({ cracks, shards }); iceDrawn.cracks = cracks.length; iceDrawn.shards = shards.length; } catch (err) { runtime?.trace?.("thin ice", `paint: ${err?.message ?? err}`); }
+  try { iceBreakLook.sync({ cracks, shards, plates }); iceDrawn.cracks = cracks.length; iceDrawn.shards = shards.reduce((n, s) => n + (s.list?.length ?? 0), 0); iceDrawn.plates = plates.reduce((n, p) => n + (p.list?.length ?? 0), 0); } catch (err) { runtime?.trace?.("thin ice", `paint: ${err?.message ?? err}`); }
 };
 // Whether two sets of areas have boxes that overlap at all.
 // (Each set of areas' box worked out once and kept with it; each region's areas kept till it changes: floor shadows asked them
