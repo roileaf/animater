@@ -28,7 +28,7 @@ import { registerSmokeFence } from "./engines/props/smoke-fence.mjs";
 import { smokeGridOf, storedSmokeGrid, smokeCellList, smokeLevelOf, smokeDensityAt } from "./engines/props/smoke-edges.mjs";
 import { createSmokeLooks, smokePuffs, smokeSheets, smokeSeedOf, airHazeFor, SMOKE_SORT_LAYER } from "./engines/props/smoke-look.mjs";
 import { CONCEALMENT_BEHAVIOUR, smokeRegionPlan, skyRegionsOf, openSideRegionsOf, regionsOnLevel } from "./engines/props/smoke-regions.mjs";
-import { smokeRoundPlan, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, smokeLevelFor, createSmokeAlarm, smokeNote } from "./engines/props/smoke-round.mjs";
+import { smokeRoundPlan, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, smokeLevelFor, createSmokeAlarm, smokeNote, SMOKE_VENT_FLAG } from "./engines/props/smoke-round.mjs";
 import { smokeGathering } from "./engines/props/smoke-gather.mjs";
 import { quietSave, isClockSave } from "./engines/props/quiet-writes.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
@@ -5763,7 +5763,7 @@ const syncPlacedAnimals = () => {
   // screen has Animals in the wild on, as a region's animals are: the scene's Outdoor life is for the ones that come of themselves.
   const raw = (animalFlagsNow().placedAnimals ?? []).filter((p) => (PLACED_IN.dark.includes(p?.kind) ? verminOn() : bothSettingsOn("wildlife")));
   if (canvas.grid?.size) vermin.sized(canvas.grid.size);
-  placedGround = !wildHere() && placedList(raw).length ? wildGround(canvas.grid.size, canvas.dimensions.sceneRect) : null;
+  placedGround = !wildHere() && placedList(raw).some((p) => !PLACED_IN.dark.includes(p.kind)) ? wildGround(canvas.grid.size, canvas.dimensions.sceneRect) : null;
   const { add, remove } = placedChanges(placedShown, raw);
   const layers = placedLayers();
   for (const id of remove) { for (const layer of layers) layer.removeAdded(id); placedShown.delete(id); }
@@ -5818,7 +5818,7 @@ const closeAnimalHud = () => { endAnimalPick(); animalHud?.close(); animalHud = 
 // The scene's own layers and every region's (animals a region asks for live in layers of its own).
 const animalAt = (p) => {
   const reach = (canvas.grid?.size || 100) * 0.45, engines = [...placedLayers()];
-  for (const life of regionLife.values()) engines.push(life.wild, life.field, life.pond, life.town, life.farm);
+  for (const life of regionLife.values()) engines.push(life.wild, life.field, life.pond, life.town, life.farm, life.rats);
   const hits = engines.map((engine) => [engine, engine.pick?.(p.x, p.y, reach)]).filter(([, h]) => h).map(([engine, h]) => ({ ...h, engine }));
   return hits.sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0] ?? null;
 };
@@ -7147,7 +7147,7 @@ const rebuildLife = () => {
     const grid = canvas.grid.size, b = canvas.dimensions.sceneRect, many = sceneCreatures();
     const wanted = verminOn() && underCeiling({ x: b.x + b.width / 2, y: b.y + b.height / 2 }) && undergroundScene();
     const key = JSON.stringify([canvas.scene?.id, canvas.level?.id, wanted, kinds(many, "rats", "bats"), keepOut.rats ?? [], keepOut.bats ?? [], lampLightsKey]), changed = key !== verminKey;
-    if (changed) { verminKey = key; vermin.clear(); critterCalls.settle(); }
+    if (changed) { verminKey = key; vermin.clear(); critterCalls.settle(); for (const p of placedList(animalFlagsNow().placedAnimals)) if (PLACED_IN.dark.includes(p.kind)) placedShown.delete(p.id); }
     if (changed && wanted) {
       const spots = ratSpots().filter((p) => !keptOut("rats", p) && !keptOut("bats", p));
       vermin.populate({ spots, count: exactOr(many, "rats", Math.round(Math.min(14, Math.max(4, Math.round(spots.length / 20))) * many.rats)), lit: litForRats, grid, bats: exactOr(many, "bats", Math.round(3 * many.bats)), area: { x: b.x, y: b.y, w: b.width, h: b.height }, blocked: batBlocks, allowed: (p) => !keptOut("bats", p), size: many.ratsSize, batSize: many.batsSize });
@@ -7951,7 +7951,7 @@ function skyTick() {
   if (ceilingDust.busy) ceilingDust.tick(seconds);
   if (wildlife.busy || pondLife.busy || fieldLife.busy) wildTick(seconds);
   if (doorBursts.busy) doorBursts.tick(seconds, { seen: (x, y) => canvas.visibility?.testVisibility?.({ x, y }, { tolerance: canvas.grid.size * 0.2 }) !== false, light: nearestLamp });
-  if (vermin.count) vermin.tick(seconds, { near: creaturesNow(), lit: litForRats, blocked: ratBlocks, batBlocked: batBlocks, view: viewNow(), light: nearestLamp, sound: critterSound });
+  if (vermin.count) vermin.tick(seconds, { near: creaturesNow(), lit: litForRats, blocked: ratBlocks, batBlocked: batBlocks, view: viewNow(), light: nearestLamp, sound: critterSound, tokenAt: animalTokenAt });
   tickFloorBlood(seconds);
   if (waterEngine.busy) waterEngine.tick(seconds, { shade: sunReachNow, sky: () => sunNow, view: viewNow, lights: floorLightSources, weather: () => floorWeather, flash: () => flashSun, wind: skyWindNow, angle: skyWindAngle, mostLights: floorLevel.lights, fish: () => wildlife.fishBeneath, fishLook: () => wildlife.fishLook });
   if (iceBreakLook.busy) iceBreakLook.tick(fireNow());
@@ -10967,8 +10967,19 @@ Hooks.on("canvasTearDown", () => { clearTimeout(fireLooksTimer); fireLooks.clear
 // The cloud drifts; the fence does NOT. A sight-blocker that moved mid-round would pop the fog and rebuild every
 // client's vision every frame, so the edges stay on the round boundary (smoke-fence.mjs, untouched).
 // Its depth is SMOKE_SORT_LAYER, which smoke-look.mjs declares and gives its reasons for; there is no number here.
+// The scene's own wind as the plume outside wants it: a vector in squares, 0 when the air is still. The cloud
+// INSIDE a room is not blown by this — a room's air is the draft, not the weather — and the plume is the only
+// part of the smoke that is out in it.
+const smokePlumeWind = () => {
+  try {
+    const speed = Math.max(0, Math.min(1, Number(skyWindNow) || 0));
+    if (!(speed > 0)) return null;
+    const angle = Number(skyWindAngle) || 0;
+    return { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
+  } catch { return null; }
+};
 const smokeLooks = createSmokeLooks({ PIXI: globalThis.PIXI, layer: floorLayer("smokeLooks", SMOKE_SORT_LAYER),
-  grid: () => canvas?.grid?.size ?? 100, now: () => fireNow() });
+  grid: () => canvas?.grid?.size ?? 100, now: () => fireNow(), wind: smokePlumeWind });
 let smokeLooksTimer = 0;
 function syncSmokeLooksNow() {
   if (!canvas?.ready) return;
@@ -10987,7 +10998,13 @@ function syncSmokeLooksNow() {
   // The bodies are the cloud (one wash over all of it, one dark mass over what blocks sight); the puffs are the brush
   // shading over them.
   const list = smokeCellList(cells), geo = { cols: grid.cols, origin: grid.origin, cell: grid.cell, seed: smokeSeedOf(scene.id) };
-  smokeLooks.sync({ sheets: smokeSheets(list, geo), puffs: smokePuffs(list, geo) });
+  // The plume outside each opening. The vents are read from the scene, not worked out here: which cells are
+  // openings depends on the regions and the walls and is the active GM's answer alone (smoke-round.mjs), so the
+  // round writes them beside the cells and every client simply pours from what it finds. Indexed against the same
+  // stored geometry as the cells, since that is the grid the vent indices were written on.
+  const vents = scene.flags?.[ID]?.[SMOKE_VENT_FLAG];
+  smokeLooks.sync({ sheets: smokeSheets(list, geo), puffs: smokePuffs(list, geo),
+    plume: Array.isArray(vents) && vents.length ? { list: vents, ...geo } : null });
 }
 const syncSmokeLooks = () => { clearTimeout(smokeLooksTimer); smokeLooksTimer = setTimeout(() => propSafe("smoke looks", syncSmokeLooksNow), 60); };
 // The round's own write back is the new smoke, so unlike the fire's looks this is NOT filtered by quietSave: skipping

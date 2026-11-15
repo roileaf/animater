@@ -40,6 +40,7 @@
 // grid, so a resize can never slide the cloud out from under the cells.
 import { seededRandom } from "../fragments/fragments.mjs";
 import { THICK, THIN, DENSITY_CAP } from "./smoke-field.mjs";
+import { plumePuffs } from "./smoke-plume.mjs";
 import { smokeRunsOn } from "./smoke-round.mjs";
 
 const TAU = Math.PI * 2;
@@ -706,9 +707,13 @@ export const TOKEN_SORT_LAYER = 700, BIRD_SORT_LAYER = 1100;
  * clear() takes the layer and every baked texture away, for canvasTearDown.
  */
 export function createSmokeLooks({ PIXI, layer, grid = () => 100, now = () => 0, look = DEFAULT_SMOKE_LOOK,
-  makeCanvas = undefined, bank = undefined } = {}) {
+  makeCanvas = undefined, bank = undefined, wind = () => null } = {}) {
   const spec = lookSpec(look);
   let box = null, pool = [], washArt = null, raf = 0, drawnAt = -Infinity, shop = bank ?? null;
+  // The plume outside: what the round stored about its vents, kept as given. Unlike the cloud it is not a round
+  // state that drifts between two shapes — it pours continuously off the shared clock, so it is laid out afresh
+  // every frame in paint() and takes no part in the drift key below.
+  let vents = null;
   let was = new Map(), next = new Map(), wasWash = null, nextWash = null, startedAt = 0, shown = "";
   const store = () => {
     if (shop === null) shop = createSmokeBank({ PIXI, ...(makeCanvas ? { makeCanvas } : {}) }) ?? undefined;
@@ -795,6 +800,20 @@ export function createSmokeLooks({ PIXI, layer, grid = () => 100, now = () => 0,
         s.visible = true;
       }
     }
+    // The plume at each opening: smoke seen leaving the room. Painted AFTER the cloud and outside it — these are
+    // the only sprites here not clipped to the smoking squares, because the whole point of them is to cross the
+    // threshold the cloud may not. (smoke-plume.mjs lays them out; it is pure, so every screen pours the same.)
+    if (shopNow && vents?.list?.length) {
+      for (const p of plumePuffs(vents.list, { cols: vents.cols, cell: vents.cell, origin: vents.origin, now: ms, seed: vents.seed, wind: wind() })) {
+        const s = sprite(used++);
+        s.texture = shopNow.form(spec.shape, (used * 7) % FORM_VARIANTS, TONE_STEPS);
+        s.position.set(p.x, p.y);
+        s.width = p.r * 2 * FORM_RIM; s.height = p.r * 2 * FORM_RIM;
+        s.rotation = 0;
+        s.alpha = clamp01(p.alpha);
+        s.visible = true;
+      }
+    }
     for (let i = used; i < pool.length; i++) pool[i].visible = false;
     if (spec.wash) {
       // The washes cross-fade: the round just gone pales out as the round just written comes up, so a mask never
@@ -812,7 +831,7 @@ export function createSmokeLooks({ PIXI, layer, grid = () => 100, now = () => 0,
   const tick = () => {
     const ms = Number(now()) || 0;
     if (ms - drawnAt >= SMOKE_FRAME_MS || ms < drawnAt) { drawnAt = ms; paint(ms); }
-    const living = next.size > 0 || nextWash || along(ms) < 1;
+    const living = next.size > 0 || nextWash || along(ms) < 1 || (vents?.list?.length ?? 0) > 0;
     raf = living ? requestAnimationFrame(tick) : 0;
     if (!living) { was = new Map(); wasWash = null; for (const s of pool) s.visible = false; }
   };
@@ -823,6 +842,13 @@ export function createSmokeLooks({ PIXI, layer, grid = () => 100, now = () => 0,
       const given = cloud ?? {};
       const list = (given.forms ?? given.puffs ?? []).filter?.((f) => f
         && [f.x, f.y, f.r, f.a].every((n) => Number.isFinite(n)) && f.r > 0 && f.a > 0) ?? [];
+      // The plume's own input, kept whole and NOT folded into the drift key: the cloud drifts from one round's
+      // shape to the next, while a plume pours continuously, so a new vent list simply replaces the old one and
+      // the puffs already in the air carry on from the clock rather than snapping.
+      const pouring = given.plume ?? null;
+      vents = Array.isArray(pouring?.list) && pouring.list.length
+        ? { list: pouring.list, cols: pouring.cols, cell: pouring.cell, origin: pouring.origin ?? { x: 0, y: 0 }, seed: pouring.seed ?? 1 }
+        : null;
       const plan = given.wash ?? given.sheets ?? null;
       const wash = plan && Number.isInteger(plan.w) && plan.w > 0 && plan.thin && plan.thick ? plan : null;
       const key = [list.map((f) => `${f.seed}:${Math.round(f.x)},${Math.round(f.y)},${Math.round(f.r)},${f.a.toFixed(3)}`).join("|"),
@@ -842,7 +868,7 @@ export function createSmokeLooks({ PIXI, layer, grid = () => 100, now = () => 0,
     },
     clear() {
       cancelAnimationFrame(raf); raf = 0; drawnAt = -Infinity;
-      was = new Map(); next = new Map(); wasWash = null; nextWash = null; startedAt = 0; shown = "";
+      was = new Map(); next = new Map(); wasWash = null; nextWash = null; startedAt = 0; shown = ""; vents = null;
       try { box?.destroy({ children: true }); } catch { /* gone */ }
       if (!bank) { try { shop?.destroy?.(); } catch { /* gone */ } shop = null; }
       box = null; pool = []; washArt = null;
