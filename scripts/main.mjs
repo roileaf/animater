@@ -136,6 +136,7 @@ import { isSneaking, sneakStep, darker } from "./engines/motion/quiet-steps.mjs"
 import { libraryBank, mergeBanks } from "./engines/sound/voice-library.mjs";
 import { CREATURE_VOICES } from "../data/creature-voices.mjs";
 import { LIBRARY_VOICES, LIBRARY_FOLDERS } from "../data/library-voices.mjs";
+import { voiceGain } from "./engines/sound/voice-levels.mjs";
 import { attackSpeaker, tokenVoice, creatureOf, voiceOf, voiceEvent, voiceFile, voiceShape, voiceDeferred, ownsVoice, voiceBorrows, voiceGroups, familyGroups, voiceLineage, VOICE_FAMILIES, VOICE_COOLDOWN_MS } from "./engines/sound/creature-voice.mjs";
 import { voicesThisTurn, parseCreatureSoundDb, pickSoundSet, idleSoundFile, idleShape, IDLE_FROM_WEIGHT } from "./engines/sound/creature-idle.mjs";
 import { createRoomCache, roomFor, reverbSend } from "./engines/sound/room-acoustics.mjs";
@@ -16647,7 +16648,9 @@ Hooks.once("ready", () => {
         try {
           if (!canvas?.ready || canvas.scene?.id !== d.parent?.id) return;
           Hooks.callAll("animater.shapeSound", { file, rate: shape.rate, ...room });
-          if (soundsOn()) void Promise.resolve(canvas.sounds?.playAtPosition?.(file, where, 15 * (canvas.dimensions?.distance ?? 5), { volume: shape.volume, walls: false, gmAlways: false }))
+          // Levelled by its own voice set (voice-levels.mjs): the bundled sets were measured 26 dB apart, so one creature
+          // was twenty times another until this.
+          if (soundsOn()) void Promise.resolve(canvas.sounds?.playAtPosition?.(file, where, 15 * (canvas.dimensions?.distance ?? 5), { volume: Math.min(1, shape.volume * voiceGain(file)), walls: false, gmAlways: false }))
             .then((sound) => {
               const node = sound?.sourceNode?.playbackRate;
               if (node && node.value !== shape.rate) node.value = shape.rate;
