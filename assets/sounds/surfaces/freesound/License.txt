@@ -116,25 +116,45 @@ grass-step-390760-0.ogg: "FX_001_footstep_grass_l.wav" by d00121058, https://fre
 dirt-step-487862-0.ogg: "Footsteps_Dirt_Single_05.wav" by BenDrain, https://freesound.org/people/BenDrain/sounds/487862/
 dirt-step-487864-0.ogg: "Footsteps_Dirt_Single_07.wav" by BenDrain, https://freesound.org/people/BenDrain/sounds/487864/
 dirt-step-487869-0.ogg: "Footsteps_Dirt_Single_04.wav" by BenDrain, https://freesound.org/people/BenDrain/sounds/487869/
+dirt-step-353799-0.ogg: "Footsteps_6_Dirt_shoe.wav" by monte32, https://freesound.org/people/monte32/sounds/353799/
 dirt-step-353799-1.ogg: "Footsteps_6_Dirt_shoe.wav" by monte32, https://freesound.org/people/monte32/sounds/353799/
 dirt-step-353799-2.ogg: "Footsteps_6_Dirt_shoe.wav" by monte32, https://freesound.org/people/monte32/sounds/353799/
+dirt-step-223154-0.ogg: "dirt/gravel footstep 3" by Yoyodaman234, https://freesound.org/people/Yoyodaman234/sounds/223154/
+dirt-step-352870-0.ogg: "Footsteps Dirt Gravel" by PotatokingXII, https://freesound.org/people/PotatokingXII/sounds/352870/
+dirt-step-370367-0.ogg: "Step On Dirt" by LilMati, https://freesound.org/people/LilMati/sounds/370367/
+dirt-step-384880-0.ogg: "Right Gravel Footstep 5" by Ali_6868, https://freesound.org/people/Ali_6868/sounds/384880/
+sand-step-164459-0.ogg: "Foot steps on sand FF661.aif" by martinimeniscus, https://freesound.org/people/martinimeniscus/sounds/164459/
 sand-step-164459-1.ogg: "Foot steps on sand FF661.aif" by martinimeniscus, https://freesound.org/people/martinimeniscus/sounds/164459/
 sand-step-164459-2.ogg: "Foot steps on sand FF661.aif" by martinimeniscus, https://freesound.org/people/martinimeniscus/sounds/164459/
 sand-step-164459-3.ogg: "Foot steps on sand FF661.aif" by martinimeniscus, https://freesound.org/people/martinimeniscus/sounds/164459/
 sand-step-164459-4.ogg: "Foot steps on sand FF661.aif" by martinimeniscus, https://freesound.org/people/martinimeniscus/sounds/164459/
+sand-step-695981-0.ogg: "walking on sand.wav" by wniebelski, https://freesound.org/people/wniebelski/sounds/695981/
+sand-step-695981-1.ogg: "walking on sand.wav" by wniebelski, https://freesound.org/people/wniebelski/sounds/695981/
 water-step-861369-0.ogg: "Splashing Footsteps Shallow Water" by ChristopherJngs, https://freesound.org/people/ChristopherJngs/sounds/861369/
 water-step-861369-1.ogg: "Splashing Footsteps Shallow Water" by ChristopherJngs, https://freesound.org/people/ChristopherJngs/sounds/861369/
 water-step-861369-2.ogg: "Splashing Footsteps Shallow Water" by ChristopherJngs, https://freesound.org/people/ChristopherJngs/sounds/861369/
 water-step-861369-3.ogg: "Splashing Footsteps Shallow Water" by ChristopherJngs, https://freesound.org/people/ChristopherJngs/sounds/861369/
+water-step-145242-0.ogg: "water step.wav" by nathanaelj83, https://freesound.org/people/nathanaelj83/sounds/145242/
+water-step-393494-0.ogg: "Slosh A.wav" by samuelcable, https://freesound.org/people/samuelcable/sounds/393494/
+water-step-450621-0.ogg: "Step into water puddle / wade" by Breviceps, https://freesound.org/people/Breviceps/sounds/450621/
+water-step-841834-0.ogg: "Small Puddle Splash" by Robo9418, https://freesound.org/people/Robo9418/sounds/841834/
+water-step-849638-0.ogg: "step_water" by coffeemakessounds, https://freesound.org/people/coffeemakessounds/sounds/849638/
 mud-step-488068-0.ogg: "Footsteps_Mud_01.wav" by BenDrain, https://freesound.org/people/BenDrain/sounds/488068/
 mud-step-349082-0.ogg: "Hiking on Soft Ground 1 - Through Mud Then Slipping" by Yoyodaman234, https://freesound.org/people/Yoyodaman234/sounds/349082/
 mud-step-349082-1.ogg: "Hiking on Soft Ground 1 - Through Mud Then Slipping" by Yoyodaman234, https://freesound.org/people/Yoyodaman234/sounds/349082/
 mud-step-349082-2.ogg: "Hiking on Soft Ground 1 - Through Mud Then Slipping" by Yoyodaman234, https://freesound.org/people/Yoyodaman234/sounds/349082/
+mud-step-447928-0.ogg: "Muddy Boots" by Breviceps, https://freesound.org/people/Breviceps/sounds/447928/
+mud-step-624169-0.ogg: "wet_footsteps_outside_05.flac" by wwstudioswastaken, https://freesound.org/people/wwstudioswastaken/sounds/624169/
+mud-step-624169-1.ogg: "wet_footsteps_outside_05.flac" by wwstudioswastaken, https://freesound.org/people/wwstudioswastaken/sounds/624169/
+mud-step-624169-2.ogg: "wet_footsteps_outside_05.flac" by wwstudioswastaken, https://freesound.org/people/wwstudioswastaken/sounds/624169/
 ice-step-732880-0.ogg: "Footsteps on frozen lake" by SoundsLikeYukon, https://freesound.org/people/SoundsLikeYukon/sounds/732880/
 ice-step-732880-1.ogg: "Footsteps on frozen lake" by SoundsLikeYukon, https://freesound.org/people/SoundsLikeYukon/sounds/732880/
 ice-step-732880-2.ogg: "Footsteps on frozen lake" by SoundsLikeYukon, https://freesound.org/people/SoundsLikeYukon/sounds/732880/
 ice-step-732880-3.ogg: "Footsteps on frozen lake" by SoundsLikeYukon, https://freesound.org/people/SoundsLikeYukon/sounds/732880/
 ice-step-416939-0.ogg: "Footsteps on crunchy ice on sidewalk - MP3" by OBXJohn, https://freesound.org/people/OBXJohn/sounds/416939/
+ice-step-405635-0.ogg: "footsteps - ice 08.wav" by Anthousai, https://freesound.org/people/Anthousai/sounds/405635/
+ice-step-539683-0.ogg: "footsteps - ice 09.wav" by Anthousai, https://freesound.org/people/Anthousai/sounds/539683/
+ice-step-539683-2.ogg: "footsteps - ice 09.wav" by Anthousai, https://freesound.org/people/Anthousai/sounds/539683/
 wing-561364-0.ogg: "Wing Flap Heavy (prototype).mp3" by GearArcanaNo37, https://freesound.org/people/GearArcanaNo37/sounds/561364/
 wing-389634-0.ogg: "Wing Flap 1.wav" by _stubb, https://freesound.org/people/_stubb/sounds/389634/
 wing-362405-0.ogg: "Dragon Wing Flap.wav" by domBanks, https://freesound.org/people/domBanks/sounds/362405/
