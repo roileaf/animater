@@ -327,11 +327,18 @@ const flatten = (ring) => ring.flatMap((p) => [p.x, p.y]);
 // bed is painted from), along with what only the screen has (the map's rectangle, whether a roof is over it). Given a
 // look of its own it came out a flat colour that a bright map turned the shade of the ground, while the river a step
 // away was plainly water (Roi: "this ice shows the map, while without it it only shows the water engine").
-const holeLook = { watery: true, over: [], edge: 1, depth: { hold: 1.6, dark: 0.72 }, beach: false, sand: null, waves: null, keeps: true };
+// It gives back little of what falls on it: a hole is a shaft through a sheet of ice, shaded by its own rim and by the
+// slabs standing up out of it, and the water in it is deep. Measured in the game, with the day and a torch full on it
+// a hole two squares across came out (255,246,125) -- solid gold, because a hole that small sits WHOLLY inside a
+// torch's glint, where the river it is a hole in shows that same glint as a highlight on dark water. At a fifth it is
+// (78,70,46) under the torch and (23,33,33) away from it, against ground of (105,137): darker than what it lies in,
+// and still lit from the side the flame is on.
+const HOLE_LIGHT = 0.2;
+const holeLook = { watery: true, over: [], edge: 1, light: HOLE_LIGHT, depth: { hold: 1.6, dark: 0.72 }, beach: false, sand: null, waves: null, keeps: true };
 // What fire melts is the same water, shallower and softer at its edge: meltwater standing in the ice, not a hole torn
 // through to the deep, and it fades into the ice it ate away rather than ending at a break line. It lies still in the
 // ice it ate rather than running with the river, so this one does say how it moves.
-const meltLook = { ...holeLook, edge: 2.2, kind: "still", followsWind: false, angle: null, current: 0, depth: { hold: 1.1, dark: 0.45 } };
+const meltLook = { ...holeLook, edge: 2.2, light: 1, kind: "still", followsWind: false, angle: null, current: 0, depth: { hold: 1.1, dark: 0.45 } };
 
 /** A region's areas with its holes cut out of them, so whatever paints the region's floor leaves the openings alone
  *  (flat x, y pairs, each area's cuts on its own `holes`, as Foundry's region tree gives them). `inside(point, area)`

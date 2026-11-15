@@ -439,3 +439,14 @@ test("a region with no broken ice is handed back exactly as it came", () => {
   assert.equal(cutIceHoles(areas, null, inArea), areas, "junk for the holes is no holes");
   assert.deepEqual(cutIceHoles([], [ringAt(0, 0, 10)], inArea), [], "and a region with no areas stays none");
 });
+
+test("a hole gives back little of the light, and meltwater gives back all of it", () => {
+  // A hole two squares across sits wholly inside a torch's glint, so at full light it came out solid gold while the
+  // river it is a hole in shows that same glint as a highlight on dark water. A melt is the other case: a puddle
+  // standing open on the ice, which should catch a flame the way any puddle does.
+  const broke = iceBreakOf(holed({ holes: { "3,4": 1 } }), { grid: GRID }).holes[0];
+  const melted = iceBreakOf(holed({ holes: { "3,4": MELTED } }), { grid: GRID }).holes[0];
+  assert.ok(broke.light > 0 && broke.light <= 0.35, `a hole lies down a shaft: ${broke.light}`);
+  assert.ok(broke.light > 0, "and not in the dark: none at all kills the glint that says it is water");
+  assert.equal(melted.light, 1, "meltwater stands open");
+});
