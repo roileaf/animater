@@ -16,7 +16,7 @@ import { ROOM_DRESSING, kindFlags } from './region-panel-model.mjs';
 import { DECOR_DEFAULT_KINDS, freshDecor } from '../engines/motion/decor-regions.mjs';
 import { decorPropRows, DECOR_PROP_SHORT } from './decor-prop-options.mjs';
 import { readHeight, readRamp, CROSSING_KINDS, HEIGHT_MAX, heightName } from '../engines/regions/heights.mjs';
-import { thinIceOn, iceHoldsOf } from '../engines/regions/thin-ice.mjs';
+import { thinIceOn, iceHoldsOf, SIZES } from '../engines/regions/thin-ice.mjs';
 // Whether the ground here is built out over water (a dock): on, it shows how it is built, its posts and its shadow.
 const OVER_WATER_TIP = 'Built out over water: a deck, a jetty, a bridge. The water goes on under it; what walks here walks on its boards, and it shows how it is built, its posts and its shadow.';
 
@@ -143,16 +143,18 @@ const decorSection = (c) => {
 };
 
 // Thin ice (engines/regions/thin-ice.mjs): water frozen only thinly, which holds a light creature and gives way under a
-// heavy one. Off until the GM turns it on for this region, as every map-specific feature is. The three sizes offered are
-// the ones a table meets; a flag naming another (set by hand) is shown as it is and kept.
+// heavy one. Off until the GM turns it on for this region, as every map-specific feature is. Every creature size the system
+// knows is offered, in the system's own order, so the menu answers to the one on an actor's sheet rather than to a guess at
+// which sizes a table meets. The list is built from SIZES itself, so the menu and the reader can never fall out of step and
+// a size set by hand that the reader does not know still comes back as Medium rather than as a blank menu. Gargantuan holds
+// everything there is, which is how a GM says "frozen hard" without turning the switch off.
 const ICE_SIZE_NAMES = { tiny: 'Tiny', sm: 'Small', med: 'Medium', lg: 'Large', huge: 'Huge', grg: 'Gargantuan' };
-const ICE_HOLDS = [['sm', 'Small'], ['med', 'Medium'], ['lg', 'Large']];
-const withHolds = (value) => (ICE_HOLDS.some(([v]) => v === value) ? ICE_HOLDS : [...ICE_HOLDS, [value, ICE_SIZE_NAMES[value] ?? capital(value)]]);
+const ICE_HOLDS = SIZES.map((v) => [v, ICE_SIZE_NAMES[v] ?? capital(v)]);
 const iceParts = (c) => {
   const { own, act, doc } = c;
   const parts = [toggle('Thin ice', thinIceOn(own), (on) => act({ iceThin: on }), 'The water here is frozen only thinly, whatever the weather. The ice holds a light creature; a heavier one cracks it square by square, and a much heavier one goes straight through into the water. A fire area melts the ice it covers to open water, but only on a scene with Breakable props on. While this is on, the region\'s own steps are not used.')];
   if (!thinIceOn(own)) return parts;
-  parts.push(row('Holds up to', choice(withHolds(iceHoldsOf(own)), iceHoldsOf(own), 'Holds up to', (v) => act({ iceHolds: v })), 'A creature of this size or smaller walks over it safely. One size over cracks the ice it crosses and falls through a crack already there; two sizes over goes straight through.'));
+  parts.push(row('Holds up to', choice(ICE_HOLDS, iceHoldsOf(own), 'Holds up to', (v) => act({ iceHolds: v })), 'A creature of this size or smaller walks over it safely. One size over cracks the ice it crosses and falls through a crack already there; two sizes over goes straight through.'));
   if (c.refreezeIce) {
     const buttons = element('div', 'an-rp-buttons');
     buttons.append(tip(button('Refreeze', '', () => c.refreezeIce(doc)), 'Every crack and every hole in this region frozen over again.'));

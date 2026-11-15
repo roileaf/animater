@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SECTIONS } from '../../scripts/ui/region-panel-sections.mjs';
 import { panelSections, summaryOf, kindFlags } from '../../scripts/ui/region-panel-model.mjs';
-import { iceSettingsOf } from '../../scripts/engines/regions/thin-ice.mjs';
+import { iceSettingsOf, holdsUp, SIZES } from '../../scripts/engines/regions/thin-ice.mjs';
 import { activeStep } from '../../scripts/engines/motion/region-steps.mjs';
 
 // Thin ice in the region panel: the GM turns it on for one water region, says what it holds, and puts it back whole.
@@ -53,19 +53,43 @@ test('Holds up to and Refreeze appear only once thin ice is on', () => {
   assert.ok(named(on, 'Refreeze'));
 });
 
-test('Holds up to offers Small, Medium and Large, Medium chosen, and saves the size picked', () => {
+test('Holds up to offers every size the system knows, in its own order, Medium chosen, and saves the size picked', () => {
   const { parts, acts } = water({ own: { iceThin: true } });
   const menu = labelled(parts, 'Holds up to');
-  assert.deepEqual(menu.children.map((o) => [o.value, o.textContent]), [['sm', 'Small'], ['med', 'Medium'], ['lg', 'Large']]);
+  assert.deepEqual(menu.children.map((o) => [o.value, o.textContent]),
+    [['tiny', 'Tiny'], ['sm', 'Small'], ['med', 'Medium'], ['lg', 'Large'], ['huge', 'Huge'], ['grg', 'Gargantuan']],
+    'the menu answers to the size on an actor sheet, not to a guess at which sizes a table meets');
   assert.deepEqual(menu.children.filter((o) => o.selected).map((o) => o.value), ['med'], 'Medium until the GM says otherwise');
   pick(menu, 'lg');
   assert.deepEqual(acts.pop(), { iceHolds: 'lg' });
 });
 
-test('a size the panel does not offer is still shown as chosen, never silently collapsed', () => {
-  const menu = labelled(water({ own: { iceThin: true, iceHolds: 'huge' } }).parts, 'Holds up to');
-  assert.deepEqual(menu.children.filter((o) => o.selected).map((o) => o.value), ['huge']);
-  assert.equal(iceSettingsOf({ flags: { animater: { iceHolds: 'huge' } } }).holds, 'huge', 'and the reader keeps reading it');
+test('every size the menu offers can be chosen and is read back', () => {
+  for (const size of ['tiny', 'sm', 'med', 'lg', 'huge', 'grg']) {
+    const { parts, acts } = water({ own: { iceThin: true } });
+    pick(labelled(parts, 'Holds up to'), size);
+    assert.deepEqual(acts.pop(), { iceHolds: size });
+    assert.equal(iceSettingsOf({ flags: { animater: { iceHolds: size } } }).holds, size);
+  }
+});
+
+test('ice that holds the biggest thing there is holds everyone, rather than breaking under nobody by accident', () => {
+  const menu = labelled(water({ own: { iceThin: true, iceHolds: 'grg' } }).parts, 'Holds up to');
+  assert.deepEqual(menu.children.filter((o) => o.selected).map((o) => o.value), ['grg']);
+  assert.equal(holdsUp('grg', 'grg'), 0, 'nothing is over the limit');
+  assert.equal(holdsUp('tiny', 'grg'), 2, 'and the other end still gives way at once');
+});
+
+test('the menu and the reader cannot fall out of step: every size offered is one the reader keeps', () => {
+  const offered = labelled(water({ own: { iceThin: true } }).parts, 'Holds up to').children.map((o) => o.value);
+  for (const size of offered) assert.equal(iceSettingsOf({ flags: { animater: { iceHolds: size } } }).holds, size, size + ' is offered but not read back');
+  assert.deepEqual(offered, SIZES, 'and the menu is the size list itself, not a copy of it that can drift');
+});
+
+test('a size nobody knows falls back to Medium rather than leaving the menu blank', () => {
+  const menu = labelled(water({ own: { iceThin: true, iceHolds: 'colossal' } }).parts, 'Holds up to');
+  assert.deepEqual(menu.children.filter((o) => o.selected).map((o) => o.value), ['med']);
+  assert.equal(iceSettingsOf({ flags: { animater: { iceHolds: 'colossal' } } }).holds, 'med', 'the reader says the same');
 });
 
 test('Refreeze asks the panel to put this region\'s ice back', () => {

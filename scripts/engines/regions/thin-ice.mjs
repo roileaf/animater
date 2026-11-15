@@ -4,6 +4,9 @@
 export const SIZES = ["tiny", "sm", "med", "lg", "huge", "grg"];
 
 // How many squares across each size is (a Tiny creature takes up half a square): how wide the hole it falls through is.
+// The systems with a Swim action of their own to name. Everywhere else the whisper says what happened and stops: a table
+// whose game has no such action is not told to take one.
+const SWIM = { pf2e: " (swim)", sf2e: " (swim)" };
 const SQUARES = { tiny: 0.5, sm: 1, med: 1, lg: 2, huge: 3, grg: 4 };
 export const squaresAcross = (size) => SQUARES[size];
 
@@ -152,7 +155,10 @@ export function holdsUp(limit, size) {
 // What one move does to the ice. Walks the squares entered in order: a creature two sizes over breaks the first and goes
 // no further; one size over cracks each square, and breaks one that was already cracked or that the move ended on.
 // A square entered twice in one move counts as crossing its own crack. A square is only ever in one list, once. The note is the GM whisper, or null when nothing happened.
-export function iceStep({ limit, size, squares = [], cracked = [], ended, name } = {}) {
+// The whisper names a system's own action for getting out only where that system has one to name; everywhere else it says
+// what happened and stops, rather than inventing a rule for a table whose game does not have it. Nothing here touches HP
+// or applies a condition in any system: the GM is told, and the GM decides.
+export function iceStep({ limit, size, squares = [], cracked = [], ended, name, system } = {}) {
   const over = holdsUp(limit, size);
   const cracks = [];
   const breaks = [];
@@ -171,7 +177,7 @@ export function iceStep({ limit, size, squares = [], cracked = [], ended, name }
   }
   const who = name || "A creature";
   let note = null;
-  if (breaks.length) note = `${who} breaks through the ice into the water (swim).`;
+  if (breaks.length) note = `${who} breaks through the ice into the water${SWIM[String(system ?? "").toLowerCase()] ?? ""}.`;
   else if (cracks.length) note = `The ice cracks under ${who}.`;
   return { cracks, breaks, note };
 }
@@ -272,11 +278,11 @@ export function iceUpdatesFor(step, { region, size } = {}) {
  *  the square the move finished on where that is one of them. The region's own limit is read from its settings; a region the
  *  GM never marked as thin ice is left alone. `broke` says the ice gave way here, so a caller watching several regions at
  *  once can tell one break from a crack and whisper once. Pure: the caller writes. */
-export function iceMoveFor({ region, size, squares = [], ended, name } = {}) {
+export function iceMoveFor({ region, size, squares = [], ended, name, system } = {}) {
   const none = { updates: [], note: null, broke: false };
   const { thin, holds } = iceSettingsOf(region);
   if (!thin || !squares.length) return none;
-  const step = iceStep({ limit: holds, size, squares, cracked: iceStateOf(region).cracks, ended, name });
+  const step = iceStep({ limit: holds, size, squares, cracked: iceStateOf(region).cracks, ended, name, system });
   const updates = iceUpdatesFor(step, { region, size: squaresAcross(size) });
   return updates.length ? { updates, note: step.note, broke: step.breaks.length > 0 } : none;
 }
