@@ -20,7 +20,6 @@ import { smokeGridOf, smokeCellList } from "../scripts/engines/props/smoke-edges
 import { smokeNeighbours, smokeRoomAt, smokeRunsOn, smokeLevelFor } from "../scripts/engines/props/smoke-round.mjs";
 import { regionsOnLevel, skyRegionsOf } from "../scripts/engines/props/smoke-regions.mjs";
 import { indoorPolygonsOf } from "../scripts/engines/regions/image-plane.mjs";
-import { pointInPolygon } from "../scripts/engines/fragments/fragments.mjs";
 import { wallBetween } from "../scripts/engines/props/fire-rounds.mjs";
 import { undergroundOf } from "../scripts/core/underground.mjs";
 
@@ -46,6 +45,19 @@ const regionAreas = (region) => {
 };
 const wallView = (doc) => ({ id: doc.id, c: [...(doc.c ?? [])], door: doc.door, ds: doc.ds, move: doc.move,
   sight: doc.sight, light: doc.light, sound: doc.sound, levels: [...(doc.levels ?? [])], flags: doc.flags ?? {} });
+// main.mjs's third (main.mjs pointInPolygon). It MUST be this one and not fragments.mjs's, which takes its polygon
+// as [{x, y}] objects: a region's area is a FLAT array of x, y pairs, so the object version reads every coordinate
+// as undefined and answers "outside" for every point on the map. Imported from there, this probe reported a scene
+// with 44 smoking cells and none of them indoors — a contradiction the round cannot produce — and the fault was
+// here, not in the smoke. This one also honours the area's holes, which is the other half of what a region means.
+const pointInPolygon = ({ x, y }, p) => {
+  if (p?.holes?.some((h) => pointInPolygon({ x, y }, h))) return false;
+  let hit = false;
+  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) {
+    if ((p[i + 1] > y) !== (p[j + 1] > y) && x < ((p[j] - p[i]) * (y - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) hit = !hit;
+  }
+  return hit;
+};
 
 export function smokeProbe(scene = globalThis.canvas?.scene) {
   if (!scene) return console.warn("Animater smoke probe: no scene");
