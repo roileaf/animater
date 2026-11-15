@@ -1854,6 +1854,10 @@ export class Workspace {
     // An aura has one reach to draw: the first stage that has one decides (its Area look leads Essentials), and with Tokenshade the others stand down.
     if (s.kind === "aura" && s.auraRadius > 0 && r.lifecycle === "document" && reachStageOf(r) !== index && r.stages[reachStageOf(r)]?.areaLook === "tokenshade") body += `<p class="an-hint">Not shown: the first reach stage draws this aura with Tokenshade.</p>`;
     if (s.kind === "aura" && !linked) body += `<label class="an-check an-stay"><input type="checkbox" data-field="persist" data-index="${index}" ${s.persist ? "checked" : ""}> Stay until the effect ends</label><p class="an-hint">${s.persist ? "Loops on the token until the spell's effect is removed, the spell ends or you press Stop. Length only sets the preview." : "Tick to keep a looping asset on the token for as long as the spell's effect lasts."}</p>`;
+    // An area may be asked to stay: the engine already keeps a persistent template stage alive for as long as its
+    // placed template (playback/runtime.mjs), and only spells whose own text reads as standing ground were ever
+    // marked for it (playback/lasting-area.mjs). A feat that covers the ground in a drift could not say so until now.
+    if (s.kind === "template" && !linked) body += `<label class="an-check an-stay"><input type="checkbox" data-field="persist" data-index="${index}" ${s.persist ? "checked" : ""}> Stay while placed</label><p class="an-hint">${s.persist ? "Stays on the map for as long as its measured template does; Length only sets the preview. Give it a looping clip, or the Tokenshade area look, so it does not hold its last frame." : "Tick to keep this area on the map for as long as its template stands: difficult terrain, a drift, a cloud, a wall."}</p>`;
     if (["travel", "projectile", "impact"].includes(s.kind)) body += this.optionFieldsHTML(s, index, linked, ["Timing & repetition"], ["requiresHit"]);
     if (!body.trim()) return "";
     return `<div class="an-stage-block an-type-block"><div class="an-stage-block-title">${esc(KINDS[s.kind])}</div>${body}</div>`;
