@@ -27,7 +27,7 @@ import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf, smokeWalls } from "./eng
 import { registerSmokeFence } from "./engines/props/smoke-fence.mjs";
 import { smokeGridOf, storedSmokeGrid, smokeCellList, smokeLevelOf } from "./engines/props/smoke-edges.mjs";
 import { createSmokeLooks, smokePuffs, smokeSheets, smokeSeedOf, airHazeFor, SMOKE_SORT_LAYER } from "./engines/props/smoke-look.mjs";
-import { CONCEALMENT_BEHAVIOUR, smokeRegionPlan, skyRegionsOf, regionsOnLevel } from "./engines/props/smoke-regions.mjs";
+import { CONCEALMENT_BEHAVIOUR, smokeRegionPlan, skyRegionsOf, openSideRegionsOf, regionsOnLevel } from "./engines/props/smoke-regions.mjs";
 import { smokeRoundPlan, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, smokeLevelFor, createSmokeAlarm, smokeNote } from "./engines/props/smoke-round.mjs";
 import { smokeGathering } from "./engines/props/smoke-gather.mjs";
 import { quietSave, isClockSave } from "./engines/props/quiet-writes.mjs";
@@ -10689,6 +10689,12 @@ const smokeShapeOf = (scene, geo, level, deep) => {
     // One malformed region is skipped, so it cannot stop a whole map's smoke; a broken helper is not caught here,
     // and reaches smokeThrew, which tells the GM once. (smoke-gather.mjs says the same in full.)
     shafts: () => skyRegionsOf(onLevel()).flatMap((r) => { try { return regionAreas(r) ?? []; } catch { return []; } }),
+    // The roofs the GM marked as standing open at their sides, and the ONLY ones whose own outline lets smoke out.
+    // A roof region is drawn by hand around a building whose walls are the real enclosure; where its outline runs
+    // diagonally it steps across squares, and each step was read as a hole. Five of them vented a ship's hold at
+    // 15% a round with every door and window shut — nothing the GM closed could touch it, because nothing they had
+    // closed was what stood open. One malformed region is skipped, as for the shafts above.
+    sides: () => openSideRegionsOf(onLevel()).flatMap((r) => { try { return regionAreas(r) ?? []; } catch { return []; } }),
     // smokeWalls, not blockingWalls: the walls that stop SMOKE. A window's state never reaches the wall document —
     // opening one reshapes the live edge's light, sight and sound but never its `move`, and a smashed one keeps
     // `move` on purpose, since a broken window still stops a body — so blockingWalls answers the same for a window
@@ -10734,7 +10740,7 @@ async function smokeRound(scene, burning = []) {
     // near it. All three are smoke-gather.mjs's, asked once per cell (per PAIR, for the walls) and kept.
     const deep = undergroundOf(scene.flags?.[ID], null);
     const work = smokeShapeOf(scene, geo, level, deep);
-    const { indoors, walled, sky } = work;
+    const { indoors, walled, sky, openSide, nearWall } = work;
     // Where the room breathes out through its own walls (smoke-field.mjs smokeOpeningsOf): an open door, a window
     // standing open, a smashed one, a hole battered through — each counted only where it leads OUT, which is why it
     // is handed the very same `indoors`. An inside door joins two rooms into one for the walk and carries the smoke
@@ -10742,7 +10748,7 @@ async function smokeRound(scene, burning = []) {
     // indoor-air's own sceneOpenings is a different list for a different job (the drafts' way out, doors near the
     // scene's edge only, never a window) and is deliberately not used here.
     const openings = smokeOpeningsOf({ walls: scene.walls?.contents ?? [], cell, origin, cols, rows, indoors });
-    plan = smokeRoundPlan({ activeGM, on, scene, sources, indoors, walled, openings, sky,
+    plan = smokeRoundPlan({ activeGM, on, scene, sources, indoors, walled, openings, sky, openSide, nearWall,
       roomOf: (i) => smokeRoomAt({ from: i, cols, rows, indoors, walled, cache: work.rooms }) });
   }
   if (!plan) return;

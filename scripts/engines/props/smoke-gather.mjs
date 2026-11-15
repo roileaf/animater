@@ -35,6 +35,8 @@ export const smokeWorkKey = ({ cols, cell, origin, level = null, deep = false } 
  *   level      the level the smoke is on, or null. `deep`: an underground scene, where every cell is indoors.
  *   polygons() the indoor rooms on this level — regions that keep the weather out. Asked at most once per record.
  *   shafts()   the polygons of the regions the GM marked open to the sky. Asked at most once per record.
+ *   sides()    the polygons of the roofed regions the GM marked as standing open at their sides (a porch, a cart
+ *              lodge). Only inside one of these does a region's own edge vent. Asked at most once per record.
  *   walls()    the walls that stop smoke, in whatever shape `crosses` wants. Asked at most once per record.
  *   inside(point, polygon)   whether a point lies in one polygon.
  *   crosses(from, to, walls) whether the segment between two points crosses any of those walls.
@@ -59,8 +61,8 @@ export const smokeWorkKey = ({ cols, cell, origin, level = null, deep = false } 
  * which is a wrong answer presented as a fact — the same silence by another door.
  */
 export function smokeGathering({ cache = null, sceneId = "", geo, level = null, deep = false,
-  polygons, shafts, walls, inside, crosses } = {}) {
-  const missing = Object.entries({ polygons, shafts, walls, inside, crosses })
+  polygons, shafts, sides, walls, inside, crosses } = {}) {
+  const missing = Object.entries({ polygons, shafts, sides, walls, inside, crosses })
     .filter(([, fn]) => typeof fn !== "function").map(([name]) => name);
   if (!geo || !(geo.cols > 0) || !(geo.rows > 0) || !(geo.cell > 0) || !geo.origin) missing.unshift("geo");
   if (missing.length) throw new Error(`smokeGathering: nothing was passed for ${missing.join(", ")}`);
@@ -76,7 +78,10 @@ export function smokeGathering({ cache = null, sceneId = "", geo, level = null, 
       walledAt: new Map(),
       polys: listed(polygons),
       holes: listed(shafts),
+      open: listed(sides),
       blocking: listed(walls),
+      sideAt: new Map(),
+      nearAt: new Map(),
     };
     cache?.set(sceneId, own);
   }
@@ -109,7 +114,39 @@ export function smokeGathering({ cache = null, sceneId = "", geo, level = null, 
     }
     return v;
   };
-  return { key, rooms: own.rooms, mid, indoors, walled, sky };
+  // Whether this cell lies under a region whose SIDES stand open — a porch, a cart lodge, a pavilion: roofed, so
+  // it is indoors, but with no wall where the roof ends. Only such a region's boundary lets the room breathe out.
+  // Everywhere else the boundary is sealed, because a roof region is drawn by hand around a building whose walls
+  // are the real enclosure, and its outline steps across squares wherever it runs diagonally. Five such steps down
+  // one side of a ship's hold vented it at 15% a round with every door and window shut, which is what sent the GM
+  // looking for a fault in the doors.
+  const openSide = (i) => {
+    if (!own.open.length) return false;
+    let v = own.sideAt.get(i);
+    if (v === undefined) {
+      v = own.open.some((a) => inside(mid(i), a));
+      own.sideAt.set(i, v);
+    }
+    return v;
+  };
+  // Whether a wall runs through this cell's square at all, rather than exactly between its middle and a neighbour's.
+  // A wall lying along a boundary that steps across squares crosses some of those middle-to-middle lines and misses
+  // others, so `walled` alone reads half of a solid side as holes; this asks the wider question. Tested on the
+  // square's four sides, which catches every wall that enters and leaves it. A wall ENDING inside the square
+  // without reaching a side is not caught — a stub that short stops nothing anyway.
+  const nearWall = (i) => {
+    if (!own.blocking.length) return false;
+    let v = own.nearAt.get(i);
+    if (v === undefined) {
+      const { x, y } = mid(i), h = cell / 2;
+      const nw = { x: x - h, y: y - h }, ne = { x: x + h, y: y - h }, se = { x: x + h, y: y + h }, sw = { x: x - h, y: y + h };
+      v = crosses(nw, ne, own.blocking) === true || crosses(ne, se, own.blocking) === true
+        || crosses(se, sw, own.blocking) === true || crosses(sw, nw, own.blocking) === true;
+      own.nearAt.set(i, v);
+    }
+    return v;
+  };
+  return { key, rooms: own.rooms, mid, indoors, walled, sky, openSide, nearWall };
 }
 
 // A gathering's answer as a list. A thunk that THROWS is not caught: it is a broken helper and the round's caller

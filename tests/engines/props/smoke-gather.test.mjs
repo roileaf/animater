@@ -33,12 +33,12 @@ const BOX = [
 ];
 const FIRE = [{ rect: { x: 300, y: 300, w: 100, h: 100 } }]; // a burning prop in the middle of the room
 
-const fakeScene = ({ smoke = null, grid = null, walls = BOX, rooms = [ROOM], deep = false } = {}) => ({
+const fakeScene = ({ smoke = null, grid = null, walls = BOX, rooms = [ROOM], sides = [], deep = false } = {}) => ({
   id: "scene0000000000z",
   dimensions: { width: 1000, height: 1000, size: CELL },
   levels: [],
   walls: { contents: walls },
-  rooms, deep, // what main.mjs would have found through the regions; handed to the thunks below
+  rooms, sides, deep, // what main.mjs would have found through the regions; handed to the thunks below
   // The scene's three switches, by their real names: "Fires fill rooms with smoke", and the two the fire round
   // itself needs, since the smoke rides its tick (smoke-round.mjs smokeRunsOn).
   flags: { animater: { smokeFills: true, breakableProps: true, fireSpreads: true,
@@ -52,6 +52,7 @@ const shapeOf = (scene, geo, level, cache) => smokeGathering({
   cache, sceneId: scene.id, geo, level, deep: scene.deep,
   polygons: () => (scene.deep ? [] : scene.rooms),
   shafts: () => scene.shafts ?? [],
+  sides: () => scene.sides ?? [],
   walls: () => blockingWalls(scene.walls.contents),
   inside: pointInPolygon, crosses: wallBetween,
 });
@@ -65,9 +66,9 @@ const roundOf = (scene, burning, cache) => {
   const sources = smokeSourcesOf({ fires: burning, lights, grid: CELL, cell, origin, cols });
   const level = smokeLevelFor(scene, sources);
   const work = shapeOf(scene, geo, level, cache);
-  const { indoors, walled, sky } = work;
+  const { indoors, walled, sky, openSide, nearWall } = work;
   const openings = smokeOpeningsOf({ walls: scene.walls.contents, cell, origin, cols, rows, indoors });
-  return smokeRoundPlan({ activeGM: true, on, scene, sources, indoors, walled, openings, sky,
+  return smokeRoundPlan({ activeGM: true, on, scene, sources, indoors, walled, openings, sky, openSide, nearWall,
     roomOf: (i) => smokeRoomAt({ from: i, cols, rows, indoors, walled, cache: work.rooms }) });
 };
 
@@ -147,6 +148,7 @@ test("the gathering is asked for the scene's shape ONCE, however many rounds run
     cache, sceneId: scene.id, geo, level, deep: false,
     polygons: () => { polygons++; return scene.rooms; },
     shafts: () => { shafts++; return []; },
+    sides: () => [],
     walls: () => { walls++; return blockingWalls(scene.walls.contents); },
     inside: pointInPolygon, crosses: wallBetween,
   });
@@ -162,13 +164,24 @@ test("the gathering is asked for the scene's shape ONCE, however many rounds run
     smokeWorkKey({ cols: 10, cell: 100, origin: { x: 0, y: 0 }, deep: true }));
 });
 
-test("a room with a doorway in its wall vents, and one underground fills with no rooms drawn at all", () => {
-  // The same room with its east wall gone: those cells touch the outdoors with no wall between, so the room breathes.
+test("a roof that stands open at its sides vents; a missing wall alone does not, and one underground fills with no rooms drawn at all", () => {
+  // The same room with its east wall gone. Those cells touch the outdoors with no wall between them — and that is
+  // NOT enough on its own any more. A roof region is drawn by hand around a building whose walls are the real
+  // enclosure, and wherever its outline runs diagonally it steps across squares, putting an indoor cell beside an
+  // outdoor one at every step; read as holes, five such steps vented a ship's hold at 15% a round with every door
+  // and window shut. So the roof's edge is sealed unless the GM says this roof stands open at its sides.
   const gap = fakeScene({ walls: BOX.slice(0, 1).concat(BOX.slice(2)) });
-  const open = burnFor(15, { scene: gap });
-  assert.ok(open.plan.openings.length, "the room breathes out where the wall is missing");
+  const shut = burnFor(15, { scene: gap });
+  assert.deepEqual(shut.plan.openings, [], "a gap in the walls is not by itself a way out");
+  // Marked open-sided — a porch, a cart lodge — the same gap breathes, and the room holds less for it.
+  const airy = burnFor(15, { scene: fakeScene({ walls: BOX.slice(0, 1).concat(BOX.slice(2)), sides: [ROOM] }) });
+  assert.ok(airy.plan.openings.length, "an open-sided roof breathes out where its wall is missing");
   const peak = (p) => Math.max(0, ...p.cells.map((c) => c.v));
-  assert.ok(peak(open.plan) < peak(burnFor(15).plan), "and holds less than the sealed one");
+  assert.ok(peak(airy.plan) < peak(burnFor(15).plan), "and holds less than the sealed one");
+  // Even open-sided, a square a wall runs through is not a hole: put the east wall back and the whole box is shut
+  // again however the roof is marked.
+  const walled = burnFor(15, { scene: fakeScene({ sides: [ROOM] }) });
+  assert.deepEqual(walled.plan.openings, [], "an open-sided mark does not open a wall that is there");
   // Underground: no indoor regions at all, every cell indoors, and the smoke still forms. (This is the case the
   // collision killed first, since underground EVERY cell is indoors and so every round asked the room walk.)
   const cave = burnFor(5, { scene: fakeScene({ rooms: [], deep: true }) });
@@ -181,10 +194,10 @@ test("a room with a doorway in its wall vents, and one underground fills with no
 test("a gathering or a geometry test that throws is reported, not read as a no", () => {
   const scene = fakeScene();
   const geo = smokeGridOf(scene.dimensions);
-  const parts = { polygons: () => scene.rooms, shafts: () => [], walls: () => [], inside: pointInPolygon, crosses: wallBetween };
+  const parts = { polygons: () => scene.rooms, shafts: () => [], sides: () => [], walls: () => [], inside: pointInPolygon, crosses: wallBetween };
   const build = (own) => smokeGathering({ cache: new Map(), sceneId: scene.id, geo, level: null, deep: false, ...parts, ...own });
   // A gathering that throws: out of the construction, since that is where it is asked.
-  for (const which of ["polygons", "shafts", "walls"]) {
+  for (const which of ["polygons", "shafts", "sides", "walls"]) {
     assert.throws(() => build({ [which]: () => { throw new Error("broken " + which); } }), /broken /, which);
   }
   // A geometry test that throws: out of the predicate that used it.
@@ -203,13 +216,13 @@ test("a gathering or a geometry test that throws is reported, not read as a no",
 test("the gathering refuses to be built without its helpers, naming what is missing", () => {
   const scene = fakeScene();
   const geo = smokeGridOf(scene.dimensions);
-  const parts = { polygons: () => scene.rooms, shafts: () => [], walls: () => [], inside: pointInPolygon, crosses: wallBetween };
+  const parts = { polygons: () => scene.rooms, shafts: () => [], sides: () => [], walls: () => [], inside: pointInPolygon, crosses: wallBetween };
   const whole = { cache: new Map(), sceneId: scene.id, geo, level: null, deep: false, ...parts };
   assert.ok(smokeGathering(whole), "all of them: built");
   // THE line. Deleting `inside: pointInPolygon, crosses: wallBetween` from main.mjs left 850 tests green while
   // nothing was ever indoors and nothing was ever walled. It cannot be deleted quietly again.
   assert.throws(() => smokeGathering({ ...whole, inside: undefined, crosses: undefined }), /nothing was passed for inside, crosses/);
-  for (const name of ["polygons", "shafts", "walls", "inside", "crosses"]) {
+  for (const name of ["polygons", "shafts", "sides", "walls", "inside", "crosses"]) {
     assert.throws(() => smokeGathering({ ...whole, [name]: undefined }), new RegExp("nothing was passed for " + name), name);
     assert.throws(() => smokeGathering({ ...whole, [name]: "not a function" }), new RegExp("nothing was passed for " + name), name + ", wrong kind");
   }
@@ -229,7 +242,13 @@ test("the real call site in main.mjs supplies every one of them", () => {
   const main = readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8");
   const call = main.slice(main.indexOf("const smokeShapeOf = "), main.indexOf("// One round of smoke on one scene"));
   assert.ok(call.length, "the call site is where it was");
-  for (const name of ["polygons:", "shafts:", "walls:", "inside:", "crosses:", "cache:", "geo,"]) assert.ok(call.includes(name), name);
+  for (const name of ["polygons:", "shafts:", "sides:", "walls:", "inside:", "crosses:", "cache:", "geo,"]) assert.ok(call.includes(name), name);
+  // And the round is handed the two predicates that decide whether the roof's own edge is a hole. Without them
+  // smokeRoundPlan falls back to its own defaults — never open-sided, no wall anywhere — which seals every roof
+  // edge on every map silently, so a porch would simply stop venting and nothing would say why.
+  const round = main.slice(main.indexOf("async function smokeRound("), main.indexOf("// The whole decision is smoke-regions.mjs's"));
+  assert.match(round, /const \{ indoors, walled, sky, openSide, nearWall \} = work;/, "taken off the gathering");
+  assert.match(round, /openings, sky, openSide, nearWall,/, "and handed to the round");
   assert.match(call, /inside: pointInPolygon, crosses: wallBetween,/, "the two that went missing");
   // And the level's regions are worked out once for both lists, not once each.
   assert.equal([...call.matchAll(/regionsOnLevel\(/g)].length, 1, "regionsOnLevel is evaluated once");

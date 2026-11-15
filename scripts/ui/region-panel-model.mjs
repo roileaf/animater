@@ -93,7 +93,7 @@ const ORDER = {
 // The sections any kind can hold, and whether a region's flags use each: one that does always shows, whatever the kind,
 // so no setting the region has is ever out of reach.
 const IN_USE = {
-  air: (own) => ['regionWeather', 'cold', 'openSky', 'skyWindow', 'skyPattern', 'indoorEdge', 'opensOutside', 'tavern'].some((k) => set(own[k])) || dressed(own),
+  air: (own) => ['regionWeather', 'cold', 'openSky', 'openSides', 'skyWindow', 'skyPattern', 'indoorEdge', 'opensOutside', 'tavern'].some((k) => set(own[k])) || dressed(own),
   animals: (own) => regionHasAnimals(own) || animalSizeOf(own) !== 1 || own.animalSound === 'off' || set(own.keepOut),
   look: (own) => ['texture', 'textureStyles', 'tokenshade', 'stepEdgeOff'].some((k) => set(own[k])) || (own.stepEdge !== undefined && own.stepEdge !== null && own.stepEdge !== ''),
   drips: (own) => ['drips', 'dripPace', 'dripDepth'].some((k) => set(own[k])),

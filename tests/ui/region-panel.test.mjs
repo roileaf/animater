@@ -357,6 +357,11 @@ test('air: weather, climate, tavern, openings and the edge', async () => {
   assert.deepEqual(t.saves.at(-1), { opensOutside: true });
   await t.click(t.byLabel('Open to the sky'));
   assert.deepEqual(t.saves.at(-1), { openSky: true });
+  // The one thing that unseals a roof's own outline for smoke. Without it a porch or a cart lodge holds its smoke
+  // in along an edge that has no wall, and the GM has no way to say so: the smoke reads walls, doors and windows,
+  // and a hand-drawn roof outline is none of those.
+  await t.click(t.byLabel('Open sides'));
+  assert.deepEqual(t.saves.at(-1), { openSides: true });
   await t.pick(t.byLabel('Window in it'), 'rose');
   assert.deepEqual(t.saves.at(-1), { skyWindow: 'rose' });
   await t.pick(t.byLabel('Window pattern size'), 1.25);

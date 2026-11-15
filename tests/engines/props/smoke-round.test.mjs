@@ -29,10 +29,10 @@ const roomOf = () => ({ id: "room", size: 25 });
 const FIRE = [{ i: 33, rate: 1, levels: [] }]; // the middle of the room
 const plan = (args) => smokeRoundPlan({ activeGM: true, on: true, indoors: inRoom, walled: sealed, roomOf, ...args });
 // Run the round over and over, feeding each round's cells back as the scene's saved smoke.
-const burn = (rounds, { sources = FIRE, walled = sealed, start = null, openings = [] } = {}) => {
+const burn = (rounds, { sources = FIRE, walled = sealed, start = null, openings = [], openSide = () => false } = {}) => {
   let smoke = start, last = null;
   for (let n = 0; n < rounds; n++) {
-    last = plan({ scene: scene({ smoke, grid: smoke ? { cols: COLS, cell: CELL } : null }), sources, walled, openings });
+    last = plan({ scene: scene({ smoke, grid: smoke ? { cols: COLS, cell: CELL } : null }), sources, walled, openings, openSide });
     smoke = Object.fromEntries(last.cells.map((c) => [String(c.i), Math.round(c.v * 10000) / 10000]));
   }
   return last;
@@ -119,9 +119,12 @@ test("a sealed room fills with thick smoke; a doorway drains it", () => {
   const shut = burn(15);
   assert.equal(shut.cells.filter((c) => c.v >= THICK).length, 5, "five thick cells at fifteen rounds");
   assert.deepEqual(shut.openings, [], "a sealed room has no opening");
-  // 35 is the room's east edge and 36 is out of doors: with no wall between them that is the doorway.
-  const open = burn(15, { walled: walledWith([35, 36]) });
-  assert.deepEqual(open.openings, [35], "the room breathes out where the wall has a gap");
+  // 35 is the room's east edge and 36 is out of doors: with no wall between them that is the doorway. A gap in the
+  // wall is not enough on its own — the roof's own outline is sealed, since it is drawn by hand around a building
+  // whose walls are the enclosure — so this is the room marked as standing open at its sides.
+  assert.deepEqual(burn(15, { walled: walledWith([35, 36]) }).openings, [], "a gap alone is not a way out");
+  const open = burn(15, { walled: walledWith([35, 36]), openSide: () => true });
+  assert.deepEqual(open.openings, [35], "an open-sided roof breathes out where the wall has a gap");
   const peak = (p) => Math.max(0, ...p.cells.map((c) => c.v));
   assert.ok(peak(open) < peak(shut), `open ${peak(open)} < shut ${peak(shut)}`);
 });
@@ -146,6 +149,11 @@ const rooms = (gap) => ({
     return !(gap && ((i === 73 && n === 74) || (i === 74 && n === 73)));
   },
   roomOf: (i) => (HALL.has(i) ? { id: "hall", size: 25 } : CLOSET.has(i) ? { id: "closet", size: 3 } : { id: "out", size: 1 }),
+  // The closet is the one standing open at its east end, so its roof is marked open-sided; the hall is a proper
+  // walled room. Without the mark the gap is no way out at all: a roof's own outline is sealed by default, because
+  // it is drawn by hand around a building whose WALLS are the enclosure and it steps across squares where it runs
+  // diagonally. The hall would answer the same either way, having no gap to breathe through.
+  openSide: (i) => CLOSET.has(i),
 });
 const twoRooms = rooms(true);
 const FIRES = [{ i: 33, rate: 1, levels: [] }, { i: 73, rate: 1, levels: [] }];

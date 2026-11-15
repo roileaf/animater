@@ -239,7 +239,8 @@ export const SECTIONS = {
     const dressing = () => (kind === 'cave' ? [] : [row('Room dressing', choice(withFloor(ROOM_DRESSING, own.cavern), own.cavern ?? '', 'Room dressing', (v) => act({ cavern: v })), 'Cobwebs in its corners, water down its walls, steam from its floor, or bad air that starves the fires.')]);
     const openings = () => {
       const out = [toggle('Opens to the outside', said(own, 'opensOutside'), flip('opensOutside', act), 'A way out to the open air: stairs up, a cave mouth, an air shaft. The air indoors flows toward it.'),
-        toggle('Open to the sky', said(own, 'openSky'), flip('openSky', act), 'The weather reaches the floor here, and underground the sky shows through: a hole in the roof, a shaft.')];
+        toggle('Open to the sky', said(own, 'openSky'), flip('openSky', act), 'The weather reaches the floor here, and underground the sky shows through: a hole in the roof, a shaft.'),
+        toggle('Open sides', said(own, 'openSides'), flip('openSides', act), "Roofed, but with no wall where the roof ends: a porch, a cart lodge, a lean-to. Smoke leaves along that open edge. Off, the roof's own outline holds smoke in and only doors, windows and holes let it out — which is right for a building, whose walls are the real enclosure.")];
       if (said(own, 'openSky')) out.push(row('Window', choice(SKY_WINDOWS, skyWindowOf(own), 'Window in it', (v) => act({ skyWindow: v }))));
       if (said(own, 'openSky') && skyWindowOf(own)) out.push(range('Pane size', WINDOW_PATTERN, patternScaleOf(own.skyPattern), percent, (v) => act({ skyPattern: v }), 0.05, "How big the window's panes are in its light.", 'Window pattern size'));
       return out;

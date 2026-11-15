@@ -239,7 +239,7 @@ export function smokeClearPlan(scene) {
 // another by the very walls the blocked pairs already encode, so this is not an approximation: it is the same answer,
 // worked out right. One room's openings must never vent another's, and a great hall must never be divided by the
 // cell count of the burning closet off it.
-export function smokeRoundPlan({ activeGM, on, scene, sources = [], indoors = () => true, walled = () => false, roomOf = null, openings: standsOpen = [], sky = () => false } = {}) {
+export function smokeRoundPlan({ activeGM, on, scene, sources = [], indoors = () => true, walled = () => false, roomOf = null, openings: standsOpen = [], sky = () => false, openSide = () => false, nearWall = () => false } = {}) {
   if (activeGM !== true || !scene) return null;
   const saved = smokeCellsOf(scene);
   if (on !== true) return clearPlan(scene);
@@ -284,8 +284,26 @@ export function smokeRoundPlan({ activeGM, on, scene, sources = [], indoors = ()
     let breathes = false;
     for (const n of smokeNeighbours(i, cols, rows)) {
       const wall = walled(i, n);
-      // Out of the room: the smoke never goes that way, and with no wall in between the room breathes out here.
-      if (!indoors(n)) { group.blocked.push({ from: i, to: n }); if (!wall) breathes = true; continue; }
+      // Out of the room: the smoke never goes that way. Whether the room BREATHES out here is a different question,
+      // and the answer is no unless the GM has said this roof stands open at its sides.
+      //
+      // It used to be yes wherever no wall lay exactly between the two cells' middles, and that reading cost a
+      // whole feature its point. A roof region is drawn by hand, loosely, around a building whose WALLS are the
+      // real enclosure; wherever its outline runs diagonally it steps across squares, and each step puts an indoor
+      // cell beside an outdoor one with the wall running past the pair rather than between their middles. A ship's
+      // hold came out with five such steps down one side: 4 openings in a 44-cell room, venting it at 15% a round
+      // with every door and window shut. Nothing the GM could close made any difference, because nothing they had
+      // closed was what stood open.
+      //
+      // So the roof's edge is sealed by default and `openSide` is what unseals it — a porch, a cart lodge, a
+      // pavilion: roofed, and genuinely with no wall where the roof ends. Even there, a square a wall runs through
+      // is not a hole (`nearWall`), which is the same stepped-boundary case inside a region that really does stand
+      // open on one side but is walled on the others.
+      if (!indoors(n)) {
+        group.blocked.push({ from: i, to: n });
+        if (!wall && openSide(i) && !nearWall(i) && !nearWall(n)) breathes = true;
+        continue;
+      }
       // Another room: whatever stands between them, this room's smoke is not that room's.
       if (roomIdOf(n) !== id) { group.blocked.push({ from: i, to: n }); continue; }
       if (n > i && wall) group.blocked.push({ from: i, to: n });
