@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { crackLines, holeOutline, icePlates, meltOutline, slushRing, iceBreakOf, iceHoleAt, iceHoleRings , plateAt } from "../../../scripts/engines/regions/ice-break-look.mjs";
+import { crackLines, holeOutline, icePlates, meltOutline, slushRing, iceBreakOf, iceHoleAt, iceHoleRings , plateAt, cutIceHoles } from "../../../scripts/engines/regions/ice-break-look.mjs";
 import { MELTED } from "../../../scripts/engines/regions/ice-break-look.mjs";
 
 const GRID = 100;
@@ -390,4 +390,52 @@ test("no edge of a slab is a perfectly straight run: ice breaks chipped", () => 
   }
   assert.ok(corners > 20, `enough corners to judge: ${corners}`);
   assert.ok(straight / corners < 0.1, `hardly any three points in a row: ${straight} of ${corners}`);
+});
+
+// The point test the module is given, the same shape main.mjs's own is: flat x, y pairs, and a point inside one of the
+// area's holes counts as outside it.
+const inArea = ({ x, y }, p) => {
+  if (p?.holes?.some((h) => inArea({ x, y }, h))) return false;
+  let hit = false;
+  for (let i = 0, j = p.length - 2; i < p.length; j = i, i += 2) if ((p[i + 1] > y) !== (p[j + 1] > y) && x < ((p[j] - p[i]) * (y - p[i + 1])) / (p[j + 1] - p[i + 1]) + p[i]) hit = !hit;
+  return hit;
+};
+const square = (x, y, w) => [x, y, x + w, y, x + w, y + w, x, y + w];
+const ringAt = (x, y, r) => ({ areas: [[x - r, y - r, x + r, y - r, x + r, y + r, x - r, y + r]] });
+
+test("a hole in the ice is cut out of the region's own floor, so nothing paints ice over the opening", () => {
+  // The painted floor and the step look are both drawn over the moving water, so an opening the floor does not know
+  // about is an opening with ice painted across it, and a creature in the water stands on a sheet that is not there.
+  const areas = [square(0, 0, 400)];
+  const out = cutIceHoles(areas, [ringAt(200, 200, 40)], inArea);
+  assert.equal(out, areas, "the region's own areas are what comes back");
+  assert.equal(out[0].holes?.length, 1, "the opening is cut out of the area that holds it");
+  assert.ok(!inArea({ x: 200, y: 200 }, out[0]), "the middle of the opening is no longer part of the floor");
+  assert.ok(inArea({ x: 40, y: 40 }, out[0]), "the ice away from it is untouched");
+});
+
+test("each opening is cut from the part of the region that holds it, not whichever came first", () => {
+  // A region drawn in two pieces: a hole in the far piece must not be cut out of the near one, or the wrong floor goes
+  // missing and the opening stays painted over.
+  const near = square(0, 0, 200), far = square(1000, 0, 200);
+  const out = cutIceHoles([near, far], [ringAt(1100, 100, 30)], inArea);
+  assert.equal(out[0].holes ?? null, null, "the piece the opening is not in keeps its whole floor");
+  assert.equal(out[1].holes?.length, 1, "the piece that holds it is the one cut");
+});
+
+test("two openings in one piece are both cut, the second judged on the floor as it was", () => {
+  // Every ring's home is read before any is cut: a point inside a hole counts as outside the area that holds it, so a
+  // second ring judged after the first was cut would find no home and fall to whichever area came first.
+  const one = square(0, 0, 400), two = square(1000, 0, 400);
+  const out = cutIceHoles([two, one], [ringAt(100, 100, 30), ringAt(300, 300, 30)], inArea);
+  assert.equal(out[1].holes?.length, 2, "both openings are cut from the piece that holds them");
+  assert.equal(out[0].holes ?? null, null, "and none of them lands on the other piece");
+});
+
+test("a region with no broken ice is handed back exactly as it came", () => {
+  const areas = [square(0, 0, 400)];
+  assert.equal(cutIceHoles(areas, [], inArea), areas);
+  assert.equal(areas[0].holes ?? null, null, "nothing is cut, and no empty hole list is invented");
+  assert.equal(cutIceHoles(areas, null, inArea), areas, "junk for the holes is no holes");
+  assert.deepEqual(cutIceHoles([], [ringAt(0, 0, 10)], inArea), [], "and a region with no areas stays none");
 });

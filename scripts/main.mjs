@@ -48,7 +48,7 @@ import { propTraits } from "./engines/props/prop-traits.mjs";
 import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsOf, dropLostDecorFire, regionBurns, createQuenchGate, quenchedBy, quenchUpdates, quenchSmokeUpdate, repairFireUpdates } from "./engines/props/fire-spread.mjs";
 import { areaRefusal } from "./engines/props/prop-areas.mjs";
 import { createFireLooks, thingFires, charredCells, litCells } from "./engines/props/fire-looks.mjs";
-import { iceBreakOf, iceHoleAt } from "./engines/regions/ice-break-look.mjs";
+import { iceBreakOf, iceHoleAt, cutIceHoles } from "./engines/regions/ice-break-look.mjs";
 import { iceSettingsOf, iceStateOf, iceMoveFor, sizeNameOf, walkedLegs, squaresEntered, moveSince, weightOffset, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares } from "./engines/regions/thin-ice.mjs";
 import { createIceBreakLook } from "./engines/regions/ice-break-draw.mjs";
 import { iceBreakSound, newKeys } from "./engines/regions/ice-break-sound.mjs";
@@ -1781,6 +1781,14 @@ const regionAreas = (region) => {
   };
   walk(tree);
   return out;
+};
+// A region's areas with the openings its thin ice has given way to cut out of them, as Foundry's own holes are. The
+// painted floor (400) and the step look (410) are both drawn over the moving water (395), so without this the ice is
+// painted straight across the hole and a creature in the water stands on a sheet that is no longer there. Each ring
+// goes to whichever area holds its middle, so a region drawn in several parts cuts the right one.
+const iceAreas = (region) => {
+  const areas = regionAreas(region);
+  try { return cutIceHoles(areas, iceBreakOf(region, { grid: canvas.grid?.size ?? 100 }).holes, pointInPolygon); } catch { return areas; }
 };
 // Under a roof: the regions that keep the weather out (as for snow and rain), where the sun never reaches.
 // What is open to the sky (regions marked so), each with how far its edge fades.
@@ -3691,7 +3699,7 @@ const syncFloorLooks = () => {
       if (floor && Array.isArray(own?.steps)) {
         const flags = stepFlags(own) ?? {}, seaHere = floor === "water" && waterKindOf(flags) === "sea" && !flags.sea && movingWaterOn() && own.seaBeach !== "off";
         // A look on a sea moving water draws stops at its waterline, leaving the shore alone.
-        const spec = { id: region.id, areas: regionAreas(region), roofed: roofedRegion(regionAreas(region)), sheen: floorLevel.sheen, ...stepLook(own, floor), shore: seaHere ? (box) => seaShore(globalThis.PIXI, regionAreas(region), box, canvas.grid.size, canvas.dimensions.sceneRect) : null };
+        const spec = { id: region.id, areas: iceAreas(region), roofed: roofedRegion(regionAreas(region)), sheen: floorLevel.sheen, ...stepLook(own, floor), shore: seaHere ? (box) => seaShore(globalThis.PIXI, regionAreas(region), box, canvas.grid.size, canvas.dimensions.sceneRect) : null };
         const home = floorPlaneOf(bound);
         if (home) spec.plane = { ...home, zIndex: MAP_SORT.floorLooks };
         list.push(spec);
@@ -3710,7 +3718,7 @@ const syncFloorLooks = () => {
       if (notOnFloor(own, bound)) continue;
       const floor = plainFloorOf(region);
       if (floor && showsTexture(own, sceneChoice) && !movingIds.has(region.id)) {
-        const spec = { id: region.id, areas: regionAreas(region), floor: textureFloor(own, floor), style: textureStyleOf(own, textureFloor(own, floor)), seconds: stepLook(own, floor).seconds, edge: stepEdge(own), scale: stepScale(own), opacity: textureOpacity(own), blades: floorLevel.blades, shine: floorLevel.shine, roofed: roofedRegion(regionAreas(region)) };
+        const spec = { id: region.id, areas: iceAreas(region), floor: textureFloor(own, floor), style: textureStyleOf(own, textureFloor(own, floor)), seconds: stepLook(own, floor).seconds, edge: stepEdge(own), scale: stepScale(own), opacity: textureOpacity(own), blades: floorLevel.blades, shine: floorLevel.shine, roofed: roofedRegion(regionAreas(region)) };
         const home = floorPlaneOf(bound);
         if (home) spec.plane = { ...home, zIndex: MAP_SORT.floorTextures };
         painted.push(spec);

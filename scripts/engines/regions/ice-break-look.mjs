@@ -328,6 +328,28 @@ const holeLook = { watery: true, over: [], kind: "still", followsWind: false, ed
 // through to the deep, and it fades into the ice it ate away rather than ending at a break line.
 const meltLook = { ...holeLook, edge: 2.2, depth: { hold: 1.1, dark: 0.45 } };
 
+/** A region's areas with its holes cut out of them, so whatever paints the region's floor leaves the openings alone
+ *  (flat x, y pairs, each area's cuts on its own `holes`, as Foundry's region tree gives them). `inside(point, area)`
+ *  says which area a ring belongs to; where none holds it, the first area takes it. The areas are returned changed, the
+ *  rings are not copied. Every ring's home is read before any is cut, because a point inside a hole counts as outside
+ *  the area that holds it: cutting as we went would send the second ring of a pair to the wrong part of the region. */
+export function cutIceHoles(areas, holes, inside) {
+  if (!Array.isArray(areas) || !areas.length || !Array.isArray(holes) || !holes.length) return areas;
+  const at = typeof inside === "function" ? inside : () => false;
+  const cuts = [];
+  for (const hole of holes) {
+    const ring = hole?.areas?.[0];
+    if (!Array.isArray(ring) || ring.length < 6) continue;
+    let x = 0, y = 0;
+    for (let i = 0; i + 1 < ring.length; i += 2) { x += ring[i]; y += ring[i + 1]; }
+    const mid = { x: x / (ring.length / 2), y: y / (ring.length / 2) };
+    const home = areas.find((area) => at(mid, area)) ?? areas[0];
+    if (home) cuts.push([home, ring]);
+  }
+  for (const [home, ring] of cuts) home.holes = [...(home.holes ?? []), ring];
+  return areas;
+}
+
 /** What a region's thin ice draws: { holes: water specs (one per hole, id "<region>:ice:<square>", areas one flat polygon),
  *  cracks: [{ id, lines }] one per cracked square, shards: [{ id, list }] one per hole }. All empty unless the region has thin
  *  ice on; ids are stable and the numbers depend only on what is stored, so every client draws the same break and the water
