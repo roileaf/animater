@@ -134,7 +134,10 @@ test('only what can live on this scene is offered', () => {
   assert.ok(has(dry, 'Open ground') && !has(dry, 'Water') && !has(dry, 'Dark places'));
   const below = animalsPanelHtml({ flags: {}, underground: true });
   assert.ok(has(below, 'Dark places') && below.includes('data-key="crawlers"'));
-  assert.ok(!has(below, 'Open ground') && !has(below, 'Water') && !below.includes('Outdoor life on this scene') && !has(below, 'Place by hand'), 'nothing wild lives underground');
+  assert.ok(!has(below, 'Open ground') && !has(below, 'Water') && !below.includes('Outdoor life on this scene'), 'nothing wild lives underground');
+  // A rat or a bat can be put down below, and only there; the outdoor kinds only above.
+  assert.ok(has(below, 'Place by hand') && below.includes('data-kind="rat"') && below.includes('data-kind="bat"') && !below.includes('data-kind="fox"'));
+  assert.ok(open.includes('data-kind="fox"') && !open.includes('data-kind="rat"') && !open.includes('data-kind="bat"'));
   assert.ok(below.includes('data-size-key="animalScale"'), 'the whole map still scales');
 });
 

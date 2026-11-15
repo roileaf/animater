@@ -131,16 +131,17 @@ test('the HUD: its name and what it is doing, the order lit, Let it go only with
 test('main: GM-only right-click on an animal opens its HUD; orders saved on the placed animal and handed to the layers', () => {
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
   assert.match(main, /globalThis\.window\?\.addEventListener\?\.\("pointerdown", \(e\) => \{\s*if \(!game\.user\?\.isGM \|\| !canvas\?\.ready \|\| e\.target !== canvas\.app\?\.view \|\| animalAim \|\| animalPick\) return;/);
-  assert.match(main, /const placedLayers = \(\) => \[wildlife, fieldLife, pondLife, townLife, sceneFarm\];/);
+  assert.match(main, /const placedLayers = \(\) => \[wildlife, fieldLife, pondLife, townLife, sceneFarm, vermin\];/);
   // Found on a GM's server: a region's gull told to circle vanished, the scene's Outdoor life being off. Animals put down by
   // hand show with Animals in the wild on, as a region's do, with ground of their own when the scene has none worked out.
-  assert.match(main, /const raw = bothSettingsOn\("wildlife"\) \? animalFlagsNow\(\)\.placedAnimals \?\? \[\] : \[\];/);
-  assert.match(main, /placedGround = !wildHere\(\) && placedList\(raw\)\.length \? wildGround\(/);
+  // The rats and bats go by their own setting, not Animals in the wild: they are the dark places' own.
+  assert.match(main, /const raw = \(animalFlagsNow\(\)\.placedAnimals \?\? \[\]\)\.filter\(\(p\) => \(PLACED_IN\.dark\.includes\(p\?\.kind\) \? verminOn\(\) : bothSettingsOn\("wildlife"\)\)\);/);
+  assert.match(main, /placedGround = !wildHere\(\) && placedList\(raw\)\.some\(\(p\) => !PLACED_IN\.dark\.includes\(p\.kind\)\) \? wildGround\(/);
   assert.match(main, /const wildOk = \(kind, x, y\) => okOn\(wildOpen \?\? placedGround, kind, x, y\);/);
   // Found on a player's screen: the placed gull twice, one on top of the other, after the pond was put back.
   assert.match(main, /for \(const l of placedLayers\(\)\) l\.removeAdded\(p\.id\); placedShown\.delete\(p\.id\);/);
   assert.match(main, /for \(const layer of layers\) layer\.orders\(orders\);/);
-  assert.match(main, /for \(const life of regionLife\.values\(\)\) engines\.push\(life\.wild, life\.field, life\.pond, life\.town, life\.farm\);/);
+  assert.match(main, /for \(const life of regionLife\.values\(\)\) engines\.push\(life\.wild, life\.field, life\.pond, life\.town, life\.farm, life\.rats\);/);
   // Roi: "STOP the animal movement when right clicking it!"
   assert.match(main, /hit\.engine\.hold\(hit\.ref\);/);
   // Roi: "make sure we can still pan": a right-drag that starts on an animal pans; only a click opens its HUD.

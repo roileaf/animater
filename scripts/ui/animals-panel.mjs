@@ -29,9 +29,12 @@ const HAWK_COUNTS = [['0', 'None'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4
 export const PLACEABLE = Object.freeze([['rabbit', 'Rabbit', 'fa-carrot'], ['songbird', 'Bird', 'fa-dove'], ['deer', 'Deer', 'fa-tree'], ['fox', 'Fox', 'fa-paw'], ['wolf', 'Wolf', 'fa-dog'], ['squirrel', 'Squirrel', 'fa-tree'], ['snake', 'Snake', 'fa-staff-snake'], ['hawk', 'Hawk', 'fa-feather'],
   ['crow', 'Crow', 'fa-crow'], ['duck', 'Duck', 'fa-water'], ['heron', 'Heron', 'fa-feather-pointed'], ['gull', 'Gull', 'fa-kiwi-bird'], ['frog', 'Frog', 'fa-frog'],
   ['pigeon', 'Pigeon', 'fa-dove'], ['hen', 'Hen', 'fa-egg'], ['dog', 'Dog', 'fa-bone'],
-  ['cow', 'Cow', 'fa-cow'], ['goat', 'Goat', 'fa-mountain'], ['sheep', 'Sheep', 'fa-cloud'], ['pig', 'Pig', 'fa-piggy-bank'], ['horse', 'Horse', 'fa-horse']]);
+  ['cow', 'Cow', 'fa-cow'], ['goat', 'Goat', 'fa-mountain'], ['sheep', 'Sheep', 'fa-cloud'], ['pig', 'Pig', 'fa-piggy-bank'], ['horse', 'Horse', 'fa-horse'],
+  ['rat', 'Rat', 'fa-paw'], ['bat', 'Bat', 'fa-moon']]);
 export const MOST_PLACED = 40;
 const PLACEABLE_IDS = new Set(PLACEABLE.map(([id]) => id));
+// The two that belong underground: offered to put down there, and nowhere else (the rest are the other way about).
+export const DARK_PLACEABLE = Object.freeze(['rat', 'bat']);
 
 // The scene flags a preset writes (pure): every outdoor kind at one amount; dark places are left alone, as those belong to underground scenes, and wolves, who come only when asked for.
 export function animalPreset(amount = '') {
@@ -102,7 +105,8 @@ export const mapTotalText = ({ all, inRegions }) => `${all} on this map now${inR
 // The panel's content (pure). `flags` the scene's Animater flags; `count` how many are about on this screen; `note` why none would show; `aiming` the kind being placed; `underground` whether the scene is one: only its dark places are offered there, nothing wild living underground, and they only there; `water` whether the map has any, for what lives on it.
 export function animalsPanelHtml({ flags = {}, count = 0, note = '', aiming = '', underground = false, water = true, scope = null, live = {}, regions = {} } = {}) {
   const on = flags.outdoorLife === 'on', placed = placedList(flags.placedAnimals);
-  const place = PLACEABLE.map(([id, label, icon]) => {
+  // Underground, the only ones to put down are the dark places' own; above, everything but those.
+  const place = PLACEABLE.filter(([id]) => DARK_PLACEABLE.includes(id) === underground).map(([id, label, icon]) => {
     const n = placed.filter((p) => p.kind === id).length;
     return `<div class="animater-an-place">${chip('placeAnimal', `data-kind="${id}"`, label, { active: aiming === id, icon, tip: `Click the map to put one down. Escape or right click to stop.` })}<output>${n}</output><button type="button" class="animater-wx-off" data-action="removeAnimal" data-kind="${id}" data-tooltip="Take away the last one"${n ? '' : ' disabled'} aria-label="Take away the last ${esc(label)}"><i class="fa-solid fa-minus" inert></i></button></div>`;
   }).join('');
@@ -112,8 +116,8 @@ export function animalsPanelHtml({ flags = {}, count = 0, note = '', aiming = ''
     <p class="animater-an-total"><i class="fa-solid fa-paw" inert></i> <span data-map-total>${esc(mapTotalText(mapTotals(live, regions)))}</span></p>
     ${underground ? '' : `<section class="animater-wx-section"><div class="animater-an-top"><span><strong>Outdoor life on this scene</strong><small${on ? ' data-animals-about' : ''}>${on ? `${count} about on your screen` : 'Off: only placed by you once it is on'}</small></span><div class="animater-wx-chips">${chip('setLife', 'data-value=""', 'Off', { active: !on })}${chip('setLife', 'data-value="on"', 'On', { active: on })}</div></div>
       <div class="animater-wx-chips animater-an-presets">${chip('presetAnimals', 'data-value="few"', 'Quiet', { tip: 'A few of everything outdoors.' })}${chip('presetAnimals', 'data-value=""', 'Usual', { tip: 'The usual number of everything outdoors.' })}${chip('presetAnimals', 'data-value="many"', 'Lively', { tip: 'Many of everything outdoors.' })}${chip('reshuffleAnimals', '', 'Reshuffle', { icon: 'fa-rotate', tip: 'Scatter them afresh, on your screen. Each screen scatters its own.' })}</div>
-    </section>
-    <section class="animater-wx-section"><h3>Place by hand</h3><div class="animater-an-places">${place}</div><p class="animater-an-hint">Kept with the scene, and they start there on every screen. Then each wanders, on each screen, its own way.</p></section>`}
+    </section>`}
+    <section class="animater-wx-section"><h3>Place by hand</h3><div class="animater-an-places">${place}</div><p class="animater-an-hint">Kept with the scene, and they start there on every screen. Then each wanders, on each screen, its own way.</p></section>
     <section class="animater-wx-section"><div class="animater-an-all"><span><strong>All animals on this map</strong><small>For a map drawn at a different scale. Multiplies each size below.</small></span>${sizeSlider('animalScale', 'All animals on this map: size', flags.animalScale)}</div>${underground ? '' : `<div class="animater-an-all"><span><strong>Bird height</strong><small>How high birds fly over this map. Higher, they look bigger, and their shadows land further off, wider, softer and fainter.</small></span>${birdHeightSlider(flags.birdHeight)}</div>`}</section>
     ${ANIMAL_GROUPS.filter(([group]) => (group === 'Dark places' ? underground : !underground && (group !== 'Water' || water))).map(([group, kinds]) => `<section class="animater-wx-section"><h3>${esc(group)}</h3>${kinds.map(([kind, label]) => animalRow(kind, label, flags, live, regions)).join('')}</section>`).join('')}
     <footer class="animater-wx-foot"><span>Kept with the scene, for everyone. To keep them out of an area, use that region's Keep out.</span></footer>
