@@ -56,3 +56,11 @@ export function airStepSeconds(lastMs, nowMs, { cap = 6 } = {}) {
   const gap = (Number(nowMs) - Number(lastMs)) / 1000;
   return gap > 0 ? Math.min(cap, gap) : 0;
 }
+
+// Whether the indoor air is worked out on this map at all. The draft on its own is wanted underground, or wherever a
+// region opens onto the outside — air only moves where it has somewhere to go. A room's smoke wants it too: a cellar
+// on a surface map has no way out of its own, yet its smoke must still drift and pour through the door it is let out
+// of, rather than be repainted once a round. With the Drafts switch off nothing is worked out.
+export function airWantedFor({ drafts = false, underground = false, opensOutside = false, roomSmoke = false } = {}) {
+  return drafts === true && (underground === true || opensOutside === true || roomSmoke === true);
+}

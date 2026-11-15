@@ -2,7 +2,7 @@
 // air is primed with, and how long a clock step may be.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ROOM_AIR, airSourcesOf, airPrimeOf, airStepSeconds, AIR_FULL } from "../../../scripts/engines/props/smoke-air.mjs";
+import { ROOM_AIR, airSourcesOf, airPrimeOf, airStepSeconds, airWantedFor, AIR_FULL } from "../../../scripts/engines/props/smoke-air.mjs";
 import { THICK, THIN, DROP_FLOOR } from "../../../scripts/engines/props/smoke-field.mjs";
 import { MIST_AIR } from "../../../scripts/engines/motion/indoor-air.mjs";
 
@@ -48,4 +48,13 @@ test("the origin moves every cell with it, and a full cell is the thick tier", (
   assert.deepEqual(airSourcesOf({ 12: THICK }, geo, field), [{ x: 450, y: 450, w: 1 }]);
   assert.deepEqual(airPrimeOf({ 12: THICK }, geo), [{ x: 450, y: 450, v: 1 }]);
   assert.equal(AIR_FULL, THICK);
+});
+
+test("the air is worked out wherever it is needed, the cellar included", () => {
+  const on = { drafts: true, underground: false, opensOutside: false, roomSmoke: true };
+  assert.equal(airWantedFor(on), true, "a surface map with a smoking cellar needs its air");
+  assert.equal(airWantedFor({ ...on, drafts: false }), false, "drafts off is off");
+  assert.equal(airWantedFor({ ...on, roomSmoke: false }), false, "and with no smoke there is nothing to carry");
+  assert.equal(airWantedFor({ drafts: true, underground: true, opensOutside: false, roomSmoke: false }), true);
+  assert.equal(airWantedFor({ drafts: true, underground: false, opensOutside: true, roomSmoke: false }), true);
 });

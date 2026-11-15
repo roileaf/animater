@@ -27,6 +27,8 @@ import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf, smokeWalls, THICK as SMO
 import { registerSmokeFence } from "./engines/props/smoke-fence.mjs";
 import { smokeGridOf, storedSmokeGrid, smokeCellList, smokeLevelOf, smokeDensityAt } from "./engines/props/smoke-edges.mjs";
 import { createSmokeLooks, smokePuffs, smokeSheets, smokeSeedOf, airHazeFor, SMOKE_SORT_LAYER } from "./engines/props/smoke-look.mjs";
+import { ROOM_AIR, airSourcesOf, airPrimeOf, airStepSeconds, airWantedFor } from "./engines/props/smoke-air.mjs";
+import { createSmokeAirLook } from "./engines/props/smoke-air-look.mjs";
 import { CONCEALMENT_BEHAVIOUR, smokeRegionPlan, skyRegionsOf, openSideRegionsOf, regionsOnLevel } from "./engines/props/smoke-regions.mjs";
 import { smokeRoundPlan, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, smokeLevelFor, createSmokeAlarm, smokeNote, SMOKE_VENT_FLAG } from "./engines/props/smoke-round.mjs";
 import { smokeGathering } from "./engines/props/smoke-gather.mjs";
@@ -2069,7 +2071,10 @@ const rebuildDraft = () => {
         if (leads || outside) regions.push({ polygons: regionAreas(region), leads, outside });
       } catch { /* skip */ }
     }
-    airLive = !!canvas?.ready && draftsOn() && (undergroundScene() || regions.some((r) => r.outside));
+    // The air is worked out for the draft's own sake underground, or where a region opens onto the outside, and for a
+    // room's smoke wherever the round runs (airWantedFor): a cellar on a surface map has no way out of its own, and its
+    // smoke must still drift on the air instead of being repainted once a round.
+    airLive = !!canvas?.ready && airWantedFor({ drafts: draftsOn(), underground: undergroundScene(), opensOutside: regions.some((r) => r.outside), roomSmoke: smokeRunsOn(canvas.scene) });
     if (!airLive) { airField = null; lampAir.draft(null); fillSmoke(); cavern.draft(null); fillMist(); return; }
     const walls = (canvas.walls?.placeables ?? []).map((w) => w.document).map((d) => ({ c: d.c, move: d.move, door: d.door, ds: d.ds }));
     const bounds = canvas.dimensions.sceneRect, grid = canvas.grid.size;
@@ -2081,11 +2086,15 @@ const rebuildDraft = () => {
     airField = field;
     const pixels = draftPixels(field, field.delays);
     lampAir.draft(pixels, field.cols, field.rows);
+    smokeAirLook.draft(pixels, field.cols, field.rows);
     fillSmoke();
     cavern.draft(pixels, field);
     fillMist();
     doorWindNow();
   } catch { airField = null; lampAir.draft(null); }
+  // Whether the room smoke drifts on the air or is painted as it always was turns on whether there is a field, so the
+  // question is asked again every time the air is worked out — including the time it has just gone away.
+  finally { syncSmokeLooks(); }
 };
 for (const hook of ["canvasReady", "createWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) draftSoon(); });
 // A door opening: the air rushes for the way out.
@@ -2110,7 +2119,7 @@ Hooks.on("updateWall", (wall, change) => {
   if (change?.ds === 1 && wall?.parent?.id === canvas?.scene?.id) {
     const [x1, y1, x2, y2] = wall.c; gustAt = performance.now(); gustFrom = { x: (x1 + x2) / 2, y: (y1 + y2) / 2 };
     // Told when the air has been worked out with this door open (rebuildDraft): whether wind comes through it, and the push.
-    windDoor = gustFrom; mistDoor = doorPlace(wall.c);
+    windDoor = gustFrom; mistDoor = doorPlace(wall.c); roomAirDoor = mistDoor;
   }
   draftSoon();
 });
@@ -7953,6 +7962,7 @@ function skyTick() {
   if (drawnClouds.busy) { try { lookCloudAreas(); drawnClouds.tick(seconds); } catch (error) { console.warn("Animater | drawn clouds", error); drawnClouds.look({ on: false }); } }
   if (canopyLight.shown) canopyLight.cloudClock(surfaceLight.clock, surfaceLight.cloudRun);
   if (lampLights.length) { lookLampAir(performance.now()); if (lampAir.shown) { lampAir.tick(seconds); tickSmoke(seconds); } }
+  if (roomAir) tickRoomAir();
   if (ceilingDust.busy) ceilingDust.tick(seconds);
   if (wildlife.busy || pondLife.busy || fieldLife.busy) wildTick(seconds);
   if (doorBursts.busy) doorBursts.tick(seconds, { seen: (x, y) => canvas.visibility?.testVisibility?.({ x, y }, { tolerance: canvas.grid.size * 0.2 }) !== false, light: nearestLamp });
@@ -10983,26 +10993,72 @@ const smokePlumeWind = () => {
     return { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
   } catch { return null; }
 };
-const smokeLooks = createSmokeLooks({ PIXI: globalThis.PIXI, layer: floorLayer("smokeLooks", SMOKE_SORT_LAYER),
+const smokeLooksRoot = floorLayer("smokeLooks", SMOKE_SORT_LAYER);
+const smokeLooks = createSmokeLooks({ PIXI: globalThis.PIXI, layer: smokeLooksRoot,
   grid: () => canvas?.grid?.size ?? 100, now: () => fireNow(), wind: smokePlumeWind });
 let smokeLooksTimer = 0;
+// The same cells drifting on the indoor air instead (engines/props/smoke-air.mjs, smoke-air-look.mjs): the round's cells
+// are the air's sources and what already hangs there, the draft carries them along and out through whatever doors stand
+// open, and one pass over the scene draws what the air holds. It draws into the bake's own layer at the bake's own depth,
+// and only ever one of the two draws: with no field (Drafts off, no WebGL, a scene the air is not worked out for) the
+// baked wash paints exactly as it always has.
+const smokeAirLook = createSmokeAirLook({ PIXI: globalThis.PIXI, layer: smokeLooksRoot,
+  render: (g, rt) => canvas.app.renderer.render(g, { renderTexture: rt, clear: true }) });
+// The sim; the door that last swung (pushed through on the next fill); the clock reading it was last stepped at (ms); the
+// seconds it has run for, which is the clock the pass rolls its billows by (the shared clock counts from the epoch, which
+// is no number for a shader's float); and the step not yet taken.
+let roomAir = null, roomAirDoor = null, roomAirAt = 0, roomAirClock = 0, roomAirWait = 0;
+const dropRoomAir = () => { roomAir = null; roomAirDoor = null; roomAirWait = 0; smokeAirLook.clear(); };
+// Both ways of drawing it put away: a level that is not the smoke's, or a scene with no smoke, leaves the map clean.
+const clearSmokeDrawing = () => { smokeLooks.clear(); dropRoomAir(); };
+// The round's cells handed to the air: each one a source at its own weight, and the same cells as the smoke already
+// hanging there, so a screen arriving mid-fire finds the cellar full rather than filling from nothing. They are read
+// against the grid they were WRITTEN with, as everything else here reads them. What the air already holds is kept: the
+// round's write every few seconds never starts the cloud again.
+const fillRoomAir = (cells, geo) => {
+  try {
+    if (!airField) { dropRoomAir(); return; }
+    roomAir ??= createSmokeAir(ROOM_AIR);
+    roomAir.setup(airField, airSourcesOf(cells, geo, airField));
+    roomAir.prime(airPrimeOf(cells, geo));
+    // The door that just swung pushes what hangs by it through the doorway.
+    if (roomAirDoor) { roomAir.push(roomAirDoor); roomAirDoor = null; }
+    roomAirAt = fireNow();
+    smokeAirLook.fill(roomAir.pixels, airField.cols, airField.rows);
+  } catch { dropRoomAir(); }
+};
+// Moved on a few times a second and drawn every frame. The air is stepped by the shared clock (fireNow, in milliseconds,
+// which is what airStepSeconds takes and gives seconds for), so every screen holds the same cloud however long one of
+// them was asleep; the pass is handed seconds.
+const tickRoomAir = () => {
+  if (!roomAir || !airField) return;
+  const now = fireNow(), seconds = airStepSeconds(roomAirAt, now);
+  roomAirAt = now; roomAirClock += seconds; roomAirWait += seconds;
+  if (roomAirWait >= 0.25) { roomAir.step(Math.min(1, roomAirWait)); roomAirWait = 0; smokeAirLook.fill(roomAir.pixels, airField.cols, airField.rows); }
+  smokeAirLook.look({ now: roomAirClock, grid: canvas.grid?.size ?? 100, bounds: canvas.dimensions?.sceneRect ?? null, amount: 1,
+    since: Math.min(1e3, (performance.now() - gustAt) / 1000) });
+};
 function syncSmokeLooksNow() {
   if (!canvas?.ready) return;
   const scene = canvas.scene;
   // The same three switches the round itself asks (smokeRunsOn): with any of them off there is no smoke to paint,
   // and whatever is still stored is on its way off the scene this very round.
-  if (!scene || !smokeRunsOn(scene)) { smokeLooks.clear(); return; }
+  if (!scene || !smokeRunsOn(scene)) { clearSmokeDrawing(); return; }
   // The smoke is recorded on one level; a screen looking at another floor sees none of it.
   const level = smokeLevelOf(scene);
-  if (level && canvas?.level?.id && canvas.level.id !== level) { smokeLooks.clear(); return; }
+  if (level && canvas?.level?.id && canvas.level.id !== level) { clearSmokeDrawing(); return; }
   const cells = smokeCellsOf(scene);
   const grid = storedSmokeGrid(scene, cells) ?? smokeGridOf(scene.dimensions);
-  if (!grid) { smokeLooks.clear(); return; }
+  if (!grid) { clearSmokeDrawing(); return; }
   // Seeded from the scene's own id, so every screen looking at this map paints the same cloud and the map next door
   // wears a different brush. No clock and no dice: the drift and the sway are the shared clock's alone.
   // The bodies are the cloud (one wash over all of it, one dark mass over what blocks sight); the puffs are the brush
   // shading over them.
   const list = smokeCellList(cells), geo = { cols: grid.cols, origin: grid.origin, cell: grid.cell, seed: smokeSeedOf(scene.id) };
+  // One smoke per scene, never two layered: where the air is worked out the pass draws these very cells drifting on it
+  // and the baked wash stands down; with no field the bake paints them, exactly as it always has.
+  if (airField) { smokeLooks.clear(); fillRoomAir(cells, geo); return; }
+  dropRoomAir();
   // The plume outside each opening. The vents are read from the scene, not worked out here: which cells are
   // openings depends on the regions and the walls and is the active GM's answer alone (smoke-round.mjs), so the
   // round writes them beside the cells and every client simply pours from what it finds. Indexed against the same
@@ -11018,7 +11074,7 @@ const syncSmokeLooks = () => { clearTimeout(smokeLooksTimer); smokeLooksTimer = 
 // level switch fires: the paint and the blockers are asked the same question at the same moment, so the cloud is
 // never left showing another floor's smoke while the fence has already moved on.
 for (const hook of ["canvasReady", "initializeEdges", "updateScene"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) syncSmokeLooks(); });
-Hooks.on("canvasTearDown", () => { clearTimeout(smokeLooksTimer); smokeLooksTimer = 0; smokeLooks.clear(); });
+Hooks.on("canvasTearDown", () => { clearTimeout(smokeLooksTimer); smokeLooksTimer = 0; smokeLooks.clear(); dropRoomAir(); roomAirAt = 0; roomAirClock = 0; });
 // A region repainted, reshaped or moved: its grass grid is laid out again next round, and its burning squares go
 // with the old grid. A square is saved by its index on the grid the shape had, so the same index names a different
 // patch of ground once the shape moves — keeping them would have the fire jump across the map on its own. The
