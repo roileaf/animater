@@ -1,5 +1,17 @@
 # Changelog
 
+## 4.4.1
+
+An area can be told to stay, the rain keeps its own drops, and smoke clears when the world's clock moves.
+
+- **An area stage can be told to stay on the map.** Whether a recipe's area stayed where it was placed was Animater's own reading of the spell — a lasting duration, and a name or wording that sounded like standing ground — so a feat whose words plainly say the ground is left covered could never leave anything behind, and no setting would change it, since the world's **Lasting area animations** only says how a lasting area shows, not which areas are lasting. An area stage now carries its own **Stay while placed** tick in the editor, beside the aura's **Stay until the effect ends**. A stage that follows a catalog entry keeps the catalog's choice, and the world setting still converts a ticked area for tables that asked for play once.
+
+- **The rain keeps its own drops after hours on the map.** Leave the tab and come back and every drop had fallen into step, one shape repeated in rings across the whole fan, instead of a scatter. The drops are scattered by a hash of the falling clock, and in a shader's single precision that hash loses its grip as the clock grows: 256 different drops at the start of a storm, eleven after an hour, and after four hours one — every drop the same drop. The clock keeps running while a tab is hidden, which is why coming back is when you see it. It is wound back into a range the precision can hold, so a storm looks the same in its fifth hour as in its first. Thanks to shakespar for the report and the screenshot.
+
+- **Smoke clears when the world's clock moves.** A round of smoke is a combat round, or six seconds of real time out of combat, so the world's own clock meant nothing to it: a party resting eight hours advanced the calendar and came back to a cellar exactly as thick as they left it. Everything else that ages on a map — footprints, the sun, the shadows, the sky — already follows world time. Jumping the clock forward now ages what is stored by the fade it would have lost over those rounds, and takes the smoke off the scene entirely when nothing is left standing, concealment and all. Winding the clock back changes nothing: it does not un-burn a fire.
+
+- **Every bundled recording is credited.** Twenty of the sounds Animater ships — footsteps on dirt, sand, water, mud and ice — were in the module with no credit line against them, from sixteen Freesound recordings. All sixteen were verified CC0 and every one now has its line in the licence file.
+
 ## 4.4.0
 
 Fire now spreads from prop to prop and through grass, and an indoor fire fills its room with smoke.
