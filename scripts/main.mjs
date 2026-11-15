@@ -23,13 +23,13 @@ import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
 import { BURN_MS, burnLightData, fireTimers, unhideLights, firesOf } from "./engines/props/prop-lights.mjs";
 import { propMaterial, canBreak } from "./engines/props/prop-material.mjs";
-import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf, smokeWalls, THICK as SMOKE_THICK } from "./engines/props/smoke-field.mjs";
+import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf, smokeWalls, smokeAfterRounds, smokeUpdatesFor, THICK as SMOKE_THICK } from "./engines/props/smoke-field.mjs";
 import { smokeGridOf, storedSmokeGrid, smokeCellList, smokeLevelOf, smokeDensityAt } from "./engines/props/smoke-edges.mjs";
 import { createSmokeLooks, smokePuffs, smokeSheets, smokeSeedOf, airHazeFor, SMOKE_SORT_LAYER } from "./engines/props/smoke-look.mjs";
 import { ROOM_AIR, airSourcesOf, airPrimeOf, airStepSeconds, airWantedFor } from "./engines/props/smoke-air.mjs";
 import { createSmokeAirLook } from "./engines/props/smoke-air-look.mjs";
 import { CONCEALMENT_BEHAVIOUR, smokeRegionPlan, skyRegionsOf, openSideRegionsOf, regionsOnLevel } from "./engines/props/smoke-regions.mjs";
-import { smokeRoundPlan, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, smokeLevelFor, createSmokeAlarm, smokeNote, SMOKE_VENT_FLAG } from "./engines/props/smoke-round.mjs";
+import { smokeRoundPlan, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, smokeLevelFor, smokeShapes, createSmokeAlarm, smokeNote, SMOKE_VENT_FLAG } from "./engines/props/smoke-round.mjs";
 import { smokeGathering } from "./engines/props/smoke-gather.mjs";
 import { quietSave, isClockSave } from "./engines/props/quiet-writes.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
@@ -10962,6 +10962,40 @@ const fireTick = () => { void fireRoundsNow().catch((e) => runtime?.trace("props
 // A new round in the tracker runs one at once; out of combat the clock does, looked at every second so a round is
 // never late by more than that.
 Hooks.on("updateCombat", (combat, changes) => { if ("round" in (changes ?? {})) fireTick(); });
+// The world's own clock, which the round does not keep. A round is a combat round or six seconds of REAL time, so a party
+// that rests eight hours and advances the calendar came back to a cellar exactly as thick as they left it: two minutes of
+// real time had passed, twenty rounds, and a sealed room needs about two hundred to clear. Everything else on the map that
+// ages — footprints, the sun, the shadows, the sky — already follows world time; the smoke was the exception.
+// A jump forward ages what is stored in ONE step instead of simulating thousands of rounds (smokeAfterRounds), and the
+// drawn cloud is dropped so it builds again from what is left rather than hanging in the air it held before the jump.
+const smokeAgeBy = async (seconds) => {
+  const rounds = Number(seconds) / (FIRE_PERIOD / 1000);
+  if (!(rounds > 0) || game.users?.activeGM?.isSelf !== true) return;
+  for (const scene of game.scenes ?? []) {
+    if (!smokeHeldBy(scene)) continue;
+    const step = smokeAfterRounds(smokeCellsOf(scene), rounds);
+    if (!step) continue;
+    // Nothing left standing: take the lot off the scene, cells, geometry and concealment alike, as Repair does.
+    if (!step.cells.length) { await clearSmokeNow(scene).catch((e) => smokeThrew(scene, "smoke not aged away", e)); continue; }
+    // A round in flight would write its own cells back over these, exactly as it would over a clear.
+    await afterFireRound(scene);
+    if (fireRunning.has(scene.id)) { runtime?.trace("props", "smoke not aged: a round is still writing"); continue; }
+    fireRunning.add(scene.id);
+    try {
+      for (const fields of smokeUpdatesFor(step, { scene })) {
+        await scene.update(withDeletes(fields, propDel()), smokeNote()).catch((e) => smokeThrew(scene, "smoke not aged", e));
+      }
+      const geo = storedSmokeGrid(scene, smokeCellsOf(scene)) ?? smokeGridOf(scene.dimensions);
+      if (geo) await smokeRegionNow(scene, smokeShapes(step.cells, geo), smokeLevelOf(scene)).catch((e) => smokeThrew(scene, "smoke region not aged", e));
+    } finally { fireRunning.delete(scene.id); }
+  }
+};
+Hooks.on("updateWorldTime", (worldTime, delta) => {
+  // Every client lets its own drawn cloud go, GM or not: the sim only ever raises what it holds (prime), so without this
+  // the picture would stay as thick as it was while the cells under it had thinned or gone.
+  if (Number(delta) > 0) dropRoomAir();
+  void smokeAgeBy(Number(delta));
+});
 // unref so the timer never holds a process open: under node (the tests import this file) an un-unref'd interval keeps the
 // event loop alive for ever, which hangs the run. In a browser unref is absent and the call is a no-op, as with pruneFx.
 Hooks.once("ready", () => { clearInterval(fireTimer); fireTimer = setInterval(fireTick, Math.max(500, FIRE_PERIOD / 6)); fireTimer?.unref?.(); });

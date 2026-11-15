@@ -318,6 +318,23 @@ export function smokeCellsOf(doc) {
 // these, not those.
 export const smokeKeysOf = (doc) => Object.keys(rawSmokeOf(doc));
 
+// What is left of stored smoke after `rounds` of the world's own time have passed with nothing burning, shaped as a step
+// so smokeUpdatesFor can turn it into the scene's update. The round's fade and nothing else: that is the LEAST the smoke
+// would have lost, since a room with a way out vents on top of it, so a clock jumped forward never leaves MORE smoke
+// standing than playing those rounds out would have. Null when no time passed or the clock went backwards — a GM winding
+// the calendar back does not un-burn a fire. `cells` is the stored map ({ [i]: density }).
+export function smokeAfterRounds(cells, rounds) {
+  const n = Number(rounds);
+  if (!(n > 0)) return null;
+  const stays = Math.pow(1 - FADE, n);
+  const out = [];
+  for (const [key, held] of Object.entries(cells ?? {})) {
+    const i = Number(key), next = Number(held) * stays;
+    if (Number.isInteger(i) && i >= 0 && next > DROP_FLOOR) out.push({ i, v: next });
+  }
+  return { cells: out };
+}
+
 // A round's result as scene updates (plain objects, nothing applied): [] when nothing changed, else one update.
 // Foundry MERGES an object-valued flag, so a cell that has cleared must be deleted by name: `flags.animater.smoke.-=<i>` with
 // null. Never write the whole flag, and never beside a keyed delete. A cell is written at its own path

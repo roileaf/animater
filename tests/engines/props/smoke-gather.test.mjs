@@ -366,9 +366,10 @@ test("every document call in main.mjs takes a fresh note, and none takes the con
     }
   }
   assert.ok(!/SMOKE_NOTE/.test(main.split(/\r?\n/).filter((l) => l.includes("scene.")).join("\n")), "no document call takes it");
-  // All six of the round's own writes stamp themselves with a fresh one.
+  // Every one of the smoke's own writes stamps itself with a fresh one: the round's, the clear, the quench, and the
+  // ageing a jumped world clock asks for.
   const stamped = main.split(/\r?\n/).filter((l) => l.includes("smokeNote()") && !l.trim().startsWith("//"));
-  assert.equal(stamped.length, 6, `the six writes (${stamped.length})`);
+  assert.equal(stamped.length, 7, `the seven writes (${stamped.length})`);
   for (const line of stamped) assert.match(line, /scene\.(update|createEmbeddedDocuments|updateEmbeddedDocuments|deleteEmbeddedDocuments)\(/, line.trim());
   assert.match(main, /import \{[^}]*smokeNote[^}]*\} from "\.\/engines\/props\/smoke-round\.mjs";/);
 });

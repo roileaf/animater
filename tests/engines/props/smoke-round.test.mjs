@@ -530,7 +530,8 @@ test("main.mjs wires its four call sites to the pure decisions, and to nothing e
   // Repair, and the quench, each through the pure plan and each waiting out a round in flight on the ONE wait.
   assert.match(main, /await clearSmokeNow\(scene\);/);
   assert.match(main, /quenchSmokeUpdate\(scene, area\.testPoint, storedSmokeGrid/);
-  assert.equal([...main.matchAll(/await afterFireRound\(scene\);/g)].length, 2, "Repair and the quench, one mechanism");
+  // Repair, the quench, and the ageing a jumped world clock asks for: each waits out a round in flight the same way.
+  assert.equal([...main.matchAll(/await afterFireRound\(scene\);/g)].length, 3, "Repair, the quench and the world clock, one mechanism");
   const quench = main.slice(main.indexOf("async function quenchWrite"), main.indexOf("async function receiveQuench"));
   assert.match(quench, /await afterFireRound\(scene\);/, "the quench waits on the one mechanism");
   assert.doesNotMatch(quench, /fireRunning\.has/, "and keeps no poll of its own");
