@@ -170,6 +170,23 @@ export const strikeStrength = (random, severity = 0.55) => {
 // The share of strikes followed at once by another (300 to 900 ms later), the worse the storm the more.
 export const doubleStrike = (severity = 0.55) => 0.3 * Math.min(1, Math.max(0, Number(severity) || 0));
 
+// The clocks the weather runs by, kept where the card can still work with them. Everything that falls is drawn from one
+// clock: a lattice of cells scrolling with it, each cell's drop its own by a hash of the cell. The card counts in
+// float32, so the bigger the clock the coarser it counts, and far enough out neighbouring drops stop being told apart
+// and fall as one. Two things keep it small: no frame may take a big step (a tab coming back from hours hidden hands the
+// ticker one long frame, and the whole sky would leap), and the clock goes back an hour once it has run one.
+export const SKY_STEP_MAX = 0.25;
+export const FALL_WRAP = 3600;
+// An hour back puts every drop in a different cell, so it is done while nothing is falling and there is nothing to see.
+// Weather that has fallen for four hours without pause gets it anyway: one frame where the rain is redealt is a smaller
+// price than drops that have begun to count as one.
+export const FALL_WRAP_FORCED = 4 * FALL_WRAP;
+export const skyStep = (seconds) => Math.min(SKY_STEP_MAX, Math.max(0, Number(seconds) || 0));
+export const fallClock = (clock, seconds, { speed = 1, falling = true } = {}) => {
+  const next = (Number(clock) || 0) + skyStep(seconds) * (Number(speed) || 0);
+  return next >= FALL_WRAP && (!falling || next >= FALL_WRAP_FORCED) ? next % FALL_WRAP : next;
+};
+
 const VERT = `
 precision highp float;
 attribute vec2 aVertexPosition; attribute vec2 aUvs;
@@ -221,7 +238,13 @@ uniform vec4 uDeck; // the cloud deck's look (cloudLook): how much of the sky, h
 // rain's glaze, frost creeping, heat shimmering, smoke billowing (uSky2).
 uniform vec4 uSky, uSky2;
 uniform vec3 uColor;
-float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+// A hash without sine, because this one is asked about cells far from the origin: what falls is a lattice that scrolls
+// with the fall clock, so after an hour of weather a drop's cell is counted in the hundreds of thousands. fract(sin(x))
+// cannot tell those apart — the card works sin out in float32, where a number that large steps by more than a whole
+// radian, so whole swathes of cells come back with the one value: every drop the same length and brightness, all falling
+// in lockstep (measured on an RTX card: an hour in, 11 different drops left out of 256; four hours in, one). This one
+// only multiplies and takes fractions, so neighbouring cells still part company far out.
+float hash(vec2 p){ vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
 float noise(vec2 p){ vec2 i = floor(p), f = p - i; f = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y); }
 float fbm(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { s += a * noise(p); p = p * 2.03 + 17.0; a *= 0.5; } return s; }
@@ -1412,8 +1435,13 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
     // the trees' baked shade (null: none); both over the same scene rectangle as the rest.
     shade({ sunlit = null, trees = null, crowns = null } = {}) { set({ uSunlit: sunlit ?? PIXI.Texture.WHITE, uTreeShade: trees ?? PIXI.Texture.EMPTY, uCrowns: crowns ?? PIXI.Texture.EMPTY }); },
     tick(seconds) {
+      // A frame is a frame, however long the browser was away: a tab coming back hands the ticker one huge step, and the
+      // sky would leap a quarter of an hour in one draw.
+      seconds = skyStep(seconds);
+      // Whether anything is falling now, which is when going back an hour on the fall clock would show (fallClock).
+      const falls = own[0] ? Math.max(own[0].uFallA[1], own[0].uFallB[1]) : 0, falling = falls > 0.004 || fades.has('uFallA') || fades.has('uFallB');
       // (What falls keeps its own clock: a change of speed carries on from where it is, not a jump.)
-      for (const u of own) { u.uTime += seconds; u.uFallTime += seconds * fallSpeed; u.uCloudRun += seconds * cloudSpeed(u.uWind); }
+      for (const u of own) { u.uTime += seconds; u.uFallTime = fallClock(u.uFallTime, seconds, { speed: fallSpeed, falling }); u.uCloudRun += seconds * cloudSpeed(u.uWind); }
       if (fades.size) {
         for (const [key, f] of fades) {
           f.t += seconds;
@@ -1424,7 +1452,7 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
         if (!fades.size) { meshes[4].visible = casting || clouding || weathering; meshes[5].visible = glowWanted; }
       }
       // The regions' own weather runs by the map's clocks and wind.
-      if (regionAir.length) { const m = own[0]; for (const r of regionAir) { const u = r.u; u.uTime = m.uTime; u.uFallTime += seconds * r.speed; u.uCloudRun = m.uCloudRun; u.uWind = m.uWind; u.uWindDir = m.uWindDir; u.uStrength = m.uStrength; u.uFallsDown = m.uFallsDown; u.uEye = m.uEye; u.uCloudShift = m.uCloudShift; u.uRoofShown = m.uRoofShown; u.uColor = m.uColor; u.uAmbient = m.uAmbient; } }
+      if (regionAir.length) { const m = own[0]; for (const r of regionAir) { const u = r.u; u.uTime = m.uTime; u.uFallTime = fallClock(u.uFallTime, seconds, { speed: r.speed, falling: Math.max(u.uFallA[1], u.uFallB[1]) > 0.004 }); u.uCloudRun = m.uCloudRun; u.uWind = m.uWind; u.uWindDir = m.uWindDir; u.uStrength = m.uStrength; u.uFallsDown = m.uFallsDown; u.uEye = m.uEye; u.uCloudShift = m.uCloudShift; u.uRoofShown = m.uRoofShown; u.uColor = m.uColor; u.uAmbient = m.uAmbient; } }
       if (bow !== bowTo) {
         bow += Math.max(-seconds / 8, Math.min(seconds / 8, bowTo - bow));
         for (const u of own) u.uBow[3] = bow;
