@@ -567,19 +567,31 @@ export function waveSheet(size = 512) {
 
 // How far a shape runs along a direction: where it starts and where it ends.
 const runOf = (areas, angle) => { const cx = Math.cos(angle), cy = Math.sin(angle); let lo = Infinity, hi = -Infinity; for (const area of areas) for (let i = 0; i + 1 < area.length; i += 2) { const d = area[i] * cx + area[i + 1] * cy; lo = Math.min(lo, d); hi = Math.max(hi, d); } return [lo, hi]; };
-// How much of the day and of the lamps a body of water gives back, 0 to 1, all of it unless the caller says otherwise.
-// Water in the open returns what falls on it; water down a shaft returns a part. It is a part rather than a switch
-// because a light near water is what puts the glint on it: at none, water reads as a flat hole cut in the map.
-export const litPart = (spec) => (Number.isFinite(spec?.light) ? Math.min(1, Math.max(0, spec.light)) : 1);
+// How much of the light a body of water gives back: `day` the sun's, `lamps` the flames' glint, 0 to 1 each, all of it
+// unless the caller says otherwise. `light` may be one number for both, or { day, lamps } where they differ.
+//
+// They are separate because they fail differently, which a hole in ice showed: a lamp's glint is a hot spot laid on
+// top, and a hole two squares across sits WHOLLY inside one, so at full lamps it rendered solid gold. The day is the
+// opposite -- it is most of what keeps water from being a black shape, so cutting it to kill the glint left a hole
+// cut in the map instead. Measured in the game: lamps alone at a seventh and the day at a half gives (44,52,49) to
+// (54,59,52) against ground of (105,137) -- about half as bright, and green over red, so it reads as water.
+export const litParts = (spec) => {
+  const one = (v) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1);
+  const said = spec?.light;
+  if (said && typeof said === "object") return { day: one(said.day), lamps: one(said.lamps) };
+  const both = one(said);
+  return { day: both, lamps: both };
+};
 // The lamps' own colours, dimmed for water that gives back only a part of them. The dimmed copy is kept while both the
 // lamps and the part hold, because the lamps are worked out a few times a second and every mesh would otherwise build
 // its own copy of them on every frame.
 const dimmedLights = (entry, colors) => {
-  if (!(entry.light < 1)) return colors;
-  if (entry.litFrom !== colors || entry.litPart !== entry.light) {
+  const part = entry.light.lamps;
+  if (!(part < 1)) return colors;
+  if (entry.litFrom !== colors || entry.litPart !== part) {
     entry.litFrom = colors;
-    entry.litPart = entry.light;
-    entry.litColors = Float32Array.from(colors, (c) => c * entry.light);
+    entry.litPart = part;
+    entry.litColors = Float32Array.from(colors, (c) => c * part);
   }
   return entry.litColors;
 };
@@ -727,7 +739,7 @@ export function createWaterEngine({ PIXI, root, grid = () => 100 }) {
     const mesh = new PIXI.Mesh(geometry, PIXI.Shader.from(VERT, fragOf(qualityNow === 'full'), uniforms));
     mesh.eventMode = 'none'; root().addChild(mesh);
     skyAt = 0;
-    return { over, hull, mesh, mask, flow, box, roofed: !!spec.roofed, light: litPart(spec), keeps: !!spec.keeps, waves: Number.isFinite(spec.waves) ? [Math.cos(spec.waves), Math.sin(spec.waves)] : null };
+    return { over, hull, mesh, mask, flow, box, roofed: !!spec.roofed, light: litParts(spec), keeps: !!spec.keeps, waves: Number.isFinite(spec.waves) ? [Math.cos(spec.waves), Math.sin(spec.waves)] : null };
   };
   return {
     sync(list = [], { floor = null, quality = 'full' } = {}) {
@@ -736,8 +748,8 @@ export function createWaterEngine({ PIXI, root, grid = () => 100 }) {
       const seen = new Set();
       for (const spec of wanted) {
         seen.add(spec.id);
-        const key = JSON.stringify([spec.areas, spec.areas.map((a) => a.holes ?? null), (spec.over ?? []).map((o) => [o.areas, o.areas.map((a) => a.holes ?? null), o.kind, o.soft, o.dark, !!o.across, !!o.painted, o.cut !== false, o.casts !== false, o.contact !== false]), spec.shade !== false, litPart(spec), !!spec.watery, spec.lift ?? null, spec.angle, spec.current, spec.kind, !!spec.followsWind, spec.waves ?? null, spec.map ?? null, spec.beach !== false, !!spec.sand, spec.edge ?? 1, spec.depth?.hold ?? 1, spec.depth?.dark ?? 0, !!spec.depth?.tint, spec.bed?.key ?? null, spec.bed?.edge ?? null, !!spec.bed?.texture, hullKey(spec.hulls), quality]), had = known.get(spec.id);
-        if (had && had.key === key && !changedLook) { had.roofed = !!spec.roofed; had.light = litPart(spec); had.keeps = !!spec.keeps; continue; }
+        const key = JSON.stringify([spec.areas, spec.areas.map((a) => a.holes ?? null), (spec.over ?? []).map((o) => [o.areas, o.areas.map((a) => a.holes ?? null), o.kind, o.soft, o.dark, !!o.across, !!o.painted, o.cut !== false, o.casts !== false, o.contact !== false]), spec.shade !== false, litParts(spec), !!spec.watery, spec.lift ?? null, spec.angle, spec.current, spec.kind, !!spec.followsWind, spec.waves ?? null, spec.map ?? null, spec.beach !== false, !!spec.sand, spec.edge ?? 1, spec.depth?.hold ?? 1, spec.depth?.dark ?? 0, !!spec.depth?.tint, spec.bed?.key ?? null, spec.bed?.edge ?? null, !!spec.bed?.texture, hullKey(spec.hulls), quality]), had = known.get(spec.id);
+        if (had && had.key === key && !changedLook) { had.roofed = !!spec.roofed; had.light = litParts(spec); had.keeps = !!spec.keeps; continue; }
         if (had) { drop(had); known.delete(spec.id); }
         try { const entry = make(spec); if (entry) { entry.key = key; entry.areas = spec.areas; known.set(spec.id, entry); } } catch (error) { console.warn('Animater | moving water', error); }
       }
@@ -758,7 +770,7 @@ export function createWaterEngine({ PIXI, root, grid = () => 100 }) {
         // Off the view: not drawn at all.
         entry.mesh.visible = !seen || (box.x < seen.x + seen.w && box.x + box.w > seen.x && box.y < seen.y + seen.h && box.y + box.h > seen.y);
         const w = entry.mesh.shader.uniforms;
-        if (light) { w.uSun = entry.roofed ? 0 : light.shine * entry.light; w.uToSun = light.toSun; w.uSunColor = light.color; w.uGlare = glareAt(box, light); w.uFrozen = entry.keeps ? 0 : Math.min(1, Math.max(0, (Number(sky_.ice) || 0) * 2 - 0.2)); }
+        if (light) { w.uSun = entry.roofed ? 0 : light.shine * entry.light.day; w.uToSun = light.toSun; w.uSunColor = light.color; w.uGlare = glareAt(box, light); w.uFrozen = entry.keeps ? 0 : Math.min(1, Math.max(0, (Number(sky_.ice) || 0) * 2 - 0.2)); }
         if (!entry.mesh.visible) continue;
         if (shadeNow) { w.uSunlit = shadeNow.sunlit; w.uTreeShade = shadeNow.trees; w.uSceneRect = shadeNow.rect; } w.uFishCount = fishCount; w.uFishDim = swimming?.dim ?? 1; { const look = fishLook(); w.uFishLook = look ?? PIXI.Texture.EMPTY; w.uFishLookOn = look ? 1 : 0; } w.uPix = w.uGrid * (entry.mesh.worldTransform?.a || 1); w.uTime = clock; w.uWind = entry.roofed ? 0.02 : wind; entry.waveWind = (entry.waveWind ?? w.uWind) + (w.uWind - (entry.waveWind ?? w.uWind)) * Math.min(1, seconds / 20); { const period = wavePeriod(entry.waveWind), long = swellLength(entry.waveWind); w.uWaveClock += seconds / period; { const wide = (Math.abs(w.uSwellDir[0]) * entry.box.w + Math.abs(w.uSwellDir[1]) * entry.box.h) / w.uGrid; w.uWaveGap = waveGap(period, wide); w.uBreakSize = Math.min(1, wide / 7); } w.uSeaState = Math.min(1, Math.max(0, entry.waveWind)); w.uSwellLong = long; w.uSwellClock += seconds / long; } w.uWindDir = dir; w.uSwellDir = entry.waves ?? (w.uAimed ? (entry.aimedWith = turnedToward(entry.aimedWith ?? dir, dir, seconds / 20)) : dir); w.uLights = lights.lights; w.uLightColors = dimmedLights(entry, lights.colors); w.uLightCount = lights.count;
       }

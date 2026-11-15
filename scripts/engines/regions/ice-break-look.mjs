@@ -327,13 +327,15 @@ const flatten = (ring) => ring.flatMap((p) => [p.x, p.y]);
 // bed is painted from), along with what only the screen has (the map's rectangle, whether a roof is over it). Given a
 // look of its own it came out a flat colour that a bright map turned the shade of the ground, while the river a step
 // away was plainly water (Roi: "this ice shows the map, while without it it only shows the water engine").
-// It gives back little of what falls on it: a hole is a shaft through a sheet of ice, shaded by its own rim and by the
-// slabs standing up out of it, and the water in it is deep. Measured in the game, with the day and a torch full on it
-// a hole two squares across came out (255,246,125) -- solid gold, because a hole that small sits WHOLLY inside a
-// torch's glint, where the river it is a hole in shows that same glint as a highlight on dark water. At a fifth it is
-// (78,70,46) under the torch and (23,33,33) away from it, against ground of (105,137): darker than what it lies in,
-// and still lit from the side the flame is on.
-const HOLE_LIGHT = 0.2;
+// It gives back little of the light: a hole is a shaft through a sheet of ice, shaded by its own rim and by the slabs
+// standing up out of it, and the water in it is deep. The two kinds of light are cut differently, measured in the game
+// on a bright map with a torch beside the hole:
+//   - a lamp's glint is a hot spot laid on top, and a hole two squares across sits WHOLLY inside one. At full lamps it
+//     rendered (255,246,125), solid gold, where the river it is a hole in shows that same glint as a highlight. A
+//     seventh of it leaves the flame's side of the hole brighter than the far side, which is what says it is wet.
+//   - the day is most of what keeps water from being a black shape, so cutting it as hard left a hole cut in the map
+//     at (9,26,29). Half of it gives (44,52,49) against ground of (105,137): half as bright, and green over red.
+const HOLE_LIGHT = Object.freeze({ day: 0.5, lamps: 0.15 });
 const holeLook = { watery: true, over: [], edge: 1, light: HOLE_LIGHT, depth: { hold: 1.6, dark: 0.72 }, beach: false, sand: null, waves: null, keeps: true };
 // What fire melts is the same water, shallower and softer at its edge: meltwater standing in the ice, not a hole torn
 // through to the deep, and it fades into the ice it ate away rather than ending at a break line. It lies still in the

@@ -446,7 +446,8 @@ test("a hole gives back little of the light, and meltwater gives back all of it"
   // standing open on the ice, which should catch a flame the way any puddle does.
   const broke = iceBreakOf(holed({ holes: { "3,4": 1 } }), { grid: GRID }).holes[0];
   const melted = iceBreakOf(holed({ holes: { "3,4": MELTED } }), { grid: GRID }).holes[0];
-  assert.ok(broke.light > 0 && broke.light <= 0.35, `a hole lies down a shaft: ${broke.light}`);
-  assert.ok(broke.light > 0, "and not in the dark: none at all kills the glint that says it is water");
-  assert.equal(melted.light, 1, "meltwater stands open");
+  assert.ok(broke.light.lamps > 0 && broke.light.lamps <= 0.3, `the flame's glint is cut hardest: ${broke.light.lamps}`);
+  assert.ok(broke.light.day > broke.light.lamps && broke.light.day <= 0.7, `the day less so, or the hole is a black shape: ${broke.light.day}`);
+  assert.ok(broke.light.day > 0, "and not in the dark: none at all kills the glint that says it is water");
+  assert.deepEqual(melted.light, 1, "meltwater stands open");
 });

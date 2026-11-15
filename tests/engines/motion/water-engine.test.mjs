@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { WATER_MOTION, WATER_SHADERS, flowBend, flowField, ringSlot, wakeRingDue, waterFoam, waveSheet , litPart } from '../../../scripts/engines/motion/water-engine.mjs';
+import { WATER_MOTION, WATER_SHADERS, flowBend, flowField, ringSlot, wakeRingDue, waterFoam, waveSheet , litParts } from '../../../scripts/engines/motion/water-engine.mjs';
 import { floorDetail } from '../../../scripts/core/quality.mjs';
 
 // A band running top to bottom, soft at its sides.
@@ -330,18 +330,19 @@ test('the sea breaks on a tile ticked to take its waves, on the side they come f
 });
 
 test('water in the open gives back the whole of the light, and water in shade the part it is given', () => {
-  // A light near water is what puts the glint on it, and the glint is laid on after everything else, so water that must
-  // read as dark cannot get there by being deep. A hole two squares across found this: it sits wholly inside a torch's
-  // glint, where the river it is a hole in shows that same glint as a highlight on dark water.
-  assert.equal(litPart({}), 1, 'nothing said is water in the open');
-  assert.equal(litPart(), 1);
-  assert.equal(litPart({ light: 0.2 }), 0.2);
-  assert.equal(litPart({ light: 0 }), 0);
-  assert.equal(litPart({ light: 1 }), 1);
+  // The two are separate because they fail differently. A lamp's glint is a hot spot laid on top, and a hole two squares
+  // across sits wholly inside one, so at full lamps it rendered solid gold. The day is most of what keeps water from
+  // being a black shape, so cutting it as hard left a hole cut in the map.
+  assert.deepEqual(litParts({}), { day: 1, lamps: 1 }, 'nothing said is water in the open');
+  assert.deepEqual(litParts(), { day: 1, lamps: 1 });
+  assert.deepEqual(litParts({ light: 0.2 }), { day: 0.2, lamps: 0.2 }, 'one number is both');
+  assert.deepEqual(litParts({ light: { day: 0.5, lamps: 0.15 } }), { day: 0.5, lamps: 0.15 });
+  assert.deepEqual(litParts({ light: { day: 0.5 } }), { day: 0.5, lamps: 1 }, 'the one not said is the open sky');
 });
 
 test('a part of the light outside 0 to 1, or junk for it, never leaves the range', () => {
-  for (const [given, want] of [[2, 1], [-1, 0], [0.75, 0.75]]) assert.equal(litPart({ light: given }), want, `light ${given}`);
+  for (const [given, want] of [[2, 1], [-1, 0], [0.75, 0.75]]) assert.deepEqual(litParts({ light: given }), { day: want, lamps: want }, `light ${given}`);
   // Only a real number is an answer: an infinity is not one, so it falls back to the open sky rather than clamping.
-  for (const junk of [NaN, Infinity, -Infinity, null, undefined, '0.2', {}, []]) assert.equal(litPart({ light: junk }), 1, `junk ${String(junk)} is the open sky`);
+  for (const junk of [NaN, Infinity, -Infinity, null, undefined, '0.2', []]) assert.deepEqual(litParts({ light: junk }), { day: 1, lamps: 1 }, `junk ${String(junk)} is the open sky`);
+  assert.deepEqual(litParts({ light: { day: 2, lamps: -1 } }), { day: 1, lamps: 0 }, 'each is held in range on its own');
 });
