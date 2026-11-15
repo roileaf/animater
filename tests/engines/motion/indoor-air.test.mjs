@@ -160,3 +160,35 @@ test('mist fills its region and stays there until a door opens, then the draft d
 });
 
 function createSmokeAirEmpty(field) { const air = createSmokeAir(MIST_AIR); air.setup(field, []); return air; }
+
+// A sealed field of cols x rows cells, half a square each (the default), starting at the scene's corner.
+function fieldOf({ cols, rows }) { return draftField({ walls: [], bounds: { x: 0, y: 0, width: cols * 50, height: rows * 50 }, grid: 100, openings: [] }); }
+const cellAt = (field, x, y) => Math.floor((y - field.y) / field.cell) * field.cols + Math.floor((x - field.x) / field.cell);
+
+test('a source makes smoke at its own weight', () => {
+  const air = createSmokeAir(), field = fieldOf({ cols: 6, rows: 6 });
+  air.setup(field, [{ x: 150, y: 150, w: 1 }]);
+  air.step(1);
+  const full = air.held;
+  const half = createSmokeAir();
+  half.setup(field, [{ x: 150, y: 150, w: 0.5 }]);
+  half.step(1);
+  assert.ok(half.held < full * 0.75 && half.held > full * 0.25, `${half.held} is about half of ${full}`);
+  // A source with no weight of its own still makes smoke, as every caller before this one passed none.
+  const plain = createSmokeAir();
+  plain.setup(field, [{ x: 150, y: 150 }]);
+  plain.step(1);
+  assert.equal(Math.round(plain.held * 1000), Math.round(full * 1000));
+});
+
+test('priming puts smoke in the air at once, and never takes any away', () => {
+  const air = createSmokeAir(), field = fieldOf({ cols: 6, rows: 6 });
+  air.setup(field, []);
+  air.prime([{ x: 150, y: 150, v: 0.8 }]);
+  assert.ok(air.held > 0.7, 'it is there before a single step');
+  assert.ok(air.pixels[(cellAt(field, 150, 150) * 4) + 3] > 180, 'and the GPU can see it');
+  air.prime([{ x: 150, y: 150, v: 0.2 }]);
+  assert.ok(air.held > 0.7, 'a thinner round does not suck it back out of the air');
+  air.prime([{ x: -500, y: -500, v: 1 }]);  // off the field
+  assert.ok(air.held > 0.7, 'and a cell that is not there changes nothing');
+});

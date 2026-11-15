@@ -864,7 +864,11 @@ export function createSmokeLooks({ PIXI, layer, grid = () => 100, now = () => 0,
         startedAt = ms;
         shown = key;
       }
-      if ((next.size || was.size || nextWash || wasWash) && !raf) raf = requestAnimationFrame(tick);
+      // Exactly what keeps the loop alive in tick() keeps it from never starting: a pouring vent is as good a reason
+      // to run as a cloud. Without the vents here a sync of a plume with no cloud behind it — which is every sync of
+      // a scene whose room smoke is drawn on the air instead — painted nothing at all until some cloud happened to
+      // start the loop for it.
+      if ((next.size || was.size || nextWash || wasWash || (vents?.list?.length ?? 0) > 0) && !raf) raf = requestAnimationFrame(tick);
     },
     clear() {
       cancelAnimationFrame(raf); raf = 0; drawnAt = -Infinity;
