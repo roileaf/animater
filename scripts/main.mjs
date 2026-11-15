@@ -51,7 +51,7 @@ import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsO
 import { areaRefusal } from "./engines/props/prop-areas.mjs";
 import { createFireLooks, thingFires, charredCells, litCells } from "./engines/props/fire-looks.mjs";
 import { iceBreakOf, iceHoleAt } from "./engines/regions/ice-break-look.mjs";
-import { iceSettingsOf, iceStateOf, iceMoveFor, sizeNameOf, walkedLegs, squaresEntered, moveSince, moveFinished, weightOffset, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares } from "./engines/regions/thin-ice.mjs";
+import { iceSettingsOf, iceStateOf, iceMoveFor, sizeNameOf, walkedLegs, squaresEntered, moveSince, weightOffset, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares } from "./engines/regions/thin-ice.mjs";
 import { createIceBreakLook } from "./engines/regions/ice-break-draw.mjs";
 import { iceBreakSound, newKeys } from "./engines/regions/ice-break-sound.mjs";
 import { iceWords } from "./engines/regions/ice-break-word.mjs";
@@ -3739,8 +3739,8 @@ const waterEngine = createWaterEngine({ PIXI: globalThis.PIXI, root: floorLayer(
 // What raised floors throw on what is below them: over the painted floors (400), under what lies on them (410).
 const floorShadows = createFloorShadows({ PIXI: globalThis.PIXI, root: floorDrawRoot("floorShadows"), edges: floorLayer("floorEdges"), grid: () => canvas.grid?.size ?? 100 });
 // Thin ice breaking (engines/regions/ice-break-look.mjs, ice-break-draw.mjs): the cracks and the floating shards, painted on the floor under the creatures, read from what the GM stored on the region so every screen draws the same. The holes are water, in movingWaterList.
-const iceBreakLook = createIceBreakLook({ PIXI: globalThis.PIXI, layer: floorLayer("iceBreak", 643), grid: () => canvas.grid?.size ?? 100 });
-const iceDrawn = { holes: 0, cracks: 0, shards: 0, plates: 0 };
+const iceBreakLook = createIceBreakLook({ PIXI: globalThis.PIXI, layer: floorLayer("iceBreak", 643), bed: floorLayer("iceHoleBed", 390), grid: () => canvas.grid?.size ?? 100 });
+const iceDrawn = { holes: 0, cracks: 0, shards: 0, plates: 0, water: 0 }; // holes: handed to the moving water for its ripples; water: painted here, whatever the screen does with moving water
 // What each screen has already heard give way and already shown a word for, per region, so each happens the moment it does
 // and never again. A region this screen has not seen before is learned quietly (newKeys): coming to a map whose ice is
 // already broken says and plays nothing, and a reload with it.
@@ -3769,9 +3769,12 @@ const playIceBreak = (region, keys, grid) => {
   }
 };
 const syncIceBreak = () => {
-  const cracks = [], shards = [], plates = [], grid = canvas.grid?.size ?? 100, wet = movingWaterOn();
+  // `holes` is the dark water painted under the moving water, in a layer of its own: the engine draws clear water, so over
+  // a map of sand you could see the ground through the hole. It is the bed the engine has none for, and on a screen with no
+  // moving water at all it is the hole's water outright.
+  const cracks = [], shards = [], plates = [], holes = [], grid = canvas.grid?.size ?? 100;
   for (const region of drawnRegions()) {
-    try { const broken = iceBreakOf(region, { grid }); cracks.push(...broken.cracks); if (wet) { shards.push(...broken.shards); plates.push(...broken.plates); } /* (the broken ice floats on a hole, and a hole is moving water) */ } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
+    try { const broken = iceBreakOf(region, { grid }); cracks.push(...broken.cracks); shards.push(...broken.shards); plates.push(...broken.plates); holes.push(...broken.holes); } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
     // Heard and said after the drawing is gathered, and never for a hole fire melted open: nobody fell through that one.
     try {
       const thin = iceSettingsOf(region).thin, id = `${canvas.scene?.id ?? "?"}:${region?.id ?? "?"}`;
@@ -3784,7 +3787,7 @@ const syncIceBreak = () => {
       if (broke.fresh.length || cracked.fresh.length) showIceWords({ broke: broke.fresh, cracked: cracked.fresh }, grid);
     } catch (err) { runtime?.trace?.("thin ice", `heard: ${err?.message ?? err}`); }
   }
-  try { iceBreakLook.sync({ cracks, shards, plates }); iceDrawn.cracks = cracks.length; iceDrawn.shards = shards.reduce((n, s) => n + (s.list?.length ?? 0), 0); iceDrawn.plates = plates.reduce((n, p) => n + (p.list?.length ?? 0), 0); } catch (err) { runtime?.trace?.("thin ice", `paint: ${err?.message ?? err}`); }
+  try { iceBreakLook.sync({ cracks, shards, plates, holes }); iceDrawn.cracks = cracks.length; iceDrawn.shards = shards.reduce((n, s) => n + (s.list?.length ?? 0), 0); iceDrawn.plates = plates.reduce((n, p) => n + (p.list?.length ?? 0), 0); iceDrawn.water = holes.length; } catch (err) { runtime?.trace?.("thin ice", `paint: ${err?.message ?? err}`); }
 };
 // Whether two sets of areas have boxes that overlap at all.
 // (Each set of areas' box worked out once and kept with it; each region's areas kept till it changes: floor shadows asked them
@@ -5144,6 +5147,25 @@ const ICE_MOVES_KEPT = 8;
 const iceMoveDone = new Map();
 const iceMoveSeen = (id, kept) => { iceMoveDone.delete(id); iceMoveDone.set(id, kept); while (iceMoveDone.size > ICE_MOVES_KEPT) iceMoveDone.delete(iceMoveDone.keys().next().value); };
 Hooks.on("canvasTearDown", () => { iceMoveDone.clear(); });
+// What a set of squares does to each thin-ice region under them, written in one batch with one whisper.
+const judgeIce = (doc, { size, grid, base, regions, squares }) => {
+  const updates = [], cracked = [], broken = [];
+  for (const region of regions) {
+    try {
+      // Only the squares this region itself holds: the move may have crossed its edge.
+      const mine = [];
+      for (const key of squares) if (region.testPoint({ ...iceSquareMid(key, grid), elevation: base }) && mine[mine.length - 1] !== key) mine.push(key);
+      const { updates: wrote, note, broke } = iceMoveFor({ region, size, squares: mine, name: doc.name, system: game.system?.id });
+      updates.push(...wrote);
+      // One break, one whisper: two thin-ice regions over the same square would otherwise each tell the GM about it,
+      // and a break is the only thing worth saying when the same move also cracked ice somewhere else.
+      if (note) (broke ? broken : cracked).push(note);
+    } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
+  }
+  const notes = [...new Set(broken.length ? broken : cracked)];
+  if (updates.length) void writeIceBreak(canvas.scene, updates, notes);
+  return updates.length;
+};
 Hooks.on("moveToken", (doc, movement) => {
   try {
     if (!game.user?.isActiveGM || !canvas?.ready || doc?.parent?.id !== canvas.scene?.id) return;
@@ -5163,26 +5185,10 @@ Hooks.on("moveToken", (doc, movement) => {
     const legs = walkedLegs(since.ways, { from: since.from, base, mid });
     const squares = squaresEntered(legs, grid);
     if (!squares.length) return;
-    // Where the move came to rest — only if its last leg was walked AND the move is really over. Foundry fires this hook
-    // again as a creature goes, and the last waypoint of a firing mid-walk is where it is now, not where it stops; counting
-    // that as a resting place broke the ice under the first square instead of cracking its way across (thin-ice.mjs
-    // moveFinished).
-    const ended = moveFinished(movement) && legs[legs.length - 1]?.last ? squares[squares.length - 1] : null;
-    const updates = [], cracked = [], broken = [];
-    for (const region of regions) {
-      try {
-        // Only the squares this region itself holds: the move may have crossed its edge.
-        const mine = [];
-        for (const key of squares) if (region.testPoint({ ...iceSquareMid(key, grid), elevation: base }) && mine[mine.length - 1] !== key) mine.push(key);
-        const { updates: wrote, note, broke } = iceMoveFor({ region, size, squares: mine, ended: mine.includes(ended) ? ended : null, name: doc.name, system: game.system?.id });
-        updates.push(...wrote);
-        // One break, one whisper: two thin-ice regions over the same square would otherwise each tell the GM about it,
-        // and a break is the only thing worth saying when the same move also cracked ice somewhere else.
-        if (note) (broke ? broken : cracked).push(note);
-      } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
-    }
-    const notes = [...new Set(broken.length ? broken : cracked)];
-    if (updates.length) void writeIceBreak(canvas.scene, updates, notes);
+    // Nothing here waits on a move ending, and nothing needs to: fresh ice cracks, ice already cracked gives way. Foundry
+    // fires this hook again and again as a creature walks, and no reading of where a firing happens to stop can be trusted;
+    // taking one as a resting place broke the ice under the very first square a creature stepped on.
+    judgeIce(doc, { size, grid, base, regions, squares });
   } catch { /* a token mid-change */ }
 });
 // Refreeze (the region panel's button, the GM's own): every crack and every hole this region has stored goes by name, so

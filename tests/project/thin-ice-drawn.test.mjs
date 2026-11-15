@@ -177,3 +177,25 @@ test("the break is painted again after the map is put away and brought back", ()
   show([iceRegion({ cracks: { "1,1": 1 } })]);
   assert.ok(drew.some(([what]) => what === "lineTo"), "and painted again on the map that came back, with nothing stored changed");
 });
+
+test("the hole has dark water of its own under the moving water, so the ground never shows through it", () => {
+  show([iceRegion({ holes: { "3,4": 2 } })]);
+  const drawn = api.debug.iceDrawn();
+  assert.ok(drawn.holes > 0, "the hole goes to the moving water as its own spec, for its ripples");
+  assert.ok(drawn.water > 0, "and it is painted dark underneath, because the engine draws clear water");
+  assert.ok(drawn.plates > 0, "with the broken sheet over both");
+});
+
+
+
+test("the ice is drawn even where the screen draws no moving water at all", () => {
+  // Moving water off, or a quality too low for it: a creature standing in open water must still read as standing in it.
+  const was = game.settings.get;
+  try {
+    game.settings.get = (module, key) => (key === "movingWater" || key === "movingWaterLocal" ? false : was(module, key));
+    show([iceRegion({ holes: { "3,4": 2 } })]);
+    const drawn = api.debug.iceDrawn();
+    assert.ok(drawn.plates > 0, "the broken sheet is still handed to the painter");
+    assert.ok(drawn.water > 0, "and so is the water it floats on: neither waits on the moving water setting");
+  } finally { game.settings.get = was; }
+});

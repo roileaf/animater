@@ -7,7 +7,7 @@ body{margin:0;background:#15181c;color:#e6e8eb;font:14px/1.45 system-ui,Segoe UI
 h1{font-size:18px;margin:0 0 2px}p{color:#97a0ad;margin:0 0 12px}
 .row{display:flex;gap:16px;flex-wrap:wrap}
 figure{margin:0}figcaption{color:#97a0ad;font-size:12px;margin-top:4px}
-canvas{background:#2e2a26;border:1px solid #2c313a;border-radius:6px;display:block}
+canvas{background:#8f9594;border:1px solid #2c313a;border-radius:6px;display:block}
 label{color:#97a0ad;margin-right:12px}input{vertical-align:middle}
 </style></head><body>
 <h1>Thin ice: the break</h1>
@@ -15,10 +15,11 @@ label{color:#97a0ad;margin-right:12px}input{vertical-align:middle}
 <div><label>seed <input id="sd" type="range" min="0" max="40" value="7"></label></div>
 <div class="row" id="row"></div>
 <script type="module">
-import { icePlates, holeOutline } from "/scripts/engines/regions/ice-break-look.mjs";
+import { icePlates, holeOutline, crackLines } from "/scripts/engines/regions/ice-break-look.mjs";
 // The painter's own colours and thickness (engines/regions/ice-break-draw.mjs), so this page shows what the map shows.
-const WATER="#16242c", FACE="#eaf2f4", SIDE="#79b9ce", DEEP="#3f7d95", INK="#1b1410", THICK=0.05, LEAN_X=0.45, LEAN_Y=0.75;
+const WATER="#17465e", FACE="#9ecfe8", FACE_ALPHA=0.72, SIDE="#6fb4d2", DEEP="#245a74", RIM="#dff5ff", EDGE="#1d4257", LIGHT_X=-0.6, LIGHT_Y=-0.8, TONE=0.16, INK="#1b1410", THICK=0.022, THICKF=1, LEAN_X=0.5, LEAN_Y=0.85;
 const CASES=[["Medium, one square",1],["Large",2],["Huge",3]];
+const CRACK_DARK="#14303c", CRACK_LIP="#f2fbfd";
 const row=document.getElementById("row");
 const draw=()=>{
   row.innerHTML="";
@@ -39,14 +40,41 @@ const draw=()=>{
     g.beginPath(); ring.forEach((p,i)=>i?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y)); g.closePath();
     g.fillStyle=WATER; g.fill();
     const plates=icePlates(key,{grid,seed,size});
-    const thick=grid*THICK;
+    // the cracked squares round the hole, as the map draws them
+    const k=grid/100, lip=Math.max(.6,.9*k);
+    for(const key of ["0,1","1,0","2,1","1,2"]){
+      for(const line of crackLines(key,{grid,seed})){
+        const P=line.map(off);
+        const run=(dx,dy)=>{g.beginPath();P.forEach((p,i)=>i?g.lineTo(p.x+dx,p.y+dy):g.moveTo(p.x+dx,p.y+dy));g.stroke();};
+        g.lineCap="round";
+        g.lineWidth=Math.max(1,.9*k); g.strokeStyle=CRACK_LIP; g.globalAlpha=.5; run(lip,lip);
+        g.lineWidth=Math.max(1,1.1*k); g.strokeStyle=CRACK_DARK; g.globalAlpha=.85; run(0,0);
+        g.globalAlpha=1;
+      }
+    }
+    const thick=Math.max(1,grid*THICK), k2=grid/100;
     for(const plate of plates){
       const P=plate.points.map(off);
       const path=(a,dx=0,dy=0)=>{g.beginPath();a.forEach((p,i)=>i?g.lineTo(p.x+dx,p.y+dy):g.moveTo(p.x+dx,p.y+dy));g.closePath();};
-      path(P,thick*LEAN_X,thick*LEAN_Y); g.fillStyle=DEEP; g.fill();
-      path(P,thick*(LEAN_X-0.18),thick*(LEAN_Y-0.3)); g.fillStyle=SIDE; g.fill();
-      path(P); g.fillStyle=FACE; g.fill();
-      g.lineWidth=1.4; g.strokeStyle=INK; g.globalAlpha=.7; g.stroke(); g.globalAlpha=1;
+      path(P,thick*LEAN_X,thick*LEAN_Y); g.fillStyle=DEEP; g.globalAlpha=.9; g.fill();
+      path(P,thick*(LEAN_X-.45*THICKF),thick*(LEAN_Y-.26*THICKF)); g.fillStyle=SIDE; g.globalAlpha=.85; g.fill();
+      const tone=Number.isFinite(plate.tone)?plate.tone:.5;
+      path(P); g.fillStyle=FACE; g.globalAlpha=FACE_ALPHA*(1-TONE/2+tone*TONE); g.fill();
+      g.lineWidth=Math.max(1,1.1*k2); g.strokeStyle=EDGE; g.globalAlpha=.7; g.lineJoin="miter"; g.stroke();
+      // the bright broken edge, only where it faces the light
+      g.lineWidth=Math.max(1,1.3*k2); g.strokeStyle=RIM; g.globalAlpha=.5; g.lineCap="round";
+      const m=off(plate.mid);
+      for(let i=0;i<P.length;i++){
+        const a=P[i], b=P[(i+1)%P.length];
+        const ex=b.x-a.x, ey=b.y-a.y, run=Math.hypot(ex,ey);
+        if(!(run>0)) continue;
+        let nx=ey/run, ny=-ex/run;
+        const mx=(a.x+b.x)/2-m.x, my=(a.y+b.y)/2-m.y;
+        if(nx*mx+ny*my<0){nx=-nx;ny=-ny;}
+        if(nx*LIGHT_X+ny*LIGHT_Y<=.15) continue;
+        g.beginPath(); g.moveTo(a.x,a.y); g.lineTo(b.x,b.y); g.stroke();
+      }
+      g.globalAlpha=1;
     }
     fig.append(c);
     const cap=document.createElement("figcaption"); cap.textContent=`${label} — ${plates.length} plates`;

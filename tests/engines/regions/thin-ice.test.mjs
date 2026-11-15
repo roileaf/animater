@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { SIZES, holdsUp, iceStep, iceStateOf, iceUpdatesFor, squareKeyAt, squaresCrossed, sizeNameOf, squaresAcross, weightOffset, walkedLegs, squaresEntered, moveSince, movePathName, OFF_THE_FLOOR, thinIceOn, iceSettingsOf, iceMoveFor, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares, MELTED , moveFinished } from "../../../scripts/engines/regions/thin-ice.mjs";
+import { SIZES, holdsUp, iceStep, iceStateOf, iceUpdatesFor, squareKeyAt, squaresCrossed, sizeNameOf, squaresAcross, weightOffset, walkedLegs, squaresEntered, moveSince, movePathName, OFF_THE_FLOOR, thinIceOn, iceSettingsOf, iceMoveFor, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares, MELTED } from "../../../scripts/engines/regions/thin-ice.mjs";
 
 test("the limit holds its own size and everything smaller", () => {
   assert.equal(holdsUp("med", "sm"), 0);
@@ -41,16 +41,17 @@ test("a creature exactly at the limit never cracks anything", () => {
   assert.deepEqual(r, { cracks: [], breaks: [], note: null });
 });
 
-test("ending a move on a square it just cracked breaks it", () => {
-  const r = iceStep({ limit: "med", size: "lg", squares: ["2,2"], cracked: [], ended: "2,2" });
-  assert.deepEqual(r.breaks, ["2,2"]);
-  assert.deepEqual(r.cracks, []);
+test("ending a move on a square it just cracked leaves it cracked, not broken", () => {
+  const r = iceStep({ limit: "med", size: "lg", squares: ["2,2"], cracked: [] });
+  assert.deepEqual(r.cracks, ["2,2"], "where a move stops is not what breaks ice");
+  assert.deepEqual(r.breaks, [], "a single step onto sound ice is a crack, however the move ends");
 });
 
 test("a square never lands in both lists", () => {
-  const r = iceStep({ limit: "med", size: "lg", squares: ["1,1", "1,2", "1,3"], cracked: ["1,2"], ended: "1,3" });
-  assert.deepEqual(r.cracks, ["1,1"]);
-  assert.deepEqual(r.breaks, ["1,2", "1,3"]);
+  const r = iceStep({ limit: "med", size: "lg", squares: ["1,1", "1,2", "1,3"], cracked: ["1,2"] });
+  assert.deepEqual(r.cracks, ["1,1", "1,3"], "fresh squares crack");
+  assert.deepEqual(r.breaks, ["1,2"], "and the one already cracked gives way");
+  for (const key of r.breaks) assert.ok(!r.cracks.includes(key));
 });
 
 test("a break is whispered by name, a crack more quietly, nothing at all is null", () => {
@@ -314,15 +315,21 @@ test("a creature two sizes over breaks the first square it enters, and no other"
 
 test("the hole is as wide as the creature that fell through it, not as wide as the limit", () => {
   const huge = iceMoveFor({ region: iceRegion({}), size: "huge", squares: ["3,4"] }).updates[0];
-  const large = iceMoveFor({ region: iceRegion({}), size: "lg", squares: ["3,4"], ended: "3,4" }).updates[0];
-  assert.equal(huge[`${FLAG}.holes.3,4`], 3, "a Huge creature");
-  assert.equal(large[`${FLAG}.holes.3,4`], 2, "a Large one, through the same square");
+  const large = iceMoveFor({ region: iceRegion({ cracks: { "3,4": 1 } }), size: "lg", squares: ["3,4"] }).updates[0];
+  assert.equal(huge[`${FLAG}.holes.3,4`], 3, "a Huge creature, straight through");
+  assert.equal(large[`${FLAG}.holes.3,4`], 2, "a Large one, through a crack it found there");
 });
 
-test("one size over cracks what it crosses and breaks the square it stopped on", () => {
-  const { updates, note } = iceMoveFor({ region: iceRegion({}), size: "lg", squares: ["1,1", "1,2", "1,3"], ended: "1,3", name: "Bron", system: "pf2e" });
-  assert.deepEqual(updates, [{ _id: "reg1", [`${FLAG}.holes.1,3`]: 2, [`${FLAG}.cracks.1,1`]: 1, [`${FLAG}.cracks.1,2`]: 1 }]);
-  assert.equal(note, "Bron breaks through the ice into the water (swim).");
+
+test("one size over cracks what it crosses, and goes through where the ice was cracked already", () => {
+  const first = iceMoveFor({ region: iceRegion({}), size: "lg", squares: ["1,1", "1,2", "1,3"], name: "Bron", system: "pf2e" });
+  assert.deepEqual(first.updates, [{ _id: "reg1", [`${FLAG}.cracks.1,1`]: 1, [`${FLAG}.cracks.1,2`]: 1, [`${FLAG}.cracks.1,3`]: 1 }]);
+  assert.equal(first.note, "The ice cracks under Bron.");
+  assert.equal(first.broke, false);
+  // Walking back over what it cracked is what puts it in.
+  const back = iceMoveFor({ region: iceRegion({ cracks: { "1,1": 1, "1,2": 1, "1,3": 1 } }), size: "lg", squares: ["1,2"], name: "Bron", system: "pf2e" });
+  assert.equal(back.note, "Bron breaks through the ice into the water (swim).");
+  assert.equal(back.broke, true);
 });
 
 test("a second heavy creature over another's cracks falls through them, and the crack is cleared by name", () => {
@@ -560,35 +567,39 @@ test("the fire's box never widens the walk past the region, and no box at all wa
   }
 });
 
-// ---- a move that is still going is not a resting place ----
-test("a move with waypoints still to come is not finished, and one with none is", () => {
-  assert.equal(moveFinished({ pending: { waypoints: [{ x: 1, y: 1 }] } }), false, "still walking");
-  assert.equal(moveFinished({ pending: { waypoints: [] } }), true, "come to rest");
+
+
+test("walking across thin ice cracks square after square and never gives way on fresh ice", () => {
+  const walk = (squares, cracked = []) => iceStep({ limit: "med", size: "lg", squares, cracked, name: "Bron" });
+  const one = walk(["1,1"]);
+  assert.deepEqual(one.cracks, ["1,1"], "one square stepped onto cracks");
+  assert.deepEqual(one.breaks, [], "and does NOT give way: a single step onto sound ice is not a hole");
+  const four = walk(["1,1", "1,2", "1,3", "1,4"]);
+  assert.deepEqual(four.cracks, ["1,1", "1,2", "1,3", "1,4"], "a whole walk cracks its way across");
+  assert.deepEqual(four.breaks, [], "and goes through nowhere: none of it was cracked before");
 });
 
-test("a build that says nothing about what is pending is taken as finished, as a single firing always was", () => {
-  for (const movement of [undefined, null, {}, { pending: null }, { pending: {} }, { pending: { waypoints: "soon" } }]) {
-    assert.equal(moveFinished(movement), true);
-  }
+test("ice already cracked is what gives way, whether this walk cracked it or an earlier one did", () => {
+  const back = iceStep({ limit: "med", size: "lg", squares: ["1,1", "1,2", "1,1"], cracked: [], name: "Bron" });
+  assert.deepEqual(back.breaks, ["1,1"], "stepping back onto its own crack");
+  assert.deepEqual(back.cracks, ["1,2"], "and the square it only crossed once is left cracked");
+  const again = iceStep({ limit: "med", size: "lg", squares: ["1,1"], cracked: ["1,1"], name: "Bron" });
+  assert.deepEqual(again.breaks, ["1,1"], "or a crack an earlier move left there");
+  const elsewhere = iceStep({ limit: "med", size: "lg", squares: ["2,2"], cracked: ["1,1"], name: "Dain" });
+  assert.deepEqual(elsewhere.breaks, [], "a crack somewhere else is nothing to do with it");
 });
 
-test("walking across thin ice cracks square after square and only gives way at the end, not under the first step", () => {
-  // What the hook does per firing: the squares walked so far, and 'ended' only once the move is really over.
-  const walk = (squares, { finished }) => iceStep({
-    limit: "med", size: "lg", squares, cracked: [],
-    ended: finished ? squares[squares.length - 1] : null, name: "Bron",
-  });
-  const mid = walk(["1,1"], { finished: false });
-  assert.deepEqual(mid.cracks, ["1,1"], "the first square cracks");
-  assert.deepEqual(mid.breaks, [], "and does NOT give way: the creature is still walking, not standing on it");
-  const next = walk(["1,2"], { finished: false });
-  assert.deepEqual(next.breaks, [], "nor does the second");
-  const last = walk(["1,3"], { finished: true });
-  assert.deepEqual(last.breaks, ["1,3"], "it gives way where the creature stops");
-});
 
 test("the whole walk in one firing behaves the same as the walk one square at a time", () => {
-  const atOnce = iceStep({ limit: "med", size: "lg", squares: ["1,1", "1,2", "1,3"], cracked: [], ended: "1,3" });
-  assert.deepEqual(atOnce.cracks, ["1,1", "1,2"]);
-  assert.deepEqual(atOnce.breaks, ["1,3"]);
+  const atOnce = iceStep({ limit: "med", size: "lg", squares: ["1,1", "1,2", "1,3"], cracked: [] });
+  assert.deepEqual(atOnce.cracks, ["1,1", "1,2", "1,3"]);
+  assert.deepEqual(atOnce.breaks, []);
+  let cracked = [];
+  for (const square of ["1,1", "1,2", "1,3"]) {
+    const step = iceStep({ limit: "med", size: "lg", squares: [square], cracked });
+    cracked = [...cracked, ...step.cracks];
+    assert.deepEqual(step.breaks, [], "no firing of it breaks anything");
+  }
+  assert.deepEqual(cracked, ["1,1", "1,2", "1,3"], "the same cracks, however the move arrived");
 });
+

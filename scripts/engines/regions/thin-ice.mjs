@@ -153,12 +153,13 @@ export function holdsUp(limit, size) {
 }
 
 // What one move does to the ice. Walks the squares entered in order: a creature two sizes over breaks the first and goes
-// no further; one size over cracks each square, and breaks one that was already cracked or that the move ended on.
+// no further; one size over cracks fresh ice and goes through ice that was already cracked, whether this walk cracked it a
+// few squares back or an earlier one did.
 // A square entered twice in one move counts as crossing its own crack. A square is only ever in one list, once. The note is the GM whisper, or null when nothing happened.
 // The whisper names a system's own action for getting out only where that system has one to name; everywhere else it says
 // what happened and stops, rather than inventing a rule for a table whose game does not have it. Nothing here touches HP
 // or applies a condition in any system: the GM is told, and the GM decides.
-export function iceStep({ limit, size, squares = [], cracked = [], ended, name, system } = {}) {
+export function iceStep({ limit, size, squares = [], cracked = [], name, system } = {}) {
   const over = holdsUp(limit, size);
   const cracks = [];
   const breaks = [];
@@ -167,8 +168,11 @@ export function iceStep({ limit, size, squares = [], cracked = [], ended, name, 
   } else if (over === 1) {
     for (const square of squares) {
       if (breaks.includes(square)) continue;
-      // Already cracked, cracked earlier in this same walk, or where the move ended: the ice gives way.
-      if (cracked.includes(square) || cracks.includes(square) || square === ended) {
+      // Ice that is already cracked gives way: cracked by an earlier move, or by this one a few squares back. Fresh ice
+      // only cracks, however the move ends on it. A creature one size over is not heavy enough to go through at a touch —
+      // it goes through where the ice has already been worked, which is what makes crossing a lake a run of luck rather
+      // than one step and a hole. (Standing still on a cracked square is safe: nothing is entered, so nothing is judged.)
+      if (cracked.includes(square) || cracks.includes(square)) {
         const i = cracks.indexOf(square);
         if (i >= 0) cracks.splice(i, 1);
         breaks.push(square);
@@ -274,15 +278,16 @@ export function iceUpdatesFor(step, { region, size } = {}) {
 
 /** What one move did to one region's thin ice: `{ updates, note, broke }` — the region updates to write (`[]` when nothing changed,
  *  which is what a creature the ice holds leaves behind) and the GM's whisper, or null when there is nothing to write and so
- *  nothing to say. `squares` are the squares of the move that this region holds, in the order they were entered, and `ended`
- *  the square the move finished on where that is one of them. The region's own limit is read from its settings; a region the
+ *  nothing to say. `squares` are the squares of the move that this region holds, in the order they were entered. Where the
+ *  move finished does not come into it: fresh ice cracks and cracked ice gives way, so nothing here waits on a move ending.
+ *  The region's own limit is read from its settings; a region the
  *  GM never marked as thin ice is left alone. `broke` says the ice gave way here, so a caller watching several regions at
  *  once can tell one break from a crack and whisper once. Pure: the caller writes. */
-export function iceMoveFor({ region, size, squares = [], ended, name, system } = {}) {
+export function iceMoveFor({ region, size, squares = [], name, system } = {}) {
   const none = { updates: [], note: null, broke: false };
   const { thin, holds } = iceSettingsOf(region);
   if (!thin || !squares.length) return none;
-  const step = iceStep({ limit: holds, size, squares, cracked: iceStateOf(region).cracks, ended, name, system });
+  const step = iceStep({ limit: holds, size, squares, cracked: iceStateOf(region).cracks, name, system });
   const updates = iceUpdatesFor(step, { region, size: squaresAcross(size) });
   return updates.length ? { updates, note: step.note, broke: step.breaks.length > 0 } : none;
 }
@@ -393,16 +398,3 @@ export function newKeys(keys, seen) {
   return { fresh: [...now].filter((key) => !seen.has(key)), seen: now };
 }
 
-/** Whether a move is over, or only part of one. Foundry fires its move hook again as a creature goes, each firing carrying
- *  the waypoints walked so far and the ones still to come, so the last waypoint of a firing is usually NOT where the
- *  creature came to rest — it is where it is at this instant, mid-walk. Treating it as a resting place broke the ice under
- *  the very first square a creature one size over stepped on, instead of cracking square after square and giving way at the
- *  end. A move is finished only when nothing is pending. Where a build tells us nothing about what is pending, we cannot
- *  know, and the move is taken as finished — which is how a single-firing hook has always behaved. Pure. */
-export function moveFinished(movement) {
-  const pending = movement?.pending;
-  if (!pending || typeof pending !== "object") return true;
-  const ways = pending.waypoints;
-  if (!Array.isArray(ways)) return true;
-  return ways.length === 0;
-}

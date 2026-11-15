@@ -32,43 +32,68 @@ export function crackLines(key, { grid, seed = 0 } = {}) {
   const sq = parseKey(key);
   if (!sq || !validGrid(grid)) return [];
   const next = stream(sq, seed, 1);
-  const x0 = sq.col * grid, y0 = sq.row * grid, margin = grid * 0.03;
+  const x0 = sq.col * grid, y0 = sq.row * grid, margin = grid * 0.04;
   const clamp = (v, lo) => Math.min(lo + grid - margin, Math.max(lo + margin, v));
   const cx = x0 + grid / 2, cy = y0 + grid / 2;
-  const count = 4 + Math.floor(next() * 3);
+  // A few long runs rather than a bush of short ones. Ice fractures in straight lines that change direction at a break,
+  // not in twigs: three or four main cracks out of the point the weight fell on, each nearly straight, with the odd
+  // branch off one of them. The old shape read as sticks lying on the ice.
+  const count = 3 + Math.floor(next() * 2);
   const lines = [];
-  for (let k = 0; k < count; k++) {
-    let angle = ((k + next() * 0.6) / count) * Math.PI * 2;
-    let x = cx + (next() - 0.5) * grid * 0.12, y = cy + (next() - 0.5) * grid * 0.12;
+  const run = (fromX, fromY, angle, steps, step) => {
+    let x = fromX, y = fromY, a = angle;
     const line = [{ x, y }];
-    const steps = 3 + Math.floor(next() * 2);
     for (let s = 0; s < steps; s++) {
-      angle += (next() - 0.5) * 1.1; // each step veers, so the crack zigzags
-      // Short enough that the clamp below stops deciding where a crack goes: four steps of the usual length reach about
-      // 0.42 of a grid from the middle, inside the 0.47 the clamp allows (only four at their very longest, all pointing
-      // the same way, would reach past it, and each step veers). At the length this was, a crack reached 0.74 and was
-      // pinned flat against the square's edge — which read as a straight run down the grid line, and lined up with the
-      // next cracked square's along their shared border.
-      const len = grid * 0.09 * (0.7 + next() * 0.6);
-      x = clamp(x + Math.cos(angle) * len, x0); y = clamp(y + Math.sin(angle) * len, y0);
+      a += (next() - 0.5) * CRACK_VEER; // a crack holds its line, then turns at a break
+      // Kept short enough that the clamp below does not decide where a crack goes: at their longest these reach about
+      // 0.44 of a grid from the middle, inside the 0.46 the clamp allows. A crack that reached the edge was pinned flat
+      // against it, which read as a straight run down the grid line and lined up with the next cracked square’s.
+      const len = grid * step * (0.75 + next() * 0.5);
+      x = clamp(x + Math.cos(a) * len, x0); y = clamp(y + Math.sin(a) * len, y0);
       line.push({ x, y });
     }
-    lines.push(line);
+    return { line, end: { x, y }, angle: a };
+  };
+  for (let k = 0; k < count; k++) {
+    const angle = ((k + next() * 0.5) / count) * Math.PI * 2;
+    const from = { x: cx + (next() - 0.5) * grid * 0.1, y: cy + (next() - 0.5) * grid * 0.1 };
+    const main = run(from.x, from.y, angle, CRACK_STEPS, CRACK_STEP);
+    lines.push(main.line);
+    // One crack in two throws a shorter one off where it turned: a fracture branches, it does not only radiate.
+    if (next() < 0.5 && main.line.length > 2) {
+      const at = main.line[1 + Math.floor(next() * (main.line.length - 2))];
+      lines.push(run(at.x, at.y, main.angle + (next() < 0.5 ? -1 : 1) * (0.6 + next() * 0.5), 2, CRACK_STEP * 0.7).line);
+    }
   }
   return lines;
 }
 
+
 // Points round the hole, and how wide it is: about the creature's size plus one square across, its radius never under
 // LOW of that, so shards placed inside LOW * half are always in the hole.
-const RING_POINTS = 16, LOW = 0.78;
+// A break is not a circle. Eleven points rather than sixteen, and each one free to sit anywhere from the rim to well inside
+// it, so the opening is angular and uneven — the shape ice leaves when it gives way, not a hole punched with a cutter.
+const RING_POINTS = 11, LOW = 0.6;
+// How a crack runs: nearly straight, turning a little at each break along it, in a few long steps rather than many short.
+const CRACK_STEPS = 3, CRACK_STEP = 0.13, CRACK_VEER = 0.55;
 // How a broken sheet comes apart: a square's worth into about five slabs, a Huge creature's hole into a dozen at most;
 // each shrunk a little about its middle so the water shows between them, slid a touch outward and swung a touch round.
 const PLATES_ONE = 4, PLATES_PER_SQUARE = 2.2, PLATES_MOST = 12;
-const PLATE_SHRINK_LOW = 0.88, PLATE_SHRINK_SPAN = 0.08, PLATE_DRIFT_LOW = 0.01, PLATE_DRIFT_SPAN = 0.04, PLATE_TURN = 0.26;
+const PLATE_SHRINK_LOW = 0.88, PLATE_SHRINK_SPAN = 0.07, PLATE_DRIFT_LOW = 0.012, PLATE_DRIFT_SPAN = 0.035, PLATE_TURN = 0.26;
 // Where the creature went through, the ice is gone: the plates nearest the middle sit furthest apart and most water shows
 // between them, while the ones out at the rim are still almost touching. A photograph of a hole in a river reads the same
 // way, and it is what tells a player at a glance where the hole is rather than where the ice merely cracked.
-const PLATE_CENTRE_OPEN = 0.16;
+const PLATE_CENTRE_OPEN = 0.13;
+// The creature went through here, so there is no ice where it is: an opening about its own size, with the slabs shoved
+// out around it and their inner edges cut straight where they were pushed back. Without it the pieces closed over the
+// hole and a creature in the water looked like a creature on a heap of broken slabs.
+const PLATE_OPENING = 0.92;
+// Ice does not break along drawn lines. Every edge of a slab is chipped: a point or two set into it, shifted square to
+// the edge by a little, so no edge is ever a perfect straight run. Without this the pieces read as cut paper however
+// they are coloured, which is the single thing that gave the first design away.
+const PLATE_CHIP = 0.035, PLATE_CHIP_AT = 0.055;
+// A break leaves chips as well as slabs: a few small pieces floating loose in the opening the creature made.
+const PLATE_CHIPS_KEPT = 2, PLATE_CHIP_SIZE = 0.3;
 // How a slab rides: its lift is a fraction of a square, so it is the same small movement on a map of 70-pixel squares as on
 // one of 200, and its swing is radians. Both are small — a plate the size of a creature barely moves on the water.
 const PLATE_SWAY = 0.012, PLATE_SWING = 0.016;
@@ -130,11 +155,32 @@ function areaMid(poly) {
   return { area, mid: { x: cx / (3 * twice), y: cy / (3 * twice) } };
 }
 
+// An edge with a chip or two taken out of it: each run between two corners gets an extra point partway along, pushed
+// square to the run. Long edges get two, short ones one, so a big slab is as rough along its length as a small one.
+function chipped(poly, grid, next) {
+  const out = [];
+  for (let k = 0; k < poly.length; k++) {
+    const a = poly[k], b = poly[(k + 1) % poly.length];
+    out.push(a);
+    const dx = b.x - a.x, dy = b.y - a.y, run = Math.hypot(dx, dy);
+    if (!(run > grid * 0.08)) continue;
+    const nx = -dy / run, ny = dx / run;
+    const bites = run > grid * 0.5 ? 2 : 1;
+    for (let i = 1; i <= bites; i++) {
+      const along = (i / (bites + 1)) + (next() - 0.5) * PLATE_CHIP_AT;
+      const out_ = (next() - 0.5) * 2 * grid * PLATE_CHIP;
+      out.push({ x: a.x + dx * along + nx * out_, y: a.y + dy * along + ny * out_ });
+    }
+  }
+  return out;
+}
+
 /** The ice of a broken square as floating plates: the hole's own outline fractured along straight lines into a few slabs,
  *  each shrunk a little about its own middle and nudged outward, so the dark water shows in the seams between them and the
  *  pieces still read as one sheet come apart. [{ points: [{x, y}, ...], mid: {x, y}, turn, drift }], biggest first.
  *  `turn` is how far that slab has swung, `drift` how far it has slid out and `sway` how far it lifts on the water, all
- *  small and all in the caller's own pixels. Junk input gives []. Pure. */
+ *  small and all in the caller's own pixels. `chip` marks the small pieces floating loose in the opening rather than the
+ *  slabs ringing it. Junk input gives []. Pure. */
 export function icePlates(key, { grid, seed = 0, size } = {}) {
   const sq = parseKey(key);
   if (!sq || !validGrid(grid) || !(Number(size) > 0) || !Number.isFinite(size)) return [];
@@ -160,21 +206,52 @@ export function icePlates(key, { grid, seed = 0, size } = {}) {
     if (halves.length < 2) { pieces.push(big); break; } // the cut missed: leave this piece whole
     pieces.push(...halves);
   }
+  // Cut the creature's own opening out of the sheet: each piece loses whatever of it lay over the hole, which leaves the
+  // inner edges straight, as ice shoved aside is. A piece that lay wholly inside it is gone — that is the ice the
+  // creature took down with it.
+  const open = (size / 2) * grid * PLATE_OPENING;
+  const chips = [];
+  if (open > 0) {
+    const kept = [];
+    for (const piece of pieces) {
+      const away = Math.hypot(piece.mid.x - cx, piece.mid.y - cy);
+      if (away < 1e-6) continue; // sat right over the opening
+      const dirX = (piece.mid.x - cx) / away, dirY = (piece.mid.y - cy) / away;
+      // The straight cut across the opening, square to the way this piece was pushed.
+      const at = { x: cx + dirX * open, y: cy + dirY * open };
+      const poly = halfOf(piece.poly, at, Math.atan2(dirY, dirX) + Math.PI / 2, -1);
+      const am = poly.length >= 3 ? areaMid(poly) : null;
+      if (am && am.area > grid * grid * 0.004) { kept.push({ poly, ...am }); continue; }
+      // Nothing of it survived the opening: it went in with the creature. A couple of them come back up as loose chips,
+      // shrunk about their own middles and floating in the water, because a break leaves chips as well as slabs.
+      if (chips.length < PLATE_CHIPS_KEPT && piece.area > grid * grid * 0.01) {
+        const bit = piece.poly.map((pt) => ({ x: piece.mid.x + (pt.x - piece.mid.x) * PLATE_CHIP_SIZE, y: piece.mid.y + (pt.y - piece.mid.y) * PLATE_CHIP_SIZE }));
+        const bm = areaMid(bit);
+        if (bm) chips.push({ poly: bit, ...bm, chip: true });
+      }
+    }
+    if (kept.length) pieces = [...kept, ...chips];
+  }
   pieces.sort((a, b) => b.area - a.area);
   return pieces.map((piece) => {
     const away = Math.atan2(piece.mid.y - cy, piece.mid.x - cx) || 0;
-    const drift = grid * (PLATE_DRIFT_LOW + next() * PLATE_DRIFT_SPAN);
-    const turn = (next() - 0.5) * PLATE_TURN;
     // How far out this plate sits, 0 in the middle of the hole and 1 at its rim.
     const out = Math.min(1, Math.hypot(piece.mid.x - cx, piece.mid.y - cy) / Math.max(1, ((size + 1) / 2) * grid));
+    // Shoved out from the middle, and the further out a piece already is the less it moved: the rim of the sheet is
+    // still joined to the ice around it, and a slab there that drifted could end up outside the hole it came from.
+    const drift = grid * (PLATE_DRIFT_LOW + next() * PLATE_DRIFT_SPAN) * (1 - out * 0.8);
+    const turn = (next() - 0.5) * PLATE_TURN;
     const shrink = (PLATE_SHRINK_LOW + next() * PLATE_SHRINK_SPAN) * (1 - PLATE_CENTRE_OPEN * (1 - out));
     const mid = { x: piece.mid.x + Math.cos(away) * drift, y: piece.mid.y + Math.sin(away) * drift };
     // Shrunk about its own middle and swung a little where it now sits: the seam between two slabs is water, not a line.
-    const points = piece.poly.map((pt) => {
+    const points = chipped(piece.poly, grid, next).map((pt) => {
       const dx = (pt.x - piece.mid.x) * shrink, dy = (pt.y - piece.mid.y) * shrink;
       return { x: mid.x + dx * Math.cos(turn) - dy * Math.sin(turn), y: mid.y + dx * Math.sin(turn) + dy * Math.cos(turn) };
     });
-    return { points, mid, turn, drift, sway: grid * PLATE_SWAY };
+    // How this one sits in the light: some slabs are tilted wet and dark, some are dry and pale. Without it a break is
+    // one flat colour cut into shapes, which is a mosaic rather than ice.
+    const tone = next();
+    return { points, mid, turn, drift, tone, chip: piece.chip === true, sway: grid * PLATE_SWAY };
   });
 }
 
