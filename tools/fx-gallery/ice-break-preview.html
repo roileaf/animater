@@ -17,7 +17,7 @@ label{color:#97a0ad;margin-right:12px}input{vertical-align:middle}
 <script type="module">
 import { icePlates, holeOutline, crackLines } from "/scripts/engines/regions/ice-break-look.mjs";
 // The painter's own colours and thickness (engines/regions/ice-break-draw.mjs), so this page shows what the map shows.
-const WATER="#17465e", FACE="#eaf2f4", SIDE="#79b9ce", DEEP="#3f7d95", INK="#1b1410", THICK=0.05, LEAN_X=0.45, LEAN_Y=0.75;
+const WATER="#17465e", FACE="#dcecf4", FACE_ALPHA=0.62, SIDE="#9fd4e4", DEEP="#2f6e88", RIM="#f6ffff", EDGE="#2b4f60", INK="#1b1410", THICK=0.022, THICKF=1, LEAN_X=0.5, LEAN_Y=0.85;
 const CASES=[["Medium, one square",1],["Large",2],["Huge",3]];
 const CRACK_DARK="#14303c", CRACK_LIP="#f2fbfd";
 const row=document.getElementById("row");
@@ -52,14 +52,16 @@ const draw=()=>{
         g.globalAlpha=1;
       }
     }
-    const thick=grid*THICK;
+    const thick=Math.max(1,grid*THICK), k2=grid/100;
     for(const plate of plates){
       const P=plate.points.map(off);
       const path=(a,dx=0,dy=0)=>{g.beginPath();a.forEach((p,i)=>i?g.lineTo(p.x+dx,p.y+dy):g.moveTo(p.x+dx,p.y+dy));g.closePath();};
-      path(P,thick*LEAN_X,thick*LEAN_Y); g.fillStyle=DEEP; g.fill();
-      path(P,thick*(LEAN_X-0.18),thick*(LEAN_Y-0.3)); g.fillStyle=SIDE; g.fill();
-      path(P); g.fillStyle=FACE; g.fill();
-      g.lineWidth=1.4; g.strokeStyle=INK; g.globalAlpha=.7; g.stroke(); g.globalAlpha=1;
+      path(P,thick*LEAN_X,thick*LEAN_Y); g.fillStyle=DEEP; g.globalAlpha=.9; g.fill();
+      path(P,thick*(LEAN_X-.45*THICKF),thick*(LEAN_Y-.26*THICKF)); g.fillStyle=SIDE; g.globalAlpha=.85; g.fill();
+      path(P); g.fillStyle=FACE; g.globalAlpha=FACE_ALPHA; g.fill();
+      g.lineWidth=Math.max(1,1.5*k2); g.strokeStyle=RIM; g.globalAlpha=.7; g.lineJoin="round"; g.stroke();
+      g.lineWidth=Math.max(1,0.9*k2); g.strokeStyle=EDGE; g.globalAlpha=.5; g.lineJoin="miter"; g.stroke();
+      g.globalAlpha=1;
     }
     fig.append(c);
     const cap=document.createElement("figcaption"); cap.textContent=`${label} — ${plates.length} plates`;

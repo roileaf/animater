@@ -84,6 +84,10 @@ const PLATE_SHRINK_LOW = 0.88, PLATE_SHRINK_SPAN = 0.07, PLATE_DRIFT_LOW = 0.012
 // between them, while the ones out at the rim are still almost touching. A photograph of a hole in a river reads the same
 // way, and it is what tells a player at a glance where the hole is rather than where the ice merely cracked.
 const PLATE_CENTRE_OPEN = 0.13;
+// The creature went through here, so there is no ice where it is: an opening about its own size, with the slabs shoved
+// out around it and their inner edges cut straight where they were pushed back. Without it the pieces closed over the
+// hole and a creature in the water looked like a creature on a heap of broken slabs.
+const PLATE_OPENING = 0.92;
 // How a slab rides: its lift is a fraction of a square, so it is the same small movement on a map of 70-pixel squares as on
 // one of 200, and its swing is radians. Both are small — a plate the size of a creature barely moves on the water.
 const PLATE_SWAY = 0.012, PLATE_SWING = 0.016;
@@ -174,6 +178,24 @@ export function icePlates(key, { grid, seed = 0, size } = {}) {
     }).filter(Boolean);
     if (halves.length < 2) { pieces.push(big); break; } // the cut missed: leave this piece whole
     pieces.push(...halves);
+  }
+  // Cut the creature's own opening out of the sheet: each piece loses whatever of it lay over the hole, which leaves the
+  // inner edges straight, as ice shoved aside is. A piece that lay wholly inside it is gone — that is the ice the
+  // creature took down with it.
+  const open = (size / 2) * grid * PLATE_OPENING;
+  if (open > 0) {
+    const kept = [];
+    for (const piece of pieces) {
+      const away = Math.hypot(piece.mid.x - cx, piece.mid.y - cy);
+      if (away < 1e-6) continue; // sat right over the opening
+      const dirX = (piece.mid.x - cx) / away, dirY = (piece.mid.y - cy) / away;
+      // The straight cut across the opening, square to the way this piece was pushed.
+      const at = { x: cx + dirX * open, y: cy + dirY * open };
+      const poly = halfOf(piece.poly, at, Math.atan2(dirY, dirX) + Math.PI / 2, -1);
+      const am = poly.length >= 3 ? areaMid(poly) : null;
+      if (am && am.area > grid * grid * 0.004) kept.push({ poly, ...am });
+    }
+    if (kept.length) pieces = kept;
   }
   pieces.sort((a, b) => b.area - a.area);
   return pieces.map((piece) => {

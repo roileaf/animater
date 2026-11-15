@@ -7,9 +7,13 @@
 import { shardAt, plateAt } from "./ice-break-look.mjs";
 
 const INK = 0x1b1410, FROST = 0xdcecf2, SHARD = 0xe9f4f7, SHARD_EDGE = 0x5d7f8c;
-// A plate seen from above: a pale face, and under it the cold edge of the ice's own thickness, offset a little so the band
-// shows on the two sides away from the light. Thickness is a fraction of a square, so a plate reads the same on any map.
-const PLATE_FACE = 0xeaf2f4, PLATE_SIDE = 0x79b9ce, PLATE_DEEP = 0x3f7d95;
+// A plate of ice seen from above. Ice is not a tile: it is see-through, so the dark water under it shows through and
+// colours it, and what catches the light is the broken edge rather than the whole face. An opaque pale face with a wide
+// band beneath it read as cardboard with a drop shadow, which is what it was.
+const PLATE_FACE = 0xdcecf4, PLATE_FACE_ALPHA = 0.62;
+const PLATE_SIDE = 0x9fd4e4, PLATE_DEEP = 0x2f6e88;
+// The lit broken edge, the line where ice meets water, and the flaws frozen into the sheet.
+const PLATE_RIM = 0xf6ffff, PLATE_EDGE = 0x2b4f60, PLATE_FLAW = 0x9ec6d6;
 // The water in the hole, painted here under the plates rather than left to the moving water alone. The hole is a water spec
 // too, so the engine's ripples run over this where the screen's quality allows them — but a creature standing in open water
 // has to read as standing in open water on every screen, at every quality, and on a map whose own light is warm enough to
@@ -17,7 +21,8 @@ const PLATE_FACE = 0xeaf2f4, PLATE_SIDE = 0x79b9ce, PLATE_DEEP = 0x3f7d95;
 const WATER_DEEP = 0x17465e, WATER_RIM = 0x0b2332;
 // The split itself, and the lip of ice beside it that catches the light.
 const CRACK_DARK = 0x14303c, CRACK_LIP = 0xf2fbfd;
-const PLATE_THICK = 0.05, PLATE_LEAN_X = 0.45, PLATE_LEAN_Y = 0.75;
+// Thickness is a fraction of a square, so a plate reads the same on any map: a thin band past the far edge, not a shadow.
+const PLATE_THICK = 0.022, PLATE_LEAN_X = 0.5, PLATE_LEAN_Y = 0.85;
 
 /** createIceBreakLook({ PIXI, layer, grid }): `layer()` gives the container to draw in (under the creatures), `grid()` the
  *  square size in pixels. sync({ cracks: [{ id, lines }], shards: [{ id, list }] }) draws exactly that, and nothing when
@@ -73,7 +78,7 @@ export function createIceBreakLook({ PIXI, layer, grid = () => 100 }) {
   };
   // The plates of a sheet that gave way: each one its thickness first, then its flat face over it, then the ink outline.
   const drawPlates = () => {
-    const g = grid() || 100, k = g / 100, seconds = clock / 1000, thick = g * PLATE_THICK;
+    const g = grid() || 100, k = g / 100, seconds = clock / 1000, thick = Math.max(1, g * PLATE_THICK);
     platesArt.clear();
     for (const plate of adrift) {
       const pts = plate.points;
@@ -85,10 +90,25 @@ export function createIceBreakLook({ PIXI, layer, grid = () => 100 }) {
         const dx = pt.x - plate.mid.x, dy = pt.y - plate.mid.y;
         flat.push(plate.mid.x + dx * cos - dy * sin + ride.dx, plate.mid.y + dx * sin + dy * cos + ride.dy);
       }
+      // The thickness of the sheet seen past its far edge: a thin band, not a shadow the width of a finger.
       const under = flat.map((v, i) => v + (i % 2 ? thick * PLATE_LEAN_Y : thick * PLATE_LEAN_X));
-      platesArt.lineStyle(0).beginFill(PLATE_DEEP, 0.95).drawPolygon(under).endFill();
-      platesArt.lineStyle(0).beginFill(PLATE_SIDE, 0.95).drawPolygon(under.map((v, i) => v - (i % 2 ? thick * 0.3 : thick * 0.18))).endFill();
-      platesArt.lineStyle(1.4 * k, INK, 0.7).beginFill(PLATE_FACE, 0.97).drawPolygon(flat).endFill();
+      platesArt.lineStyle(0).beginFill(PLATE_DEEP, 0.9).drawPolygon(under).endFill();
+      platesArt.lineStyle(0).beginFill(PLATE_SIDE, 0.85).drawPolygon(under.map((v, i) => v - (i % 2 ? thick * 0.45 : thick * 0.26))).endFill();
+      // The ice itself, see-through, so the water under it does the colouring. This is the whole difference between ice
+      // and a tile, and no amount of outlining makes an opaque face read as ice.
+      platesArt.lineStyle(0).beginFill(PLATE_FACE, PLATE_FACE_ALPHA).drawPolygon(flat).endFill();
+      // Where it broke, the edge is thick and catches the light; under it, the darker line where the ice meets the water.
+      platesArt.lineStyle(Math.max(1, 1.5 * k), PLATE_RIM, 0.7, 1).drawPolygon(flat);
+      platesArt.lineStyle(Math.max(1, 0.9 * k), PLATE_EDGE, 0.5, 0).drawPolygon(flat);
+      // A flaw or two frozen into it, drawn between its own corners, so no two plates carry the same ones.
+      if (pts.length >= 5) {
+        platesArt.lineStyle(Math.max(1, 0.8 * k), PLATE_FLAW, 0.38, 0.5);
+        for (let i = 0; i + 3 < pts.length; i += 3) {
+          const a = i * 2, b = (i + 2) * 2;
+          platesArt.moveTo(flat[a] * 0.78 + plate.mid.x * 0.22, flat[a + 1] * 0.78 + plate.mid.y * 0.22);
+          platesArt.lineTo(flat[b] * 0.72 + plate.mid.x * 0.28, flat[b + 1] * 0.72 + plate.mid.y * 0.28);
+        }
+      }
     }
   };
   return {

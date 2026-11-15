@@ -125,17 +125,28 @@ test("a break leaves the sheet in a few big plates, more of them for a bigger ho
   }
 });
 
-test("the plates and the water share the hole: a sheet come apart, not ice scattered on a pond", () => {
-  const size = 2, o = { grid: GRID, seed: 9, size };
-  const plates = icePlates("3,4", o);
-  const area = (pts) => Math.abs(pts.reduce((sum, a, i) => { const b = pts[(i + 1) % pts.length]; return sum + (a.x * b.y - b.x * a.y); }, 0)) / 2;
-  const ice = plates.reduce((sum, plate) => sum + area(plate.points), 0);
-  const hole = area(holeOutline("3,4", o));
-  // Mostly ice, with the water showing through the seams. Both ends of this matter and both have been wrong: tiled to the
-  // rim, the hole reads as a shadow rather than water; opened too far, it reads as a blue disc with a ring of ice round it
-  // instead of a sheet come apart. About three quarters ice is the sheet, with the water unmistakable between the pieces.
-  assert.ok(ice > hole * 0.6, `the pieces still read as one sheet: ${(ice / hole).toFixed(2)}`);
-  assert.ok(ice < hole * 0.85, `and the water shows between them: ${(ice / hole).toFixed(2)}`);
+test("the creature leaves an opening its own size, with the ice shoved out around it", () => {
+  // It went through here, so there is no ice where it is: the slabs ring an opening about as wide as the creature, which
+  // is what makes a token in the water read as being in the water rather than sitting on a heap of broken ice.
+  for (const [size, squares] of [[1, 1], [2, 2], [3, 3]]) {
+    const o = { grid: GRID, seed: 9, size };
+    const plates = icePlates("3,4", o);
+    const c = centre("3,4", GRID);
+    assert.ok(plates.length >= 3, `the sheet is still in pieces round it: ${plates.length}`);
+    let nearest = Infinity;
+    for (const plate of plates) for (const pt of plate.points) nearest = Math.min(nearest, Math.hypot(pt.x - c.x, pt.y - c.y));
+    const want = (squares / 2) * GRID;
+    assert.ok(nearest > want * 0.7, `the opening is clear of ice: nearest ${(nearest / GRID).toFixed(2)} squares`);
+    assert.ok(nearest < want * 1.45, `and no wider than the creature made it: ${(nearest / GRID).toFixed(2)} squares`);
+  }
+});
+
+test("the ice still rings the opening rather than drifting off it", () => {
+  const o = { grid: GRID, seed: 4, size: 2 };
+  const ring = holeOutline("3,4", o);
+  for (const plate of icePlates("3,4", o)) {
+    assert.ok(inside(ring, plate.mid), "every piece is still in the hole it came from");
+  }
 });
 
 test("the plates nearest the middle sit furthest apart: that is where the creature went through", () => {
