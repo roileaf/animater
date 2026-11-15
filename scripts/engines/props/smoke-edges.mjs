@@ -74,6 +74,28 @@ export function storedSmokeGrid(scene, cells) {
 // smokeCellsOf gives a map with STRING keys; smokeEdges wants [{i, v}] with numeric i. This is the one place they meet.
 export const smokeCellList = (cells) => Object.entries(cells ?? {}).map(([i, v]) => ({ i: Number(i), v }));
 
+/**
+ * How thick the smoke is at one point on the map: the density stored for the square that point falls in, 0 where
+ * nothing is stored, the point is off the grid, or the geometry is unusable.
+ *
+ * Read against the geometry the cells were WRITTEN with (storedSmokeGrid), never the scene's current size — the same
+ * rule the fence and the cloud follow, because a resize or a grid change would otherwise slide the answer under the
+ * stored squares. `cells` is the keyed flag as smokeCellsOf gives it; `grid` is {cols, cell, origin}.
+ *
+ * Pure: no Foundry, no clock. What asks is the drawn flames — a fire standing in thick smoke is not seen, which is
+ * the same thing the sight-blocking fence says about everything else behind it.
+ */
+export function smokeDensityAt(cells, grid, point) {
+  const cols = Number(grid?.cols), size = Number(grid?.cell);
+  const x = Number(point?.x), y = Number(point?.y);
+  if (!(Number.isInteger(cols) && cols > 0 && size > 0) || !Number.isFinite(x) || !Number.isFinite(y)) return 0;
+  const col = Math.floor((x - (Number(grid?.origin?.x) || 0)) / size);
+  const row = Math.floor((y - (Number(grid?.origin?.y) || 0)) / size);
+  if (col < 0 || col >= cols || row < 0) return 0;
+  const v = Number(cells?.[String(row * cols + col)]);
+  return Number.isFinite(v) && v > 0 ? v : 0;
+}
+
 // THE one rule about the level, shared by the writer (smoke-round.mjs smokeLevelFor) and every reader (smokeLevelOf
 // below, and through it the fence and the cloud): a level only counts while the SCENE STILL HAS IT. An id that is not
 // a document id, or that names a level the scene no longer holds, names nothing — and neither side will ever answer

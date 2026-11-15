@@ -23,9 +23,9 @@ import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
 import { BURN_MS, burnLightData, fireTimers, unhideLights, firesOf } from "./engines/props/prop-lights.mjs";
 import { propMaterial, canBreak } from "./engines/props/prop-material.mjs";
-import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf, smokeWalls } from "./engines/props/smoke-field.mjs";
+import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf, smokeWalls, THICK as SMOKE_THICK } from "./engines/props/smoke-field.mjs";
 import { registerSmokeFence } from "./engines/props/smoke-fence.mjs";
-import { smokeGridOf, storedSmokeGrid, smokeCellList, smokeLevelOf } from "./engines/props/smoke-edges.mjs";
+import { smokeGridOf, storedSmokeGrid, smokeCellList, smokeLevelOf, smokeDensityAt } from "./engines/props/smoke-edges.mjs";
 import { createSmokeLooks, smokePuffs, smokeSheets, smokeSeedOf, airHazeFor, SMOKE_SORT_LAYER } from "./engines/props/smoke-look.mjs";
 import { CONCEALMENT_BEHAVIOUR, smokeRegionPlan, skyRegionsOf, openSideRegionsOf, regionsOnLevel } from "./engines/props/smoke-regions.mjs";
 import { smokeRoundPlan, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, smokeLevelFor, createSmokeAlarm, smokeNote } from "./engines/props/smoke-round.mjs";
@@ -5752,16 +5752,17 @@ const animalTally = ({ wild, pond, field, town, farm, rats }) => {
 };
 const placedShown = new Set();
 // The scene's layers that take animals put down by hand (each takes its own kinds), and give the animal HUD its animals.
-const placedLayers = () => [wildlife, fieldLife, pondLife, townLife, sceneFarm];
+const placedLayers = () => [wildlife, fieldLife, pondLife, townLife, sceneFarm, vermin];
 // A layer started over (its own animals placed afresh) drops the ones put down by hand in it too: they are put back.
-const PLACED_IN = { town: ["pigeon", "hen", "dog"], farm: ["cow", "goat", "sheep", "pig", "horse"], pond: ["duck", "heron", "gull", "frog"] };
+const PLACED_IN = { town: ["pigeon", "hen", "dog"], farm: ["cow", "goat", "sheep", "pig", "horse"], pond: ["duck", "heron", "gull", "frog"], dark: ["rat", "bat"] };
 // (Any copy still there is taken away first: put back on top of one, it was there twice.)
 const replacePlaced = (layer) => { if (!canvas?.ready) return; for (const p of placedList(animalFlagsNow().placedAnimals)) if (PLACED_IN[layer].includes(p.kind)) { for (const l of placedLayers()) l.removeAdded(p.id); placedShown.delete(p.id); } syncPlacedAnimals(); };
 const syncPlacedAnimals = () => {
   if (!canvas?.ready) return;
   // Put down by hand (or ordered from the animal HUD, a region's own animal among them), they are there whenever this
   // screen has Animals in the wild on, as a region's animals are: the scene's Outdoor life is for the ones that come of themselves.
-  const raw = bothSettingsOn("wildlife") ? animalFlagsNow().placedAnimals ?? [] : [];
+  const raw = (animalFlagsNow().placedAnimals ?? []).filter((p) => (PLACED_IN.dark.includes(p?.kind) ? verminOn() : bothSettingsOn("wildlife")));
+  if (canvas.grid?.size) vermin.sized(canvas.grid.size);
   placedGround = !wildHere() && placedList(raw).length ? wildGround(canvas.grid.size, canvas.dimensions.sceneRect) : null;
   const { add, remove } = placedChanges(placedShown, raw);
   const layers = placedLayers();
@@ -8925,8 +8926,29 @@ const fireLeanAt = (key, x, y) => { const a = torchDraftOn() ? airLeanAt(x, y) :
 const fireSeenHere = (key, at, elevation = 0) => {
   let visible = true;
   try { visible = canvas.visibility?.testVisibility?.(at, { tolerance: (canvas.grid?.size ?? 100) * 0.2 }) !== false; } catch { /* shown */ }
-  return visible && !flameCovered(key, at, elevation);
+  return visible && !flameCovered(key, at, elevation) && !inThickSmoke(at);
 };
+// Whether a point stands in smoke thick enough to hide a flame. Thick smoke already stops sight of everything
+// behind it (the fence), so a fire burning inside it should not be the one thing still plainly drawn — which it
+// was, and obviously: the flames are drawn in canvas.interface at 250 and the cloud in canvas.primary at 752, and
+// the interface group draws ABOVE the whole primary group, so no sort order could ever cover them. Read against
+// the geometry the cells were written with, like the fence and the cloud, and kept for a fifth of a second
+// because a dozen flames each ask five times a second.
+let smokeSeenAt = -Infinity, smokeSeenCells = null, smokeSeenGrid = null;
+const inThickSmoke = (at) => {
+  try {
+    const scene = canvas?.scene;
+    if (!scene) return false;
+    const now = performance.now();
+    if (now - smokeSeenAt > 200) {
+      smokeSeenAt = now;
+      smokeSeenCells = smokeCellsOf(scene);
+      smokeSeenGrid = Object.keys(smokeSeenCells).length ? storedSmokeGrid(scene, smokeSeenCells) : null;
+    }
+    return smokeSeenGrid ? smokeDensityAt(smokeSeenCells, smokeSeenGrid, at) >= SMOKE_THICK : false;
+  } catch { return false; }
+};
+Hooks.on("canvasTearDown", () => { smokeSeenAt = -Infinity; smokeSeenCells = null; smokeSeenGrid = null; });
 const torchLightRootOf = () => {
   if (!torchLightRoot || torchLightRoot.destroyed) {
     torchLightRoot = new PIXI.Container();
@@ -9032,7 +9054,7 @@ const smokeFiresNow = () => {
       const x = token.mesh.position.x, y = token.mesh.position.y, last = torchLean.get(key);
       const lean = last ? last.lean * 0.85 + Math.max(-0.6, Math.min(0.6, (x - last.x) * 0.02)) * 0.15 : 0;
       torchLean.set(key, { x, lean });
-      torch = { key, x, y, width: token.w ?? grid, side, lean: lean + windOnFire(key, x, y).lean * 0.6, color: source.data.color, visible: token.visible === true && !token.document.hidden && !flameCovered(`torch:${key}`, { x, y }, token.document.elevation) };
+      torch = { key, x, y, width: token.w ?? grid, side, lean: lean + windOnFire(key, x, y).lean * 0.6, color: source.data.color, visible: token.visible === true && !token.document.hidden && !flameCovered(`torch:${key}`, { x, y }, token.document.elevation) && !inThickSmoke({ x, y }) };
       at = torchPose(torch, grid).top;
     }
     // Only a fire this screen can see smokes (a torch behind a wall stays hidden); a carried one, while its creature shows.
