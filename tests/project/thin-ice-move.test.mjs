@@ -26,6 +26,8 @@ globalThis.game = {
   settings: { get: () => undefined },
   time: { serverTime: 0, worldTime: 0 },
   modules: { get: () => ({ api: null }) },
+  // A PF2e world, because the break whisper names that system's Swim action; a test below plays a world without one.
+  system: { id: "pf2e" },
 };
 
 await import("../../scripts/main.mjs");
@@ -78,6 +80,26 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 const FLAG = "flags.animater.thinIce";
 // A move over the squares named, from the first as its origin: every move Foundry hands over has an origin and at least
 // one waypoint, so each `walk` names two squares or more.
+// Foundry firing its hook again as the creature goes: one firing per square walked, each carrying what is still to come.
+// This is what a real drag does, and treating each firing's last waypoint as a resting place broke the ice under the first
+// square instead of cracking its way across.
+const movedInSteps = (doc, squares, options = {}) => {
+  const [first, ...rest] = squares;
+  const all = rest.map((sq) => waypoint(...sq, options, doc.width));
+  for (let i = 1; i <= all.length; i++) {
+    const movement = { origin: waypoint(...first, options, doc.width), passed: { waypoints: all.slice(0, i) }, pending: { waypoints: all.slice(i) } };
+    for (const fn of moveToken) fn(doc, movement);
+  }
+};
+const walkInSteps = async (regions, squares, who = {}, options = {}) => {
+  const scene = makeScene(regions);
+  globalThis.canvas = view(scene);
+  whispers.length = 0;
+  movedInSteps(mover(scene, who), squares, options);
+  await settle();
+  return scene;
+};
+
 const walk = async (regions, squares, who = {}, options = {}) => {
   const scene = makeScene(regions);
   globalThis.canvas = view(scene);
@@ -269,4 +291,28 @@ test("a break said once, over a crack said somewhere else in the same move", asy
   const scene = await walk([region("reg1", { inside: north }), region("reg2", { inside: (p) => !north(p) })], [[1, 1], [1, 2], [1, 3]], { name: "Bron", size: "lg" });
   assert.ok(scene.writes.length, "something was written");
   assert.deepEqual(whispers.map((w) => w.content), ["Bron breaks through the ice into the water (swim)."]);
+});
+
+test("a drag delivered square by square cracks its way across and only gives way where it stops", async () => {
+  // Exactly what the table saw: the hook fires once per square, each firing saying what is still to come.
+  const scene = await walkInSteps([region("reg1")], [[1, 1], [1, 2], [1, 3], [1, 4]], { size: "lg" });
+  const wrote = scene.writes.flatMap((w) => w.updates);
+  const keys = [...new Set(wrote.flatMap((u) => Object.keys(u).filter((k) => k !== "_id")))];
+  const holes = keys.filter((k) => k.includes(".holes."));
+  const cracks = keys.filter((k) => k.includes(".cracks."));
+  assert.equal(holes.length, 1, `one hole, where it stopped: ${JSON.stringify(keys)}`);
+  assert.ok(cracks.length >= 2, `and it cracked its way there: ${JSON.stringify(cracks)}`);
+  assert.equal(whispers.filter((w) => /breaks through/.test(w.content)).length, 1, "told once, not once per square");
+});
+
+test("the whisper names Swim in a PF2e world and stays quiet about it in a world without one", async () => {
+  const was = game.system;
+  try {
+    game.system = { id: "dnd5e" };
+    await walk([region("reg1")], [[1, 1], [1, 2], [1, 3]], { size: "huge" });
+    assert.deepEqual(whispers.map((w) => w.content), ["Torvald breaks through the ice into the water."], "no action it does not have");
+    game.system = { id: "pf2e" };
+    await walk([region("reg1")], [[1, 1], [1, 2], [1, 3]], { size: "huge" });
+    assert.deepEqual(whispers.map((w) => w.content), ["Torvald breaks through the ice into the water (swim)."]);
+  } finally { game.system = was; }
 });

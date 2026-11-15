@@ -49,7 +49,7 @@ import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsO
 import { areaRefusal } from "./engines/props/prop-areas.mjs";
 import { createFireLooks, thingFires, charredCells, litCells } from "./engines/props/fire-looks.mjs";
 import { iceBreakOf, iceHoleAt } from "./engines/regions/ice-break-look.mjs";
-import { iceSettingsOf, iceStateOf, iceMoveFor, sizeNameOf, walkedLegs, squaresEntered, moveSince, weightOffset, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares } from "./engines/regions/thin-ice.mjs";
+import { iceSettingsOf, iceStateOf, iceMoveFor, sizeNameOf, walkedLegs, squaresEntered, moveSince, moveFinished, weightOffset, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares } from "./engines/regions/thin-ice.mjs";
 import { createIceBreakLook } from "./engines/regions/ice-break-draw.mjs";
 import { iceBreakSound, newKeys } from "./engines/regions/ice-break-sound.mjs";
 import { iceWords } from "./engines/regions/ice-break-word.mjs";
@@ -5146,14 +5146,18 @@ Hooks.on("moveToken", (doc, movement) => {
     const legs = walkedLegs(since.ways, { from: since.from, base, mid });
     const squares = squaresEntered(legs, grid);
     if (!squares.length) return;
-    const ended = legs[legs.length - 1]?.last ? squares[squares.length - 1] : null; // where the move came to rest, if its last leg was walked
+    // Where the move came to rest — only if its last leg was walked AND the move is really over. Foundry fires this hook
+    // again as a creature goes, and the last waypoint of a firing mid-walk is where it is now, not where it stops; counting
+    // that as a resting place broke the ice under the first square instead of cracking its way across (thin-ice.mjs
+    // moveFinished).
+    const ended = moveFinished(movement) && legs[legs.length - 1]?.last ? squares[squares.length - 1] : null;
     const updates = [], cracked = [], broken = [];
     for (const region of regions) {
       try {
         // Only the squares this region itself holds: the move may have crossed its edge.
         const mine = [];
         for (const key of squares) if (region.testPoint({ ...iceSquareMid(key, grid), elevation: base }) && mine[mine.length - 1] !== key) mine.push(key);
-        const { updates: wrote, note, broke } = iceMoveFor({ region, size, squares: mine, ended: mine.includes(ended) ? ended : null, name: doc.name });
+        const { updates: wrote, note, broke } = iceMoveFor({ region, size, squares: mine, ended: mine.includes(ended) ? ended : null, name: doc.name, system: game.system?.id });
         updates.push(...wrote);
         // One break, one whisper: two thin-ice regions over the same square would otherwise each tell the GM about it,
         // and a break is the only thing worth saying when the same move also cracked ice somewhere else.

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { SIZES, holdsUp, iceStep, iceStateOf, iceUpdatesFor, squareKeyAt, squaresCrossed, sizeNameOf, squaresAcross, weightOffset, walkedLegs, squaresEntered, moveSince, movePathName, OFF_THE_FLOOR, thinIceOn, iceSettingsOf, iceMoveFor, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares, MELTED } from "../../../scripts/engines/regions/thin-ice.mjs";
+import { SIZES, holdsUp, iceStep, iceStateOf, iceUpdatesFor, squareKeyAt, squaresCrossed, sizeNameOf, squaresAcross, weightOffset, walkedLegs, squaresEntered, moveSince, movePathName, OFF_THE_FLOOR, thinIceOn, iceSettingsOf, iceMoveFor, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares, MELTED , moveFinished } from "../../../scripts/engines/regions/thin-ice.mjs";
 
 test("the limit holds its own size and everything smaller", () => {
   assert.equal(holdsUp("med", "sm"), 0);
@@ -558,4 +558,37 @@ test("the fire's box never widens the walk past the region, and no box at all wa
   for (const junk of [{ x: 0, y: 0, w: 0, h: 0 }, { x: NaN, y: 0, w: 10, h: 10 }, "box", 7]) {
     assert.equal(iceMeltSquares({ bounds: region, within: junk, grid: GRID, inArea: () => true }).length, 4, `${JSON.stringify(junk)} is no box, so the region itself`);
   }
+});
+
+// ---- a move that is still going is not a resting place ----
+test("a move with waypoints still to come is not finished, and one with none is", () => {
+  assert.equal(moveFinished({ pending: { waypoints: [{ x: 1, y: 1 }] } }), false, "still walking");
+  assert.equal(moveFinished({ pending: { waypoints: [] } }), true, "come to rest");
+});
+
+test("a build that says nothing about what is pending is taken as finished, as a single firing always was", () => {
+  for (const movement of [undefined, null, {}, { pending: null }, { pending: {} }, { pending: { waypoints: "soon" } }]) {
+    assert.equal(moveFinished(movement), true);
+  }
+});
+
+test("walking across thin ice cracks square after square and only gives way at the end, not under the first step", () => {
+  // What the hook does per firing: the squares walked so far, and 'ended' only once the move is really over.
+  const walk = (squares, { finished }) => iceStep({
+    limit: "med", size: "lg", squares, cracked: [],
+    ended: finished ? squares[squares.length - 1] : null, name: "Bron",
+  });
+  const mid = walk(["1,1"], { finished: false });
+  assert.deepEqual(mid.cracks, ["1,1"], "the first square cracks");
+  assert.deepEqual(mid.breaks, [], "and does NOT give way: the creature is still walking, not standing on it");
+  const next = walk(["1,2"], { finished: false });
+  assert.deepEqual(next.breaks, [], "nor does the second");
+  const last = walk(["1,3"], { finished: true });
+  assert.deepEqual(last.breaks, ["1,3"], "it gives way where the creature stops");
+});
+
+test("the whole walk in one firing behaves the same as the walk one square at a time", () => {
+  const atOnce = iceStep({ limit: "med", size: "lg", squares: ["1,1", "1,2", "1,3"], cracked: [], ended: "1,3" });
+  assert.deepEqual(atOnce.cracks, ["1,1", "1,2"]);
+  assert.deepEqual(atOnce.breaks, ["1,3"]);
 });

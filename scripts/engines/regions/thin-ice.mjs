@@ -392,3 +392,17 @@ export function newKeys(keys, seen) {
   if (!(seen instanceof Set)) return { fresh: [], seen: now };
   return { fresh: [...now].filter((key) => !seen.has(key)), seen: now };
 }
+
+/** Whether a move is over, or only part of one. Foundry fires its move hook again as a creature goes, each firing carrying
+ *  the waypoints walked so far and the ones still to come, so the last waypoint of a firing is usually NOT where the
+ *  creature came to rest — it is where it is at this instant, mid-walk. Treating it as a resting place broke the ice under
+ *  the very first square a creature one size over stepped on, instead of cracking square after square and giving way at the
+ *  end. A move is finished only when nothing is pending. Where a build tells us nothing about what is pending, we cannot
+ *  know, and the move is taken as finished — which is how a single-firing hook has always behaved. Pure. */
+export function moveFinished(movement) {
+  const pending = movement?.pending;
+  if (!pending || typeof pending !== "object") return true;
+  const ways = pending.waypoints;
+  if (!Array.isArray(ways)) return true;
+  return ways.length === 0;
+}
