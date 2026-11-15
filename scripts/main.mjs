@@ -11038,9 +11038,12 @@ const fillRoomAir = (cells, geo) => {
   } catch { dropRoomAir(); }
 };
 // Moved on a few times a second and drawn every frame. The air is stepped by the shared clock (fireNow, in milliseconds,
-// which is what airStepSeconds takes and gives seconds for), and by the whole of what has gathered since the last step,
-// never more than that cap: a screen that was asleep catches up to the others in one go rather than replaying the while
-// or quietly losing it. The pass is handed seconds.
+// which is what airStepSeconds takes and gives seconds for), by the whole of what has gathered since the last step —
+// but airStepSeconds never reads more than six seconds at a time, so a screen that was asleep catches up by six seconds
+// in one go and whatever it missed beyond that is LOST: come back after a minute away and the cloud has moved on
+// without you. That is the trade and it is deliberate. Replaying ten minutes of air into one frame would lock the tab
+// up, and the round re-primes the cells every few seconds anyway, so a screen that has fallen behind is put back on
+// terms with the others at the next write rather than by grinding through the while. The pass is handed seconds.
 const tickRoomAir = () => {
   if (!roomAir || !airField) return;
   const now = fireNow();
