@@ -55,7 +55,7 @@ import { iceSettingsOf, iceStateOf, iceMoveFor, sizeNameOf, walkedLegs, squaresE
 import { createIceBreakLook } from "./engines/regions/ice-break-draw.mjs";
 import { iceBreakSound, newKeys } from "./engines/regions/ice-break-sound.mjs";
 import { iceWords } from "./engines/regions/ice-break-word.mjs";
-import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, wallBetween, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
+import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, wallBetween, grassCells, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
 import { DECOR_BREAK_MESSAGE, DECOR_NAMES, burningDecorIds, decorPlaceOf, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
 import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
@@ -10471,7 +10471,6 @@ Hooks.on("updateUser", (user, changes) => { if ("role" in (changes ?? {})) propF
 // decorFire by decoration key and fireCells by grass square), so a reload keeps every fire's count and the sweep that
 // already runs on ready re-times its light.
 const fireLast = new Map(); // scene id -> { round, at }: the round (or the time) that scene's fire last ran on
-const fireWarned = new Set(); // "<scene id>:<thing id>": the GM has already been whispered about this one
 const fireGrass = new Map(); // region id -> the grass squares laid out for it, kept while its shape and the grid hold
 const fireRunning = new Set(); // scene ids whose round is still being written
 let fireTimer = 0;
@@ -10488,9 +10487,8 @@ function fireWindOf(scene, at) {
 }
 const fireRect = (v) => ({ x: v.x, y: v.y, w: v.width, h: v.height });
 const fireMid = (rect) => ({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 });
-// A word to the GMs alone; never a change to any creature.
-const whisperGMs = (line) => ChatMessage.create({ whisper: game.users.filter((u) => u.isGM).map((u) => u.id), speaker: { alias: "Animater" }, content: `<p>${line}</p>` })
-  .catch((e) => runtime?.trace("props", `fire whisper: ${e?.message ?? e}`));
+// (The fire whispered its spreading and its burning out to the GMs. It does not any more: a line per prop per round
+// filled the log with the same sentence, and the fire shows itself on the map — Roi: "lets remove all these messages".)
 // Burnt ground where a fire ended on something it could not break: the same mark a fire area leaves (areaMark),
 // landed here and sent to every screen, as a placed area's mark is.
 function fireScorch(scene, at, size) {
@@ -10659,27 +10657,14 @@ async function fireRound(scene) {
     forgetPropFire(lightOf);
     const out = firesOf(lightOf, lights);
     if (out.length) await deletePropFires(scene, out);
-    fireWarned.delete(`${scene.id}:${id}`);
     const broke = thing.kind === "tile" ? await askProp(scene, id, cause, at, { burnedAt })
       : decor.get(id) ? await askDecor(scene, decor.get(id), cause, at, { burnedAt }) : false;
     // Nothing the flames could break (a stone chest whose books burned): the fire still ends where every screen can
-    // see it, with the burnt ground a fire area leaves and a word to the GMs, instead of just going out in silence.
-    // Only that case: any other refusal (one already wrecked, one gone) is none of the fire's business and is silent.
+    // see it, with the burnt ground a fire area leaves, instead of going out with nothing to show for it. Only that
+    // case: any other refusal (one already wrecked, one gone) is none of the fire's business.
     const canChar = canBreak(thing.traits?.material, { damageType: "fire", burnedOut: true }, { cuttable: thing.traits?.cuttable, rule: thing.traits?.rule });
-    if (broke !== true && !canChar) {
-      fireScorch(scene, at, Math.max(thing.rect.w, thing.rect.h));
-      await whisperGMs(fireBurnedOut(thing.name));
-    }
+    if (broke !== true && !canChar) fireScorch(scene, at, Math.max(thing.rect.w, thing.rect.h));
   }
-  // The GMs are told once about each thing that starts to smoulder; nothing is ever done to a creature.
-  for (const id of step.warn) {
-    const mark = `${scene.id}:${id}`;
-    if (fireWarned.has(mark)) continue;
-    fireWarned.add(mark);
-    await whisperGMs(fireWarning(byId.get(id)?.name));
-  }
-  // Cooled right down or gone: it may be warned about again.
-  for (const t of things) if (!t.fire && !step.heat.some((h) => h.id === t.id)) fireWarned.delete(`${scene.id}:${t.id}`);
   return burningNow;
 }
 // ---- The smoke a fire fills its room with, round by round (engines/props/smoke-round.mjs). ----
@@ -11313,9 +11298,8 @@ async function quenchWrite(scene, area) {
     .catch((e) => runtime?.trace("props", `quench not written: ${e?.message ?? e}`));
   if (out.regions.length) await scene.updateEmbeddedDocuments("Region", out.regions.map((u) => withDeletes(u, del)), { animater: { propFire: true } })
     .catch((e) => runtime?.trace("props", `region quench not written: ${e?.message ?? e}`));
-  // Their fire lights go and their timers are forgotten; they may be warned about again.
+  // Their fire lights go and their timers are forgotten.
   for (const t of out.put) {
-    if (t.warned) fireWarned.delete(`${scene.id}:${t.warned}`);
     if (!t.lightId) continue;
     forgetPropFire(t.lightId);
     const lit = firesOf(t.lightId, sceneLights(scene));
@@ -11821,8 +11805,7 @@ async function repairAllProps(scene = canvas?.scene) {
   if (breaches.deletes.length) await scene.deleteEmbeddedDocuments("Wall", breaches.deletes, { animater: { wallRepair: true } });
   if (wallFixes.length) await scene.updateEmbeddedDocuments("Wall", wallFixes.map((w) => withDeletes(w, del)), { animater: { wallRepair: true }, sound: false });
   if (r.lights.length) await scene.updateEmbeddedDocuments("AmbientLight", r.lights).catch((e) => runtime?.trace("props", `lights not relit: ${e?.message ?? e}`));
-  for (const t of r.tiles) { forgetPropFire(t._id); fireWarned.delete(`${scene.id}:${t._id}`); }
-  for (const mark of [...fireWarned]) if (mark.startsWith(`${scene.id}:`)) fireWarned.delete(mark);
+  for (const t of r.tiles) forgetPropFire(t._id);
   if (r.deleteLights?.length) await deletePropFires(scene, r.deleteLights);
   if (r.deleteRegions?.length) await deletePropRegions(scene, r.deleteRegions);
   // The rooms the fires smoked out are clear again: the cells, their geometry, the concealment region and the fence.
@@ -12526,7 +12509,6 @@ Hooks.on("deleteTile", (doc) => {
   // A burning tile deleted takes its fire with it: its heat is gone with the tile, and its light and timer go now, so
   // no fire is left burning over nothing (the GM alone deletes the light).
   forgetPropFire(doc.id);
-  fireWarned.delete(`${doc.parent?.id}:${doc.id}`);
   if (game.users.activeGM?.isSelf) {
     const out = firesOf(doc.id, sceneLights(doc.parent));
     if (out.length) void deletePropFires(doc.parent, out).catch((e) => runtime?.trace("props", `fire light of a deleted prop: ${e?.message ?? e}`));

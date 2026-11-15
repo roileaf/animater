@@ -178,9 +178,3 @@ export function grassCells({ bounds, cell = 100, inside = () => true, cap = 4000
   return { cols, rows, origin, indices };
 }
 
-const named = (name) => String(name || "prop").trim().toLowerCase();
-// What the GM is whispered when something starts to smoulder. The name is the prop's own, as the GM reads it.
-export const fireWarning = (name) => `The fire is spreading toward the ${named(name)}.`;
-// What the GM is whispered when a fire runs out on something its flames cannot break (a stone chest whose books
-// burned): the ground is scorched, the thing itself still stands.
-export const fireBurnedOut = (name) => `The fire burns out: the ${named(name)} is scorched but still stands.`;

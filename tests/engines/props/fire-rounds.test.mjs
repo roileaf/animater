@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { areaCatch, areaCellCatch, areaCellsLit, fireAwake, fireRoundDue, fireNextLast, fireReseed, fireScenesOf, wallBetween, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "../../../scripts/engines/props/fire-rounds.mjs";
+import { areaCatch, areaCellCatch, areaCellsLit, fireAwake, fireRoundDue, fireNextLast, fireReseed, fireScenesOf, wallBetween, blockedLists, grassCells, FIRE_PERIOD } from "../../../scripts/engines/props/fire-rounds.mjs";
 import { CELL_ROUNDS, HEAT_CATCH } from "../../../scripts/engines/props/fire-spread.mjs";
 
 test("in combat a round comes from the tracker, out of combat from the clock", () => {
@@ -187,10 +187,4 @@ test("a scene with every fire cold is left alone, and the least spark wakes it",
   assert.equal(fireAwake({ ...cold, spills: 1 }), true);
   // A square that is charred AND marked burning is still out: charred is for good.
   assert.equal(fireAwake({ tiles: [], regions: [region({}, { 4: { heat: 100, burning: true, charred: true } })] }), false);
-});
-
-test("the GM's warning names the thing the fire is heading for", () => {
-  assert.equal(fireWarning("Bookshelf"), "The fire is spreading toward the bookshelf.");
-  assert.equal(fireWarning(""), "The fire is spreading toward the prop.");
-  assert.equal(fireBurnedOut("Stone chest"), "The fire burns out: the stone chest is scorched but still stands.");
 });
