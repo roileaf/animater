@@ -52,7 +52,7 @@ import { createFireLooks, thingFires, charredCells, litCells } from "./engines/p
 import { iceBreakOf, iceHoleAt, cutIceHoles } from "./engines/regions/ice-break-look.mjs";
 import { iceSettingsOf, iceStateOf, iceMoveFor, sizeNameOf, walkedLegs, squaresEntered, moveSince, weightOffset, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares } from "./engines/regions/thin-ice.mjs";
 import { createIceBreakLook } from "./engines/regions/ice-break-draw.mjs";
-import { iceBreakSound, newKeys } from "./engines/regions/ice-break-sound.mjs";
+import { iceBreakSound, iceBreakVoice, newKeys } from "./engines/regions/ice-break-sound.mjs";
 import { iceWords } from "./engines/regions/ice-break-word.mjs";
 import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, wallBetween, grassCells, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
@@ -3823,16 +3823,21 @@ const showIceWords = (news, grid) => {
 };
 // The ice giving way, heard where it went: the ice itself, then a body into the water under it a moment later. Every screen
 // picks the same two recordings from the square's key, so the table hears one break, not a different one each.
-const ICE_BREAK_VOLUME = 0.75, ICE_BREAK_REACH = 18;
+// Two recordings play over each other here, so each sits below what a single one would: a prop breaking is 0.8, and two
+// of these at that would be half again as loud as the loudest thing on the map. The splash goes under the ice: the ice
+// is the thing that happened, the water is what it happened into.
+const ICE_VOLUME = 0.55, ICE_SPLASH_VOLUME = 0.45, ICE_BREAK_REACH = 18;
+// However many squares went down together, one of them is heard (ice-break-sound.mjs iceBreakVoice): the last, the one
+// the creature went in at. The others are still drawn.
+const iceVoice = iceBreakVoice();
 const playIceBreak = (region, keys, grid) => {
   const seed = Number(String(region?.id ?? "").replace(/\D/g, "").slice(-6)) || 0;
-  for (const key of keys) {
-    const m = /^(-?\d+),(-?\d+)$/.exec(key), sound = iceBreakSound(key, seed);
-    if (!m || !sound) continue;
-    const at = { x: (Number(m[1]) + 0.5) * grid, y: (Number(m[2]) + 0.5) * grid };
-    void playUnder("iceBreak", at, { file: sound.ice, volume: ICE_BREAK_VOLUME, reach: ICE_BREAK_REACH, walls: true, gmAlways: true, room: 0.8 });
-    setTimeout(() => { void playUnder("iceBreak", at, { file: sound.splash, volume: ICE_BREAK_VOLUME, reach: ICE_BREAK_REACH, walls: true, gmAlways: true, room: 0.8 }); }, sound.gap);
-  }
+  const key = keys[keys.length - 1];
+  const m = /^(-?\d+),(-?\d+)$/.exec(key ?? ""), sound = key ? iceBreakSound(key, seed) : null;
+  if (!m || !sound || !iceVoice.wanted()) return;
+  const at = { x: (Number(m[1]) + 0.5) * grid, y: (Number(m[2]) + 0.5) * grid };
+  void playUnder("iceBreak", at, { file: sound.ice, volume: ICE_VOLUME, reach: ICE_BREAK_REACH, walls: true, gmAlways: true, room: 0.8 });
+  setTimeout(() => { void playUnder("iceBreak", at, { file: sound.splash, volume: ICE_SPLASH_VOLUME, reach: ICE_BREAK_REACH, walls: true, gmAlways: true, room: 0.8 }); }, sound.gap);
 };
 const syncIceBreak = () => {
   // `holes` is the dark water painted under the moving water, in a layer of its own: the engine draws clear water, so over

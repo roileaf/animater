@@ -40,3 +40,22 @@ export function iceBreakSound(key, seed = 0) {
     gap: ICE_SPLASH_GAP_MS,
   };
 }
+
+// One break is one sound. A move may take several squares down at once, and a drag delivers them one after another, so
+// a pair of recordings per square meant five squares playing ten recordings on top of each other: that is not five
+// creatures going through, it is one break at ten times the volume (Roi: "some of them are loud as FUCK"). After one
+// is heard the rest of that crossing is silent for `gap` seconds; the break still SHOWS every square it took.
+export const ICE_BREAK_GAP = 0.45;
+/** Whether a break sounds now: `wanted()` true at most once every `gap` seconds, and it starts the wait when it says
+ *  yes. `now` is seconds and is injected so a test need not wait. Keeps only its own next time. */
+export function iceBreakVoice({ gap = ICE_BREAK_GAP, now = () => performance.now() / 1000 } = {}) {
+  let next = 0;
+  return {
+    wanted() {
+      const t = Number(now());
+      if (!Number.isFinite(t) || t < next) return false;
+      next = t + Math.max(0, Number(gap) || 0);
+      return true;
+    },
+  };
+}

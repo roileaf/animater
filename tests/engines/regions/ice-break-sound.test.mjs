@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { iceBreakSound, newKeys, ICE_BREAK_FILES, ICE_SPLASH_FILES, ICE_SPLASH_GAP_MS } from "../../../scripts/engines/regions/ice-break-sound.mjs";
+import { iceBreakSound, newKeys, ICE_BREAK_FILES, ICE_SPLASH_FILES, ICE_SPLASH_GAP_MS , iceBreakVoice, ICE_BREAK_GAP } from "../../../scripts/engines/regions/ice-break-sound.mjs";
 import { BUNDLED_SOUND_DIRS } from "../../../data/bundled-sounds.mjs";
 
 const LOCAL = (file) => file.replace("modules/animater/", "./");
@@ -67,4 +67,29 @@ test("junk in the stored holes is ignored rather than played", () => {
   const { fresh } = newKeys(["3,4", null, 7, undefined], new Set());
   assert.deepEqual(fresh, ["3,4"]);
   assert.deepEqual(newKeys(null, new Set()).fresh, []);
+});
+
+test("one break is one sound, however many squares went down together", () => {
+  // A move may take several squares at once and a drag delivers them one after another. A pair of recordings per square
+  // meant five squares playing ten on top of each other: one break at ten times the volume, not five creatures.
+  let t = 0;
+  const voice = iceBreakVoice({ now: () => t });
+  assert.equal(voice.wanted(), true, "the first one is heard");
+  assert.equal(voice.wanted(), false, "and the rest of that crossing is not");
+  t += ICE_BREAK_GAP / 2;
+  assert.equal(voice.wanted(), false, "still inside the wait");
+  t += ICE_BREAK_GAP;
+  assert.equal(voice.wanted(), true, "a later break is its own break and is heard");
+});
+
+test("the gate holds nothing against junk, and a gap of none lets every break through", () => {
+  let t = 0;
+  const broken = iceBreakVoice({ now: () => NaN });
+  assert.equal(broken.wanted(), false, "no clock is no sound, rather than a throw");
+  const open = iceBreakVoice({ gap: 0, now: () => t });
+  assert.equal(open.wanted(), true);
+  assert.equal(open.wanted(), true, "no wait asked for, none kept");
+  const odd = iceBreakVoice({ gap: "soon", now: () => t });
+  assert.equal(odd.wanted(), true);
+  assert.equal(odd.wanted(), true, "junk for the gap is no gap");
 });

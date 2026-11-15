@@ -34,6 +34,12 @@ globalThis.ImageData = class ImageData { constructor(data, width, height) { this
 globalThis.document = { addEventListener() {}, createElement: (tag) => (String(tag).toLowerCase() === "canvas" ? { width: 0, height: 0, style: {}, getContext: context2d } : { style: {} }), head: { appendChild() {} } };
 globalThis.ui = { notifications: { info() {}, warn() {} } };
 globalThis.ChatMessage = { create: async () => ({}) };
+// A clock this test drives, because a crossing is now heard once and the rest of it is silent for a moment
+// (ice-break-sound.mjs iceBreakVoice). Without it, breaks fired in the same instant would silence each other and this
+// file would be testing the gate rather than what it means to ask.
+let clockMs = 0;
+globalThis.performance = { now: () => clockMs };
+const aMomentLater = (seconds = 1) => { clockMs += seconds * 1000; };
 
 // The canvas records what is drawn on it, so a painter that is never asked to paint is visible as silence.
 const drew = [];
@@ -141,6 +147,7 @@ test("a creature going through the ice is heard: the ice, then the water under i
 test("it is heard where it broke, not at the corner of the map", () => {
   show([iceRegion({})]);
   clear();
+  aMomentLater();
   show([iceRegion({ holes: { "3,4": 2 } })]);
   assert.deepEqual(played[0].at, { x: 3.5 * GRID, y: 4.5 * GRID }, "the middle of the square that gave way");
   assert.ok(played[0].radius > 0, "and it carries only so far");
@@ -201,7 +208,7 @@ test("a region the GM never marked as thin ice is never heard", () => {
 test("every file it asks the audio for is one Animater ships", () => {
   show([iceRegion({})]);
   clear();
-  for (const key of ["3,4", "7,8", "-2,5", "11,1", "0,0", "6,6"]) show([iceRegion({ holes: { [key]: 2 } })]);
+  for (const key of ["3,4", "7,8", "-2,5", "11,1", "0,0", "6,6"]) { aMomentLater(); show([iceRegion({ holes: { [key]: 2 } })]); }
   drawSoon();
   assert.ok(played.length >= 6, `something was played: ${played.length}`);
   for (const p of played) {
@@ -256,4 +263,30 @@ test("a region the GM never marked says nothing", () => {
   clear();
   show([iceRegion({ cracks: { "1,1": 1 } }, { thin: false })]);
   assert.deepEqual(words(), []);
+});
+
+test("a crossing is heard once, however many squares went down in it", () => {
+  // A pair of recordings per square meant a walk that took five squares played ten of them on top of each other: one
+  // break at ten times the volume (Roi: "some of them are loud as FUCK"). Every square it took is still drawn.
+  show([iceRegion({})]);
+  clear();
+  aMomentLater();
+  show([iceRegion({ holes: { "3,4": 1, "3,5": 1, "3,6": 1, "4,6": 1, "5,6": 1 } })]);
+  drawSoon();
+  assert.equal(played.length, 2, `the ice and the water under it, once: ${played.map((p) => p.file.split("/").pop()).join(", ")}`);
+  assert.match(played[0].file.split("/").pop(), /^ice-break-/);
+  assert.match(played[1].file.split("/").pop(), /^body-splash-/);
+});
+
+test("the two recordings of one break each sit below a single prop breaking", () => {
+  // They play over each other, so at a prop's own 0.8 the pair would be the loudest thing on the map. The water goes
+  // under the ice: the ice is the thing that happened, the water is what it happened into.
+  show([iceRegion({})]);
+  clear();
+  aMomentLater();
+  show([iceRegion({ holes: { "8,9": 1 } })]);
+  drawSoon();
+  assert.equal(played.length, 2);
+  for (const p of played) assert.ok(p.volume > 0 && p.volume < 0.8, `under a prop breaking: ${p.volume}`);
+  assert.ok(played[1].volume < played[0].volume, "the splash under the ice");
 });
