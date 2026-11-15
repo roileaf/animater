@@ -23,10 +23,10 @@ const PLATE_RIM = 0xdff5ff, PLATE_EDGE = 0x1d4257, PLATE_FLAW = 0x76a8c0;
 const LIGHT_X = -0.6, LIGHT_Y = -0.8;
 // How much paler one slab can be than another: the dry ones against the ones that tipped and came up wet.
 const PLATE_TONE = 0.16;
-// The water in the hole, painted here under the plates rather than left to the moving water alone. The hole is a water spec
-// too, so the engine's ripples run over this where the screen's quality allows them — but a creature standing in open water
-// has to read as standing in open water on every screen, at every quality, and on a map whose own light is warm enough to
-// turn pale ice sandy. So the hole is painted: deep water, a darker lip inside its edge where the ice shelves off.
+// The water in the hole, painted into a layer of its own BELOW the moving water rather than with the ice above it. The hole
+// is a water spec too, and the engine draws clear water: over a desert map you could see the sand through the hole. This is
+// the dark it has no bed for, so the engine's ripples run over deep water instead of over the ground, and on a screen with
+// no moving water at all it is the water. A darker lip inside its edge marks where the ice shelves off.
 const WATER_DEEP = 0x17465e, WATER_RIM = 0x0b2332;
 // The split itself, and the lip of ice beside it that catches the light.
 const CRACK_DARK = 0x14303c, CRACK_LIP = 0xf2fbfd;
@@ -37,13 +37,16 @@ const PLATE_THICK = 0.022, PLATE_LEAN_X = 0.5, PLATE_LEAN_Y = 0.85;
  *  square size in pixels. sync({ cracks: [{ id, lines }], shards: [{ id, list }] }) draws exactly that, and nothing when
  *  empty; the same state again redraws nothing. While `busy` (shards are floating) tick(ms) moves them, `ms` the shared
  *  clock (the server's time), so every screen shows them at the same point of their drift. */
-export function createIceBreakLook({ PIXI, layer, grid = () => 100 }) {
+export function createIceBreakLook({ PIXI, layer, bed, grid = () => 100 }) {
   let waterArt = null, cracksArt = null, shardsArt = null, platesArt = null, shown = "", afloat = [], adrift = [], wet = [], clock = 0;
   const ensure = () => {
     const root = layer?.();
     if (!root) return false;
     if (!waterArt || waterArt.destroyed || !cracksArt || cracksArt.destroyed || !shardsArt || shardsArt.destroyed || !platesArt || platesArt.destroyed) { waterArt = new PIXI.Graphics(); cracksArt = new PIXI.Graphics(); platesArt = new PIXI.Graphics(); shardsArt = new PIXI.Graphics(); shown = ""; } // made in the order they are stacked: cracks under the ice, the plates over them, the slush over those
-    if (waterArt.parent !== root) { root.addChild(waterArt); root.addChild(cracksArt); root.addChild(platesArt); root.addChild(shardsArt); }
+    // The dark water goes in its own container under the moving water; everything else sits above it, over the ice.
+    const under = bed?.() ?? root;
+    if (waterArt.parent !== under) under.addChild(waterArt);
+    if (cracksArt.parent !== root) { root.addChild(cracksArt); root.addChild(platesArt); root.addChild(shardsArt); }
     return true;
   };
   // A crack is a split in the ice, so it is drawn as one: a thin dark fissure, with a paler lip just below and right of it
@@ -140,7 +143,7 @@ export function createIceBreakLook({ PIXI, layer, grid = () => 100 }) {
       const key = JSON.stringify([cracks.map((c) => c.lines), shards.map((s) => s.list), plates.map((p) => p.list), holes.map((h) => h.areas), grid()]);
       // What was drawn last time is only still on screen while its Graphics is: a scene switch destroys it with the map it
       // belonged to, and the same state again must then draw it afresh rather than being waved through as already drawn.
-      const gone = !!cracksArt && (cracksArt.destroyed || !shardsArt || shardsArt.destroyed || !platesArt || platesArt.destroyed || !waterArt || waterArt.destroyed || cracksArt.parent !== layer?.());
+      const gone = !!cracksArt && (cracksArt.destroyed || !shardsArt || shardsArt.destroyed || !platesArt || platesArt.destroyed || !waterArt || waterArt.destroyed || cracksArt.parent !== layer?.() || waterArt.parent !== (bed?.() ?? layer?.()));
       if (key === shown && !gone) return;
       afloat = shards.flatMap((s) => s.list);
       adrift = plates.flatMap((p) => p.list);

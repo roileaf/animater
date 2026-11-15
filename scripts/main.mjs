@@ -3727,7 +3727,7 @@ const waterEngine = createWaterEngine({ PIXI: globalThis.PIXI, root: floorLayer(
 // What raised floors throw on what is below them: over the painted floors (400), under what lies on them (410).
 const floorShadows = createFloorShadows({ PIXI: globalThis.PIXI, root: floorDrawRoot("floorShadows"), edges: floorLayer("floorEdges"), grid: () => canvas.grid?.size ?? 100 });
 // Thin ice breaking (engines/regions/ice-break-look.mjs, ice-break-draw.mjs): the cracks and the floating shards, painted on the floor under the creatures, read from what the GM stored on the region so every screen draws the same. The holes are water, in movingWaterList.
-const iceBreakLook = createIceBreakLook({ PIXI: globalThis.PIXI, layer: floorLayer("iceBreak", 643), grid: () => canvas.grid?.size ?? 100 });
+const iceBreakLook = createIceBreakLook({ PIXI: globalThis.PIXI, layer: floorLayer("iceBreak", 643), bed: floorLayer("iceHoleBed", 390), grid: () => canvas.grid?.size ?? 100 });
 const iceDrawn = { holes: 0, cracks: 0, shards: 0, plates: 0, water: 0 }; // holes: handed to the moving water for its ripples; water: painted here, whatever the screen does with moving water
 // What each screen has already heard give way and already shown a word for, per region, so each happens the moment it does
 // and never again. A region this screen has not seen before is learned quietly (newKeys): coming to a map whose ice is
@@ -3757,13 +3757,12 @@ const playIceBreak = (region, keys, grid) => {
   }
 };
 const syncIceBreak = () => {
-  // `holes` here is the fallback water this layer paints itself, and only where the moving water is not drawing it: the ice
-  // sits above the water engine, so a fill painted here would hide the engine’s own ripples in the very hole they belong in.
-  // With the engine running the hole is its spec and its water; with it off, or the screen too slow for it, this paints a
-  // flat one so a creature in open water still reads as being in open water.
-  const cracks = [], shards = [], plates = [], holes = [], grid = canvas.grid?.size ?? 100, wet = movingWaterOn();
+  // `holes` is the dark water painted under the moving water, in a layer of its own: the engine draws clear water, so over
+  // a map of sand you could see the ground through the hole. It is the bed the engine has none for, and on a screen with no
+  // moving water at all it is the hole's water outright.
+  const cracks = [], shards = [], plates = [], holes = [], grid = canvas.grid?.size ?? 100;
   for (const region of drawnRegions()) {
-    try { const broken = iceBreakOf(region, { grid }); cracks.push(...broken.cracks); shards.push(...broken.shards); plates.push(...broken.plates); if (!wet) holes.push(...broken.holes); } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
+    try { const broken = iceBreakOf(region, { grid }); cracks.push(...broken.cracks); shards.push(...broken.shards); plates.push(...broken.plates); holes.push(...broken.holes); } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
     // Heard and said after the drawing is gathered, and never for a hole fire melted open: nobody fell through that one.
     try {
       const thin = iceSettingsOf(region).thin, id = `${canvas.scene?.id ?? "?"}:${region?.id ?? "?"}`;
