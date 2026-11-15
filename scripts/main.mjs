@@ -11000,14 +11000,20 @@ let smokeLooksTimer = 0;
 // The same cells drifting on the indoor air instead (engines/props/smoke-air.mjs, smoke-air-look.mjs): the round's cells
 // are the air's sources and what already hangs there, the draft carries them along and out through whatever doors stand
 // open, and one pass over the scene draws what the air holds. It draws into the bake's own layer at the bake's own depth,
-// and only ever one of the two draws: with no field (Drafts off, no WebGL, a scene the air is not worked out for) the
-// baked wash paints exactly as it always has.
+// and only ever one cloud is drawn: with no field (Drafts off, no WebGL, a scene the air is not worked out for) the
+// baked cloud paints exactly as it always has. The plume outside is NOT the cloud and is left to the bake either way.
 const smokeAirLook = createSmokeAirLook({ PIXI: globalThis.PIXI, layer: smokeLooksRoot,
   render: (g, rt) => canvas.app.renderer.render(g, { renderTexture: rt, clear: true }) });
-// The sim; the door that last swung (pushed through on the next fill); the clock reading it was last stepped at (ms); the
-// seconds it has run for, which is the clock the pass rolls its billows by (the shared clock counts from the epoch, which
-// is no number for a shader's float); and the step not yet taken.
-let roomAir = null, roomAirDoor = null, roomAirAt = 0, roomAirClock = 0, roomAirWait = 0;
+// How long the billows' clock runs before it starts again (ms). The pass rolls by the SHARED clock, so two players
+// watching one cellar see the same billows at the same point in their roll — the cloud must never disagree between two
+// screens. The shared clock counts milliseconds from the epoch, though, and that many seconds is a number a shader's
+// float cannot hold to nearer than a couple of minutes, so it is taken modulo four hours: still a shared reading, and
+// small enough to keep its fractions. The phase jumps once at each wrap, four hours apart, which is a far smaller fault
+// than every screen rolling on a clock of its own. Do NOT "simplify" this to fireNow() / 1000.
+const BILLOW_WRAP_MS = 4 * 60 * 60 * 1000;
+// The sim; the door that last swung (pushed through on the next fill); the clock reading it was last stepped at (ms);
+// and the step not yet taken.
+let roomAir = null, roomAirDoor = null, roomAirAt = 0, roomAirWait = 0;
 const dropRoomAir = () => { roomAir = null; roomAirDoor = null; roomAirWait = 0; smokeAirLook.clear(); };
 // Both ways of drawing it put away: a level that is not the smoke's, or a scene with no smoke, leaves the map clean.
 const clearSmokeDrawing = () => { smokeLooks.clear(); dropRoomAir(); };
@@ -11032,10 +11038,10 @@ const fillRoomAir = (cells, geo) => {
 // them was asleep; the pass is handed seconds.
 const tickRoomAir = () => {
   if (!roomAir || !airField) return;
-  const now = fireNow(), seconds = airStepSeconds(roomAirAt, now);
-  roomAirAt = now; roomAirClock += seconds; roomAirWait += seconds;
+  const now = fireNow();
+  roomAirWait += airStepSeconds(roomAirAt, now); roomAirAt = now;
   if (roomAirWait >= 0.25) { roomAir.step(Math.min(1, roomAirWait)); roomAirWait = 0; smokeAirLook.fill(roomAir.pixels, airField.cols, airField.rows); }
-  smokeAirLook.look({ now: roomAirClock, grid: canvas.grid?.size ?? 100, bounds: canvas.dimensions?.sceneRect ?? null, amount: 1,
+  smokeAirLook.look({ now: (now % BILLOW_WRAP_MS) / 1000, grid: canvas.grid?.size ?? 100, bounds: canvas.dimensions?.sceneRect ?? null, amount: 1,
     since: Math.min(1e3, (performance.now() - gustAt) / 1000) });
 };
 function syncSmokeLooksNow() {
@@ -11055,16 +11061,19 @@ function syncSmokeLooksNow() {
   // The bodies are the cloud (one wash over all of it, one dark mass over what blocks sight); the puffs are the brush
   // shading over them.
   const list = smokeCellList(cells), geo = { cols: grid.cols, origin: grid.origin, cell: grid.cell, seed: smokeSeedOf(scene.id) };
-  // One smoke per scene, never two layered: where the air is worked out the pass draws these very cells drifting on it
-  // and the baked wash stands down; with no field the bake paints them, exactly as it always has.
-  if (airField) { smokeLooks.clear(); fillRoomAir(cells, geo); return; }
-  dropRoomAir();
+  // One cloud per scene, never two layered: where the air is worked out the pass draws these very cells drifting on it
+  // and the baked cloud stands down; with no field the bake paints them, exactly as it always has.
+  // The plume is NOT the cloud. The smoke leaving a room through a doorway is drawn outside the cloud by
+  // smoke-plume.mjs, it has nothing to do with the air indoors, and it pours whichever of the two draws the room's
+  // own smoke — so the bake is still told to paint it, with no cloud of its own to paint.
+  const onAir = !!airField;
+  if (onAir) fillRoomAir(cells, geo); else dropRoomAir();
   // The plume outside each opening. The vents are read from the scene, not worked out here: which cells are
   // openings depends on the regions and the walls and is the active GM's answer alone (smoke-round.mjs), so the
   // round writes them beside the cells and every client simply pours from what it finds. Indexed against the same
   // stored geometry as the cells, since that is the grid the vent indices were written on.
   const vents = scene.flags?.[ID]?.[SMOKE_VENT_FLAG];
-  smokeLooks.sync({ sheets: smokeSheets(list, geo), puffs: smokePuffs(list, geo),
+  smokeLooks.sync({ sheets: onAir ? null : smokeSheets(list, geo), puffs: onAir ? [] : smokePuffs(list, geo),
     plume: Array.isArray(vents) && vents.length ? { list: vents, ...geo } : null });
 }
 const syncSmokeLooks = () => { clearTimeout(smokeLooksTimer); smokeLooksTimer = setTimeout(() => propSafe("smoke looks", syncSmokeLooksNow), 60); };
@@ -11074,7 +11083,7 @@ const syncSmokeLooks = () => { clearTimeout(smokeLooksTimer); smokeLooksTimer = 
 // level switch fires: the paint and the blockers are asked the same question at the same moment, so the cloud is
 // never left showing another floor's smoke while the fence has already moved on.
 for (const hook of ["canvasReady", "initializeEdges", "updateScene"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) syncSmokeLooks(); });
-Hooks.on("canvasTearDown", () => { clearTimeout(smokeLooksTimer); smokeLooksTimer = 0; smokeLooks.clear(); dropRoomAir(); roomAirAt = 0; roomAirClock = 0; });
+Hooks.on("canvasTearDown", () => { clearTimeout(smokeLooksTimer); smokeLooksTimer = 0; smokeLooks.clear(); dropRoomAir(); roomAirAt = 0; });
 // A region repainted, reshaped or moved: its grass grid is laid out again next round, and its burning squares go
 // with the old grid. A square is saved by its index on the grid the shape had, so the same index names a different
 // patch of ground once the shape moves — keeping them would have the fire jump across the map on its own. The
