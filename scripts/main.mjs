@@ -2057,6 +2057,29 @@ const undergroundScene = () => undergroundOf(canvas?.scene?.flags?.[ID], canvas?
 // and asks smokeRunsOn itself, so this cannot hand it the wrong question — which is precisely what it once did.
 const hazeSmokeOn = () => airHazeFor({ on: roomSmokeOn(), underground: undergroundScene() }, canvas?.scene);
 let draftTimer = null, gustAt = -Infinity, gustFrom = null, airLive = false, previewOpenings = [], airField = null;
+// The room's own ways out, as points for the draft: a door or a window standing open, an empty frame, a wall battered
+// through — each counted only where it leads OUT of a room, which is what smokeOpeningsOf is for and what keeps an inside
+// door from draining one room into the next.
+//
+// Why the draft wants them at all: sceneOpenings seeds a door near the MAP's edge and a region flagged as leading out,
+// and nothing else. On a surface map with a cellar there is neither, so every cell's `dist` stayed -1, the drain at an
+// opening never ran and nothing was ever carried anywhere: a room's smoke sat there and faded in place while the round's
+// own cells vented out of the window beside it. The cells cleared and the picture did not. Measured on a filled room,
+// seeding it is the difference between about three minutes and about one.
+//
+// It costs what the round already pays: smokeShapeOf is cached per scene and geometry (smokeRooms), so on the GM's client
+// this is the round's own cached rooms, and on anyone else's it is built once per scene.
+const roomWaysOut = () => {
+  try {
+    const scene = canvas?.scene;
+    if (!scene || !smokeRunsOn(scene)) return [];
+    const geo = smokeGridOf(scene.dimensions);
+    if (!geo) return [];
+    const { indoors } = smokeShapeOf(scene, geo, smokeLevelOf(scene), undergroundScene());
+    return smokeOpeningsOf({ walls: scene.walls?.contents ?? [], cell: geo.cell, origin: geo.origin, cols: geo.cols, rows: geo.rows, indoors })
+      .map((i) => ({ x: geo.origin.x + ((i % geo.cols) + 0.5) * geo.cell, y: geo.origin.y + (Math.floor(i / geo.cols) + 0.5) * geo.cell }));
+  } catch { return []; }   // a scene whose rooms cannot be worked out keeps the air it had, never no air at all
+};
 // How the air moves at a point now (0 still – 1 the fastest streams in a gust): how fast it runs there (a doorway on the
 // way out fast, a room's corner barely), and the gust once it has swept that far from the door that opened.
 const airAt = (x, y) => {
@@ -2088,10 +2111,14 @@ const rebuildDraft = () => {
     // the smoke in a room with one stood there instead of pouring out of it. smokeWalls is the one list that knows an
     // opening when it sees one — an open door, an open or empty window frame, a wall broken through — and the round's own
     // diffusion has always used it. The flags have to come across for it to answer at all.
-    const walls = smokeWalls((canvas.walls?.placeables ?? []).map((w) => w.document)
-      .map((d) => ({ c: d.c, move: d.move, sight: d.sight, door: d.door, ds: d.ds, flags: d.flags })));
+    const seen = (canvas.walls?.placeables ?? []).map((w) => w.document)
+      .map((d) => ({ c: d.c, move: d.move, sight: d.sight, door: d.door, ds: d.ds, flags: d.flags }));
+    const walls = smokeWalls(seen);
     const bounds = canvas.dimensions.sceneRect, grid = canvas.grid.size;
-    const openings = [...sceneOpenings({ walls, regions, bounds, grid }), ...previewOpenings];
+    // sceneOpenings is handed the UNFILTERED list on purpose: it looks for a door standing open near the map's edge, and
+    // those are precisely the walls smokeWalls takes out. Handed the filtered list it found none, and the scene's own ways
+    // out went with them.
+    const openings = [...sceneOpenings({ walls: seen, regions, bounds, grid }), ...roomWaysOut(), ...previewOpenings];
     const field = draftField({ walls, bounds, grid, openings });
     field.openings = openings;
     // The gust of a door opened lately sweeps out from it.
