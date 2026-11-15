@@ -791,3 +791,48 @@ test("main.mjs's own wiring: no write in the drawing, no third haze site, no sec
     assert.doesNotMatch(line, /flags[^\n]*roomSmoke|roomSmoke:\s*(true|false|flags)/, `still a roomSmoke flag: ${line.trim()}`);
   }
 });
+
+// ---- The plume outside. ----
+// The cloud's own forms are clipped so they cannot wash past the squares the GM wrote (OVERHANG), which is right
+// for a room's smoke and wrong for what leaves it: a GM watching a burning cellar saw the smoke stop dead at the
+// open door, as though the doorway were glass. The plume is the one part of this drawing allowed outside.
+test("a vent pours a plume outside the room, and a scene with no vents paints none", () => {
+  const vented = (plume) => withFrames(({ frame }) => {
+    const { PIXI, made, makeCanvas } = fakePixi();
+    const root = new PIXI.Container();
+    let ms = 0;
+    const looks = createSmokeLooks({ PIXI, layer: () => root, grid: () => CELL, now: () => ms, makeCanvas });
+    looks.sync({ ...cloudOf(mixedRoom()), plume });
+    ms = 9000; frame();
+    const out = showing(made);
+    looks.clear();
+    return out;
+  });
+  const geo = { cols: 10, cell: CELL, origin: { x: 0, y: 0 }, seed: 5 };
+  // The vent is at cell 5 — the square (5,0) — facing north, OFF the top of the room and out of the cloud.
+  const none = vented(null);
+  const pouring = vented({ list: [{ i: 5, dx: 0, dy: -1, v: 3 }], ...geo });
+  assert.ok(pouring.length > none.length, `${pouring.length} > ${none.length}: the plume adds sprites`);
+  // And they are painted ABOVE the vent, which is where the cloud's own forms may not go.
+  const above = pouring.filter((s) => s.y < 0);
+  assert.ok(above.length, "the plume crosses the threshold the cloud may not");
+  // An empty list is the same as none at all, and never throws.
+  assert.deepEqual(vented({ list: [], ...geo }).length, none.length);
+});
+
+test("the plume keeps pouring after the cloud has settled, and stops when the vents go", () => {
+  withFrames(({ frame, pending }) => {
+    const { PIXI, made, makeCanvas } = fakePixi();
+    const root = new PIXI.Container();
+    let ms = 0;
+    const looks = createSmokeLooks({ PIXI, layer: () => root, grid: () => CELL, now: () => ms, makeCanvas });
+    looks.sync({ ...cloudOf(mixedRoom()), plume: { list: [{ i: 5, dx: 0, dy: -1, v: 3 }], cols: 10, cell: CELL, origin: { x: 0, y: 0 }, seed: 5 } });
+    ms = SMOKE_DRIFT_MS * 3; frame();
+    // Long past the drift, where a still cloud alone would have let the loop stop: a pouring vent keeps it alive.
+    assert.ok(pending.size > 0, "the frame loop runs while a vent pours");
+    const early = showing(made).map((s) => `${s.x},${s.y}`).join("|");
+    ms += 1200; frame();
+    assert.notEqual(showing(made).map((s) => `${s.x},${s.y}`).join("|"), early, "and the puffs are moving");
+    looks.clear();
+  });
+});

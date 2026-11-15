@@ -23,12 +23,12 @@ import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
 import { BURN_MS, burnLightData, fireTimers, unhideLights, firesOf } from "./engines/props/prop-lights.mjs";
 import { propMaterial, canBreak } from "./engines/props/prop-material.mjs";
-import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf, smokeWalls } from "./engines/props/smoke-field.mjs";
+import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf, smokeWalls, THICK as SMOKE_THICK } from "./engines/props/smoke-field.mjs";
 import { registerSmokeFence } from "./engines/props/smoke-fence.mjs";
-import { smokeGridOf, storedSmokeGrid, smokeCellList, smokeLevelOf } from "./engines/props/smoke-edges.mjs";
+import { smokeGridOf, storedSmokeGrid, smokeCellList, smokeLevelOf, smokeDensityAt } from "./engines/props/smoke-edges.mjs";
 import { createSmokeLooks, smokePuffs, smokeSheets, smokeSeedOf, airHazeFor, SMOKE_SORT_LAYER } from "./engines/props/smoke-look.mjs";
 import { CONCEALMENT_BEHAVIOUR, smokeRegionPlan, skyRegionsOf, openSideRegionsOf, regionsOnLevel } from "./engines/props/smoke-regions.mjs";
-import { smokeRoundPlan, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, smokeLevelFor, createSmokeAlarm, smokeNote } from "./engines/props/smoke-round.mjs";
+import { smokeRoundPlan, smokeRoomAt, smokeClearPlan, smokeRunsOn, smokeHeldBy, smokeLeftovers, smokeLevelFor, createSmokeAlarm, smokeNote, SMOKE_VENT_FLAG } from "./engines/props/smoke-round.mjs";
 import { smokeGathering } from "./engines/props/smoke-gather.mjs";
 import { quietSave, isClockSave } from "./engines/props/quiet-writes.mjs";
 import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cleanCause, undoUpdates, repairUpdates, withDeletes, levelTopOf, PATH_SQUARES, mergeWallFixes } from "./engines/props/prop-requests.mjs";
@@ -5752,17 +5752,18 @@ const animalTally = ({ wild, pond, field, town, farm, rats }) => {
 };
 const placedShown = new Set();
 // The scene's layers that take animals put down by hand (each takes its own kinds), and give the animal HUD its animals.
-const placedLayers = () => [wildlife, fieldLife, pondLife, townLife, sceneFarm];
+const placedLayers = () => [wildlife, fieldLife, pondLife, townLife, sceneFarm, vermin];
 // A layer started over (its own animals placed afresh) drops the ones put down by hand in it too: they are put back.
-const PLACED_IN = { town: ["pigeon", "hen", "dog"], farm: ["cow", "goat", "sheep", "pig", "horse"], pond: ["duck", "heron", "gull", "frog"] };
+const PLACED_IN = { town: ["pigeon", "hen", "dog"], farm: ["cow", "goat", "sheep", "pig", "horse"], pond: ["duck", "heron", "gull", "frog"], dark: ["rat", "bat"] };
 // (Any copy still there is taken away first: put back on top of one, it was there twice.)
 const replacePlaced = (layer) => { if (!canvas?.ready) return; for (const p of placedList(animalFlagsNow().placedAnimals)) if (PLACED_IN[layer].includes(p.kind)) { for (const l of placedLayers()) l.removeAdded(p.id); placedShown.delete(p.id); } syncPlacedAnimals(); };
 const syncPlacedAnimals = () => {
   if (!canvas?.ready) return;
   // Put down by hand (or ordered from the animal HUD, a region's own animal among them), they are there whenever this
   // screen has Animals in the wild on, as a region's animals are: the scene's Outdoor life is for the ones that come of themselves.
-  const raw = bothSettingsOn("wildlife") ? animalFlagsNow().placedAnimals ?? [] : [];
-  placedGround = !wildHere() && placedList(raw).length ? wildGround(canvas.grid.size, canvas.dimensions.sceneRect) : null;
+  const raw = (animalFlagsNow().placedAnimals ?? []).filter((p) => (PLACED_IN.dark.includes(p?.kind) ? verminOn() : bothSettingsOn("wildlife")));
+  if (canvas.grid?.size) vermin.sized(canvas.grid.size);
+  placedGround = !wildHere() && placedList(raw).some((p) => !PLACED_IN.dark.includes(p.kind)) ? wildGround(canvas.grid.size, canvas.dimensions.sceneRect) : null;
   const { add, remove } = placedChanges(placedShown, raw);
   const layers = placedLayers();
   for (const id of remove) { for (const layer of layers) layer.removeAdded(id); placedShown.delete(id); }
@@ -5817,7 +5818,7 @@ const closeAnimalHud = () => { endAnimalPick(); animalHud?.close(); animalHud = 
 // The scene's own layers and every region's (animals a region asks for live in layers of its own).
 const animalAt = (p) => {
   const reach = (canvas.grid?.size || 100) * 0.45, engines = [...placedLayers()];
-  for (const life of regionLife.values()) engines.push(life.wild, life.field, life.pond, life.town, life.farm);
+  for (const life of regionLife.values()) engines.push(life.wild, life.field, life.pond, life.town, life.farm, life.rats);
   const hits = engines.map((engine) => [engine, engine.pick?.(p.x, p.y, reach)]).filter(([, h]) => h).map(([engine, h]) => ({ ...h, engine }));
   return hits.sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))[0] ?? null;
 };
@@ -7146,7 +7147,7 @@ const rebuildLife = () => {
     const grid = canvas.grid.size, b = canvas.dimensions.sceneRect, many = sceneCreatures();
     const wanted = verminOn() && underCeiling({ x: b.x + b.width / 2, y: b.y + b.height / 2 }) && undergroundScene();
     const key = JSON.stringify([canvas.scene?.id, canvas.level?.id, wanted, kinds(many, "rats", "bats"), keepOut.rats ?? [], keepOut.bats ?? [], lampLightsKey]), changed = key !== verminKey;
-    if (changed) { verminKey = key; vermin.clear(); critterCalls.settle(); }
+    if (changed) { verminKey = key; vermin.clear(); critterCalls.settle(); for (const p of placedList(animalFlagsNow().placedAnimals)) if (PLACED_IN.dark.includes(p.kind)) placedShown.delete(p.id); }
     if (changed && wanted) {
       const spots = ratSpots().filter((p) => !keptOut("rats", p) && !keptOut("bats", p));
       vermin.populate({ spots, count: exactOr(many, "rats", Math.round(Math.min(14, Math.max(4, Math.round(spots.length / 20))) * many.rats)), lit: litForRats, grid, bats: exactOr(many, "bats", Math.round(3 * many.bats)), area: { x: b.x, y: b.y, w: b.width, h: b.height }, blocked: batBlocks, allowed: (p) => !keptOut("bats", p), size: many.ratsSize, batSize: many.batsSize });
@@ -7950,7 +7951,7 @@ function skyTick() {
   if (ceilingDust.busy) ceilingDust.tick(seconds);
   if (wildlife.busy || pondLife.busy || fieldLife.busy) wildTick(seconds);
   if (doorBursts.busy) doorBursts.tick(seconds, { seen: (x, y) => canvas.visibility?.testVisibility?.({ x, y }, { tolerance: canvas.grid.size * 0.2 }) !== false, light: nearestLamp });
-  if (vermin.count) vermin.tick(seconds, { near: creaturesNow(), lit: litForRats, blocked: ratBlocks, batBlocked: batBlocks, view: viewNow(), light: nearestLamp, sound: critterSound });
+  if (vermin.count) vermin.tick(seconds, { near: creaturesNow(), lit: litForRats, blocked: ratBlocks, batBlocked: batBlocks, view: viewNow(), light: nearestLamp, sound: critterSound, tokenAt: animalTokenAt });
   tickFloorBlood(seconds);
   if (waterEngine.busy) waterEngine.tick(seconds, { shade: sunReachNow, sky: () => sunNow, view: viewNow, lights: floorLightSources, weather: () => floorWeather, flash: () => flashSun, wind: skyWindNow, angle: skyWindAngle, mostLights: floorLevel.lights, fish: () => wildlife.fishBeneath, fishLook: () => wildlife.fishLook });
   if (iceBreakLook.busy) iceBreakLook.tick(fireNow());
@@ -8925,8 +8926,29 @@ const fireLeanAt = (key, x, y) => { const a = torchDraftOn() ? airLeanAt(x, y) :
 const fireSeenHere = (key, at, elevation = 0) => {
   let visible = true;
   try { visible = canvas.visibility?.testVisibility?.(at, { tolerance: (canvas.grid?.size ?? 100) * 0.2 }) !== false; } catch { /* shown */ }
-  return visible && !flameCovered(key, at, elevation);
+  return visible && !flameCovered(key, at, elevation) && !inThickSmoke(at);
 };
+// Whether a point stands in smoke thick enough to hide a flame. Thick smoke already stops sight of everything
+// behind it (the fence), so a fire burning inside it should not be the one thing still plainly drawn — which it
+// was, and obviously: the flames are drawn in canvas.interface at 250 and the cloud in canvas.primary at 752, and
+// the interface group draws ABOVE the whole primary group, so no sort order could ever cover them. Read against
+// the geometry the cells were written with, like the fence and the cloud, and kept for a fifth of a second
+// because a dozen flames each ask five times a second.
+let smokeSeenAt = -Infinity, smokeSeenCells = null, smokeSeenGrid = null;
+const inThickSmoke = (at) => {
+  try {
+    const scene = canvas?.scene;
+    if (!scene) return false;
+    const now = performance.now();
+    if (now - smokeSeenAt > 200) {
+      smokeSeenAt = now;
+      smokeSeenCells = smokeCellsOf(scene);
+      smokeSeenGrid = Object.keys(smokeSeenCells).length ? storedSmokeGrid(scene, smokeSeenCells) : null;
+    }
+    return smokeSeenGrid ? smokeDensityAt(smokeSeenCells, smokeSeenGrid, at) >= SMOKE_THICK : false;
+  } catch { return false; }
+};
+Hooks.on("canvasTearDown", () => { smokeSeenAt = -Infinity; smokeSeenCells = null; smokeSeenGrid = null; });
 const torchLightRootOf = () => {
   if (!torchLightRoot || torchLightRoot.destroyed) {
     torchLightRoot = new PIXI.Container();
@@ -9032,7 +9054,7 @@ const smokeFiresNow = () => {
       const x = token.mesh.position.x, y = token.mesh.position.y, last = torchLean.get(key);
       const lean = last ? last.lean * 0.85 + Math.max(-0.6, Math.min(0.6, (x - last.x) * 0.02)) * 0.15 : 0;
       torchLean.set(key, { x, lean });
-      torch = { key, x, y, width: token.w ?? grid, side, lean: lean + windOnFire(key, x, y).lean * 0.6, color: source.data.color, visible: token.visible === true && !token.document.hidden && !flameCovered(`torch:${key}`, { x, y }, token.document.elevation) };
+      torch = { key, x, y, width: token.w ?? grid, side, lean: lean + windOnFire(key, x, y).lean * 0.6, color: source.data.color, visible: token.visible === true && !token.document.hidden && !flameCovered(`torch:${key}`, { x, y }, token.document.elevation) && !inThickSmoke({ x, y }) };
       at = torchPose(torch, grid).top;
     }
     // Only a fire this screen can see smokes (a torch behind a wall stays hidden); a carried one, while its creature shows.
@@ -10945,8 +10967,19 @@ Hooks.on("canvasTearDown", () => { clearTimeout(fireLooksTimer); fireLooks.clear
 // The cloud drifts; the fence does NOT. A sight-blocker that moved mid-round would pop the fog and rebuild every
 // client's vision every frame, so the edges stay on the round boundary (smoke-fence.mjs, untouched).
 // Its depth is SMOKE_SORT_LAYER, which smoke-look.mjs declares and gives its reasons for; there is no number here.
+// The scene's own wind as the plume outside wants it: a vector in squares, 0 when the air is still. The cloud
+// INSIDE a room is not blown by this — a room's air is the draft, not the weather — and the plume is the only
+// part of the smoke that is out in it.
+const smokePlumeWind = () => {
+  try {
+    const speed = Math.max(0, Math.min(1, Number(skyWindNow) || 0));
+    if (!(speed > 0)) return null;
+    const angle = Number(skyWindAngle) || 0;
+    return { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
+  } catch { return null; }
+};
 const smokeLooks = createSmokeLooks({ PIXI: globalThis.PIXI, layer: floorLayer("smokeLooks", SMOKE_SORT_LAYER),
-  grid: () => canvas?.grid?.size ?? 100, now: () => fireNow() });
+  grid: () => canvas?.grid?.size ?? 100, now: () => fireNow(), wind: smokePlumeWind });
 let smokeLooksTimer = 0;
 function syncSmokeLooksNow() {
   if (!canvas?.ready) return;
@@ -10965,7 +10998,13 @@ function syncSmokeLooksNow() {
   // The bodies are the cloud (one wash over all of it, one dark mass over what blocks sight); the puffs are the brush
   // shading over them.
   const list = smokeCellList(cells), geo = { cols: grid.cols, origin: grid.origin, cell: grid.cell, seed: smokeSeedOf(scene.id) };
-  smokeLooks.sync({ sheets: smokeSheets(list, geo), puffs: smokePuffs(list, geo) });
+  // The plume outside each opening. The vents are read from the scene, not worked out here: which cells are
+  // openings depends on the regions and the walls and is the active GM's answer alone (smoke-round.mjs), so the
+  // round writes them beside the cells and every client simply pours from what it finds. Indexed against the same
+  // stored geometry as the cells, since that is the grid the vent indices were written on.
+  const vents = scene.flags?.[ID]?.[SMOKE_VENT_FLAG];
+  smokeLooks.sync({ sheets: smokeSheets(list, geo), puffs: smokePuffs(list, geo),
+    plume: Array.isArray(vents) && vents.length ? { list: vents, ...geo } : null });
 }
 const syncSmokeLooks = () => { clearTimeout(smokeLooksTimer); smokeLooksTimer = setTimeout(() => propSafe("smoke looks", syncSmokeLooksNow), 60); };
 // The round's own write back is the new smoke, so unlike the fire's looks this is NOT filtered by quietSave: skipping

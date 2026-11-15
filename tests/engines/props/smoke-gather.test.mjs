@@ -445,3 +445,22 @@ test("main.mjs hands every smoke write failure to the alarm, and traces none of 
     assert.fail(`a smoke write still swallows its failure: ${line.trim()}`);
   }
 });
+
+// The flames are drawn in canvas.interface (zIndex 250), a group that draws ABOVE the whole primary group, while
+// the cloud is in canvas.primary at 752. No sort order can put the cloud over them, so a fire in thick smoke was
+// the one thing still plainly drawn through it — a lit torch and a campfire burning crisply inside a cellar full
+// of smoke that was already blocking sight of everything else. Hiding them is the only way, and both places that
+// draw a flame must ask: the fire lights have a seen() of their own, a held torch has none and is told by its spec.
+test("a flame in thick smoke is not drawn, and both flame paths ask", () => {
+  // Sliced, not matched against the whole file: main.mjs is well over a megabyte and a failed match on it prints
+  // the lot.
+  const main = readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8");
+  const near = (mark, span = 600) => { const at = main.indexOf(mark); assert.ok(at > 0, `${mark} is where it was`); return main.slice(at, at + span); };
+  assert.match(near("const fireSeenHere ="), /!inThickSmoke\(at\)/, "the fire lights' own test");
+  assert.match(near("torch = { key, x, y,"), /!inThickSmoke\(\{ x, y \}\)/, "and a held torch, which has no seen() of its own");
+  // Read against the STORED geometry, as the fence and the cloud are: the scene's current size would slide the
+  // answer under the squares the cells were written with after a resize.
+  const look = near("const inThickSmoke =", 900);
+  assert.match(look, /smokeDensityAt\(smokeSeenCells, smokeSeenGrid, at\) >= SMOKE_THICK/, "at the thick tier");
+  assert.match(look, /storedSmokeGrid\(scene, smokeSeenCells\)/, "against the stored geometry");
+});

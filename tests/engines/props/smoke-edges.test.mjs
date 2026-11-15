@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { smokeEdges, smokeEdgeSpecs, smokeGridOf, smokeCellList, syncSmokeEdges, smokeFenceLevels, smokeLevelOf, smokeLevelReal, storedSmokeGrid } from "../../../scripts/engines/props/smoke-edges.mjs";
+import { smokeEdges, smokeEdgeSpecs, smokeGridOf, smokeCellList, syncSmokeEdges, smokeFenceLevels, smokeLevelOf, smokeLevelReal, storedSmokeGrid , smokeDensityAt } from "../../../scripts/engines/props/smoke-edges.mjs";
 import { smokeLevelFor } from "../../../scripts/engines/props/smoke-round.mjs";
 import { smokeCellsOf } from "../../../scripts/engines/props/smoke-field.mjs";
 import { registerSmokeFence, smokeEdgeMaker } from "../../../scripts/engines/props/smoke-fence.mjs";
@@ -305,4 +305,30 @@ test("walls already in the set are never touched", () => {
   const ids = syncSmokeEdges([a], [a], smokeEdgeSpecs(scene({ 9: 2 }), smokeCellsOf), mk, []);
   syncSmokeEdges([a], [a], [], mk, ids);
   assert.deepEqual([...a.edges.keys()], ["wall.abc"]);
+});
+
+// ---- How thick the smoke is at a point: what the drawn flames ask before showing themselves. ----
+// A fire standing in thick smoke is not seen. The flames are drawn in canvas.interface, a group ABOVE the whole
+// primary group, so no sort order can ever put the cloud over them — the cloud is at 752 in the primary group and
+// the flames at 250 in the interface group, and the interface group wins outright. Hiding them is the only way,
+// and this is what decides it.
+test("the density at a point is read against the grid the cells were written with", () => {
+  const grid = { cols: 10, cell: 100, origin: { x: 0, y: 0 } };
+  const cells = { 0: 0.5, 11: 2.4, 99: 1.2 };
+  // The middle of square (1,1) is index 11.
+  assert.equal(smokeDensityAt(cells, grid, { x: 150, y: 150 }), 2.4);
+  // Anywhere in that square, not only its middle: the whole square holds the one density.
+  assert.equal(smokeDensityAt(cells, grid, { x: 101, y: 199 }), 2.4);
+  // A square with nothing stored, and the one next to it that has.
+  assert.equal(smokeDensityAt(cells, grid, { x: 250, y: 150 }), 0);
+  assert.equal(smokeDensityAt(cells, grid, { x: 50, y: 50 }), 0.5);
+  // Off the grid in every direction, and above its first row.
+  for (const at of [{ x: -1, y: 50 }, { x: 1001, y: 50 }, { x: 50, y: -1 }]) assert.equal(smokeDensityAt(cells, grid, at), 0);
+  // A grid that cannot be read, a point that is not one, and a stored value that is junk: 0, never NaN.
+  assert.equal(smokeDensityAt(cells, null, { x: 150, y: 150 }), 0);
+  assert.equal(smokeDensityAt(cells, grid, null), 0);
+  assert.equal(smokeDensityAt({ 11: "fog" }, grid, { x: 150, y: 150 }), 0);
+  assert.equal(smokeDensityAt(null, grid, { x: 150, y: 150 }), 0);
+  // The origin is honoured, since the stored grid carries one.
+  assert.equal(smokeDensityAt(cells, { ...grid, origin: { x: 100, y: 100 } }, { x: 250, y: 250 }), 2.4);
 });

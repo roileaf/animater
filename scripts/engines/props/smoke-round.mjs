@@ -10,6 +10,47 @@ import { smokeGridOf, smokeCellList, storedSmokeGrid, smokeLevelReal, SMOKE_GRID
 
 const FLAG = "flags.animater";
 
+// Where the smoke leaves a room, stored beside the cells so every client can draw the plume outside. One key
+// holding a small array, not a keyed map like the cells: there are a handful of these, they all change together,
+// and replacing the lot is simpler than merging and deleting key by key.
+export const SMOKE_VENT_FLAG = "smokeVents";
+// Thousandths are far finer than a plume can show; rounding keeps a vent that is drifting by a hair from writing
+// to the scene every round for ever.
+const vented = (v) => Math.round(v * 100) / 100;
+
+/**
+ * The vents of a round: `[{ i, dx, dy, v }]`, sorted by cell, for the openings that have smoke at them.
+ *
+ * `dx`, `dy` is the way OUT as a unit vector — the sum of the ways to this cell's outdoor neighbours, so a doorway
+ * in a south wall faces south and one in a corner faces out of the corner. A vent with no outdoor neighbour at all
+ * faces 0, 0: a hole in the roof, or a window smashed deep inside a warren, where the smoke goes up rather than
+ * along, which on a map drawn from above is a puff that swells where it stands.
+ *
+ * `at(i)` gives the density stored at a cell this round; a vent with none is left out, because an opening with no
+ * smoke at it has nothing to pour. Pure: no Foundry, no clock, no dice.
+ */
+export function smokeVentList(openings = [], { cols, rows, indoors = () => true, at = () => 0 } = {}) {
+  const out = [];
+  for (const i of [...new Set(openings)].sort((a, b) => a - b)) {
+    const v = Number(at(i));
+    if (!(v > 0)) continue;
+    let dx = 0, dy = 0;
+    for (const n of smokeNeighbours(i, cols, rows)) {
+      if (indoors(n)) continue;
+      dx += (n % cols) - (i % cols);
+      dy += Math.floor(n / cols) - Math.floor(i / cols);
+    }
+    const len = Math.hypot(dx, dy);
+    out.push({ i, dx: len ? vented(dx / len) : 0, dy: len ? vented(dy / len) : 0, v: vented(v) });
+  }
+  return out;
+}
+
+// Whether a stored vent list says the same as this one. Compared field by field rather than by JSON, so a list
+// that came back from Foundry as plain objects in the same order still counts as unchanged.
+export const sameVents = (was, now) => Array.isArray(was) && was.length === now.length
+  && now.every((v, k) => was[k]?.i === v.i && was[k]?.dx === v.dx && was[k]?.dy === v.dy && was[k]?.v === v.v);
+
 // The four cells touching this one, inside the grid.
 export function smokeNeighbours(i, cols, rows) {
   const col = i % cols, row = (i - col) / cols, out = [];
@@ -322,8 +363,21 @@ export function smokeRoundPlan({ activeGM, on, scene, sources = [], indoors = ()
   }
   const cells = [...byCell.values()].sort((a, b) => a.i - b.i);
   const openings = [...rooms.values()].flatMap((g) => g.openings).sort((a, b) => a - b);
+  // Where the smoke is seen LEAVING, for the plume drawn outside: each opening that has smoke at it, which way out
+  // of the room it faces, and how thick it is there. Only the active GM knows a room's openings — they are worked
+  // out from the regions and the walls and never stored — so without this a client has nothing to draw a plume
+  // from. The way out is the sum of the ways to this cell's outdoor neighbours, as a unit: a doorway in a south
+  // wall faces south, one in a corner faces out of the corner. A vent with no outdoor neighbour at all (a hole in
+  // the roof, a window smashed deep in a warren) faces nowhere, 0, 0 — smoke straight up, which on a map drawn
+  // from above is a puff that swells where it stands instead of running off.
+  const vents = smokeVentList(openings, { cols, rows, indoors, at: (i) => byCell.get(i)?.v ?? 0 });
   const level = smokeLevelFor(scene, lit);
   const fields = smokeUpdatesFor({ cells }, { scene })[0] ?? {};
+  // One key, replaced whole, so there is nothing to merge and nothing to strand: the list is a handful of entries.
+  // Written only when it has really changed, since this runs every round on every burning scene.
+  const hadVents = scene.flags?.animater?.[SMOKE_VENT_FLAG];
+  if (vents.length) { if (!sameVents(hadVents, vents)) fields[`${FLAG}.${SMOKE_VENT_FLAG}`] = vents; }
+  else if (Array.isArray(hadVents) && hadVents.length) fields[`${FLAG}.-=${SMOKE_VENT_FLAG}`] = null;
   // The geometry goes BESIDE the cells, key by key so Foundry merges it and nothing old is stranded: without it the
   // fence would read the scene's grid size and its first level instead of the ones the cells were written with.
   const grid = scene.flags?.animater?.[SMOKE_GRID_FLAG] ?? {};
@@ -333,6 +387,6 @@ export function smokeRoundPlan({ activeGM, on, scene, sources = [], indoors = ()
   } else if (Object.keys(grid).length) fields[`${FLAG}.-=${SMOKE_GRID_FLAG}`] = null;
   // A grid the stored cells no longer fit was dropped above: their keys go too, whatever this round wrote.
   if (stale) for (const key of Object.keys(saved)) if (!(`${FLAG}.smoke.${key}` in fields)) fields[`${FLAG}.smoke.-=${key}`] = null;
-  return { fields, cells, shapes: smokeShapes(cells, geo), level: cells.length ? level : null, grid: geo, openings,
+  return { fields, cells, shapes: smokeShapes(cells, geo), level: cells.length ? level : null, grid: geo, openings, vents,
     rooms: [...rooms.values()].map((g) => ({ id: g.id, size: g.size, openings: [...g.openings].sort((a, b) => a - b) })) };
 }

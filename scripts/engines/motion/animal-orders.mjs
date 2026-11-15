@@ -1,13 +1,14 @@
 // Orders the GM gives an animal from its HUD (ui/animal-hud.mjs): go to a spot, follow a token, circle a token. They are
 // kept on the placed animal in the scene's flags (flags.animater.placedAnimals[].order), so every screen moves it the same
 // way. Each layer steers an ordered animal with its own gait (orderPrep): the deer and wolves walk there, a fox trots, a
-// rabbit hops, a squirrel dashes, a snake slides, a songbird flies, a hawk circles over it. An ordered animal does not
+// rabbit hops, a squirrel dashes, a snake slides, a songbird flies, a hawk circles over it, a rat scurries, a bat flits.
+// An ordered animal does not
 // run from people: it is with them.
 
 export const ORDER_TYPES = Object.freeze(['go', 'follow', 'circle']);
-// The kinds that take orders (and can be put down by hand). Not a cat (it keeps to wall tops), nor the crows, owls, fish,
-// insects, rats and bats.
-export const ORDERABLE = Object.freeze(['rabbit', 'songbird', 'crow', 'hawk', 'deer', 'fox', 'wolf', 'squirrel', 'snake', 'duck', 'heron', 'gull', 'frog', 'pigeon', 'hen', 'dog', 'cow', 'goat', 'sheep', 'pig', 'horse']);
+// The kinds that take orders (and can be put down by hand). Not a cat (it keeps to wall tops), nor the owls, fish and
+// insects.
+export const ORDERABLE = Object.freeze(['rabbit', 'songbird', 'crow', 'hawk', 'deer', 'fox', 'wolf', 'squirrel', 'snake', 'duck', 'heron', 'gull', 'frog', 'pigeon', 'hen', 'dog', 'cow', 'goat', 'sheep', 'pig', 'horse', 'rat', 'bat']);
 
 // How close a bird circles over its mark (squares): a token's own circle, just round it; a spot's a little tighter.
 export const ORBIT = Object.freeze({ token: 1.05, spot: 0.85, turn: 0.9 });
@@ -158,6 +159,9 @@ export function orderPrep(kind, o, aim, { grid = 100 } = {}) {
   // A hen walks to a mark close by, and sprints to one further off.
   if (kind === 'hen') return d > grid * 2 ? { ...out, mode: 'sprint', want: face, t: 0, len: 1 } : { ...out, mode: 'walk', want: face, wait: 1 };
   if (kind === 'dog') return { ...out, mode: 'trot', tx: aim.x, ty: aim.y, stuck: 0 };
+  // A rat scurries along the floor to the mark and a bat flits over to it (vermin.mjs steers them there round the walls,
+  // the rat past the light it would otherwise keep out of): both only need telling where.
+  if (kind === 'rat' || kind === 'bat') return { ...out, tx: aim.x, ty: aim.y };
   // The farm's walk there, and run when it is far.
   if (FARM_ORDER_KINDS[kind]) return { ...out, mode: d > grid * 3 ? 'flee' : 'walk', a: face, wait: 1 };
   return out;
