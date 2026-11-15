@@ -43,7 +43,8 @@ import { createFireLooks, thingFires, charredCells, litCells } from "./engines/p
 import { iceBreakOf, iceHoleAt } from "./engines/regions/ice-break-look.mjs";
 import { iceSettingsOf, iceStateOf, iceMoveFor, sizeNameOf, walkedLegs, squaresEntered, moveSince, weightOffset, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares } from "./engines/regions/thin-ice.mjs";
 import { createIceBreakLook } from "./engines/regions/ice-break-draw.mjs";
-import { iceBreakSound, newHoles } from "./engines/regions/ice-break-sound.mjs";
+import { iceBreakSound, newKeys } from "./engines/regions/ice-break-sound.mjs";
+import { iceWords } from "./engines/regions/ice-break-word.mjs";
 import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
 import { DECOR_BREAK_MESSAGE, DECOR_NAMES, burningDecorIds, decorPlaceOf, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
@@ -3701,10 +3702,20 @@ const floorShadows = createFloorShadows({ PIXI: globalThis.PIXI, root: floorDraw
 // Thin ice breaking (engines/regions/ice-break-look.mjs, ice-break-draw.mjs): the cracks and the floating shards, painted on the floor under the creatures, read from what the GM stored on the region so every screen draws the same. The holes are water, in movingWaterList.
 const iceBreakLook = createIceBreakLook({ PIXI: globalThis.PIXI, layer: floorLayer("iceBreak", 643), grid: () => canvas.grid?.size ?? 100 });
 const iceDrawn = { holes: 0, cracks: 0, shards: 0 };
-// What each screen has already heard give way, per region, so a hole only sounds the moment it appears. A region this screen
-// has not seen before is learned silently (newHoles): coming to a map whose ice is already broken is quiet, as is a reload.
+// What each screen has already heard give way and already shown a word for, per region, so each happens the moment it does
+// and never again. A region this screen has not seen before is learned quietly (newKeys): coming to a map whose ice is
+// already broken says and plays nothing, and a reload with it.
 const iceHeard = new Map();
 const forgetIceHeard = () => iceHeard.clear();
+// CRACK! where the ice cracks, THROUGH! where someone goes in, floating up off the square for everyone at the table. The
+// crack is the only thing this feature does that makes no sound and moves nothing, so without this only the GM, who gets
+// the whisper, knows it happened. Foundry's own floating text, so it follows the map and the zoom like damage numbers do.
+const showIceWords = (news, grid) => {
+  for (const word of iceWords(news, { grid })) {
+    try { canvas.interface?.createScrollingText?.(word.at, word.text, { anchor: 0, direction: 1, distance: word.distance, duration: word.duration, fontSize: word.fontSize, fill: word.fill, stroke: word.stroke, strokeThickness: 4, jitter: 0.1 }); }
+    catch (err) { runtime?.trace?.("thin ice", `word: ${err?.message ?? err}`); /* one word lost never stops the rest */ }
+  }
+};
 // The ice giving way, heard where it went: the ice itself, then a body into the water under it a moment later. Every screen
 // picks the same two recordings from the square's key, so the table hears one break, not a different one each.
 const ICE_BREAK_VOLUME = 0.75, ICE_BREAK_REACH = 18;
@@ -3722,13 +3733,16 @@ const syncIceBreak = () => {
   const cracks = [], shards = [], grid = canvas.grid?.size ?? 100, wet = movingWaterOn();
   for (const region of drawnRegions()) {
     try { const broken = iceBreakOf(region, { grid }); cracks.push(...broken.cracks); if (wet) shards.push(...broken.shards); /* (shards float on a hole, and a hole is moving water) */ } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
-    // Heard after the drawing is gathered, and never for a hole fire melted open: nobody fell through that one.
+    // Heard and said after the drawing is gathered, and never for a hole fire melted open: nobody fell through that one.
     try {
       const thin = iceSettingsOf(region).thin, id = `${canvas.scene?.id ?? "?"}:${region?.id ?? "?"}`;
-      const { holes, melts } = thin ? iceStateOf(region) : { holes: [], melts: [] };
-      const { fresh, heard } = newHoles(holes.filter((key) => !melts.includes(key)), iceHeard.get(id));
-      iceHeard.set(id, heard);
-      if (fresh.length) playIceBreak(region, fresh, grid);
+      const { holes, melts, cracks } = thin ? iceStateOf(region) : { holes: [], melts: [], cracks: [] };
+      const was = iceHeard.get(id);
+      const broke = newKeys(holes.filter((key) => !melts.includes(key)), was?.holes);
+      const cracked = newKeys(cracks, was?.cracks);
+      iceHeard.set(id, { holes: broke.seen, cracks: cracked.seen });
+      if (broke.fresh.length) playIceBreak(region, broke.fresh, grid);
+      if (broke.fresh.length || cracked.fresh.length) showIceWords({ broke: broke.fresh, cracked: cracked.fresh }, grid);
     } catch (err) { runtime?.trace?.("thin ice", `heard: ${err?.message ?? err}`); }
   }
   try { iceBreakLook.sync({ cracks, shards }); iceDrawn.cracks = cracks.length; iceDrawn.shards = shards.length; } catch (err) { runtime?.trace?.("thin ice", `paint: ${err?.message ?? err}`); }

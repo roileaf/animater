@@ -5,6 +5,11 @@
 // Chosen from the square's own key, so every screen plays the same break from what the GM stored, the same way the cracks and
 // the hole are drawn from it (ice-break-look.mjs). Junk input gives null rather than an error, as the look does.
 
+import { newKeys } from "./thin-ice.mjs";
+// `newKeys` lives with the ice's own state: the word that floats over a break hangs on the same "new since this screen
+// last looked" question. Passed on from here so a caller that only wants the sound has one import.
+export { newKeys };
+
 const ROOT = "modules/animater/assets/sounds/surfaces/freesound/";
 
 // Roi's picks, auditioned on tools/fx-gallery/ice-sounds-audition.html. Loudness-matched to -17.5 dBFS (loudest 100 ms RMS)
@@ -34,13 +39,4 @@ export function iceBreakSound(key, seed = 0) {
     splash: ROOT + pick(ICE_SPLASH_FILES, n * 3 + s * 17 + 0.5),
     gap: ICE_SPLASH_GAP_MS,
   };
-}
-
-// The keys that have newly become holes, given what this screen has already heard. Returns the new keys and the set to keep
-// for next time. `heard` being null means this screen has not seen this scene yet: nothing is new, it only learns what is
-// already there, so loading a map with broken ice is silent.
-export function newHoles(holes, heard) {
-  const now = new Set(Array.isArray(holes) ? holes.filter((k) => typeof k === "string") : []);
-  if (!(heard instanceof Set)) return { fresh: [], heard: now };
-  return { fresh: [...now].filter((k) => !heard.has(k)), heard: now };
 }

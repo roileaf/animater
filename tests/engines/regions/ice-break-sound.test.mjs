@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { iceBreakSound, newHoles, ICE_BREAK_FILES, ICE_SPLASH_FILES, ICE_SPLASH_GAP_MS } from "../../../scripts/engines/regions/ice-break-sound.mjs";
+import { iceBreakSound, newKeys, ICE_BREAK_FILES, ICE_SPLASH_FILES, ICE_SPLASH_GAP_MS } from "../../../scripts/engines/regions/ice-break-sound.mjs";
 import { BUNDLED_SOUND_DIRS } from "../../../data/bundled-sounds.mjs";
 
 const LOCAL = (file) => file.replace("modules/animater/", "./");
@@ -47,24 +47,24 @@ test("every file named is one Animater actually ships", () => {
 });
 
 test("a screen coming to a broken map hears nothing, and only new holes sound after that", () => {
-  const first = newHoles(["3,4", "5,6"], undefined);
+  const first = newKeys(["3,4", "5,6"], undefined);
   assert.deepEqual(first.fresh, [], "arriving at a map whose ice is already broken is silent");
-  const next = newHoles(["3,4", "5,6", "7,8"], first.heard);
+  const next = newKeys(["3,4", "5,6", "7,8"], first.seen);
   assert.deepEqual(next.fresh, ["7,8"]);
-  const again = newHoles(["3,4", "5,6", "7,8"], next.heard);
+  const again = newKeys(["3,4", "5,6", "7,8"], next.seen);
   assert.deepEqual(again.fresh, [], "a hole sounds once, not on every redraw");
 });
 
 test("ice frozen over again can break again and be heard", () => {
-  const broke = newHoles(["3,4"], new Set());
+  const broke = newKeys(["3,4"], new Set());
   assert.deepEqual(broke.fresh, ["3,4"]);
-  const refrozen = newHoles([], broke.heard);
+  const refrozen = newKeys([], broke.seen);
   assert.deepEqual(refrozen.fresh, []);
-  assert.deepEqual(newHoles(["3,4"], refrozen.heard).fresh, ["3,4"], "Refreeze forgets it, so the next creature through is heard");
+  assert.deepEqual(newKeys(["3,4"], refrozen.seen).fresh, ["3,4"], "Refreeze forgets it, so the next creature through is heard");
 });
 
 test("junk in the stored holes is ignored rather than played", () => {
-  const { fresh } = newHoles(["3,4", null, 7, undefined], new Set());
+  const { fresh } = newKeys(["3,4", null, 7, undefined], new Set());
   assert.deepEqual(fresh, ["3,4"]);
-  assert.deepEqual(newHoles(null, new Set()).fresh, []);
+  assert.deepEqual(newKeys(null, new Set()).fresh, []);
 });

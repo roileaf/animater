@@ -375,3 +375,14 @@ export function iceMeltSquares({ bounds, within = null, grid, inside = () => tru
   }
   return out;
 }
+
+// Which stored squares are new to a screen since it last looked, and what it should remember for next time. The sound a
+// break makes and the word that floats over it both hang on this: a square must be heard and shown the moment it appears,
+// once, and never again on a redraw. `seen` being null or absent means this screen has not looked at this region before,
+// so nothing counts as new — it only learns what is already there. That is what keeps coming to a map whose ice is already
+// broken quiet, and a reload with it. Junk in the stored list is dropped rather than returned.
+export function newKeys(keys, seen) {
+  const now = new Set(Array.isArray(keys) ? keys.filter((key) => SQUARE_KEY.test(key)) : []);
+  if (!(seen instanceof Set)) return { fresh: [], seen: now };
+  return { fresh: [...now].filter((key) => !seen.has(key)), seen: now };
+}

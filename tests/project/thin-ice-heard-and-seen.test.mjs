@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 
-// That the break is HEARD at all. The choice of recordings is pure and tested on its own; this asks main.mjs itself whether
+// That the break is HEARD and SEEN at all. The choice of recordings is pure and tested on its own; this asks main.mjs itself whether
 // a hole that appears ever reaches the audio, with the right files, at the right place, and whether a map that was already
 // broken stays silent. Nothing here reads main.mjs's source text: every assertion is a playback call the fake canvas recorded.
 // (Originally: The shapes are pure and tested on their own; this asks main.mjs itself whether they ever
@@ -81,6 +81,7 @@ globalThis.CONST = { GRID_TYPES: { GRIDLESS: 0, SQUARE: 1 }, TOKEN_DISPOSITIONS:
 const animater = { api: null };
 const ticks = [];
 const played = [];
+const said = [];
 let level = 0;
 const scene = { id: "scene1", regions: [], flags: {}, async updateEmbeddedDocuments() { return []; } };
 globalThis.canvas = {
@@ -89,6 +90,7 @@ globalThis.canvas = {
   level: { id: "level0", elevation: { base: 0 } },
   dimensions: { sceneRect: { x: 0, y: 0, width: 2000, height: 2000 }, rect: { x: 0, y: 0, width: 2000, height: 2000 }, distance: 5 },
   tokens: { placeables: [], controlled: [], get: () => null },
+  interface: { createScrollingText: (at, text, opts) => { said.push({ at: { ...at }, text, ...opts }); } },
   sounds: { getListenerPositions: () => [], playAtPosition: (file, at, radius, opts) => { played.push({ file, at: { ...at }, radius, ...opts }); return null; } },
   walls: { placeables: [] }, tiles: { placeables: [] }, primary: new Container(), stage: { pivot: new Point(), scale: new Point(1, 1) },
   app: { ticker: { add: (fn) => ticks.push(fn) }, renderer: { width: 2000, height: 2000, resolution: 1, screen: { x: 0, y: 0, width: 2000, height: 2000 } } },
@@ -122,7 +124,8 @@ const iceRegion = (thinIce, { thin = true } = {}) => ({
 
 
 const sounds = () => played.map((p) => p.file.split("/").pop());
-const clear = () => { played.length = 0; };
+const clear = () => { played.length = 0; said.length = 0; };
+const words = () => said.map((w) => w.text);
 
 test("a creature going through the ice is heard: the ice, then the water under it", () => {
   show([iceRegion({})]);
@@ -205,4 +208,52 @@ test("every file it asks the audio for is one Animater ships", () => {
     assert.ok(p.file.startsWith("modules/animater/assets/sounds/surfaces/freesound/"), p.file);
     assert.ok(existsSync(new URL("../../assets/sounds/surfaces/freesound/" + p.file.split("/").pop(), import.meta.url)), p.file + " is not on disk");
   }
+});
+
+test("a cracked square says CRACK! on the map, where everyone can see it", () => {
+  show([iceRegion({})]);
+  clear();
+  show([iceRegion({ cracks: { "1,1": 1 } })]);
+  assert.deepEqual(words(), ["CRACK!"], "the crack is the one thing with no sound: it has to be seen");
+  assert.deepEqual(said[0].at, { x: 1.5 * GRID, y: 1.5 * GRID }, "over the square that cracked");
+  assert.ok(said[0].duration > 0 && said[0].fontSize > 0);
+});
+
+test("going through says so too, and is not also announced as a crack", () => {
+  show([iceRegion({})]);
+  clear();
+  show([iceRegion({ cracks: { "2,2": 1 }, holes: { "2,2": 2 } })]);
+  assert.deepEqual(words(), ["THROUGH!"], "one square, one word");
+});
+
+test("a word appears once, not on every redraw", () => {
+  show([iceRegion({})]);
+  clear();
+  show([iceRegion({ cracks: { "1,1": 1 } })]);
+  show([iceRegion({ cracks: { "1,1": 1 } })]);
+  assert.deepEqual(words(), ["CRACK!"]);
+  show([iceRegion({ cracks: { "1,1": 1, "1,2": 1 } })]);
+  assert.deepEqual(words(), ["CRACK!", "CRACK!"], "but the next square cracking is its own word");
+});
+
+test("coming to a map of already-cracked ice says nothing", () => {
+  drawSoon();
+  fire("canvasTearDown");
+  clear();
+  show([iceRegion({ cracks: { "1,1": 1, "3,3": 1 }, holes: { "5,5": 2 } })]);
+  assert.deepEqual(words(), [], "none of it happened just now");
+});
+
+test("ice a fire melted open says nothing: nobody fell in", () => {
+  show([iceRegion({})]);
+  clear();
+  show([iceRegion({ holes: { "4,4": "melt" } })]);
+  assert.deepEqual(words(), []);
+});
+
+test("a region the GM never marked says nothing", () => {
+  show([iceRegion({})]);
+  clear();
+  show([iceRegion({ cracks: { "1,1": 1 } }, { thin: false })]);
+  assert.deepEqual(words(), []);
 });
