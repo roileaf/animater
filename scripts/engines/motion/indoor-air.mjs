@@ -192,6 +192,10 @@ export const MIST_AIR = { spread: 1, run: 0.9, fade: 0.012, made: 0.04, gain: 1,
 // How hard a door just opened pushes the air (pure, 0–1), `t` seconds after: easing in, holding, easing off.
 export const doorPushAt = (t) => (t < 0 ? 0 : t < 2 ? t / 2 : t < 6 ? 1 : t < 12 ? (12 - t) / 6 : 0);
 const PUSH_REACH = 6;
+// What a doorway hands to the air BEYOND it, as a share of what leaves through it each step; the rest is gone — risen,
+// blown off, out of the model. Without this an opening was a pure sink: a room poured into its own door and nothing was
+// ever seen on the other side of it, which is not what anyone watching a smoky room through an open door sees.
+const SPILL = 0.55;
 export function createSmokeAir({ spread: SMOKE_SPREAD, run: SMOKE_RUN, fade: SMOKE_FADE, made: SMOKE_MADE, gain: SMOKE_GAIN, wide: SMOKE_WIDE, ease: SMOKE_EASE = 0, shove: SMOKE_SHOVE = 0 } = SMOKE_AIR) {
   // A door's swing, for the seconds it lasts: how far each cell is from the door, which side holds what it pushes, its age.
   let pushed = null;
@@ -237,7 +241,23 @@ export function createSmokeAir({ spread: SMOKE_SPREAD, run: SMOKE_RUN, fade: SMO
         }
       }
       // The draft: a share of it carried to the cells lower toward the way out, by how fast the air runs here.
-      if (dist[k] === 0) { delta[k] -= v * Math.min(1, 2 * dt); continue; }
+      // At the way out. What leaves the room does not simply vanish: SPILL of it crosses into the still air beyond the
+      // threshold, where nothing pulls it back (that air has no way out of its own, dist < 0), so it hangs in the doorway
+      // and drifts off as it fades. Where there is nothing beyond — an opening at the map's own edge, every neighbour
+      // already on the way out — all of it leaves, exactly as it always did.
+      if (dist[k] === 0) {
+        const leaving = v * Math.min(1, 2 * dt);
+        delta[k] -= leaving;
+        let beyond = 0;
+        for (let s = 0; s < 8; s++) { if (!open(k, s)) continue; const nk = (j + STEPS[s][1]) * cols + (i + STEPS[s][0]); if (dist[nk] < 0) beyond += 1 / STEPS[s][2]; }
+        if (beyond > 0) for (let s = 0; s < 8; s++) {
+          if (!open(k, s)) continue;
+          const nk = (j + STEPS[s][1]) * cols + (i + STEPS[s][0]);
+          if (dist[nk] >= 0) continue;
+          delta[nk] += (leaving * SPILL) / STEPS[s][2] / beyond; wake(nk);
+        }
+        continue;
+      }
       if (!(dist[k] > 0)) continue;
       let total = 0;
       for (let s = 0; s < 8; s++) { if (!open(k, s)) continue; const nk = (j + STEPS[s][1]) * cols + (i + STEPS[s][0]); if (dist[nk] >= 0 && dist[nk] < dist[k]) total += (dist[k] - dist[nk]) / STEPS[s][2]; }
