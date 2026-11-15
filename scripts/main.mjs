@@ -4367,7 +4367,11 @@ const paintedTexture = (step, want) => {
 };
 /** The painted pictures are let go when the scene changes, so a long session does not keep every size it ever drew. */
 const forgetPaintedLooks = () => { for (const tex of paintedLooks.values()) { try { tex.destroy(true); } catch { /* already gone */ } } paintedLooks.clear(); };
-Hooks.on("canvasReady", () => { forgetPaintedLooks(); });
+// Let go as the old scene goes, NOT when the new one is ready. Foundry draws the new scene's tokens before canvasReady
+// fires, so a wagon on the new map had already been painted and was wearing one of these textures by the time this ran:
+// destroying it left a sprite pointing at a texture with no uvs, and PIXI threw out of calculateVertices on every frame
+// from then on. At teardown nothing is wearing them yet.
+Hooks.on("canvasTearDown", () => { forgetPaintedLooks(); });
 const drawCarrierLook = (token) => {
   const doc = token?.document;
   if (!token || token.destroyed || !doc) return;
@@ -4716,8 +4720,9 @@ Hooks.on("updateToken", (doc, change) => {
 });
 Hooks.on("canvasReady", () => {
   lookStates.clear();
-  // (The map layer the rigs stood in went with the old scene; the holders in it are no use on the new one.)
-  carrierRigs.clear();
+  // (The old scene's holders were destroyed and forgotten at teardown. Clearing the map HERE instead orphaned the
+  // holders the new scene had already made during its own token draw: they stayed parented on the map, unreachable,
+  // while a second holder was built beside them for the same token.)
   try { canvas.app?.ticker?.remove(tickCarrierLooks); canvas.app?.ticker?.add(tickCarrierLooks); } catch { /* without a ticker the hooks still draw it */ }
 });
 Hooks.on("canvasTearDown", () => { dropAllCarrierRigs(); });
