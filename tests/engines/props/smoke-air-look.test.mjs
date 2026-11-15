@@ -46,3 +46,36 @@ test('with a layer and a field the smoke is one mesh over the scene, shown only 
   look.clear();
   assert.equal(added[0].gone, true);
 });
+
+function shown() {
+  const added = [];
+  const layer = { addChild: (m) => { m.parent = layer; added.push(m); }, removeChild: (m) => { m.parent = null; } };
+  const look = createSmokeAirLook({ PIXI: fakePIXI(), layer: () => layer, render: () => {} });
+  look.fill(new Uint8Array(4 * 4 * 4), 4, 4);
+  return { look, added };
+}
+
+test('a grid or an area with no size draws nothing instead of dividing by it', () => {
+  for (const bad of [{ grid: 0 }, { grid: -100 }, { grid: NaN }, { bounds: { x: 0, y: 0, width: 0, height: 1000 } }, { bounds: { x: 0, y: 0, width: 1000, height: -5 } }]) {
+    const { look, added } = shown();
+    assert.doesNotThrow(() => look.look({ now: 0, grid: 100, bounds, amount: 1, ...bad }));
+    assert.equal(added.length, 0, `no mesh for ${JSON.stringify(bad)}`);
+  }
+  const { look, added } = shown();
+  look.look({ now: 0, grid: 100, bounds, amount: 1 });
+  look.look({ now: 1, grid: 0, bounds, amount: 1 });
+  assert.equal(added[0].visible, false, 'a mesh already up is hidden when the grid goes bad');
+});
+
+test('a field of another size reaches the shader, and clearing the field hides the mesh at once', () => {
+  const { look, added } = shown();
+  look.look({ now: 0, grid: 100, bounds, amount: 1 });
+  const first = added[0];
+  assert.deepEqual(first.shader.uniforms.uCell, [250, 250]);
+  look.fill(new Uint8Array(8 * 5 * 4), 8, 5);
+  look.look({ now: 1, grid: 100, bounds, amount: 1 });
+  const now = added.at(-1);
+  assert.deepEqual(now.shader.uniforms.uCell, [125, 200], 'cell size follows the new field');
+  look.fill(null);
+  assert.equal(now.visible, false, 'hidden by fill(null), before any look');
+});

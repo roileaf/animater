@@ -134,16 +134,20 @@ export function createSmokeAirLook({ PIXI, layer, render } = {}) {
     },
     // Where the smoke is now (createSmokeAir's pixels). The same pixels again are only re-uploaded: they change in place.
     fill(pixels = null, cols = 1, rows = 1) {
-      if (pixels && fillGiven?.pixels === pixels && fillTex) { fillTex.baseTexture.update(); fillGiven = { pixels, cols, rows }; return; }
+      // The same pixels at the same size are only re-uploaded; a different size is a different texture.
+      if (pixels && fillGiven?.pixels === pixels && fillGiven.cols === cols && fillGiven.rows === rows && fillTex) { fillTex.baseTexture.update(); return; }
       fillGiven = pixels ? { pixels, cols, rows } : null;
       dropFill();
       if (fillGiven) fillTex = texture(fillGiven);
+      // With no field there is nothing to sample: hide the mesh now, not at the next look, so no frame is drawn with a null sampler.
+      else if (mesh) mesh.visible = false;
       use();
     },
     look({ now = 0, grid = 100, bounds = null, amount = 0, since = 1e3 } = {}) {
       const parent = layer?.() ?? null;
-      if (!parent || !bounds || !fillTex) { if (mesh) mesh.visible = false; return; }
-      const k = `${bounds.x},${bounds.y},${bounds.width},${bounds.height},${grid}`;
+      // No layer, field or area, or a grid or area with no size (it would be divided by in the shader): nothing is drawn.
+      if (!parent || !bounds || !fillTex || !(grid > 0) || !(bounds.width > 0) || !(bounds.height > 0)) { if (mesh) mesh.visible = false; return; }
+      const k = `${bounds.x},${bounds.y},${bounds.width},${bounds.height},${grid},${fillGiven.cols},${fillGiven.rows}`;
       if (mesh && (k !== key || mesh.parent !== parent)) dropMesh();
       if (!mesh) {
         if (!draftTex) { draftTex = still(); draftWas = draftTex; draftMix = 1; }
