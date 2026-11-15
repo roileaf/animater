@@ -233,3 +233,10 @@ metal-step-208101-0.ogg: "Metal Steps" by Phil25, https://freesound.org/people/P
 metal-step-208101-1.ogg: "Metal Steps" by Phil25, https://freesound.org/people/Phil25/sounds/208101/
 metal-step-398937-0.ogg: "Metal Footsteps" by SoftDistortionFX, https://freesound.org/people/SoftDistortionFX/sounds/398937/
 metal-step-398937-1.ogg: "Metal Footsteps" by SoftDistortionFX, https://freesound.org/people/SoftDistortionFX/sounds/398937/
+ice-break-840050-0.ogg: "Breaking through ice into water." by mentos987, https://freesound.org/people/mentos987/sounds/840050/
+ice-break-209818-0.ogg: "Icy Water - Cracking and Break through" by DogOmlet, https://freesound.org/people/DogOmlet/sounds/209818/
+ice-break-837154-0.ogg: "Breaking the ice of a frozen creek" by solippsound, https://freesound.org/people/solippsound/sounds/837154/
+body-splash-637947-0.ogg: "water movement body dive in.flac" by kyles, https://freesound.org/people/kyles/sounds/637947/
+body-splash-530152-0.ogg: "POOL CANONBALL DIVE 4" by tbsounddesigns, https://freesound.org/people/tbsounddesigns/sounds/530152/
+body-splash-529794-0.ogg: "5 meters dive.wav" by bruno.auzet, https://freesound.org/people/bruno.auzet/sounds/529794/
+body-splash-469608-0.ogg: "Watersplash" by Sheyvan, https://freesound.org/people/Sheyvan/sounds/469608/

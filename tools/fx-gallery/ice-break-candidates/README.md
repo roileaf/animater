@@ -144,6 +144,26 @@ These were the first round, before Roi heard them. Kept here so the record shows
 | `surfaces/freesound/body-water-166313-0.ogg` | deleted_user_2104797 | -18.5 | -3.6 | Sloshing, not entry. |
 | `surfaces/freesound/body-water-841151-0/1.ogg` | SonicOddities | -18.7 / -19.7 | -2.9 / -3.6 | As above. |
 
+## What Roi picked
+
+Auditioned 2026-11-15. **Seven kept, no creak.** The break ships as a **pair**: an ice file, then a splash
+120 ms behind it, the gap he settled on auditioning them together.
+
+- ice: `break-through-boots-840050`, `break-through-pond-209818-b`, `creek-ice-break-837154`
+- water: `body-dive-in-637947`, `cannonball-530152`, `dive-5m-529794`, `watersplash-469608`
+
+They ship as `assets/sounds/surfaces/freesound/ice-break-<id>-0.ogg` and `body-splash-<id>-0.ogg`, listed in
+that folder's `License.txt` and registered by `tools/build-bundled-sounds.mjs`. Which pair a break plays is
+chosen from the square's key (`scripts/engines/regions/ice-break-sound.mjs`), so every screen hears the same
+one and a lake does not play a single sound over and over: three by four is twelve pairs.
+
+**Two of the three ice files he kept are among the six that fail the noise-floor rule**, and he kept them
+anyway — which answers the question that rule raised. It is the wrong threshold for outdoor water
+recordings, and the finished files are what the standard should be read against here.
+
+The **creak stays silent**: nothing was kept for it. The bundled frost-crack set below is still there, still
+unmatched in loudness, if he wants one later.
+
 ## The pairing question
 
 Still open, and now sharper. Three shapes are possible and all three are auditionable on the page:

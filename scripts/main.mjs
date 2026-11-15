@@ -43,6 +43,7 @@ import { createFireLooks, thingFires, charredCells, litCells } from "./engines/p
 import { iceBreakOf, iceHoleAt } from "./engines/regions/ice-break-look.mjs";
 import { iceSettingsOf, iceStateOf, iceMoveFor, sizeNameOf, walkedLegs, squaresEntered, moveSince, weightOffset, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares } from "./engines/regions/thin-ice.mjs";
 import { createIceBreakLook } from "./engines/regions/ice-break-draw.mjs";
+import { iceBreakSound, newHoles } from "./engines/regions/ice-break-sound.mjs";
 import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, grassCells, fireWarning, fireBurnedOut, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
 import { DECOR_BREAK_MESSAGE, DECOR_NAMES, burningDecorIds, decorPlaceOf, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
@@ -3700,10 +3701,35 @@ const floorShadows = createFloorShadows({ PIXI: globalThis.PIXI, root: floorDraw
 // Thin ice breaking (engines/regions/ice-break-look.mjs, ice-break-draw.mjs): the cracks and the floating shards, painted on the floor under the creatures, read from what the GM stored on the region so every screen draws the same. The holes are water, in movingWaterList.
 const iceBreakLook = createIceBreakLook({ PIXI: globalThis.PIXI, layer: floorLayer("iceBreak", 643), grid: () => canvas.grid?.size ?? 100 });
 const iceDrawn = { holes: 0, cracks: 0, shards: 0 };
+// What each screen has already heard give way, per region, so a hole only sounds the moment it appears. A region this screen
+// has not seen before is learned silently (newHoles): coming to a map whose ice is already broken is quiet, as is a reload.
+const iceHeard = new Map();
+const forgetIceHeard = () => iceHeard.clear();
+// The ice giving way, heard where it went: the ice itself, then a body into the water under it a moment later. Every screen
+// picks the same two recordings from the square's key, so the table hears one break, not a different one each.
+const ICE_BREAK_VOLUME = 0.75, ICE_BREAK_REACH = 18;
+const playIceBreak = (region, keys, grid) => {
+  const seed = Number(String(region?.id ?? "").replace(/\D/g, "").slice(-6)) || 0;
+  for (const key of keys) {
+    const m = /^(-?\d+),(-?\d+)$/.exec(key), sound = iceBreakSound(key, seed);
+    if (!m || !sound) continue;
+    const at = { x: (Number(m[1]) + 0.5) * grid, y: (Number(m[2]) + 0.5) * grid };
+    void playUnder("iceBreak", at, { file: sound.ice, volume: ICE_BREAK_VOLUME, reach: ICE_BREAK_REACH, walls: true, gmAlways: true, room: 0.8 });
+    setTimeout(() => { void playUnder("iceBreak", at, { file: sound.splash, volume: ICE_BREAK_VOLUME, reach: ICE_BREAK_REACH, walls: true, gmAlways: true, room: 0.8 }); }, sound.gap);
+  }
+};
 const syncIceBreak = () => {
   const cracks = [], shards = [], grid = canvas.grid?.size ?? 100, wet = movingWaterOn();
   for (const region of drawnRegions()) {
     try { const broken = iceBreakOf(region, { grid }); cracks.push(...broken.cracks); if (wet) shards.push(...broken.shards); /* (shards float on a hole, and a hole is moving water) */ } catch (err) { runtime?.trace?.("thin ice", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
+    // Heard after the drawing is gathered, and never for a hole fire melted open: nobody fell through that one.
+    try {
+      const thin = iceSettingsOf(region).thin, id = `${canvas.scene?.id ?? "?"}:${region?.id ?? "?"}`;
+      const { holes, melts } = thin ? iceStateOf(region) : { holes: [], melts: [] };
+      const { fresh, heard } = newHoles(holes.filter((key) => !melts.includes(key)), iceHeard.get(id));
+      iceHeard.set(id, heard);
+      if (fresh.length) playIceBreak(region, fresh, grid);
+    } catch (err) { runtime?.trace?.("thin ice", `heard: ${err?.message ?? err}`); }
   }
   try { iceBreakLook.sync({ cracks, shards }); iceDrawn.cracks = cracks.length; iceDrawn.shards = shards.length; } catch (err) { runtime?.trace?.("thin ice", `paint: ${err?.message ?? err}`); }
 };
@@ -4767,7 +4793,7 @@ Hooks.on("canvasTearDown", () => { regionDrag = null; });
 // The menu stands by the spot it was opened for: when the map moves under it, it goes.
 Hooks.on("canvasPan", () => { regionPanel.close(); });
 Hooks.on("deleteRegion", (doc) => { if (regionPanel.doc === doc) regionPanel.close(); });
-Hooks.on("canvasTearDown", () => { clearTimeout(floorLooksTimer); forgetPlanes(); dropTileBoxes(); floorLooks.clear(); floorTextures.clear(); floorMotion.clear(); waterEngine.clear(); floorShadows.clear(); iceBreakLook.clear(); regionPanel.close(); });
+Hooks.on("canvasTearDown", () => { clearTimeout(floorLooksTimer); forgetPlanes(); dropTileBoxes(); floorLooks.clear(); floorTextures.clear(); floorMotion.clear(); waterEngine.clear(); floorShadows.clear(); iceBreakLook.clear(); forgetIceHeard(); regionPanel.close(); });
 // The region with a floor under a point, the last listed as the floor's own lookup has it.
 const floorRegionAt = (point) => {
   const elevation = Number(canvas.level?.elevation?.base) || 0, regions = regionsHere();
