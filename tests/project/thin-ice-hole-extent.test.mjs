@@ -59,6 +59,8 @@ let level = 0;
 const region = { id: "reg1", flags: { animater: { iceThin: true, iceHolds: "med", thinIce: {} } }, testPoint: () => true };
 const scene = {
   id: "scene1", regions: [region], flags: {},
+  // Where a creature came to rest is read off the token document once the moving has stopped, so the scene has to hold it.
+  tokens: { list: [], get(id) { return this.list.find((t) => t.id === id) ?? null; }, [Symbol.iterator]() { return this.list[Symbol.iterator](); }, get size() { return this.list.length; }, get contents() { return [...this.list]; }, filter(fn) { return this.list.filter(fn); }, map(fn) { return this.list.map(fn); }, find(fn) { return this.list.find(fn); }, forEach(fn) { this.list.forEach(fn); }, some(fn) { return this.list.some(fn); } },
   async updateEmbeddedDocuments(_type, updates) {
     for (const u of updates) for (const [path, value] of Object.entries(u)) {
       if (path === "_id") continue;
@@ -91,7 +93,8 @@ assert.ok(api?.debug?.floorAt, "main.mjs is booted far enough to ask it about th
 assert.ok(moveToken.length, "and to watch a move");
 
 const frame = () => { for (const fn of ticks) { try { fn(); } catch { /* another engine's frame on a canvas this thin */ } } };
-const settle = () => new Promise((resolve) => realTimeout(resolve, 20));
+// Long enough to outlast the quiet before the resting place is read (main.mjs ICE_REST_MS).
+const settle = () => new Promise((resolve) => realTimeout(resolve, 260));
 
 // A creature as big as its size really is, standing with its corner in the square named.
 const mesh = () => ({ alpha: 1, tint: 0xffffff, destroyed: false, scale: { x: 1, y: 1, set(x, y) { this.x = x; this.y = y; } } });
@@ -112,8 +115,15 @@ const fellThrough = async (size, wide, from, to) => {
   const token = creature(size, wide, ...to);
   tokens.length = 0; tokens.push(token);
   canvas.level = { id: `level${++level}`, elevation: { base: 0 } };
-  const doc = { ...token.document, parent: scene };
+  const doc = { ...token.document, parent: scene, x: to[0] * GRID, y: to[1] * GRID };
+  scene.tokens.list = [doc];
+  // The ice asks where the creature came to rest a moment after the moving stops, and this canvas collects what is put off
+  // rather than running it. Run back exactly what this move put off — not what the rest of the map left lying about.
+  const waiting = later.length;
   for (const fn of moveToken) fn(doc, { origin: waypoint(...from, wide), passed: { waypoints: [waypoint(...to, wide)] } });
+  const mine = later.splice(waiting);
+  await settle();
+  for (const fn of mine) { try { fn(); } catch { /* another engine's timer on a canvas this thin */ } }
   await settle();
   canvas.level = { id: `level${++level}`, elevation: { base: 0 } };
   return token;

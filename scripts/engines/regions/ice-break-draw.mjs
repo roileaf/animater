@@ -10,6 +10,11 @@ const INK = 0x1b1410, FROST = 0xdcecf2, SHARD = 0xe9f4f7, SHARD_EDGE = 0x5d7f8c;
 // A plate seen from above: a pale face, and under it the cold edge of the ice's own thickness, offset a little so the band
 // shows on the two sides away from the light. Thickness is a fraction of a square, so a plate reads the same on any map.
 const PLATE_FACE = 0xeaf2f4, PLATE_SIDE = 0x79b9ce, PLATE_DEEP = 0x3f7d95;
+// The water in the hole, painted here under the plates rather than left to the moving water alone. The hole is a water spec
+// too, so the engine's ripples run over this where the screen's quality allows them — but a creature standing in open water
+// has to read as standing in open water on every screen, at every quality, and on a map whose own light is warm enough to
+// turn pale ice sandy. So the hole is painted: deep water, a darker lip inside its edge where the ice shelves off.
+const WATER_DEEP = 0x12222c, WATER_RIM = 0x0a151c;
 const PLATE_THICK = 0.05, PLATE_LEAN_X = 0.45, PLATE_LEAN_Y = 0.75;
 
 /** createIceBreakLook({ PIXI, layer, grid }): `layer()` gives the container to draw in (under the creatures), `grid()` the
@@ -17,12 +22,12 @@ const PLATE_THICK = 0.05, PLATE_LEAN_X = 0.45, PLATE_LEAN_Y = 0.75;
  *  empty; the same state again redraws nothing. While `busy` (shards are floating) tick(ms) moves them, `ms` the shared
  *  clock (the server's time), so every screen shows them at the same point of their drift. */
 export function createIceBreakLook({ PIXI, layer, grid = () => 100 }) {
-  let cracksArt = null, shardsArt = null, platesArt = null, shown = "", afloat = [], adrift = [], clock = 0;
+  let waterArt = null, cracksArt = null, shardsArt = null, platesArt = null, shown = "", afloat = [], adrift = [], wet = [], clock = 0;
   const ensure = () => {
     const root = layer?.();
     if (!root) return false;
-    if (!cracksArt || cracksArt.destroyed || !shardsArt || shardsArt.destroyed || !platesArt || platesArt.destroyed) { cracksArt = new PIXI.Graphics(); platesArt = new PIXI.Graphics(); shardsArt = new PIXI.Graphics(); shown = ""; } // made in the order they are stacked: cracks under the ice, the plates over them, the slush over those
-    if (cracksArt.parent !== root) { root.addChild(cracksArt); root.addChild(platesArt); root.addChild(shardsArt); }
+    if (!waterArt || waterArt.destroyed || !cracksArt || cracksArt.destroyed || !shardsArt || shardsArt.destroyed || !platesArt || platesArt.destroyed) { waterArt = new PIXI.Graphics(); cracksArt = new PIXI.Graphics(); platesArt = new PIXI.Graphics(); shardsArt = new PIXI.Graphics(); shown = ""; } // made in the order they are stacked: cracks under the ice, the plates over them, the slush over those
+    if (waterArt.parent !== root) { root.addChild(waterArt); root.addChild(cracksArt); root.addChild(platesArt); root.addChild(shardsArt); }
     return true;
   };
   const drawCracks = (cracks) => {
@@ -48,6 +53,16 @@ export function createIceBreakLook({ PIXI, layer, grid = () => 100 }) {
       shardsArt.lineStyle(0.6 * k, SHARD_EDGE, 0.7).moveTo(pts[0], pts[1]).lineTo(pts[2], pts[3]);
     }
   };
+  // The open water a break left: the hole's own ring, filled dark, with a darker lip just inside it.
+  const drawWater = () => {
+    waterArt.clear();
+    for (const hole of wet) {
+      const flat = hole?.areas?.[0];
+      if (!Array.isArray(flat) || flat.length < 6) continue;
+      waterArt.lineStyle(0).beginFill(WATER_DEEP, 0.96).drawPolygon(flat).endFill();
+      waterArt.lineStyle(Math.max(2, (grid() || 100) * 0.04), WATER_RIM, 0.75).drawPolygon(flat);
+    }
+  };
   // The plates of a sheet that gave way: each one its thickness first, then its flat face over it, then the ink outline.
   const drawPlates = () => {
     const g = grid() || 100, k = g / 100, seconds = clock / 1000, thick = g * PLATE_THICK;
@@ -70,18 +85,20 @@ export function createIceBreakLook({ PIXI, layer, grid = () => 100 }) {
   };
   return {
     get busy() { return afloat.length > 0 || adrift.length > 0; },
-    sync({ cracks = [], shards = [], plates = [] } = {}) {
-      const key = JSON.stringify([cracks.map((c) => c.lines), shards.map((s) => s.list), plates.map((p) => p.list), grid()]);
+    sync({ cracks = [], shards = [], plates = [], holes = [] } = {}) {
+      const key = JSON.stringify([cracks.map((c) => c.lines), shards.map((s) => s.list), plates.map((p) => p.list), holes.map((h) => h.areas), grid()]);
       // What was drawn last time is only still on screen while its Graphics is: a scene switch destroys it with the map it
       // belonged to, and the same state again must then draw it afresh rather than being waved through as already drawn.
-      const gone = !!cracksArt && (cracksArt.destroyed || !shardsArt || shardsArt.destroyed || !platesArt || platesArt.destroyed || cracksArt.parent !== layer?.());
+      const gone = !!cracksArt && (cracksArt.destroyed || !shardsArt || shardsArt.destroyed || !platesArt || platesArt.destroyed || !waterArt || waterArt.destroyed || cracksArt.parent !== layer?.());
       if (key === shown && !gone) return;
       afloat = shards.flatMap((s) => s.list);
       adrift = plates.flatMap((p) => p.list);
+      wet = holes;
       // (Nothing to draw and nothing drawn yet: no layer is made for a map with no thin ice.)
-      if (!cracks.length && !afloat.length && !adrift.length && (!cracksArt || cracksArt.destroyed)) { shown = key; return; }
+      if (!cracks.length && !afloat.length && !adrift.length && !wet.length && (!cracksArt || cracksArt.destroyed)) { shown = key; return; }
       if (!ensure()) return;
       shown = key;
+      drawWater();
       drawCracks(cracks);
       drawPlates();
       drawShards();
@@ -91,6 +108,6 @@ export function createIceBreakLook({ PIXI, layer, grid = () => 100 }) {
       if (afloat.length && shardsArt && !shardsArt.destroyed) drawShards();
       if (adrift.length && platesArt && !platesArt.destroyed) drawPlates();
     },
-    clear() { afloat = []; adrift = []; shown = ""; if (cracksArt && !cracksArt.destroyed) { cracksArt.clear(); platesArt?.clear(); shardsArt.clear(); } },
+    clear() { afloat = []; adrift = []; wet = []; shown = ""; if (cracksArt && !cracksArt.destroyed) { waterArt?.clear(); cracksArt.clear(); platesArt?.clear(); shardsArt.clear(); } },
   };
 }

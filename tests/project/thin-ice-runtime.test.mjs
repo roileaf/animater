@@ -124,14 +124,15 @@ const paint = () => {
 test("the painter draws every crack line and plate, draws nothing again for the same state, and clears when it is gone", () => {
   const { look, made } = paint();
   look.sync(iceBreakOf(frozen, { grid: GRID }));
-  const [cracksArt, platesArt, shardsArt] = made;
+  const [waterArt, cracksArt, platesArt, shardsArt] = made;
   assert.ok(cracksArt.calls.filter((c) => c[0] === "lineTo").length > 0, "cracks are stroked");
   assert.ok(platesArt.calls.some((c) => c[0] === "drawPolygon"), "the plates are filled polygons");
-  const before = JSON.stringify([cracksArt.calls, platesArt.calls, shardsArt.calls]);
+  assert.ok(waterArt.calls.some((c) => c[0] === "drawPolygon"), "the open water of the hole is painted here too, not left to the moving water alone");
+  const before = JSON.stringify([waterArt.calls, cracksArt.calls, platesArt.calls, shardsArt.calls]);
   look.sync(iceBreakOf(frozen, { grid: GRID }));
-  assert.equal(JSON.stringify([cracksArt.calls, platesArt.calls, shardsArt.calls]), before, "same state, same drawing");
+  assert.equal(JSON.stringify([waterArt.calls, cracksArt.calls, platesArt.calls, shardsArt.calls]), before, "same state, same drawing");
   look.sync({ holes: [], cracks: [], shards: [], plates: [] });
-  assert.deepEqual([cracksArt.calls, platesArt.calls, shardsArt.calls], [[], [], []], "nothing stored, nothing drawn");
+  assert.deepEqual([waterArt.calls, cracksArt.calls, platesArt.calls, shardsArt.calls], [[], [], [], []], "nothing stored, nothing drawn");
   assert.equal(look.busy, false);
 });
 
@@ -158,13 +159,13 @@ test("the painter moves its plates on tick, keeps its cracks still, and two scre
   assert.equal(one.look.busy, false);
   one.look.sync(state); two.look.sync(state);
   assert.equal(one.look.busy, true);
-  const cracksBefore = JSON.stringify(one.made[0].calls);
+  const cracksBefore = JSON.stringify(one.made[1].calls);
   one.look.tick(1000); two.look.tick(1000);
-  const at1 = JSON.stringify(one.made[1].calls);
-  assert.equal(at1, JSON.stringify(two.made[1].calls), "the same clock gives the same drawing");
+  const at1 = JSON.stringify(one.made[2].calls);
+  assert.equal(at1, JSON.stringify(two.made[2].calls), "the same clock gives the same drawing");
   one.look.tick(2500);
-  assert.notEqual(JSON.stringify(one.made[1].calls), at1, "later, the plates have ridden on");
-  assert.equal(JSON.stringify(one.made[0].calls), cracksBefore, "the cracks do not move");
+  assert.notEqual(JSON.stringify(one.made[2].calls), at1, "later, the plates have ridden on");
+  assert.equal(JSON.stringify(one.made[1].calls), cracksBefore, "the cracks do not move");
 });
 
 test("a map with no thin ice makes no layer at all", () => {
