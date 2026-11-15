@@ -182,12 +182,15 @@ export function createSmokeAir({ spread: SMOKE_SPREAD, run: SMOKE_RUN, fade: SMO
   // How much of the draft has taken hold since the air last changed.
   let flowing = 1;
   let field = null, value = null, delta = null, seen = null, making = null, active = [], sources = [], pixels = null;
+  // Each source cell's make rate as a share of `made`, side by side with `sources`. Squares that overlap each add their own
+  // (as two fires always did).
+  let weights = [];
   const wake = (k) => { if (!seen[k]) { seen[k] = 1; active.push(k); } };
   const once = (dt) => {
     const { cols, dist, speed, cells } = field, open = cells.open;
     if (flowing < 1) flowing = Math.min(1, flowing + dt / SMOKE_EASE);
     if (pushed && (pushed.age += dt) > 12) pushed = null;
-    for (const k of sources) { delta[k] += SMOKE_MADE * dt * (1 - value[k]); wake(k); }
+    for (let n = 0; n < sources.length; n++) { const k = sources[n]; delta[k] += SMOKE_MADE * weights[n] * dt * (1 - value[k]); wake(k); }
     const count = active.length;
     for (let n = 0; n < count; n++) {
       const k = active[n], v = value[k]; if (v <= 0) continue;
@@ -240,12 +243,13 @@ export function createSmokeAir({ spread: SMOKE_SPREAD, run: SMOKE_RUN, fade: SMO
       const size = next.cols * next.rows;
       if (!value || value.length !== size || field?.cols !== next.cols) { value = new Float32Array(size); delta = new Float32Array(size); seen = new Uint8Array(size); making = new Uint8Array(size); pixels = new Uint8Array(size * 4); active = []; }
       if (field && next !== field && SMOKE_EASE > 0) flowing = 0;
-      field = next; for (const k of sources) making[k] = 0; sources = [];
+      field = next; for (const k of sources) making[k] = 0; sources = []; weights = [];
       for (const f of fires) {
+        const w = Number.isFinite(f.w) ? Math.max(0, f.w) : 1;
         const fi = Math.floor((f.x - next.x) / next.cell), fj = Math.floor((f.y - next.y) / next.cell);
         for (let dj = -SMOKE_WIDE; dj <= SMOKE_WIDE; dj++) for (let di = -SMOKE_WIDE; di <= SMOKE_WIDE; di++) {
           const i = fi + di, j = fj + dj; if (i < 0 || j < 0 || i >= next.cols || j >= next.rows) continue;
-          sources.push(j * next.cols + i); making[j * next.cols + i] = 1;
+          sources.push(j * next.cols + i); weights.push(w); making[j * next.cols + i] = 1;
         }
       }
     },
@@ -271,6 +275,18 @@ export function createSmokeAir({ spread: SMOKE_SPREAD, run: SMOKE_RUN, fade: SMO
     },
     // Its sources full at once (mist already lying there when the scene loads).
     fill() { for (const k of sources) { value[k] = 1; wake(k); } this.step(0); },
+    // Smoke already hanging in the air ([{ x, y, v }], scene pixels, v 0–1): each cell is raised to v at once, never lowered.
+    // Sources are left as they are.
+    prime(list = []) {
+      if (!field) return;
+      for (const p of list) {
+        const i = Math.floor((p.x - field.x) / field.cell), j = Math.floor((p.y - field.y) / field.cell);
+        if (!(i >= 0 && j >= 0 && i < field.cols && j < field.rows)) continue;
+        const k = j * field.cols + i, v = Math.min(1, Number(p.v));
+        if (v > value[k]) { value[k] = v; wake(k); }
+      }
+      this.step(0);
+    },
     at(k) { return value?.[k] ?? 0; },
     get pixels() { return pixels; },
     get busy() { return sources.length > 0 || active.length > 0; },
