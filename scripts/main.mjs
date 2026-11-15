@@ -1787,9 +1787,16 @@ const regionAreas = (region) => {
 // painted floor (400) and the step look (410) are both drawn over the moving water (395), so without this the ice is
 // painted straight across the hole and a creature in the water stands on a sheet that is no longer there. Each ring
 // goes to whichever area holds its middle, so a region drawn in several parts cuts the right one.
+// How many openings the last floor pass cut out of the ice it painted, for api.debug.iceDrawn(): a sheet still whole
+// over a hole is either this reading zero (the pass never saw the hole) or not (the painter kept an older shape).
+let iceCutNow = 0;
 const iceAreas = (region) => {
   const areas = regionAreas(region);
-  try { return cutIceHoles(areas, iceBreakOf(region, { grid: canvas.grid?.size ?? 100 }).holes, pointInPolygon); } catch { return areas; }
+  try {
+    const holes = iceBreakOf(region, { grid: canvas.grid?.size ?? 100 }).holes;
+    iceCutNow += holes.length;
+    return cutIceHoles(areas, holes, pointInPolygon);
+  } catch { return areas; }
 };
 // Under a roof: the regions that keep the weather out (as for snow and rain), where the sun never reaches.
 // What is open to the sky (regions marked so), each with how far its edge fades.
@@ -3704,6 +3711,7 @@ const floorPlaneOf = (plane) => (plane?.role === "floor" && plane.id?.kind === "
 const notOnFloor = (own, bound) => own?.imageRegion?.source?.kind === "tile" && bound?.role !== "floor";
 const syncFloorLooks = () => {
   if (!canvas?.ready) return;
+  iceCutNow = 0;
   floorLevel = floorDetail(localQuality());
   // (First, so the puddles among them are in the moving water below.)
   try { syncDecorations(); } catch (err) { console.warn("Animater | decorations", err); }
@@ -3745,6 +3753,7 @@ const syncFloorLooks = () => {
   floorTextures.sync(painted);
   syncMovingWater(moving);
   syncFloorShadows(moving);
+  iceDrawn.cut = iceCutNow;
   syncIceBreak();
 };
 // Moving water (engines/motion/water-engine.mjs): every water region's, on every scene, as far as each screen's quality level and the Moving water setting allow.
