@@ -2123,7 +2123,10 @@ Hooks.on("updateWall", (wall, change) => {
   }
   draftSoon();
 });
-Hooks.on("canvasTearDown", () => { clearTimeout(draftTimer); draftTimer = null; airLive = false; });
+// The field goes with the scene it was worked out for. Left standing, it is the OLD scene's air for the ~190ms between
+// the new scene's smoke sync (60ms after canvasReady) and its own rebuild (250ms), and the room's smoke would be set up
+// on one scene's cells against another scene's doorways.
+Hooks.on("canvasTearDown", () => { clearTimeout(draftTimer); draftTimer = null; airLive = false; airField = null; });
 // The air at a point as a push ({ x, y }, its way times how hard it moves): smoke and breath drift with it.
 const airVecAt = (x, y) => {
   const a = airAt(x, y); if (!(a > 0)) return { x: 0, y: 0 };
@@ -11030,17 +11033,24 @@ const fillRoomAir = (cells, geo) => {
     // The door that just swung pushes what hangs by it through the doorway.
     if (roomAirDoor) { roomAir.push(roomAirDoor); roomAirDoor = null; }
     roomAirAt = fireNow();
-    smokeAirLook.fill(roomAir.pixels, airField.cols, airField.rows);
+    // A round that wrote no cells into an air that holds nothing leaves the pass nothing to draw and no picture to keep.
+    smokeAirLook.fill(roomAir.busy ? roomAir.pixels : null, airField.cols, airField.rows);
   } catch { dropRoomAir(); }
 };
 // Moved on a few times a second and drawn every frame. The air is stepped by the shared clock (fireNow, in milliseconds,
-// which is what airStepSeconds takes and gives seconds for), so every screen holds the same cloud however long one of
-// them was asleep; the pass is handed seconds.
+// which is what airStepSeconds takes and gives seconds for), and by the whole of what has gathered since the last step,
+// never more than that cap: a screen that was asleep catches up to the others in one go rather than replaying the while
+// or quietly losing it. The pass is handed seconds.
 const tickRoomAir = () => {
   if (!roomAir || !airField) return;
   const now = fireNow();
   roomAirWait += airStepSeconds(roomAirAt, now); roomAirAt = now;
-  if (roomAirWait >= 0.25) { roomAir.step(Math.min(1, roomAirWait)); roomAirWait = 0; smokeAirLook.fill(roomAir.pixels, airField.cols, airField.rows); }
+  // Nothing being made and nothing left hanging: the pass is given no smoke, which takes its mesh off screen, and
+  // neither it nor the sim is worked on again until the round writes another cell — the baked cloud's own loop stops
+  // itself the same way. The sim is KEPT, not dropped: when the round clears the last cell what is already in the air
+  // has to thin away over the next seconds, and dropping it here would take the cloud off the map in one frame.
+  if (!roomAir.busy) { roomAirWait = 0; smokeAirLook.fill(null); return; }
+  if (roomAirWait >= 0.25) { roomAir.step(roomAirWait); roomAirWait = 0; smokeAirLook.fill(roomAir.pixels, airField.cols, airField.rows); }
   smokeAirLook.look({ now: (now % BILLOW_WRAP_MS) / 1000, grid: canvas.grid?.size ?? 100, bounds: canvas.dimensions?.sceneRect ?? null, amount: 1,
     since: Math.min(1e3, (performance.now() - gustAt) / 1000) });
 };
