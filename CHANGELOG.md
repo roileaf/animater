@@ -2,7 +2,7 @@
 
 ## 4.4.1
 
-An area can be told to stay, the rain keeps its own drops, and smoke clears when the world's clock moves.
+An area can be told to stay, a region's panel opens on the press you choose, the rain keeps its own drops, and smoke clears when the world's clock moves.
 
 - **An area stage can be told to stay on the map.** Whether a recipe's area stayed where it was placed was Animater's own reading of the spell — a lasting duration, and a name or wording that sounded like standing ground — so a feat whose words plainly say the ground is left covered could never leave anything behind, and no setting would change it, since the world's **Lasting area animations** only says how a lasting area shows, not which areas are lasting. An area stage now carries its own **Stay while placed** tick in the editor, beside the aura's **Stay until the effect ends**. A stage that follows a catalog entry keeps the catalog's choice, and the world setting still converts a ticked area for tables that asked for play once.
 
