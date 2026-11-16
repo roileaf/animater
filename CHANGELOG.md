@@ -1,5 +1,21 @@
 # Changelog
 
+## 4.4.3
+
+The GM can call an effect by hand, a scene arrives rather than appearing, and the weather is right about water.
+
+- **Moments: the effects Animater draws, called by hand.** Everything else here reads the game and acts on it, which leaves one gap: the GM who needs the floor to shudder because the thing in the dark just moved, and no roll will ever tell us so. Seventeen of them on a dashboard in the Animater controls — shake, rumble, lean, swim, grey, split and smear on the map itself; pulse, close in, grain and streak over it; glow, the map's own shockwave and falling dust at a place; sway, bob and a tether on what you picked. Nothing is written to the world, and everything stops.
+
+- **Where a moment happens.** The whole screen, or a place on the map — picked with the same ring the cave-in uses, sized with the wheel — where it is strongest for whoever is looking at that place and barely there for someone across the map. Or the tokens and tiles you picked, which it follows about: rocking them in a breeze, on a cart or on the swell, or drawing a rope, chain, beam or thread between them. A sway moves the picture of a token and never the token itself.
+
+- **Sets of moments, called as one.** A roof coming down is a rumble and dust and a little grain, and reaching for them one at a time while the table waits is how a good idea becomes a fumble. Five sets come with it, and you can keep your own for the table. Any moment can be sent to the players only, held for a chosen number of seconds, eased in and out, told to breathe rather than sit flat, and copied as a macro or made into one.
+
+- **Arriving on a scene.** A map is simply there today, at full size, on the first frame you pull the party to it. Six beats give it a moment to settle in — Settle, Sweep, Dawn, Tremor, Storm and Wide — with the place named and the hour and the weather under it, from what Animater already knows, or a line of your own. Each scene says for itself what it does, and a scene nobody has asked arrives exactly as it always did.
+
+- **Rain fights fire.** A burning barn spread the same in a downpour as under a clear sky. Rain and wet snow now damp how far fire reaches, cool what is smouldering instead of letting it catch, and put out what is burning a round early. Nothing catches at all under a falling sky.
+
+- **Wet ground and lying snow go at the pace the real things do.** The ground dried in eight hours whatever the sky was doing, which made a wet, overcast evening impossible; snow cleared in eight hours at three degrees, which no snow has ever done. Both now follow the real measures — evaporation driven by sunlight, snow by the degree-day factor — so a sunny afternoon still takes a puddle off in about three hours while an overcast night keeps it until morning. Two world settings set the pace, and their defaults are life.
+
 ## 4.4.2
 
 A region's panel opens on the press you choose.
