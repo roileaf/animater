@@ -4339,145 +4339,250 @@ body.animater-aiming #board {
   cursor: crosshair;
 }
 
-/* The GM's dashboard (ui/moments-panel.mjs): a console, docked low so it does not fight the sidebar. */
+/* The GM's dashboard (ui/moments-panel.mjs): a console, docked low so it does not fight the sidebar.
+   Everything here is sized in pixels and its own font, because it hangs off Foundry UI whose font size is a world
+   setting, and because the .animater class it borrows for colours is the workspace window's: that class asks for
+   760px, which a width can never win against. */
 .animater-moments-panel {
+  --an-m-line: #2b313b;
+  --an-m-sunk: #191d23;
+  --an-m-raised: #222730;
+  --an-m-live: #6f86b8;
+  --an-m-dim: #8d96a4;
+  --an-m-row: 24px;
   position: fixed;
   right: 18px;
   bottom: 18px;
   z-index: 71;
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  /* Pixels, not ems: this hangs off Foundry UI whose font size is a world setting, and an em-sized panel grew to
-     a third of the screen on a table that likes large type.
-     min-width because this carries the .animater class for its colours, and that class is the workspace window's:
-     it asks for 760px, which a width can never win against. Twice this panel came out the width of the map. */
+  gap: 6px;
   width: 268px;
   min-width: 0;
   max-width: calc(100vw - 24px);
-  font-size: 13px;
   max-height: 84vh;
   overflow: auto;
-  padding: 0.7em 0.8em 0.8em;
-  border: 1px solid #2b313b;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--an-m-line);
   border-radius: 9px;
   background: rgba(18, 21, 26, 0.97);
   color: #e8ecf3;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  font-size: 12px;
+  line-height: 1.25;
 }
-.animater-moments-panel header { cursor: move; }
 .animater-moments-panel.is-aiming {
-  box-shadow: 0 0 0 2px #6f86b8, 0 10px 30px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 0 2px var(--an-m-live), 0 10px 30px rgba(0, 0, 0, 0.6);
 }
+/* Foundry sizes form controls for its own windows; inside this one they are all one height. */
+.animater-moments-panel input,
+.animater-moments-panel select,
+.animater-moments-panel button {
+  height: var(--an-m-row);
+  min-height: 0;
+  margin: 0;
+  padding: 0 5px;
+  border: 1px solid var(--an-m-line);
+  border-radius: 4px;
+  background: var(--an-m-sunk);
+  color: #e8ecf3;
+  font: inherit;
+  line-height: calc(var(--an-m-row) - 2px);
+  box-shadow: none;
+}
+.animater-moments-panel button {
+  background: var(--an-m-raised);
+  cursor: pointer;
+}
+.animater-moments-panel button:hover {
+  background: #2b313c;
+}
+.animater-moments-panel input[type="range"] {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.animater-moments-panel input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  flex: 0 0 auto;
+}
+.animater-moments-panel input[type="color"] {
+  width: 30px;
+  padding: 1px;
+  flex: 0 0 auto;
+}
+
 .animater-moments-panel header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  cursor: move;
+  user-select: none;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  font-size: 0.8em;
-  color: #8d96a4;
+  font-size: 10px;
+  color: var(--an-m-dim);
 }
 .animater-moments-panel header button {
-  width: 1.6em;
-  height: 1.6em;
-  line-height: 1;
+  width: 18px;
+  height: 18px;
   padding: 0;
+  border: 0;
   background: none;
-  border: none;
-  color: #8d96a4;
-  cursor: pointer;
+  color: var(--an-m-dim);
+  line-height: 1;
 }
 /* What is running, in words, so nothing is left on by mistake. */
 .animater-moments-panel .an-readout {
-  min-height: 2.2em;
-  padding: 0.35em 0.5em;
-  border: 1px dashed #2b313b;
-  border-radius: 5px;
-  color: #8d96a4;
-  font-size: 0.82em;
-  line-height: 1.35;
+  min-height: 20px;
+  padding: 3px 6px;
+  border: 1px dashed var(--an-m-line);
+  border-radius: 4px;
+  color: var(--an-m-dim);
+  font-size: 11px;
 }
 .animater-moments-panel .an-readout b {
   color: #e8ecf3;
   font-weight: 600;
 }
 .animater-moments-panel h2 {
-  margin: 0.25em 0 0;
-  font-size: 0.74em;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #8d96a4;
-  font-weight: 600;
+  margin: 2px 0 0;
   border: none;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--an-m-dim);
+  font-weight: 600;
+}
+.animater-moments-panel .an-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.animater-moments-panel .an-group[hidden] {
+  display: none;
 }
 .animater-moments-panel .an-tiles {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 0.3em;
+  gap: 4px;
 }
 .animater-moments-panel .an-tile {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.15em;
-  padding: 0.45em 0.2em 0.35em;
-  border: 1px solid #2b313b;
-  border-radius: 6px;
-  background: #1b1f26;
-  color: #e8ecf3;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.74em;
-  line-height: 1.1;
+  justify-content: center;
+  gap: 1px;
+  height: 42px;
+  padding: 0 2px;
+  font-size: 9px;
+  letter-spacing: 0.01em;
+}
+.animater-moments-panel .an-tile[hidden] {
+  display: none;
 }
 .animater-moments-panel .an-tile svg {
-  width: 1.5em;
-  height: 1.5em;
+  width: 17px;
+  height: 17px;
   stroke: currentColor;
   stroke-width: 1.6;
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.animater-moments-panel .an-tile:hover {
-  background: #242a33;
-  border-color: #3b4452;
-}
 .animater-moments-panel .an-tile.is-on {
-  border-color: #6f86b8;
+  border-color: var(--an-m-live);
   background: #27304a;
 }
 .animater-moments-panel .an-tile.is-on::after {
   content: "";
   position: absolute;
-  top: 0.25em;
-  right: 0.25em;
-  width: 0.35em;
-  height: 0.35em;
+  top: 3px;
+  right: 3px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
-  background: #6f86b8;
-  box-shadow: 0 0 0.4em #6f86b8;
+  background: var(--an-m-live);
+  box-shadow: 0 0 4px var(--an-m-live);
+}
+
+/* One label column, so every row lines up however long its label is. */
+.animater-moments-panel .an-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 2px;
+}
+.animater-moments-panel .an-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.animater-moments-panel .an-field[hidden] {
+  display: none;
+}
+.animater-moments-panel .an-field > span {
+  flex: 0 0 46px;
+  color: var(--an-m-dim);
+}
+.animater-moments-panel .an-field > select,
+.animater-moments-panel .an-field > input[type="text"],
+.animater-moments-panel .an-field > input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.animater-moments-panel .an-field > button {
+  flex: 0 0 auto;
+  padding: 0 8px;
+}
+.animater-moments-panel .an-pair label {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--an-m-dim);
+}
+.animater-moments-panel .an-pair input {
+  width: 40px;
+  flex: 0 0 auto;
+  text-align: right;
+}
+.animater-moments-panel .an-check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  color: var(--an-m-dim);
+  cursor: pointer;
+}
+.animater-moments-panel .an-val {
+  min-width: 30px;
+  text-align: right;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
 }
 .animater-moments-panel .an-seg {
   display: flex;
   flex: 1 1 auto;
-  border: 1px solid #2b313b;
-  border-radius: 5px;
+  height: var(--an-m-row);
+  border: 1px solid var(--an-m-line);
+  border-radius: 4px;
   overflow: hidden;
 }
 .animater-moments-panel .an-seg button {
   flex: 1 1 0;
-  padding: 0.25em 0.3em;
+  height: 100%;
   border: 0;
-  border-right: 1px solid #2b313b;
-  background: #191d23;
-  color: #8d96a4;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.78em;
+  border-right: 1px solid var(--an-m-line);
+  border-radius: 0;
+  background: var(--an-m-sunk);
+  color: var(--an-m-dim);
+  font-size: 11px;
 }
 .animater-moments-panel .an-seg button:last-child {
   border-right: 0;
@@ -4488,74 +4593,22 @@ body.animater-aiming #board {
 }
 .animater-moments-panel .an-row {
   display: flex;
-  gap: 0.4em;
+  gap: 4px;
 }
-.animater-moments-panel .an-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3em;
-  margin-top: 0.3em;
-}
-.animater-moments-panel .an-fields label {
-  display: flex;
-  gap: 0.5em;
-  align-items: center;
-  font-size: 0.78em;
-  color: #8d96a4;
-}
-.animater-moments-panel .an-fields label[hidden] {
-  display: none;
-}
-.animater-moments-panel .an-dial input[type="range"] {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.animater-moments-panel .an-val {
-  min-width: 2.6em;
-  text-align: right;
-  color: #e8ecf3;
-  font-variant-numeric: tabular-nums;
-}
-.animater-moments-panel .an-hint-inline {
-  color: #6f7783;
-  font-size: 0.9em;
-}
-.animater-moments-panel input[type="number"],
-.animater-moments-panel select,
-.animater-moments-panel input[type="color"] {
-  width: 4.6em;
-  background: #191d23;
-  border: 1px solid #2b313b;
-  color: #e8ecf3;
-  border-radius: 4px;
-  padding: 0.1em 0.25em;
-}
-.animater-moments-panel select {
-  flex: 1 1 auto;
-  width: auto;
-}
-.animater-moments-panel .an-presets .an-row { gap: 0.35em; }
-.animater-moments-panel .an-presets select { flex: 1 1 auto; width: auto; }
-.animater-moments-panel .an-presets button { padding: 0.25em 0.5em; border: 1px solid #2b313b; border-radius: 4px; background: #191d23; color: #e8ecf3; cursor: pointer; font: inherit; font-size: 0.78em; }
-.animater-moments-panel .an-presets button:hover { background: #242a33; }
-.animater-moments-panel .an-check { gap: 0.4em; }
 .animater-moments-panel .an-feet {
   display: flex;
-  gap: 0.35em;
-  margin-top: 0.45em;
+  gap: 4px;
 }
 .animater-moments-panel .an-feet button {
   flex: 1 1 0;
-  padding: 0.4em 0.2em;
-  border: 1px solid #2b313b;
-  border-radius: 5px;
-  background: #191d23;
-  color: #e8ecf3;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.82em;
+  padding: 0 4px;
+}
+.animater-moments-panel .an-feet.an-thin button {
+  font-size: 11px;
 }
 .animater-moments-panel .an-stop {
+  width: 100%;
+  margin-top: 2px;
   border-color: #6b2b2b;
   background: #3a1d1d;
   color: #f3dada;

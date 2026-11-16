@@ -252,7 +252,7 @@ import { tileSunlight, tileHeight, tileLeaves, solidShare, leafShare, canopyFall
 import { TREE_KINDS, createTreePatterns, treeKindOf } from "./engines/motion/tree-kinds.mjs";
 import { STRIKE_LIGHT_SQUARES, openingStrike, strikePlace, strikeAngle as strikeFrom, boltDue, createLightningBolts } from "./engines/motion/lightning-bolt.mjs";
 import { ARRIVALS, ARRIVAL_MS, arrivalHere, arrivalAt, arrivalShake, arrivalFlash, arrivalWords } from "./engines/motion/scene-arrival.mjs";
-import { MOMENTS, WHERES, TETHERS, SWAYS, momentCall, momentsLeft, momentsWithout, momentRunning, momentAudience, momentMacro, momentNeeds, momentStyleKeys, presetCalls, presetFrom, presetsAll, screenFrom, thingSway, tetherPath } from "./engines/camera/screen-moments.mjs";
+import { MOMENTS, WHERES, TETHERS, SWAYS, momentCall, momentsLeft, momentsWithout, momentRunning, momentAudience, momentMacro, momentNeeds, momentStyleKeys, momentSound, MOMENT_SOUNDS, presetCalls, presetFrom, presetsAll, screenFrom, thingSway, tetherPath } from "./engines/camera/screen-moments.mjs";
 import { momentsPanelHtml, momentsPanelMode, momentsPresetOptions, momentsReadout } from "./ui/moments-panel.mjs";
 import { fallWayHere, landedFlash, nearestLights, stormGloom, weatherOf, cloudCover, cloudLook, skyNeedsBuilding, heatOf, surfacesOf, riverCurrent, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, fxClouds, skyBuildKey } from "./engines/motion/sky-light.mjs";
 import { weatherScene, WEATHERS, sceneWeatherId, weatherLabel, SCENE_WEATHER_PREFIX } from "./engines/motion/sky-weather.mjs";
@@ -8076,9 +8076,24 @@ function momentShockwave(call) {
   if (call.ms) ripple.lengthMs = Math.round(Math.min(4000, call.ms));
   try { distortionHost.onEffect({ data: { animaterWarp: ripple, moduleName: ID, sceneId: canvas.scene?.id }, destroyed: false, ended: false, worldPosition: { x: where.x, y: where.y } }); } catch { /* the floor still bends elsewhere */ }
 }
+// Heard as well as seen. A moment given a place is heard from that place, so it comes from the right side of the
+// map; one over the whole screen is heard from the middle of what this screen is looking at, so everybody hears it
+// wherever they have scrolled to. It is played on each screen rather than sent, so each hears it in its own room
+// (the acoustics) and nobody hears it twice.
+function momentHear(call) {
+  const heard = momentSound(call);
+  if (!heard) return;
+  const at = heard.at ?? (heard.ids?.length ? momentThingsAt(heard.ids) : null) ?? momentMiddleOfView();
+  if (!at) return;
+  // Reach: a placed moment carries about as far as it reaches, a screen-wide one is simply heard.
+  const squares = call.radius ? Math.max(4, (call.radius / (canvas?.grid?.size || 100)) * 2.5) : 60;
+  try { void playUnder("moment", at, { file: heard.file, volume: heard.volume, reach: squares, walls: false, gmAlways: true, room: 0.9 }); } catch { /* seen, if not heard */ }
+}
+const momentMiddleOfView = () => { try { const v = viewNow(); return { x: v.x + v.w / 2, y: v.y + v.h / 2 }; } catch { return null; } };
 const momentsShow = (call) => {
   if (!call) return;
   momentCalls = [...momentsLeft(momentCalls, Date.now()), call];
+  momentHear(call);
   if (MOMENTS[call.kind]?.on === "warp") momentShockwave(call);
   if (!momentFrame && typeof globalThis.requestAnimationFrame === "function") momentFrame = requestAnimationFrame(momentsPaint);
   momentPanelLit();
@@ -8162,11 +8177,30 @@ const momentPanelAsk = () => {
     colour: box.querySelector("[data-an-colour]")?.value || undefined,
     style: box.querySelector("[data-an-style]")?.value || undefined,
     beat: box.querySelector("[data-an-beat]")?.checked === true,
+    // "What suits it" leaves the choice to the moment, a file of the GM's own wins, and Nothing is silence.
+    ...momentPanelHeard(box),
     where,
     audience,
     ids: where === "tokens" ? momentPicked() : null,
   };
 };
+// Foundry's own file browser, so a GM picks a sound the way they pick every other file in this program.
+function momentPickSound(box) {
+  const field = box.querySelector("[data-an-sound]");
+  if (!field) return;
+  try {
+    const Picker = foundry.applications?.apps?.FilePicker?.implementation ?? globalThis.FilePicker;
+    new Picker({ type: "audio", current: field.value || "", callback: (path) => { field.value = path; } }).browse();
+  } catch { ui.notifications?.warn("Animater: type the path to the sound instead."); }
+}
+// What the moment is heard as, as the dashboard has it. Nothing said is the moment's own sound; a file of the
+// GM's own wins over any of ours; Nothing is silence, and has to be said as "" rather than left out.
+function momentPanelHeard(box) {
+  const said = box.querySelector("[data-an-heard]")?.value ?? "auto";
+  if (said === "auto") return {};
+  if (said === "own") return { sound: box.querySelector("[data-an-sound]")?.value ?? "", heard: "" };
+  return { heard: said };
+}
 // What the GM has picked: the selected tokens, and any tiles selected on the tiles layer.
 const momentPicked = () => {
   const tokens = (canvas?.tokens?.controlled ?? []).map((t) => t.id);
@@ -8196,7 +8230,7 @@ function openMomentsPanel() {
   // Every style any moment has, each marked with whose it is, so the one list serves the tether and the sway.
   const styles = { ...Object.fromEntries(Object.entries(TETHERS).map(([k, v]) => [k, { ...v, forKind: "tether" }])),
     ...Object.fromEntries(Object.entries(SWAYS).map(([k, v]) => [k, { ...v, forKind: "sway" }])) };
-  box.innerHTML = momentsPanelHtml({ moments: MOMENTS, wheres: WHERES, styles, presets: presetsAll(momentPresetsKept()) });
+  box.innerHTML = momentsPanelHtml({ moments: MOMENTS, wheres: WHERES, styles, presets: presetsAll(momentPresetsKept()), sounds: MOMENT_SOUNDS });
   document.body.append(box);
   momentsPanel = box;
   // Only what the chosen mode can do is offered (ui/moments-panel.mjs); the rest is hidden, not greyed.
@@ -8211,6 +8245,7 @@ function openMomentsPanel() {
     const kind = event.target?.closest?.("[data-an-moment]")?.dataset?.anMoment;
     if (kind) { momentsFire(kind); return; }
     if (event.target?.closest?.("[data-an-stop]")) { momentsStopEverywhere(); return; }
+    if (event.target?.closest?.("[data-an-pick]")) { momentPickSound(box); return; }
     if (event.target?.closest?.("[data-an-play]")) { momentPresetPlay(); return; }
     if (event.target?.closest?.("[data-an-save]")) { void momentPresetKeep(); return; }
     if (event.target?.closest?.("[data-an-forget]")) { void momentPresetForget(); return; }
@@ -8220,6 +8255,9 @@ function openMomentsPanel() {
   });
   const dial = box.querySelector("[data-an-strength]"), val = box.querySelector("[data-an-strength-val]");
   dial?.addEventListener("input", () => { if (val) val.textContent = `${Math.round(Number(dial.value) * 100)}%`; });
+  // The file row is only there for a GM who said they had a file of their own.
+  const heard = box.querySelector("[data-an-heard]");
+  heard?.addEventListener("change", () => box.querySelector("[data-an-sound-row]")?.toggleAttribute("hidden", heard.value !== "own"));
   momentPanelDrag(box);
   rows();
   momentPanelLit();

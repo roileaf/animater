@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { momentsPanelHtml, momentsPanelMode, momentsReadout, MOMENT_GLYPHS, MOMENT_GROUPS } from '../../scripts/ui/moments-panel.mjs';
-import { MOMENTS, WHERES, TETHERS, SWAYS, presetsAll } from '../../scripts/engines/camera/screen-moments.mjs';
+import { MOMENTS, WHERES, TETHERS, SWAYS, presetsAll, MOMENT_SOUNDS } from '../../scripts/engines/camera/screen-moments.mjs';
 
 const styles = { ...Object.fromEntries(Object.entries(TETHERS).map(([k, v]) => [k, { ...v, forKind: 'tether' }])),
   ...Object.fromEntries(Object.entries(SWAYS).map(([k, v]) => [k, { ...v, forKind: 'sway' }])) };
 const presets = presetsAll({ mine: { name: 'My own', moments: [{ kind: 'shake', strength: 1 }] } });
-const html = momentsPanelHtml({ moments: MOMENTS, wheres: WHERES, styles, presets });
+const html = momentsPanelHtml({ moments: MOMENTS, wheres: WHERES, styles, presets, sounds: MOMENT_SOUNDS });
 
 test('every moment the engine has reaches the dashboard, grouped and drawn', () => {
   for (const [kind, how] of Object.entries(MOMENTS)) {
@@ -39,6 +39,12 @@ test('the dashboard takes every choice a moment can carry', () => {
   assert.match(html, /<optgroup label="Sway and bob">/);
   // Sets of moments, called as one, kept and forgotten.
   for (const field of ['data-an-preset', 'data-an-play', 'data-an-save', 'data-an-forget']) assert.ok(html.includes(field), field);
+  // Heard as well as seen: the module's own, silence, one of the library's, or a file of the GM's own.
+  for (const field of ['data-an-heard', 'data-an-sound', 'data-an-pick']) assert.ok(html.includes(field), field);
+  assert.match(html, /<option value="auto" selected>What suits it<\/option>/);
+  assert.match(html, /<option value="">Nothing<\/option>/);
+  assert.ok(html.includes('Stone giving way'), 'the library sounds are offered by name');
+  assert.match(html, /data-an-sound-row hidden/, 'and the file row waits until it is wanted');
   assert.ok(html.includes('The roof comes down'), 'the ones we ship');
   assert.match(html, /data-an-own="1"[^>]*>My own · mine/, 'and the GM\'s own, marked as theirs');
   // The one that only makes sense sometimes starts hidden.

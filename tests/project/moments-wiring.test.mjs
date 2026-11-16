@@ -74,11 +74,11 @@ test('the dashboard goes where the GM puts it, and stays there', () => {
   assert.match(drag, /localStorage\?\.setItem\(MOMENT_SPOT_KEY/);
   assert.match(drag, /localStorage\?\.getItem\(MOMENT_SPOT_KEY\)/);
   assert.match(drag, /catch \{ \/\* storage refused \*\/ \}/, 'and a browser that refuses storage is not a crash');
-  assert.ok(css.includes('.animater-moments-panel header { cursor: move; }'));
   // Pixels, not ems: the panel hangs off Foundry UI, whose font size is a world setting.
-  const panel = css.slice(css.indexOf('.animater-moments-panel {'), css.indexOf('.animater-moments-panel header'));
+  const panel = css.slice(css.indexOf('.animater-moments-panel {'), css.indexOf('.animater-moments-panel.is-aiming'));
   assert.match(panel, /width: 268px;/);
-  assert.match(panel, /font-size: 13px;/);
+  assert.match(panel, /font-size: 12px;/);
+  assert.match(css, /\.animater-moments-panel header \{[^}]*cursor: move;/, 'and the header says it can be dragged');
   // And it carries the .animater class for its colours, which asks for 760px: a width can never win against a
   // min-width, and twice this panel came out the width of the map because of it.
   assert.match(panel, /min-width: 0;/);
@@ -144,7 +144,7 @@ test('the frame loop asks the page for nothing it may not have, and ends itself'
 test('the dashboard is drawn by its own module, and lit from what is running', () => {
   const open = slice('function openMomentsPanel() {', '\r\n}');
   assert.match(open, /if \(!game\.user\?\.isGM/);
-  assert.match(open, /momentsPanelHtml\(\{ moments: MOMENTS, wheres: WHERES, styles, presets: presetsAll\(momentPresetsKept\(\)\) \}\)/);
+  assert.match(open, /momentsPanelHtml\(\{ moments: MOMENTS, wheres: WHERES, styles, presets: presetsAll\(momentPresetsKept\(\)\), sounds: MOMENT_SOUNDS \}\)/);
   const lit = slice('function momentPanelLit() {', '\r\n}');
   assert.match(lit, /classList\.toggle\("is-on"/);
   assert.match(lit, /momentsReadout\(momentCalls, MOMENTS\)/);
@@ -175,6 +175,21 @@ test('a sway moves the way its style says, and a style of another kind is ignore
   assert.match(open, /Object\.entries\(TETHERS\)\.map\(\(\[k, v\]\) => \[k, \{ \.\.\.v, forKind: "tether" \}\]\)/);
   assert.match(open, /Object\.entries\(SWAYS\)\.map\(\(\[k, v\]\) => \[k, \{ \.\.\.v, forKind: "sway" \}\]\)/);
   assert.match(main, /thingSway\(thing\.call, Date\.now\(\), n\)/);
+});
+
+test('a moment is heard on each screen, from where it happened', () => {
+  const hear = slice('function momentHear(call) {', '\r\n}');
+  assert.match(hear, /const heard = momentSound\(call\)/, 'what it sounds like is the engine\'s to say');
+  assert.match(hear, /heard\.at \?\? \(heard\.ids\?\.length \? momentThingsAt\(heard\.ids\) : null\) \?\? momentMiddleOfView\(\)/);
+  assert.match(hear, /playUnder\("moment", at, \{ file: heard\.file/);
+  // Played on each screen rather than sent, so each hears it in its own room and nobody hears it twice.
+  assert.match(main, /momentHear\(call\);/);
+  const show = slice('const momentsShow = (call) => {', '\r\n};');
+  assert.match(show, /momentHear\(call\)/);
+  // The file a GM picked is chosen with Foundry's own browser, and validated in the engine before it is played.
+  const pick = slice('function momentPickSound(box) {', '\r\n}');
+  assert.match(pick, /FilePicker/);
+  assert.match(pick, /type: "audio"/);
 });
 
 test('the only document a moment ever writes is a macro the GM asked for', () => {

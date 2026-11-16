@@ -50,7 +50,7 @@ const segment = (name, options) => `<div class="an-seg" data-an-seg="${safe(name
  * The whole dashboard, as HTML. `moments` and `wheres` are the engine's own lists, so a moment added there appears
  * here without anyone remembering to add it; anything grouped nowhere falls into a last group rather than vanishing.
  */
-export function momentsPanelHtml({ moments = {}, wheres = {}, styles = {}, presets = {} } = {}) {
+export function momentsPanelHtml({ moments = {}, wheres = {}, styles = {}, presets = {}, sounds = {} } = {}) {
   const placed = new Set(MOMENT_GROUPS.flatMap((g) => g.keys));
   const groups = [...MOMENT_GROUPS.map((g) => ({ name: g.name, keys: g.keys.filter((k) => moments[k]) })),
     { name: "More", keys: Object.keys(moments).filter((k) => !placed.has(k)) }].filter((g) => g.keys.length);
@@ -59,30 +59,29 @@ export function momentsPanelHtml({ moments = {}, wheres = {}, styles = {}, prese
   <div class="an-row">${segment("where", Object.entries(wheres).map(([v, l]) => [v, v === "screen" ? "Screen" : v === "point" ? "A place" : "Picked"]).map(([v, l]) => [v, l]))}</div>
   ${groups.map((g) => `<section class="an-group" data-an-group><h2>${safe(g.name)}</h2><div class="an-tiles">${g.keys.map((k) => tile(k, moments[k])).join("")}</div></section>`).join("")}
   <div class="an-fields">
-    <label class="an-dial">Strength <input type="range" data-an-strength min="0.05" max="1" step="0.05" value="0.6"><span class="an-val" data-an-strength-val>60%</span></label>
-    <label>Who ${segment("who", [["all", "Everyone"], ["players", "Players"]])}</label>
-    <label>For <input type="number" data-an-seconds value="0" min="0" max="600" step="1"> s <span class="an-hint-inline">0: as it is</span></label>
-    <label>Easing <input type="number" data-an-fade value="0.4" min="0" max="10" step="0.1"> s</label>
-    <label data-an-style-row hidden>Look <select data-an-style>${momentsStyleOptions(styles)}</select></label>
-    <label>Colour <input type="color" data-an-colour value="#c81e1e"></label>
-    <label class="an-check"><input type="checkbox" data-an-beat> Breathing <span class="an-hint-inline">comes and goes</span></label>
+    <div class="an-field"><span>Strength</span><input type="range" data-an-strength min="0.05" max="1" step="0.05" value="0.6"><b class="an-val" data-an-strength-val>60%</b></div>
+    <div class="an-field"><span>Who</span>${segment("who", [["all", "Everyone"], ["players", "Players"]])}</div>
+    <div class="an-field an-pair"><span>Time</span>
+      <label><input type="number" data-an-seconds value="0" min="0" max="600" step="1"> s for</label>
+      <label><input type="number" data-an-fade value="0.4" min="0" max="10" step="0.1"> s easing</label>
+    </div>
+    <div class="an-field"><span>Colour</span><input type="color" data-an-colour value="#c81e1e">
+      <label class="an-check"><input type="checkbox" data-an-beat> Breathing</label></div>
+    <div class="an-field" data-an-style-row hidden><span>Look</span><select data-an-style>${momentsStyleOptions(styles)}</select></div>
+    <div class="an-field"><span>Heard</span><select data-an-heard><option value="auto" selected>What suits it</option><option value="">Nothing</option>${Object.entries(sounds).map(([v, s]) => `<option value="${safe(v)}">${safe(s.name)}</option>`).join("")}<option value="own">A file of my own…</option></select></div>
+    <div class="an-field" data-an-sound-row hidden><span>File</span><input type="text" data-an-sound placeholder="worlds/…/boom.ogg"><button type="button" data-an-pick title="Choose a sound file">…</button></div>
   </div>
   <section class="an-group an-presets">
     <h2>Together</h2>
-    <div class="an-row">
-      <select data-an-preset>${momentsPresetOptions(presets)}</select>
-      <button type="button" data-an-play title="Call every moment in this set at once">Call</button>
-    </div>
-    <div class="an-row">
+    <div class="an-field"><select data-an-preset>${momentsPresetOptions(presets)}</select><button type="button" data-an-play title="Call every moment in this set at once">Call</button></div>
+    <div class="an-feet an-thin">
       <button type="button" data-an-save title="Keep what is running now as a set of your own">Keep this</button>
       <button type="button" data-an-forget title="Forget the chosen set (your own only)">Forget</button>
+      <button type="button" data-an-macro title="Put the last moment on the clipboard as a macro line">Copy</button>
+      <button type="button" data-an-make title="Make a macro of the last moment in your macro directory">Macro</button>
     </div>
   </section>
-  <div class="an-feet">
-    <button type="button" data-an-macro title="Put the last moment on the clipboard as a macro line">Copy</button>
-    <button type="button" data-an-make title="Make a macro of the last moment in your macro directory">Make macro</button>
-    <button type="button" class="an-stop" data-an-stop disabled>Stop everything</button>
-  </div>`;
+  <button type="button" class="an-stop" data-an-stop disabled>Stop everything</button>`;
 }
 
 // Every style any moment has, in one list but grouped by whose it is, so "On the swell" is plainly a sway's and

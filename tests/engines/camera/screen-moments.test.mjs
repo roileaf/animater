@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   MOMENTS, WHERES, TETHERS, SWAYS, PRESETS, MOMENT_MOST, MOMENT_RISE_MS, BOARD_REST,
   momentCall, momentOver, momentsLeft, momentAudience, momentReach, screenFrom, momentMacro,
-  thingSway, tetherPath, momentNeeds, momentsWithout, momentRunning, momentWheres, momentWorksIn, beatAt, BEAT_MS, BEAT_LOW, momentStyles, presetCalls, presetFrom, presetsAll,
+  thingSway, tetherPath, momentNeeds, momentsWithout, momentRunning, momentWheres, momentWorksIn, beatAt, BEAT_MS, BEAT_LOW, momentStyles, momentSound, soundPath, MOMENT_SOUNDS, presetCalls, presetFrom, presetsAll,
 } from "../../../scripts/engines/camera/screen-moments.mjs";
 
 const view = { x: 1000, y: 1000, scale: 1, width: 1600, height: 900 };
@@ -268,6 +268,46 @@ test("a sway moves the way the thing it is on would move", () => {
   assert.deepEqual(Object.keys(momentStyles("tether")), Object.keys(TETHERS));
   assert.deepEqual(Object.keys(momentStyles("sway")), Object.keys(SWAYS));
   assert.deepEqual(momentStyles("grey"), {}, "most moments have no style at all");
+});
+
+test("a moment can be heard as well as seen", () => {
+  // The ones with a sound of their own get it without anybody choosing; the quiet ones stay quiet.
+  assert.equal(momentCall("shock", { at: 0 }).heard, "crumble");
+  assert.equal(momentCall("pulse", { at: 0 }).heard, "thunder");
+  assert.equal(momentCall("grey", { at: 0 }).heard, null, "a grey world makes no noise");
+  // Said plainly: a library sound, silence, or nothing said at all.
+  assert.equal(momentCall("grey", { at: 0, heard: "crumble" }).heard, "crumble");
+  assert.equal(momentCall("shock", { at: 0, heard: "" }).heard, null, "silence is how a GM turns one off");
+  assert.equal(momentCall("shock", { at: 0, heard: "trombone" }).heard, null);
+
+  const heard = momentSound(momentCall("shock", { at: 0, strength: 1, where: "point", x: 10, y: 20 }), { random: () => 0 });
+  assert.match(heard.file, /^assets\/sounds\/underground\/cave-in\//);
+  assert.deepEqual(heard.at, { x: 10, y: 20 }, "heard from where it happened");
+  assert.ok(heard.volume > 0.9);
+  assert.ok(momentSound(momentCall("shock", { at: 0, strength: 0.1 }), { random: () => 0 }).volume < heard.volume);
+  // One of several, so the same moment twice is not the same noise twice.
+  const files = new Set([0, 0.3, 0.6, 0.9].map((r) => momentSound(momentCall("shock", { at: 0 }), { random: () => r }).file));
+  assert.ok(files.size > 1);
+  assert.equal(momentSound(momentCall("grey", { at: 0 })), null, "and a quiet one is silent");
+  assert.equal(momentSound(null), null);
+});
+
+test("a sound a GM chose is a file in this world and nothing else", () => {
+  // This crosses a socket and is handed to the audio engine, so it is a path with an audio extension or it is null.
+  assert.equal(soundPath("worlds/mine/boom.ogg"), "worlds/mine/boom.ogg");
+  assert.equal(soundPath("assets/sounds/weather/thunder/thunderClose-194364-0.ogg"), "assets/sounds/weather/thunder/thunderClose-194364-0.ogg");
+  assert.equal(soundPath(" music/a track.mp3 "), "music/a track.mp3", "a name with a space in it is still a name");
+  for (const bad of ["../../etc/passwd.ogg", "/etc/passwd.ogg", "https://example.com/a.ogg", "javascript:alert(1)", "worlds/mine/boom.exe", "worlds/mine/boom", "", null, 7, "a.ogg;rm -rf"]) {
+    assert.equal(soundPath(bad), null, String(bad));
+  }
+  // A file of the GM's own wins over any of ours, and travels with the moment.
+  const own = momentCall("shock", { at: 0, sound: "worlds/mine/boom.ogg" });
+  assert.equal(momentSound(own).file, "worlds/mine/boom.ogg");
+  assert.match(momentMacro(own), /"sound": ?"worlds\/mine\/boom\.ogg"/);
+  assert.equal(momentCall("shock", { at: 0, sound: "../boom.ogg" }).sound, null);
+  // Turned off, it says so when written down; left alone, it says nothing.
+  assert.match(momentMacro(momentCall("shock", { at: 0, heard: "" })), /"heard": ?""/);
+  assert.ok(!momentMacro(momentCall("shock", { at: 0 })).includes('"heard"'));
 });
 
 test("a preset is several moments called as one", () => {

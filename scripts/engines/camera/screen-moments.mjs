@@ -92,7 +92,7 @@ export const momentStyleKeys = (kind) => Object.keys(momentStyles(kind));
  * `at` is when it began, on the clock both ends share. Anything that is not a moment gives null; anything that is
  * not a strength, a colour, a place or a length falls back to what that moment usually is.
  */
-export function momentCall(kind, { strength = null, colour = null, where = "screen", x = null, y = null, radius = null, ids = null, ms = null, fade = null, style = null, beat = false, at = 0 } = {}) {
+export function momentCall(kind, { strength = null, colour = null, where = "screen", x = null, y = null, radius = null, ids = null, ms = null, fade = null, style = null, beat = false, heard = undefined, sound = null, at = 0 } = {}) {
   const how = known(kind);
   if (!how) return null;
   const asked = Number(strength), told = Number(ms), soften = Number(fade);
@@ -120,6 +120,10 @@ export function momentCall(kind, { strength = null, colour = null, where = "scre
     // Breathing rather than sitting flat: any moment that holds can be asked to come and go, which is the thing a
     // GM reaches for when the room is meant to feel alive rather than filtered.
     beat: beat === true,
+    // What it is heard as: the module's own, nothing, or a file the GM chose. Saying nothing takes the one that
+    // suits that moment; saying "" takes silence, which is how a GM turns a sound off.
+    heard: heard === undefined ? momentHeardBy(kind) : (Object.hasOwn(MOMENT_SOUNDS, heard) ? heard : null),
+    sound: soundPath(sound),
     at: Number.isFinite(Number(at)) ? Number(at) : 0,
   };
 }
@@ -274,6 +278,49 @@ export const momentWorksIn = (kind, where) => momentWheres(kind).includes(where)
 
 export const momentNeeds = (kind) => known(kind)?.needs ?? null;
 
+// A moment can be heard as well as seen. Most of these already have a sound in the module's own library — a
+// shockwave is a cave-in's crumble, a pulse is thunder close by — so a GM gets one without choosing, and can pick
+// any file instead. `heard` is what it is called in the list below; a GM's own file comes as `sound`.
+export const MOMENT_SOUNDS = Object.freeze({
+  crumble: { name: "Stone giving way", files: ["assets/sounds/underground/cave-in/cave-in-336023-0.ogg", "assets/sounds/underground/cave-in/cave-in-567249-0.ogg", "assets/sounds/underground/cave-in/cave-in-567250-0.ogg", "assets/sounds/underground/cave-in/cave-in-567251-0.ogg", "assets/sounds/underground/cave-in/cave-in-655368-0.ogg"] },
+  thunder: { name: "Thunder, close", files: ["assets/sounds/weather/thunder/thunderClose-194364-0.ogg", "assets/sounds/weather/thunder/thunderClose-361772-0.ogg", "assets/sounds/weather/thunder/thunderClose-501745-0.ogg"] },
+  distant: { name: "Thunder, far off", files: ["assets/sounds/weather/thunder/thunderFar-367702-0.ogg", "assets/sounds/weather/thunder/thunderFar-568969-0.ogg"] },
+});
+
+// What each moment is heard as when nobody has said otherwise. The quiet ones stay quiet: a grey world makes no
+// noise, and a GM who wants one says so.
+const HEARD = Object.freeze({ shock: "crumble", dust: "crumble", rumble: "distant", pulse: "thunder" });
+export const momentHeardBy = (kind) => HEARD[kind] ?? null;
+
+// A file a GM chose, as far as it may be trusted: this crosses a socket and is handed to the audio engine. A sound
+// is a path inside this world's files with an audio extension, and nothing else — no protocol, no climbing out.
+const SOUND_FILE = /^[\w./ -]+\.(?:ogg|mp3|wav|webm|m4a|flac|opus)$/i;
+export function soundPath(file) {
+  const said = String(file ?? "").trim();
+  if (!said || said.includes("..") || said.includes("//") || said.startsWith("/")) return null;
+  return SOUND_FILE.test(said) ? said : null;
+}
+
+/**
+ * What a moment sounds like, or null for one that is seen and not heard: { file, volume, at }. `at` is where it is
+ * heard from — the place it happened, or null for one that is simply heard. One of a few files is taken at random
+ * where the library offers several, so the same moment twice is not the same noise twice.
+ */
+export function momentSound(call, { random = Math.random } = {}) {
+  if (!call || !known(call.kind)) return null;
+  const own = soundPath(call.sound);
+  const heard = own ? null : MOMENT_SOUNDS[call.heard ?? ""] ?? null;
+  const files = heard?.files ?? [];
+  const file = own ?? (files.length ? files[Math.min(files.length - 1, Math.floor(clamp(random(), 1) * files.length))] : null);
+  if (!file) return null;
+  return {
+    file,
+    volume: Math.min(1, 0.25 + 0.75 * clamp(call.strength)),
+    at: call.x !== null ? { x: call.x, y: call.y } : null,
+    ids: call.where === "tokens" ? call.ids : [],
+  };
+}
+
 // A set of moments called as one. Most of what a GM wants is two or three of these together — a roof coming down
 // is a rumble and dust and a little grain, and reaching for them one at a time while the table waits is how a good
 // idea becomes a fumble. These are the ones worth having to hand; a GM's own are saved beside them.
@@ -336,5 +383,7 @@ export function momentMacro(call, moduleId = "animater") {
   if (call.beat) said.beat = true;
   if (call.ms !== null) said.ms = call.ms;
   if (call.fade !== null) said.fade = call.fade;
+  if (call.sound) said.sound = call.sound;
+  if ((call.heard ?? null) !== momentHeardBy(call.kind)) said.heard = call.heard ?? "";
   return `game.modules.get("${moduleId}").api.moment(${JSON.stringify(said, null, 2)});`;
 }
