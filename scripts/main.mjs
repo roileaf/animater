@@ -54,6 +54,7 @@ import { iceSettingsOf, iceStateOf, iceMoveFor, sizeNameOf, walkedLegs, squaresE
 import { createIceBreakLook } from "./engines/regions/ice-break-draw.mjs";
 import { iceBreakSound, iceBreakVoice, newKeys } from "./engines/regions/ice-break-sound.mjs";
 import { iceWords } from "./engines/regions/ice-break-word.mjs";
+import { PANEL_OPENS, panelOpens, panelOpensMode, panelPressMemory } from "./engines/regions/panel-gesture.mjs";
 import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, wallBetween, grassCells, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
 import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
 import { DECOR_BREAK_MESSAGE, DECOR_NAMES, burningDecorIds, decorPlaceOf, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
@@ -4989,10 +4990,15 @@ const regionsUnder = (point) => regionsHere().filter((region) => { try { return 
 const panelFloorOf = (region) => shownFloorOf(stepFlags(region.flags?.[ID]) ?? {}, plainFloorOf(region));
 // How the right button went down and came up, seen before the canvas sees it.
 let rightPress = null;
+// The last right-click over a region that did not open the panel, for the GM who asked for a double (engines/regions/panel-gesture.mjs).
+let lastRightPress = null;
+const panelOpensHow = () => panelOpensMode(hotSetting("regionPanelOpens"));
+// What the region's own configuration tells a GM, which depends on the gesture they chose.
+const PANEL_WORDS = { right: "Right-click the region on the map to set it up.", shift: "Shift + right-click the region on the map to set it up.", double: "Double right-click the region on the map to set it up.", sheet: "Open its panel below to set it up." };
 Hooks.once("canvasReady", () => {
   // Timed by when the button really went down and came up (the events' own times), not by when their handlers run: the first
   // right-click after loading does work enough between the two to count as held, and never opened the panel.
-  window.addEventListener("pointerdown", (e) => { if (e.button === 2) rightPress = { x: e.clientX, y: e.clientY, at: e.timeStamp || performance.now(), done: null }; }, true);
+  window.addEventListener("pointerdown", (e) => { if (e.button === 2) rightPress = { x: e.clientX, y: e.clientY, at: e.timeStamp || performance.now(), shift: e.shiftKey === true, done: null }; }, true);
   window.addEventListener("pointerup", (e) => { if (e.button !== 2 || !rightPress) return; rightPress.quick = (e.timeStamp || performance.now()) - rightPress.at <= 350 && Math.hypot(e.clientX - rightPress.x, e.clientY - rightPress.y) <= 6; rightPress.up = true; const then = rightPress.done; rightPress.done = null; then?.(); }, true);
 });
 // Whether a screen point is on a window's or a door's icon: a click there is about that, not the floor under it.
@@ -5005,8 +5011,8 @@ const stepMenuClick = (event) => {
   if (!region) return;
   const native = event.nativeEvent ?? event;
   const what = { doc: region, first: region, regions: here.map((doc) => ({ doc, floor: panelFloorOf(doc) })), floor: panelFloorOf(region), client: { x: native.clientX ?? event.client?.x ?? 0, y: native.clientY ?? event.client?.y ?? 0 }, at: { x: Math.round(at.x), y: Math.round(at.y) } }, press = rightPress;
-  const open = () => { if (press.quick) regionPanel.open(what); };
-  if (!press) regionPanel.open(what); else if (press.up) open(); else press.done = open;
+  const open = () => { const yes = panelOpens(panelOpensHow(), press, lastRightPress); lastRightPress = panelPressMemory(press, yes); if (yes) regionPanel.open(what); };
+  if (!press) { if (panelOpens(panelOpensHow(), null)) regionPanel.open(what); } else if (press.up) open(); else press.done = open;
 };
 Hooks.on("canvasReady", () => {
   const manager = canvas.mouseInteractionManager, before = manager?.callbacks?.clickRight;
@@ -13561,6 +13567,9 @@ Hooks.once("init", () => {
   registerSetting('lastingMode',{name:'Lasting condition animations (this device)',
     hint:'How lasting conditions and effects show on your screen. "Follow the catalog setting" uses each catalog\'s Lasting animation switch in Animater. "On application and at its turn start" plays them when applied and again briefly whenever that creature\'s turn starts in combat. The Defeated look keeps its own setting. Each player\'s choice affects only their screen.',
     scope:'client',config:true,type:String,choices:{...LASTING_MODES},default:'world',onChange:()=>persistentStates?.schedule()});
+  registerSetting('regionPanelOpens',{name:'A region’s panel opens on (this device)',
+    hint:'Which press opens a region’s Animater panel on the map, for you. A right-click that is held or dragged pans as it always has and never opens it, but a quick one on the open floor does — pick another gesture if you keep opening it while aiming at a token. Whatever you choose, the panel also opens from the region’s own configuration, on its Animater tab.',
+    scope:'client',config:true,type:String,choices:{...PANEL_OPENS},default:'right'});
   // Lasting spell areas (a cloud, a wall, Blossoming Gore's roses): played for everyone from one client, so the world's choice.
   registerSetting('areaLoopMode',{name:'Lasting area animations',
     hint:'How spell areas that stay on the map (walls, clouds, difficult terrain) show. "Stay while placed" loops the area until its template is removed. "Play once, then fade" plays it once when placed. "Play once and at turn start" also plays it again briefly whenever the caster\'s turn starts in combat, while the template stays. Conditions and effects on tokens keep their own Lasting animation switch. Applies to areas placed after the change.',
@@ -15322,7 +15331,7 @@ Hooks.on("renderRegionConfig", (app, html) => {
     nav.append(button);
   }
   if (active) { for (const t of root.querySelectorAll(`.tab[data-group="${group}"]`)) t.classList.remove("active"); for (const a of nav?.querySelectorAll(`[data-group="${group}"]`) ?? []) a.classList.toggle("active", a.dataset.tab === "animater"); }
-  tab.innerHTML = '<p class="hint">Right-click the region on the map to set it up.</p>';
+  tab.innerHTML = `<p class="hint">${PANEL_WORDS[panelOpensHow()]}</p>`;
   // Its panel opens at the region's centre, the window closed.
   if (game.user?.isGM && app.document?.parent?.id === canvas?.scene?.id) {
     const open = document.createElement("button");

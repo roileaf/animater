@@ -40,6 +40,20 @@ test('the right-click opens it on the Regions layer as well as the Tokens layer'
   assert.match(body, /canvas\.activeLayer !== canvas\.tokens && canvas\.activeLayer !== canvas\.regions/);
 });
 
+test('which press opens it is the GM\'s own choice, kept out of the handler', () => {
+  assert.match(main, /import \{[^}]*panelOpens[^}]*\} from "\.\/engines\/regions\/panel-gesture\.mjs"/);
+  const setting = main.slice(main.indexOf("registerSetting('regionPanelOpens'"), main.indexOf("// Lasting spell areas"));
+  assert.ok(setting.length > 100 && setting.length < 1200, 'the setting is registered beside the lasting-area one');
+  assert.match(setting, /scope:'client',config:true,type:String,choices:\{\.\.\.PANEL_OPENS\},default:'right'/);
+  assert.match(setting, /never opens it/);
+  const at = main.indexOf('const stepMenuClick = ');
+  const body = main.slice(at, main.indexOf('\r\n};', at));
+  assert.match(body, /panelOpens\(panelOpensHow\(\), press, lastRightPress\)/);
+  assert.match(body, /lastRightPress = panelPressMemory\(press, yes\)/);
+  assert.doesNotMatch(body, /if \(press\.quick\) regionPanel\.open/, 'the quick-click rule moved into the engine');
+  assert.match(main, /shift: e\.shiftKey === true/, 'the press records its Shift for the Shift choice');
+});
+
 test('panelFloorOf always gives the panel a floor to show', () => {
   const at = main.indexOf('const panelFloorOf = ');
   const def = main.slice(at, main.indexOf('\n', at));
@@ -70,7 +84,8 @@ const tabHook = (() => { const at = main.indexOf('Hooks.on("renderRegionConfig"'
 
 test('the region window tab is a pointer to the right-click panel', () => {
   assert.ok(tabHook.length > 100);
-  assert.match(tabHook, /Right-click the region on the map to set it up\./);
+  assert.match(tabHook, /PANEL_WORDS\[panelOpensHow\(\)\]/);
+  assert.match(main, /right: "Right-click the region on the map to set it up\."/);
   assert.match(tabHook, /data-animater-open-panel/);
   assert.match(tabHook, /Open its panel/);
   assert.match(tabHook, /regionPanel\.open\(/);
