@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.4.4
+
+Moments can be heard, and their dashboard is laid out properly.
+
+- **A moment can be heard as well as seen.** A shockwave that bends the ground in silence is half a moment. Each one now has a sound where Animater already had one that suits it — a cave-in's crumble for the shockwave and the falling dust, thunder close by for a pulse and far off for a rumble — and the rest stay quiet, because a grey world makes no noise. In the dashboard's **Heard** row you can take one of the library's sounds instead, pick any file of your own, or ask for silence.
+
+- **It is heard from where it happened.** A moment placed on the map comes from that side of it, one on your chosen tokens comes from them, and one over the whole screen is heard from the middle of whatever that person is looking at — so everyone hears it wherever they have scrolled to. How loud follows how strong, and where the library has several recordings one is taken at random, so the same moment twice is not the same noise twice.
+
+- **The Moments dashboard is laid out properly.** It was a stack of form rows at Foundry's own sizes, which made it as wide as the map on tables that use large type. Now: one label column so every row lines up, every control the same height, four moments to a row, the two time fields paired, and the small actions in a strip over a full-width stop. It is the same size on every screen whatever the world's font size is.
+
 ## 4.4.3
 
 The GM can call an effect by hand, a scene arrives rather than appearing, and the weather is right about water.
