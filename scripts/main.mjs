@@ -104,6 +104,8 @@ import { createScreenTint, canTint } from "./engines/camera/screen-tint.mjs";
 import { createKillCam, canKillCam, killCamLength, killCamMs, KILL_CAM_LENGTH } from "./engines/camera/kill-cam.mjs";
 import { lensSplashFor, lingerLevel, lensAmount, woundOf, lensWho, lensRoleWanted, nearestNear, lensReach, LENS_REACH, LENS_BLOOD, LENS_BASE_SECONDS } from "./engines/camera/lens-blood.mjs";
 import { createLensBloodOverlay } from "./engines/camera/lens-blood-draw.mjs";
+import { HANDOUT_ARRIVALS, handoutAt, handoutDust, handoutHasDust, handoutHasRod, handoutHasRods, handoutHere, handoutLight, handoutMs, handoutPick, handoutSeed } from "./engines/camera/handout-arrival.mjs";
+import { BLEED_ALIVE_MOST, BLEED_DEFAULTS, BLEED_LOOKS, BLEED_SHUDDER_MS, bleedFrame, bleedLooks, bleedShudder, bleedSplats, bleedWanted, hurtLevel } from "./engines/camera/interface-bleed.mjs";
 import { createFriendHitPlayer, friendHitClip, isFriendlyHit, FRIEND_HIT_CLIPS, JB2A_MODULES } from "./engines/camera/lens-friend-hit.mjs";
 import { lensEffectHit, lensEffectTypes } from "./engines/camera/lens-effects.mjs";
 import { lifeOf, isDown, woundedView, woundedWanted, muffleFor, heartbeatDown, nextBeatMs, heartbeatDeath, transitionSteps, stainsAfterHit, settleStains, stainCap, downLook, downPreviews, WAKE } from "./engines/camera/lens-wounds.mjs";
@@ -14957,6 +14959,75 @@ Hooks.once("init", () => {
     scope: "client", config: true, type: Boolean, default: true,
     onChange: (on) => { if (on === false) killCam.clear(); },
   });
+  registerSetting("handoutArrival", {
+    name: "Handouts arrive",
+    hint: "How a handout shown to players reaches their screens. Today Foundry opens a grey window over the map; instead the page can unfold along its creases, unroll like a scroll, be laid on the table in front of them, be held up from below, or blow in on the wind. However it arrives it is lit by the scene it arrives into: warm and unsteady by torchlight, cold under rain, with the map darkening behind it. Foundry's own window is untouched underneath, with its buttons and its close. Any scene may choose its own instead (Scene configuration \u2192 Animater).",
+    scope: "world", config: true, type: String, choices: HANDOUT_ARRIVALS, default: "off",
+  });
+  registerSetting("handoutArrivalLocal", {
+    name: "Handouts arrive on my screen",
+    hint: "Turn off to always see Foundry's plain window on this screen. Off at first when this browser asks for reduced motion; with reduced motion on, a handout is still lit by the scene but does not move.",
+    scope: "client", config: true, type: Boolean, default: !(globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true),
+  });
+  registerSetting("interfaceBleed", {
+    name: "The interface bleeds",
+    hint: "On players' screens only, from half their own creature's health down to none: the wound leaves the map and carries across Foundry's own furniture \u2014 the chat log, the hotbar, the tool strip. What each of the six looks does is set on its own below, and how strongly by Interface bleed strength. Low animation quality turns it off.",
+    scope: "world", config: true, type: Boolean, default: true,
+    onChange: () => bleedPaint(),
+  });
+  registerSetting("interfaceBleedLocal", {
+    name: "The interface bleeds on my screen",
+    hint: "Turn off to never see the interface bleed on this screen. Off at first when this browser asks for reduced motion; with reduced motion on, the stains are drawn and nothing moves.",
+    scope: "client", config: true, type: Boolean, default: !(globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true),
+    onChange: (on) => { if (on === false) bleedClear(); else bleedPaint(); },
+  });
+  registerSetting("interfaceBleedStrength", {
+    name: "Interface bleed strength",
+    hint: "How strong all six looks are together, against 1. Below 1 for a hint of it, above for a table that wants to be told.",
+    scope: "client", config: true, type: Number, range: { min: 0, max: 1.5, step: 0.1 }, default: 1,
+    onChange: () => bleedPaint(),
+  });
+  registerSetting("bleedChatReadable", {
+    name: "Keep the chat readable",
+    hint: "Blood that lands over the chat log and the sidebar is drawn smaller and much thinner, so a damage roll is never lost under it. Turn off for blood that falls wherever it falls.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  registerSetting("bleedEdge", {
+    name: "Interface bleed: wound at the edges",
+    hint: "The whole interface darkens and reddens at its outer edge as a player\u2019s own creature goes down, from half its health to none.",
+    scope: "world", config: true, type: Boolean, default: true,
+    onChange: () => bleedPaint(),
+  });
+  registerSetting("bleedGlass", {
+    name: "Interface bleed: blood on the glass",
+    hint: "Blood thrown across the whole window when a player\u2019s own creature is hurt, over the chat log and the hotbar as well as the map, running and drying where it lands. Keep the chat readable thins it where text is.",
+    scope: "world", config: true, type: Boolean, default: true,
+    onChange: () => bleedPaint(),
+  });
+  registerSetting("bleedDrain", {
+    name: "Interface bleed: colour drains",
+    hint: "The colour pulls out of Foundry\u2019s own panels as a player\u2019s own creature nears death. Never all the way: an unreadable sheet helps nobody.",
+    scope: "world", config: true, type: Boolean, default: true,
+    onChange: () => bleedPaint(),
+  });
+  registerSetting("bleedBeat", {
+    name: "Interface bleed: heartbeat",
+    hint: "A slow double thump in the darkened edges while a player\u2019s own creature is at or under a quarter of its health, the same quarter the damage lens already beats at.",
+    scope: "world", config: true, type: Boolean, default: true,
+    onChange: () => bleedPaint(),
+  });
+  registerSetting("bleedTunnel", {
+    name: "Interface bleed: tunnel",
+    hint: "The whole interface closes in from every side. The map already does this on its own (Damage lens tunnel vision), so this is it everywhere else; off at first because doing it twice is a great deal.",
+    scope: "world", config: true, type: Boolean, default: false,
+    onChange: () => bleedPaint(),
+  });
+  registerSetting("bleedShudder", {
+    name: "Interface bleed: shudder",
+    hint: "The whole window jolts when a player\u2019s own creature is hurt. The loudest of these and the first to turn off, so it starts off.",
+    scope: "world", config: true, type: Boolean, default: false,
+    onChange: () => bleedPaint(),
+  });
   registerSetting("lensBlood", {
     name: "Damage lens",
     hint: "Blood on the lens, on players' screens only. When a creature is hurt, its blood splats on the screens of players whose creature stands next to it, whoever struck it (Enemy blood reaches), more for more damage, on the side it is; a ranged attacker far off sees none. When the player's own creature is hit, the view closes in (tunnel vision) and its own blood splashes the screen; a badly hurt creature keeps a faint tunnel in combat. Uses Splatter's blood colours and bloodless creatures when Splatter is active. Bloodless creatures, creatures that screen cannot see and hidden tokens never bleed on it. Players' Blood sounds choice (Hit sounds) Off turns it off, Subtle makes it subtle.",
@@ -15353,6 +15424,11 @@ Hooks.on("renderSceneConfig", (app, html) => {
   arriveCard.className = "form-group";
   arriveCard.innerHTML = `<label>Name the place</label><div class="form-fields"><select name="flags.${ID}.arrivalCard">${[["", "Name it as they arrive"], ["off", "Say nothing"]].map(([v, l]) => `<option value="${v}"${v === cardNow ? " selected" : ""}>${l}</option>`).join("")}</select><input type="text" name="flags.${ID}.arrivalSays" value="${foundry.utils.escapeHTML?.(String(app.document?.getFlag?.(ID, "arrivalSays") ?? "")) ?? ""}" placeholder="(the hour and the weather)"></div><p class="hint">Under the scene's name, the hour from the calendar and the weather Animater is drawing. Write a line of your own here and that is said instead, on this map only.</p>`;
   tab.append(arriveCard);
+  // How a handout reaches the players while they are on this map: the scene's own choice over the module's.
+  const handout = document.createElement("div"), handoutNow = String(app.document?.getFlag?.(ID, "handout") ?? "");
+  handout.className = "form-group";
+  handout.innerHTML = `<label>Handouts arriving here</label><div class="form-fields"><select name="flags.${ID}.handout">${[["", "From the module"], ...Object.entries(HANDOUT_ARRIVALS)].map(([v, l]) => `<option value="${v}"${v === handoutNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">How a handout you show the players reaches their screens while they are on this map. However it arrives it is lit by this scene: warm and unsteady by torchlight, cold under rain, dark below ground. Foundry's own window is underneath it, with its buttons and its close.</p>`;
+  tab.append(handout);
   const eyes = document.createElement("div"), eyesNow = String(app.document?.getFlag?.(ID, "eyes") ?? "");
   eyes.className = "form-group";
   eyes.innerHTML = `<label>Eyes in the dark</label><div class="form-fields"><select name="flags.${ID}.eyes">${[["", "Now and then (one pair, long quiet between)"], ["often", "Often (something is watching)"], ["never", "Never"]].map(([v, l]) => `<option value="${v}"${v === eyesNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">In an underground scene, a pair of eyes glints back from a dark corner for a few seconds and is gone when light or a creature comes near ("Eyes in the dark").</p>`;
@@ -17890,3 +17966,299 @@ Hooks.once("ready", () => {
 // Concealment is unaffected: the round still grows its pf2e-visioner region over the smoke (smokeRegionNow).
 // The fence itself is left in the tree, unregistered and tested, because nothing else wants those edges and the day a
 // scene wants smoke that truly blinds, this line is the whole of it.
+// ----------------------------------------------------------------------------------------------------------------
+// A handout arriving (engines/camera/handout-arrival.mjs). Foundry opens its own ImagePopout on every screen the GM
+// showed it to (ImagePopout._handleShareImage builds one locally from the shareImage socket), so each client decides
+// for itself how the page arrives and what light it is under. Nothing is sent, nothing is saved, and a player who
+// wants none of it simply sees the window Foundry has always opened.
+// ----------------------------------------------------------------------------------------------------------------
+const HANDOUT_VEIL_ID = "animater-handout-veil";
+const prefersStill = () => {
+  try { return globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true; } catch { return false; }
+};
+// The look this screen uses: its own switch first, then the scene's choice, then the table's.
+const handoutLookNow = () => {
+  if (shakeSetting("handoutArrivalLocal", true) === false) return "off";
+  return handoutHere(canvas?.scene?.flags?.[ID]?.handout, shakeSetting("handoutArrival", "off"));
+};
+// Whether a flame of the party's own is what they are reading by: a light placed on the scene, or a token carrying
+// one. Only ever asked once, as a handout opens.
+const handoutLit = () => {
+  try {
+    const lights = canvas?.lighting?.placeables ?? [];
+    if (lights.some((l) => l.document?.hidden !== true && Number(l.document?.config?.dim ?? 0) > 0)) return true;
+    return (canvas?.tokens?.placeables ?? []).some((t) => Number(t.document?.light?.dim ?? 0) > 0 || Number(t.document?.light?.bright ?? 0) > 0);
+  } catch { return false; }
+};
+const handoutSceneLight = () => {
+  try {
+    return handoutLight({
+      darkness: Number(canvas?.environment?.darknessLevel) || 0,
+      weather: weatherWordOf(canvas?.scene),
+      underground: undergroundScene() === true,
+      lit: handoutLit(),
+    });
+  } catch { return handoutLight({}); }
+};
+// The dark over the map behind a handout. One element, shared by however many are open.
+let handoutOpen = 0;
+const handoutVeil = (on, amount = 0) => {
+  try {
+    if (!globalThis.document?.body?.append) return;
+    let el = document.getElementById(HANDOUT_VEIL_ID);
+    if (!on) { el?.classList.remove("animater-on"); return; }
+    if (!el) { el = document.createElement("div"); el.id = HANDOUT_VEIL_ID; document.body.append(el); }
+    el.style.setProperty("--an-ho-veil", String(amount));
+    requestAnimationFrame(() => el.classList.add("animater-on"));
+  } catch { /* no page to darken */ }
+};
+Hooks.on("renderImagePopout", (app, element) => {
+  const root = element instanceof HTMLElement ? element : element?.[0];
+  if (!root?.classList || root.dataset?.animaterHandout === "1") return;
+  const chosen = handoutLookNow();
+  if (chosen === "off") return;
+  const look = handoutPick(chosen, handoutSeed(app?.options?.src ?? app?.options?.window?.title ?? ""));
+  const light = handoutSceneLight();
+  root.dataset.animaterHandout = "1";
+  root.classList.add("animater-handout");
+  const content = root.querySelector(".window-content") ?? root;
+  try { if (!content.style.position) content.style.position = "relative"; } catch { /* styled elsewhere */ }
+  const lit = document.createElement("div");
+  lit.className = "animater-handout-light";
+  if (light.flicker) lit.classList.add("animater-handout-flicker");
+  if (light.wet) lit.classList.add("animater-handout-wet");
+  lit.style.setProperty("--an-ho-warm", String(light.warm));
+  lit.style.setProperty("--an-ho-cool", String(light.cool));
+  lit.style.setProperty("--an-ho-lit", String(light.paper));
+  content.append(lit);
+  handoutOpen += 1;
+  handoutVeil(true, light.veil);
+  // Asked for less motion: the page is lit by the scene and simply there, which is the whole point without the move.
+  if (prefersStill()) return;
+  const rod = handoutHasRod(look) ? document.createElement("div") : null;
+  if (rod) { rod.className = "animater-handout-rod"; content.append(rod); }
+  // A map is wound on two of them, one going out to each side.
+  const rods = handoutHasRods(look) ? ["left", "right"].map((side) => {
+    const bar = document.createElement("div");
+    bar.className = `animater-handout-rod-side animater-handout-rod-${side}`;
+    content.append(bar);
+    return bar;
+  }) : [];
+  const dust = handoutHasDust(look) ? document.createElement("div") : null;
+  if (dust) { dust.className = "animater-handout-dust"; content.append(dust); }
+  const ms = handoutMs(look) || 1;
+  root.classList.add("animater-handout-arriving");
+  const began = performance.now();
+  const step = (now) => {
+    if (!root.isConnected) return;
+    const t = Math.min(1, (now - began) / ms);
+    const f = handoutAt(look, t);
+    root.style.setProperty("--an-ho-op", String(f.opacity));
+    root.style.setProperty("--an-ho-sc", String(f.scale));
+    root.style.setProperty("--an-ho-x", String(f.dx));
+    root.style.setProperty("--an-ho-y", String(f.dy));
+    root.style.setProperty("--an-ho-rot", String(f.rot));
+    root.style.setProperty("--an-ho-fold", String(f.fold));
+    root.style.setProperty("--an-ho-crease", String(f.crease));
+    root.style.setProperty("--an-ho-roll", String(f.roll));
+    root.style.setProperty("--an-ho-spread", String(f.spread));
+    if (dust) content.style.setProperty("--an-ho-dust", String(handoutDust(look, t)));
+    if (t < 1) { requestAnimationFrame(step); return; }
+    // Arrived: Foundry's own window again, with the scene's light still on the page.
+    root.classList.remove("animater-handout-arriving");
+    for (const key of ["--an-ho-op", "--an-ho-sc", "--an-ho-x", "--an-ho-y", "--an-ho-rot", "--an-ho-fold", "--an-ho-crease", "--an-ho-roll", "--an-ho-spread"]) root.style.removeProperty(key);
+    rod?.remove();
+    for (const bar of rods) bar.remove();
+    dust?.remove();
+  };
+  requestAnimationFrame(step);
+});
+Hooks.on("closeImagePopout", () => {
+  handoutOpen = Math.max(0, handoutOpen - 1);
+  if (handoutOpen === 0) handoutVeil(false);
+});
+Hooks.on("canvasTearDown", () => { handoutOpen = 0; handoutVeil(false); });
+
+// ----------------------------------------------------------------------------------------------------------------
+// The interface bleeds (engines/camera/interface-bleed.mjs). Blood on the camera and the tunnel at low health stop
+// at the edge of the map; this is the same wound carried across Foundry's own furniture, so a player reading their
+// sheet or the chat log is still in the fight. Players' screens only, as the damage lens is: a GM has no one
+// character to be dying. Every screen decides its own from the health it can already see, so nothing is sent.
+// ----------------------------------------------------------------------------------------------------------------
+const BLEED_ID = "animater-bleed";
+// Whichever of these this Foundry actually has is what the colour drains out of. Named rather than guessed at: a
+// version that calls them something else simply keeps its colour, and the other five looks are unaffected.
+const BLEED_CHROME = ["#ui-left", "#ui-right", "#ui-top", "#ui-bottom", "#sidebar", "#hotbar", "#controls", "#players", "#navigation"];
+let bleedLayer = null, bleedShudderUntil = 0;
+const bleedWorldOn = () => shakeSetting("interfaceBleed", true) !== false;
+const bleedLocalOn = () => shakeSetting("interfaceBleedLocal", true) !== false;
+const bleedAllowed = () => bleedWorldOn() && bleedLocalOn() && game.user?.isGM !== true && allowsTokenFx(localQuality());
+const bleedStrengthNow = () => {
+  const own = Number(shakeSetting("interfaceBleedStrength", 1));
+  return Number.isFinite(own) ? Math.max(0, Math.min(1.5, own)) : 1;
+};
+const bleedLooksNow = () => bleedLooks({
+  edge: shakeSetting("bleedEdge", BLEED_DEFAULTS.edge),
+  glass: shakeSetting("bleedGlass", BLEED_DEFAULTS.glass),
+  drain: shakeSetting("bleedDrain", BLEED_DEFAULTS.drain),
+  beat: shakeSetting("bleedBeat", BLEED_DEFAULTS.beat),
+  tunnel: shakeSetting("bleedTunnel", BLEED_DEFAULTS.tunnel),
+  shudder: shakeSetting("bleedShudder", BLEED_DEFAULTS.shudder),
+});
+const bleedLayerMake = () => {
+  if (bleedLayer?.isConnected) return bleedLayer;
+  if (!globalThis.document?.createElement || !globalThis.document?.body?.append) return null;
+  const el = document.createElement("div");
+  el.id = BLEED_ID;
+  el.innerHTML = `<div class="animater-bleed-tunnel"></div><div class="animater-bleed-edge"></div>`;
+  document.body.append(el);
+  bleedLayer = el;
+  return el;
+};
+const bleedUndrain = () => {
+  try {
+    for (const node of document.querySelectorAll(".animater-bleed-drained")) {
+      node.classList.remove("animater-bleed-drained");
+      node.style.removeProperty("--an-bleed-drain");
+    }
+  } catch { /* no page */ }
+};
+const bleedClear = () => {
+  bleedLayer?.remove();
+  bleedLayer = null;
+  bleedUndrain();
+};
+// The player's own creature: their character on this scene, else a token they own and have hold of.
+const bleedMine = () => {
+  try {
+    const onScene = (t) => t?.document?.parent?.id === canvas?.scene?.id;
+    return game.user?.character?.getActiveTokens?.().find(onScene) ?? canvas?.tokens?.controlled?.find((t) => t.actor?.isOwner) ?? null;
+  } catch { return null; }
+};
+// How far gone it is. A marked track (Daggerheart) counts up as it is hurt, so it is turned the right way round
+// before the engine sees it: everything from here on is health left, never damage taken.
+const bleedHurtOf = (actor) => {
+  if (!actor) return 0;
+  const hp = hpState(actor, game.system.id);
+  if (!hp) return 0;
+  const down = hp.down === true || ["unconscious", "dead", "dying"].some((s) => actor.statuses?.has?.(s));
+  const left = hp.marked ? Number(hp.max) - Number(hp.value) : Number(hp.value);
+  return hurtLevel({ hp: left, max: hp.max, unconscious: down });
+};
+// Where blood must stay thin enough to read through: the chat log and whatever else is sitting over the window.
+const bleedKeepClear = () => {
+  if (shakeSetting("bleedChatReadable", true) === false) return [];
+  const out = [];
+  try {
+    const w = window.innerWidth || 1, h = window.innerHeight || 1;
+    for (const sel of ["#chat", "#chat-log", "#sidebar", "#chat-message"]) {
+      for (const node of document.querySelectorAll(sel)) {
+        const r = node.getBoundingClientRect?.();
+        if (!r || r.width <= 0 || r.height <= 0) continue;
+        out.push({ x: r.left / w, y: r.top / h, w: r.width / w, h: r.height / h });
+      }
+    }
+  } catch { /* nothing to keep clear */ }
+  return out;
+};
+const bleedPaint = () => {
+  if (!bleedAllowed()) { bleedClear(); return; }
+  const looks = bleedLooksNow();
+  if (!bleedWanted(looks)) { bleedClear(); return; }
+  const frame = bleedFrame({ hurt: bleedHurtOf(bleedMine()?.actor), strength: bleedStrengthNow(), looks });
+  const el = bleedLayerMake();
+  if (!el) return;
+  el.style.setProperty("--an-bleed-edge", String(frame.edge));
+  el.style.setProperty("--an-bleed-tunnel", String(frame.tunnel));
+  if (frame.beatMs > 0) el.style.setProperty("--an-bleed-beat", `${frame.beatMs}ms`);
+  el.querySelector(".animater-bleed-edge")?.classList.toggle("animater-beating", frame.beatMs > 0);
+  if (frame.drain <= 0) { bleedUndrain(); return; }
+  try {
+    for (const sel of BLEED_CHROME) {
+      for (const node of document.querySelectorAll(sel)) {
+        node.classList.add("animater-bleed-drained");
+        node.style.setProperty("--an-bleed-drain", String(frame.drain));
+      }
+    }
+  } catch { /* no page */ }
+};
+// One splash across the window, and the jolt with it.
+const bleedSplash = (from, heavy, seed) => {
+  const looks = bleedLooksNow();
+  const strength = bleedStrengthNow();
+  if (looks.shudder === true && !prefersStill()) bleedJolt(strength);
+  if (looks.glass !== true || prefersStill()) return;
+  const el = bleedLayerMake();
+  if (!el) return;
+  const already = el.querySelectorAll(".animater-bleed-splat").length;
+  const splats = bleedSplats({ from, heavy, strength, seed, keepClear: bleedKeepClear() });
+  for (const splat of splats.slice(0, Math.max(0, BLEED_ALIVE_MOST - already))) {
+    const w = window.innerWidth || 1, h = window.innerHeight || 1;
+    const px = splat.w * w;
+    const node = document.createElement("div");
+    node.className = "animater-bleed-splat";
+    node.style.cssText = `left:${splat.x * 100}%;top:${splat.y * 100}%;width:${px}px;height:${splat.h * w}px;`;
+    node.style.setProperty("--an-splat-ms", `${splat.ms}ms`);
+    node.style.setProperty("--an-splat-op", String(splat.opacity));
+    const body = document.createElement("b");
+    body.style.borderRadius = splat.round.map((r) => `${r}%`).join(" ");
+    body.style.transform = `rotate(${splat.rot}deg)`;
+    node.append(body);
+    for (const spot of splat.spots) {
+      const sat = document.createElement("s");
+      sat.style.cssText = `left:${spot.dx * 100}%;top:${spot.dy * 100}%;width:${spot.w * px}px;height:${spot.w * px * 0.84}px;border-radius:${spot.round}%;`;
+      node.append(sat);
+    }
+    const run = document.createElement("i");
+    run.style.cssText = `left:${splat.drip.at * 100}%;top:62%;width:${splat.drip.w * w}px;height:${splat.drip.h * h}px;`;
+    node.append(run);
+    el.append(node);
+    setTimeout(() => node.remove(), splat.ms);
+  }
+};
+// The whole window jolting. Foundry's own interface element when it has one, so the map, the sheets and the chat
+// all move together; with none of them there is simply no jolt.
+const bleedJolt = (strength) => {
+  const stage = globalThis.document?.getElementById?.("interface");
+  if (!stage) return;
+  const began = performance.now();
+  bleedShudderUntil = began + BLEED_SHUDDER_MS;
+  const step = (now) => {
+    const t = (now - began) / BLEED_SHUDDER_MS;
+    if (t >= 1 || now > bleedShudderUntil + 50) { stage.style.removeProperty("transform"); return; }
+    const jolt = bleedShudder(t, strength);
+    stage.style.transform = `translate(${jolt.x}px, ${jolt.y}px) rotate(${jolt.rot}deg)`;
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+};
+// What the player's own creature was on, so a change can be read as a blow rather than a number.
+const bleedSeen = new Map();
+const bleedRemember = (actor) => {
+  if (!actor?.uuid) return;
+  const hp = hpState(actor, game.system.id);
+  if (hp) bleedSeen.set(actor.uuid, hp.marked ? Number(hp.max) - Number(hp.value) : Number(hp.value));
+};
+Hooks.on("updateActor", (actor) => {
+  if (!bleedAllowed()) return;
+  const mine = bleedMine();
+  if (!mine || mine.actor?.uuid !== actor?.uuid) { bleedPaint(); return; }
+  const hp = hpState(actor, game.system.id);
+  const left = hp ? (hp.marked ? Number(hp.max) - Number(hp.value) : Number(hp.value)) : null;
+  const before = bleedSeen.get(actor.uuid);
+  bleedRemember(actor);
+  if (Number.isFinite(left) && Number.isFinite(before) && left < before) {
+    const hurt = bleedHurtOf(actor);
+    const seed = handoutSeed(`${actor.uuid}:${before}:${left}`);
+    bleedSplash(seed < 0.5 ? "left" : "right", hurt >= 0.9, seed);
+  }
+  bleedPaint();
+});
+Hooks.on("canvasReady", () => { bleedSeen.clear(); bleedRemember(bleedMine()?.actor); bleedPaint(); });
+Hooks.on("controlToken", () => bleedPaint());
+Hooks.on("updateSetting", (setting) => {
+  if (typeof setting?.key === "string" && setting.key.startsWith(`${ID}.bleed`)) bleedPaint();
+  if (setting?.key === `${ID}.interfaceBleed` || setting?.key === `${ID}.interfaceBleedStrength`) bleedPaint();
+});
+Hooks.on("canvasTearDown", () => { bleedSeen.clear(); bleedClear(); });
+

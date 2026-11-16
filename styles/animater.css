@@ -4630,3 +4630,204 @@ body.animater-aiming #board {
   overflow: visible;
   pointer-events: none;
 }
+
+/* ---------------------------------------------------------------------------------------------------------------
+   A handout arriving (scripts/engines/camera/handout-arrival.mjs).
+   Foundry's own ImagePopout is left exactly as it is — its buttons, its dragging, its close. These only place it
+   while it arrives and lay the scene's light over it. Every number comes from the engine as a custom property, so
+   nothing here does arithmetic of its own beyond turning a fraction into a percentage.
+   --------------------------------------------------------------------------------------------------------------- */
+.animater-handout {
+  transform-origin: 50% 50%;
+  will-change: transform, opacity, clip-path;
+}
+/* While it is arriving. Once it has arrived the class goes and Foundry's window is untouched again. */
+.animater-handout-arriving {
+  opacity: var(--an-ho-op, 1);
+  transform:
+    translate(calc(var(--an-ho-x, 0) * 100%), calc(var(--an-ho-y, 0) * 100%))
+    scale(var(--an-ho-sc, 1))
+    rotate(calc(var(--an-ho-rot, 0) * 1deg))
+    perspective(900px)
+    rotateX(calc(var(--an-ho-fold, 0) * 74deg));
+  /* The creases of a folded letter, the part of a scroll the rolled edge has not uncovered, and the two sides a map
+     spread open has not reached yet. Each is 0 unless its own look asks for it, so they never interfere. */
+  clip-path: inset(
+    calc(var(--an-ho-crease, 0) * 100%)
+    calc(var(--an-ho-spread, 0) * 100%)
+    calc((var(--an-ho-crease, 0) + var(--an-ho-roll, 0)) * 100%)
+    calc(var(--an-ho-spread, 0) * 100%));
+}
+/* The scene's own light falling across the page: warm from a flame, cold from a wet sky, and the shadow away from
+   it. Laid over the window's content and never over its header, so the title and the buttons stay plain. */
+.animater-handout-light {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 2;
+  opacity: var(--an-ho-lit, 1);
+  background:
+    linear-gradient(142deg, rgba(255, 214, 150, calc(var(--an-ho-warm, 0) * 0.42)) 0%, transparent 48%),
+    linear-gradient(142deg, rgba(186, 212, 255, calc(var(--an-ho-cool, 0) * 0.3)) 0%, transparent 52%),
+    radial-gradient(130% 110% at 108% 112%, rgba(0, 0, 0, calc(0.2 + var(--an-ho-warm, 0) * 0.34)) 0%, transparent 58%);
+}
+.animater-handout-light.animater-handout-flicker { animation: animater-handout-flick 2.9s ease-in-out infinite; }
+@keyframes animater-handout-flick {
+  0%, 100% { opacity: var(--an-ho-lit, 1); }
+  42% { opacity: calc(var(--an-ho-lit, 1) * 0.9); }
+  67% { opacity: calc(var(--an-ho-lit, 1) * 1.04); }
+  81% { opacity: calc(var(--an-ho-lit, 1) * 0.93); }
+}
+/* Rain running over the page while it is held out in the wet. */
+.animater-handout-wet::after {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+  background: repeating-linear-gradient(104deg, rgba(190, 215, 255, 0.22) 0 1px, transparent 1px 7px);
+  animation: animater-handout-rain 0.7s linear infinite;
+}
+@keyframes animater-handout-rain { to { transform: translate(-28px, 112px); } }
+/* The dark that gathers over the map behind a handout, so the page is the lit thing in the room. */
+#animater-handout-veil {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: #05070b;
+  opacity: 0;
+  transition: opacity 420ms ease;
+  /* Under Foundry's own windows, which sit far higher, and under the bleed; over the map, which is the point.
+     Left to `auto` it falls behind whichever interface element next opens a stacking context, and is never seen. */
+  z-index: 60;
+}
+#animater-handout-veil.animater-on { opacity: var(--an-ho-veil, 0); }
+/* The rolled edge of a scroll, running down the page as it opens. */
+.animater-handout-rod {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 9px;
+  border-radius: 5px;
+  z-index: 3;
+  pointer-events: none;
+  top: calc((1 - var(--an-ho-roll, 0)) * 100%);
+  background: linear-gradient(180deg, #c49a5c 0%, #8a6a3e 45%, #543d20 100%);
+  box-shadow: 0 3px 9px rgba(0, 0, 0, 0.66);
+}
+/* The two rods of a map scroll, running out to the sides as it is pulled open. They stand a little past the top and
+   bottom of the page, the way a rod a map is wound on does. */
+.animater-handout-rod-side {
+  position: absolute;
+  top: -2%;
+  bottom: -2%;
+  width: 9px;
+  border-radius: 5px;
+  z-index: 3;
+  pointer-events: none;
+  background: linear-gradient(90deg, #c49a5c 0%, #8a6a3e 45%, #543d20 100%);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.6);
+}
+.animater-handout-rod-side.animater-handout-rod-left { left: calc(var(--an-ho-spread, 0) * 100%); margin-left: -9px; }
+.animater-handout-rod-side.animater-handout-rod-right { right: calc(var(--an-ho-spread, 0) * 100%); margin-right: -9px; }
+/* The dust a page knocks up as it is laid on the table. */
+.animater-handout-dust {
+  position: absolute;
+  left: 50%;
+  bottom: -6%;
+  width: 60%;
+  height: 18%;
+  transform: translateX(-50%) scale(calc(0.6 + var(--an-ho-dust, 0) * 0.9));
+  opacity: calc(var(--an-ho-dust, 0) * 0.75);
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(50% 50% at 50% 50%, rgba(226, 210, 178, 0.5) 0%, transparent 70%);
+}
+
+/* ---------------------------------------------------------------------------------------------------------------
+   The interface bleeds (scripts/engines/camera/interface-bleed.mjs).
+   One layer over the whole window, never catching a click. What the canvas already does to itself at low health,
+   carried out across Foundry's own furniture. Each look is its own class, because each is its own setting.
+   --------------------------------------------------------------------------------------------------------------- */
+#animater-bleed {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  /* Over all of Foundry's own furniture, which stacks well below 100, and under its windows, which start at 100
+     and climb: blood belongs on the chat log and the hotbar, not over the sheet somebody is reading. */
+  z-index: 95;
+  overflow: hidden;
+}
+#animater-bleed > * { position: absolute; pointer-events: none; }
+.animater-bleed-edge {
+  inset: 0;
+  opacity: var(--an-bleed-edge, 0);
+  transition: opacity 400ms ease;
+  background:
+    radial-gradient(118% 112% at 50% 50%, transparent 38%, rgba(74, 8, 8, 0.3) 68%, rgba(42, 3, 3, 0.74) 100%),
+    radial-gradient(150% 60% at 50% 104%, rgba(120, 14, 14, 0.34) 0%, transparent 60%);
+}
+.animater-bleed-edge.animater-beating { animation: animater-bleed-beat var(--an-bleed-beat, 1s) ease-in-out infinite; }
+/* Two thumps and a rest, the shape the canvas heartbeat already has. */
+@keyframes animater-bleed-beat {
+  0% { filter: none; }
+  8% { filter: brightness(1.5); }
+  17% { filter: none; }
+  26% { filter: brightness(1.28); }
+  36%, 100% { filter: none; }
+}
+.animater-bleed-tunnel {
+  inset: 0;
+  opacity: var(--an-bleed-tunnel, 0);
+  transition: opacity 400ms ease;
+  background: radial-gradient(76% 72% at 50% 50%, transparent 30%, #000 100%);
+}
+/* The colour pulling out of Foundry's own panels. Put on whichever of them this version actually has, never on the
+   board: the map has its own treatment and does not want a second one. */
+.animater-bleed-drained {
+  filter: saturate(calc(1 - var(--an-bleed-drain, 0))) brightness(calc(1 - var(--an-bleed-drain, 0) * 0.42));
+  transition: filter 500ms ease;
+}
+/* Blood on the glass. Each splat is placed by the engine in fractions of the window. */
+.animater-bleed-splat {
+  will-change: opacity, transform;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.44));
+  animation: animater-bleed-land var(--an-splat-ms, 9000ms) ease-out forwards;
+}
+.animater-bleed-splat > b,
+.animater-bleed-splat > s,
+.animater-bleed-splat > i {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  background: radial-gradient(60% 55% at 38% 32%, var(--an-splat-lit, #b32020) 0%, var(--an-splat-ink, #7c1414) 46%, #4d0a0a 100%);
+}
+.animater-bleed-splat > b { inset: 0; }
+.animater-bleed-splat > s { opacity: 0.9; }
+.animater-bleed-splat > i {
+  border-radius: 44% 44% 58% 58%;
+  background: linear-gradient(180deg, var(--an-splat-ink, #7c1414) 0%, #5c0d0d 62%, rgba(70, 8, 8, 0) 100%);
+  animation: animater-bleed-run var(--an-splat-ms, 9000ms) ease-out forwards;
+  transform-origin: 50% 0;
+}
+@keyframes animater-bleed-land {
+  0% { transform: scale(0.2); opacity: 0; }
+  3% { transform: scale(1.06); opacity: var(--an-splat-op, 1); }
+  6% { transform: scale(1); }
+  72% { opacity: var(--an-splat-op, 1); }
+  100% { opacity: 0; }
+}
+/* The run starts the moment it lands and slows as it dries, rather than growing all the way down. */
+@keyframes animater-bleed-run {
+  0%, 2% { transform: scaleY(0); }
+  26% { transform: scaleY(0.82); }
+  100% { transform: scaleY(1); }
+}
+/* Anyone who asked their browser for less motion gets the stains and none of the movement. */
+@media (prefers-reduced-motion: reduce) {
+  .animater-bleed-edge.animater-beating { animation: none; }
+  .animater-bleed-splat { animation: none; opacity: var(--an-splat-op, 1); }
+  .animater-bleed-splat > i { animation: none; }
+  .animater-handout-light.animater-handout-flicker { animation: none; }
+  .animater-handout-wet::after { animation: none; }
+}
