@@ -4209,3 +4209,371 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater .an-shell.is-player-library .an-sync-notice {
   display: none;
 }
+
+/* Arriving on a scene (engines/motion/scene-arrival.mjs): over the board for a few seconds, and gone. It takes the
+   clicks while it is up, so a click on the map ends the beat instead of reaching the canvas under a moving board. */
+.animater-arrival {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  pointer-events: auto;
+  cursor: default;
+}
+.animater-arrival .an-veil,
+.animater-arrival .an-flash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.animater-arrival .an-veil {
+  background: #06070a;
+  opacity: 1;
+}
+.animater-arrival .an-flash {
+  background: #dce8ff;
+  opacity: 0;
+  mix-blend-mode: screen;
+}
+.animater-arrival .an-card {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 14%;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+}
+.animater-arrival .an-name {
+  font-size: 2.6em;
+  font-weight: 300;
+  letter-spacing: 0.06em;
+  color: #f2f5f9;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.9);
+}
+.animater-arrival .an-under {
+  margin-top: 0.4em;
+  font-size: 0.95em;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #aeb7c4;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.9);
+}
+
+/* Moments (engines/camera/screen-moments.mjs): over everything, taking no clicks, and gone when they stop.
+   A moment given a place on the map is drawn at that place, sized to its own reach; one given none fills the view. */
+.animater-moments {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  pointer-events: none;
+  overflow: hidden;
+}
+.animater-moments .an-moment {
+  position: absolute;
+  inset: 0;
+  --an-moment-colour: #c81e1e;
+  --an-moment-run: 0;
+}
+/* Placed: the element is centred on the spot and sized to its reach. */
+.animater-moments .an-moment[data-placed] {
+  inset: auto;
+  transform: translate(-50%, -50%);
+}
+
+.animater-moments .an-moment-pulse {
+  background: var(--an-moment-colour);
+  mix-blend-mode: screen;
+}
+.animater-moments .an-moment-pulse[data-placed] {
+  background: radial-gradient(circle, var(--an-moment-colour) 0%, rgba(0, 0, 0, 0) 70%);
+  border-radius: 50%;
+}
+/* Dark by default, and any colour the GM picked: FX Bus colours its vignette, so ours does. */
+.animater-moments .an-moment-vignette {
+  box-shadow: inset 0 0 22vmin 7vmin var(--an-moment-colour, rgba(2, 3, 6, 0.92));
+}
+.animater-moments .an-moment-vignette[data-placed] {
+  border-radius: 50%;
+  box-shadow: 0 0 0 100vmax var(--an-moment-colour, rgba(2, 3, 6, 0.9));
+  background: transparent;
+}
+.animater-moments .an-moment-grain {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/></filter><rect width='120' height='120' filter='url(%23n)' opacity='0.5'/></svg>");
+  mix-blend-mode: overlay;
+}
+.animater-moments .an-moment-streak {
+  background-image: repeating-linear-gradient(100deg, rgba(255, 255, 255, 0.5) 0 2px, rgba(255, 255, 255, 0) 2px 26px);
+  mix-blend-mode: screen;
+  animation: animater-moment-streak 0.5s linear infinite;
+}
+@keyframes animater-moment-streak {
+  to { background-position: -260px 0; }
+}
+.animater-moments .an-moment-glow {
+  background: radial-gradient(circle, var(--an-moment-colour) 0%, rgba(0, 0, 0, 0) 68%);
+  border-radius: 50%;
+  mix-blend-mode: screen;
+  animation: animater-moment-breathe 2.6s ease-in-out infinite;
+}
+@keyframes animater-moment-breathe {
+  50% { transform: translate(-50%, -50%) scale(1.07); }
+}
+/* A ring on its way out: the run says how far through it is, so the shell only sets one number a frame. */
+.animater-moments .an-moment-shock {
+  border-radius: 50%;
+  border: 0.5vmin solid var(--an-moment-colour);
+  background: radial-gradient(circle, rgba(0, 0, 0, 0) 58%, var(--an-moment-colour) 74%, rgba(0, 0, 0, 0) 82%);
+  transform: translate(-50%, -50%) scale(calc(0.15 + var(--an-moment-run) * 1.1));
+  mix-blend-mode: screen;
+}
+.animater-moments .an-moment-dust {
+  background-image: radial-gradient(circle at 20% 10%, rgba(232, 224, 204, 0.7) 0 1px, rgba(0, 0, 0, 0) 2px),
+    radial-gradient(circle at 62% 4%, rgba(232, 224, 204, 0.55) 0 1px, rgba(0, 0, 0, 0) 2px),
+    radial-gradient(circle at 84% 16%, rgba(232, 224, 204, 0.6) 0 1px, rgba(0, 0, 0, 0) 2px);
+  background-size: 140px 180px, 190px 220px, 160px 200px;
+  background-position: 0 calc(var(--an-moment-run) * 220px), 0 calc(var(--an-moment-run) * 300px), 0 calc(var(--an-moment-run) * 260px);
+}
+
+/* Pointing at the map for a place. */
+body.animater-aiming #board {
+  cursor: crosshair;
+}
+
+/* The GM's dashboard (ui/moments-panel.mjs): a console, docked low so it does not fight the sidebar. */
+.animater-moments-panel {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 71;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  /* Pixels, not ems: this hangs off Foundry UI whose font size is a world setting, and an em-sized panel grew to
+     a third of the screen on a table that likes large type.
+     min-width because this carries the .animater class for its colours, and that class is the workspace window's:
+     it asks for 760px, which a width can never win against. Twice this panel came out the width of the map. */
+  width: 268px;
+  min-width: 0;
+  max-width: calc(100vw - 24px);
+  font-size: 13px;
+  max-height: 84vh;
+  overflow: auto;
+  padding: 0.7em 0.8em 0.8em;
+  border: 1px solid #2b313b;
+  border-radius: 9px;
+  background: rgba(18, 21, 26, 0.97);
+  color: #e8ecf3;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+.animater-moments-panel header { cursor: move; }
+.animater-moments-panel.is-aiming {
+  box-shadow: 0 0 0 2px #6f86b8, 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+.animater-moments-panel header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.8em;
+  color: #8d96a4;
+}
+.animater-moments-panel header button {
+  width: 1.6em;
+  height: 1.6em;
+  line-height: 1;
+  padding: 0;
+  background: none;
+  border: none;
+  color: #8d96a4;
+  cursor: pointer;
+}
+/* What is running, in words, so nothing is left on by mistake. */
+.animater-moments-panel .an-readout {
+  min-height: 2.2em;
+  padding: 0.35em 0.5em;
+  border: 1px dashed #2b313b;
+  border-radius: 5px;
+  color: #8d96a4;
+  font-size: 0.82em;
+  line-height: 1.35;
+}
+.animater-moments-panel .an-readout b {
+  color: #e8ecf3;
+  font-weight: 600;
+}
+.animater-moments-panel h2 {
+  margin: 0.25em 0 0;
+  font-size: 0.74em;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8d96a4;
+  font-weight: 600;
+  border: none;
+}
+.animater-moments-panel .an-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.3em;
+}
+.animater-moments-panel .an-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15em;
+  padding: 0.45em 0.2em 0.35em;
+  border: 1px solid #2b313b;
+  border-radius: 6px;
+  background: #1b1f26;
+  color: #e8ecf3;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.74em;
+  line-height: 1.1;
+}
+.animater-moments-panel .an-tile svg {
+  width: 1.5em;
+  height: 1.5em;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.animater-moments-panel .an-tile:hover {
+  background: #242a33;
+  border-color: #3b4452;
+}
+.animater-moments-panel .an-tile.is-on {
+  border-color: #6f86b8;
+  background: #27304a;
+}
+.animater-moments-panel .an-tile.is-on::after {
+  content: "";
+  position: absolute;
+  top: 0.25em;
+  right: 0.25em;
+  width: 0.35em;
+  height: 0.35em;
+  border-radius: 50%;
+  background: #6f86b8;
+  box-shadow: 0 0 0.4em #6f86b8;
+}
+.animater-moments-panel .an-seg {
+  display: flex;
+  flex: 1 1 auto;
+  border: 1px solid #2b313b;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.animater-moments-panel .an-seg button {
+  flex: 1 1 0;
+  padding: 0.25em 0.3em;
+  border: 0;
+  border-right: 1px solid #2b313b;
+  background: #191d23;
+  color: #8d96a4;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78em;
+}
+.animater-moments-panel .an-seg button:last-child {
+  border-right: 0;
+}
+.animater-moments-panel .an-seg button.on {
+  background: #2f3950;
+  color: #fff;
+}
+.animater-moments-panel .an-row {
+  display: flex;
+  gap: 0.4em;
+}
+.animater-moments-panel .an-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+  margin-top: 0.3em;
+}
+.animater-moments-panel .an-fields label {
+  display: flex;
+  gap: 0.5em;
+  align-items: center;
+  font-size: 0.78em;
+  color: #8d96a4;
+}
+.animater-moments-panel .an-fields label[hidden] {
+  display: none;
+}
+.animater-moments-panel .an-dial input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.animater-moments-panel .an-val {
+  min-width: 2.6em;
+  text-align: right;
+  color: #e8ecf3;
+  font-variant-numeric: tabular-nums;
+}
+.animater-moments-panel .an-hint-inline {
+  color: #6f7783;
+  font-size: 0.9em;
+}
+.animater-moments-panel input[type="number"],
+.animater-moments-panel select,
+.animater-moments-panel input[type="color"] {
+  width: 4.6em;
+  background: #191d23;
+  border: 1px solid #2b313b;
+  color: #e8ecf3;
+  border-radius: 4px;
+  padding: 0.1em 0.25em;
+}
+.animater-moments-panel select {
+  flex: 1 1 auto;
+  width: auto;
+}
+.animater-moments-panel .an-presets .an-row { gap: 0.35em; }
+.animater-moments-panel .an-presets select { flex: 1 1 auto; width: auto; }
+.animater-moments-panel .an-presets button { padding: 0.25em 0.5em; border: 1px solid #2b313b; border-radius: 4px; background: #191d23; color: #e8ecf3; cursor: pointer; font: inherit; font-size: 0.78em; }
+.animater-moments-panel .an-presets button:hover { background: #242a33; }
+.animater-moments-panel .an-check { gap: 0.4em; }
+.animater-moments-panel .an-feet {
+  display: flex;
+  gap: 0.35em;
+  margin-top: 0.45em;
+}
+.animater-moments-panel .an-feet button {
+  flex: 1 1 0;
+  padding: 0.4em 0.2em;
+  border: 1px solid #2b313b;
+  border-radius: 5px;
+  background: #191d23;
+  color: #e8ecf3;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82em;
+}
+.animater-moments-panel .an-stop {
+  border-color: #6b2b2b;
+  background: #3a1d1d;
+  color: #f3dada;
+}
+.animater-moments-panel .an-stop:hover:not([disabled]) {
+  background: #4a2424;
+}
+.animater-moments-panel .an-stop[disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* The tethers, drawn over the map as one piece of SVG. */
+.animater-moments .an-links {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}

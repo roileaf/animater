@@ -54,6 +54,30 @@ function windBoost(wind, from, to) {
   return dx * Math.cos(wind.angle) + dy * Math.sin(wind.angle) > 0 ? 1 + 0.5 * wind.strength : 1;
 }
 
+// Rain fights fire. The weather reading that carries the wind carries the wet too (`wet`, 0 a dry sky to 1 a
+// downpour), so one reading serves both, and the roof that shelters a prop from the wind shelters it from the rain:
+// nothing of this happens where `outdoor` is false. Three things follow from the wet, each the answer to something a
+// table asks for: a fire reaches less far through falling water, what is only smouldering cools instead of catching,
+// and what is alight burns out sooner than it would under a clear sky.
+// How much of the sky's water reaches the ground here: 0 to 1, and 0 under a roof.
+export function wetness(weather) {
+  if (!weather?.outdoor) return 0;
+  const wet = Number(weather.wet);
+  return wet > 0 ? Math.min(1, wet) : 0;
+}
+
+// Most of the heat a downpour takes out of fire's reach, the heat a downpour takes off a smouldering prop each round,
+// and the wet from which a fire is counted as beaten a round early (below it, rain only slows the spread).
+export const DAMP_MOST = 0.85, COOL_MOST = 30, SOAK_WET = 0.5;
+
+// What is left of the heat a fire gives what stands beside it: all of it under a dry sky, a seventh of it in a
+// downpour.
+export const dampFactor = (weather) => 1 - DAMP_MOST * wetness(weather);
+// The heat the rain takes off a prop that is warm but not yet alight, each round.
+export const rainCooling = (weather) => COOL_MOST * wetness(weather);
+// The rounds the rain takes off what is already burning, beyond the round it spends anyway.
+export const soakedRounds = (weather) => (wetness(weather) >= SOAK_WET ? 1 : 0);
+
 // A grass square's id as a fire source, for a `blocked` list (a prop's or another square's) to name.
 // The index depends on the current grid and origin, so a `blocked` list built against one grass grid must be rebuilt if
 // that grid changes. A square carrying its own `id` is named by that, and is no longer addressable as `cell:<i>`.
@@ -92,13 +116,14 @@ export function spreadStep({ things = [], wind = null, grid = 100, cap = 12, cel
   const sources = [...burners, ...(spills ?? []).filter((s) => s?.rect)];
   const fires = burningCells(cells).map((c) => ({ id: c.id ?? cellId(c.i), levels: c.levels, rect: cellRect(c.i, { cols, origin, cell }) }));
   const gain = new Map();
+  const damp = dampFactor(wind), cool = rainCooling(wind), soaked = soakedRounds(wind);
   for (const target of things) {
     if (target.fire?.burning) continue;
     const rate = fireRate(target.traits);
     if (rate <= 0) continue;
     const reach = (rect, most) => {
       const gap = edgeGap(rect, target.rect);
-      return gap > most ? 0 : (gap === 0 ? TOUCH_HEAT : NEAR_HEAT) * rate * windBoost(wind, rect, target.rect);
+      return gap > most ? 0 : (gap === 0 ? TOUCH_HEAT : NEAR_HEAT) * rate * windBoost(wind, rect, target.rect) * damp;
     };
     for (const src of sources) {
       if (target.blocked?.includes(src.id)) continue;
@@ -118,18 +143,23 @@ export function spreadStep({ things = [], wind = null, grid = 100, cap = 12, cel
   const warn = [];
   const catching = [];
   for (const target of things) {
-    if (!gain.has(target.id)) continue;
+    if (target.fire?.burning) continue;
+    const got = gain.get(target.id) ?? 0;
     const before = target.fire?.heat ?? 0;
-    const total = before + gain.get(target.id);
+    // In the rain a prop that is only warm cools whether or not a fire reached it this round, down to cold and no
+    // further. Under a dry sky nothing cools, so a prop no fire reached is left exactly as it was.
+    if (!got && !(cool > 0 && before > 0)) continue;
+    const total = Math.max(0, before + got - cool);
     heat.push({ id: target.id, heat: total });
     if (total >= HEAT_CATCH) catching.push({ id: target.id, heat: total });
     else if (total >= HEAT_WARN && before < HEAT_WARN) warn.push(target.id);
   }
   catching.sort((a, b) => b.heat - a.heat);
   const caught = catching.slice(0, cap).map((c) => c.id);
-  const out = burners.filter((t) => (t.fire.roundsLeft ?? 0) <= 1).map((t) => t.id);
-  // Still burning and not out: each keeps its heat and has one round fewer left, for the caller to save.
-  const burning = burners.filter((t) => (t.fire.roundsLeft ?? 0) > 1).map((t) => ({ id: t.id, heat: t.fire.heat ?? 0, roundsLeft: t.fire.roundsLeft - 1 }));
+  const out = burners.filter((t) => (t.fire.roundsLeft ?? 0) <= 1 + soaked).map((t) => t.id);
+  // Still burning and not out: each keeps its heat and has one round fewer left, for the caller to save. Rain takes
+  // another round with it, so a fire caught in a downpour is beaten before it would have burned itself out.
+  const burning = burners.filter((t) => (t.fire.roundsLeft ?? 0) > 1 + soaked).map((t) => ({ id: t.id, heat: t.fire.heat ?? 0, roundsLeft: t.fire.roundsLeft - 1 - soaked }));
   return { heat, caught, out, warn, burning };
 }
 
@@ -147,6 +177,7 @@ export function spreadStep({ things = [], wind = null, grid = 100, cap = 12, cel
 // which burning squares have run out of rounds (to be charred).
 export function cellStep({ cells = [], things = [], cols = 1, rows = 1, origin = { x: 0, y: 0 }, cell = 100, wind = null, cap = 12, spills = [] } = {}) {
   const geo = { cols, origin, cell };
+  const damp = dampFactor(wind), soaked = soakedRounds(wind);
   const byIndex = new Map(cells.map((c) => [c.i, c]));
   const sources = burningCells(cells);
   const gain = new Map();
@@ -162,7 +193,7 @@ export function cellStep({ cells = [], things = [], cols = 1, rows = 1, origin =
       if (!target || target.burning || target.charred) continue;
       if (target.blocked?.includes(src.id ?? cellId(src.i))) continue;
       if (!sharesLevel(src.levels, target.levels)) continue;
-      add(i, NEAR_HEAT * GRASS_RATE * windBoost(wind, from, cellRect(i, geo)));
+      add(i, NEAR_HEAT * GRASS_RATE * windBoost(wind, from, cellRect(i, geo)) * damp);
     }
   }
   const fires = [...things.filter((t) => t.fire?.burning), ...(spills ?? []).filter((s) => s?.rect)];
@@ -175,7 +206,7 @@ export function cellStep({ cells = [], things = [], cols = 1, rows = 1, origin =
         if (target.blocked?.includes(src.id)) continue;
         const gap = edgeGap(src.rect, rect);
         if (gap > cell) continue;
-        add(target.i, (gap === 0 ? TOUCH_HEAT : NEAR_HEAT) * GRASS_RATE * windBoost(wind, src.rect, rect));
+        add(target.i, (gap === 0 ? TOUCH_HEAT : NEAR_HEAT) * GRASS_RATE * windBoost(wind, src.rect, rect) * damp);
       }
     }
   }
@@ -189,9 +220,9 @@ export function cellStep({ cells = [], things = [], cols = 1, rows = 1, origin =
   }
   catching.sort((a, b) => b.heat - a.heat);
   const caught = catching.slice(0, cap).map((c) => c.i);
-  const out = sources.filter((c) => (c.roundsLeft ?? 0) <= 1).map((c) => c.i);
-  // Still burning and not out: each has one round fewer left, for the caller to save.
-  const burning = sources.filter((c) => (c.roundsLeft ?? 0) > 1).map((c) => ({ i: c.i, roundsLeft: c.roundsLeft - 1 }));
+  const out = sources.filter((c) => (c.roundsLeft ?? 0) <= 1 + soaked).map((c) => c.i);
+  // Still burning and not out: each has one round fewer left, for the caller to save; rain takes another with it.
+  const burning = sources.filter((c) => (c.roundsLeft ?? 0) > 1 + soaked).map((c) => ({ i: c.i, roundsLeft: c.roundsLeft - 1 - soaked }));
   return { heat, caught, out, burning };
 }
 

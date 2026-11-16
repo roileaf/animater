@@ -56,6 +56,49 @@ export function leavesOf({ season = null, wind = 0.3 } = {}) {
 // (With the GM's time for water, `pace`, snow on the ground comes and goes in minutes.)
 const SNOW_LIES_HOURS = 10 / 60, SNOW_GOES_HOURS = 20 / 60;
 const WETS_HOURS = 0.5, DRIES_HOURS = 4, SNOWS_HOURS = 2, MELTS_HOURS = 4, FREEZES_HOURS = 8, THAWS_HOURS = 5;
+
+// How fast the ground gives up its water, as a share of a soaking per hour (DRIES_HOURS and the half below turn it
+// into the step). Measured against the real thing rather than guessed: pan evaporation runs about six times higher
+// in July than in January, and the energy says a millimetre of water over a square metre needs about 2.45 MJ, which
+// is roughly an hour of full sun. So sunlight does nearly all of the work. The ground used to dry at one rate
+// whatever the sky was doing, which made an overcast evening dry in eight hours and a wet night impossible.
+// What the real pace comes out at, and what a GM's own number is set against: a soaking in full sun on a warm day,
+// gone in about three hours. Ask for two and everything else keeps its proportions and happens twice as fast.
+export const DRY_SUNNY_HOURS = 3.1;
+export const DRY_BASE = 0.12, DRY_SUN = 2, DRY_WARM = 0.6, DRY_FREEZES = 2;
+export function dryingRate({ sun = 0, temperature = null, rain = 0, snow = 0 } = {}, { sunnyHours = DRY_SUNNY_HOURS } = {}) {
+  const asked = Number(sunnyHours) > 0 ? Number(sunnyHours) : DRY_SUNNY_HOURS;
+  return plainDryingRate({ sun, temperature, rain, snow }) * (DRY_SUNNY_HOURS / asked);
+}
+function plainDryingRate({ sun = 0, temperature = null, rain = 0, snow = 0 } = {}) {
+  // Nothing dries under a sky that is still falling: the air over the ground is saturated.
+  if (rain > 0.05 || snow > 0.05) return 0;
+  const warm = temperature !== null && Number.isFinite(Number(temperature)) ? Number(temperature) : null;
+  // Near freezing it stops altogether: what is there turns to ice rather than to vapour, which `ice` keeps.
+  if (warm !== null && warm <= DRY_FREEZES) return 0;
+  return DRY_BASE + DRY_SUN * clamp01(sun) + DRY_WARM * (warm !== null ? clamp01((warm - 5) / 25) : 0.35);
+}
+
+// How fast lying snow goes, as a share of a full cover per hour. Snowmelt has a standard measure, the degree-day
+// factor: millimetres of water melted per degree above freezing per day, typically 2-6, about 3.5 in the open and
+// 2.4 under trees. Taking a full cover here as a hand's depth of snow, that is about a fortieth of it per degree
+// per hour, so a thaw at three degrees takes the better part of two days and a warm day with sun clears it in
+// several hours. It used to go in eight hours at three degrees, which no snow has ever done.
+// What the real pace comes out at, and what a GM's own number is set against: a full cover at three degrees with no
+// sun, gone in a day and a half.
+export const MELT_THAW_HOURS = 34;
+export const MELT_PER_DEGREE_HOUR = 0.0097, MELT_SUN = 0.6;
+export function meltRate({ temperature = null, sun = 0 } = {}, { thawHours = MELT_THAW_HOURS } = {}) {
+  const asked = Number(thawHours) > 0 ? Number(thawHours) : MELT_THAW_HOURS;
+  return plainMeltRate({ temperature, sun }) * (MELT_THAW_HOURS / asked);
+}
+function plainMeltRate({ temperature = null, sun = 0 } = {}) {
+  const warm = temperature !== null && Number.isFinite(Number(temperature)) ? Number(temperature) : null;
+  // With no temperature to go on, the sun alone says whether it is melting, as it did before.
+  if (warm === null) return clamp01(sun) > 0.3 ? (1 + clamp01(sun)) / MELTS_HOURS / 4 : 0;
+  if (warm <= 0) return 0;
+  return MELT_PER_DEGREE_HOUR * warm * (1 + MELT_SUN * clamp01(sun));
+}
 /**
  * The ground's weather over time: { wet, snow } (0–1), carried on from one moment to the next by the game clock. Rain
  * wets it within half an hour; it dries over about four hours, faster in sun and heat. Snow whitens it over two hours
@@ -72,7 +115,7 @@ const snowLiesRate = ({ snow = 0, temperature = null, pace = null } = {}) => {
   return Number(pace) > 0 ? 1 / SNOW_LIES_HOURS : clamp01(snow) / SNOWS_HOURS * 2;
 };
 // `wetMinutes()`: game minutes for the hardest rain to soak the ground, the GM's (lighter rain takes longer); none given: a quarter of an hour.
-export function createGroundWeather({ load = () => null, save = () => {}, pace = () => null, wetMinutes = () => null } = {}) {
+export function createGroundWeather({ load = () => null, save = () => {}, pace = () => null, wetMinutes = () => null, dryHours = () => null, thawHours = () => null } = {}) {
   let state = null;
   return {
     update({ now = 0, rain = 0, snow = 0, temperature = null, air = temperature, sun = 0 } = {}) {
@@ -81,12 +124,11 @@ export function createGroundWeather({ load = () => null, save = () => {}, pace =
       // not weather: what lies stays. Shorter skips carry their weather, at most two days of it.
       const gap = (Number(now) - state.at) / 3600, hours = Math.abs(gap) > 24 * 30 ? 0 : Math.min(48, Math.max(0, gap));
       const warm = temperature !== null && Number.isFinite(Number(temperature)) ? Number(temperature) : null;
-      const heat = 1 + clamp01(sun) + (warm !== null ? clamp01((warm - 10) / 20) : 0);
       if (rain > 0.05) { const minutes = Number(wetMinutes()); state.wet = clamp01(state.wet + hours * clamp01(rain) * (minutes > 0 ? 60 / minutes : 2 / WETS_HOURS)); }
-      else state.wet = clamp01(state.wet - hours * heat / DRIES_HOURS / 2);
+      else state.wet = clamp01(state.wet - hours * dryingRate({ sun, temperature, rain, snow }, { sunnyHours: dryHours() }) / DRIES_HOURS / 2);
       const stays = warm === null || warm <= 2, timed = Number(pace()) > 0, way = timed ? hours / Number(pace()) : null;
       if (snow > 0.05 && stays) state.snow = clamp01(state.snow + hours * snowLiesRate({ snow, temperature, pace: pace() }));
-      else if (warm === null ? snow <= 0.05 && sun > 0.3 : warm > 2) state.snow = clamp01(state.snow - (timed ? hours / SNOW_GOES_HOURS : hours * (warm !== null ? 1 + clamp01((warm - 2) / 8) : 0.5) * (1 + clamp01(sun)) / MELTS_HOURS / 2));
+      else if (warm === null ? snow <= 0.05 && sun > 0.3 : warm > 0) state.snow = clamp01(state.snow - (timed ? hours / SNOW_GOES_HOURS : hours * meltRate({ temperature, sun }, { thawHours: thawHours() })));
       const cold = air !== null && Number.isFinite(Number(air)) ? Number(air) : null;
       if (cold !== null ? cold <= -3 : state.snow >= 0.6) state.ice = clamp01(state.ice + (way ?? hours * (cold !== null ? 0.25 + clamp01((-3 - cold) / 12) : 0.15) / FREEZES_HOURS * 4));
       else if (cold !== null ? cold > 1 : state.snow <= 0.05 && sun > 0.3) state.ice = clamp01(state.ice - (way ?? hours * (cold !== null ? 1 + clamp01((cold - 1) / 8) : 0.5) * (1 + clamp01(sun)) / THAWS_HOURS / 2));
@@ -159,9 +201,9 @@ export function groundInputs({ calendaria = null, scene = '', temperature = null
 // The ground of a scene nobody is looking at, carried on to `now` (game seconds) under the weather now (groundInputs'):
 // the river freezes on while the party is elsewhere. `kept` the scene's last ({ wet, snow, ice, at } or null: it starts
 // bare, from now).
-export function groundStep(kept, { now = 0, pace = null, wetMinutes = null, ...input } = {}) {
+export function groundStep(kept, { now = 0, pace = null, wetMinutes = null, dryHours = null, thawHours = null, ...input } = {}) {
   let out = null;
-  createGroundWeather({ load: () => kept, save: (state) => { out = state; }, pace: () => pace, wetMinutes: () => wetMinutes }).update({ now, ...input });
+  createGroundWeather({ load: () => kept, save: (state) => { out = state; }, pace: () => pace, wetMinutes: () => wetMinutes, dryHours: () => dryHours, thawHours: () => thawHours }).update({ now, ...input });
   return out;
 }
 

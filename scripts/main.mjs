@@ -251,6 +251,9 @@ import { WINDOW_PATTERN, patternScaleOf, shaftOf, GLAZED, skyWindowOf, duskOf, s
 import { tileSunlight, tileHeight, tileLeaves, solidShare, leafShare, canopyFall, directSun, createCanopyLight, createTreeSway } from "./engines/motion/canopy-light.mjs";
 import { TREE_KINDS, createTreePatterns, treeKindOf } from "./engines/motion/tree-kinds.mjs";
 import { STRIKE_LIGHT_SQUARES, openingStrike, strikePlace, strikeAngle as strikeFrom, boltDue, createLightningBolts } from "./engines/motion/lightning-bolt.mjs";
+import { ARRIVALS, ARRIVAL_MS, arrivalHere, arrivalAt, arrivalShake, arrivalFlash, arrivalWords } from "./engines/motion/scene-arrival.mjs";
+import { MOMENTS, WHERES, TETHERS, SWAYS, momentCall, momentsLeft, momentsWithout, momentRunning, momentAudience, momentMacro, momentNeeds, momentStyleKeys, presetCalls, presetFrom, presetsAll, screenFrom, thingSway, tetherPath } from "./engines/camera/screen-moments.mjs";
+import { momentsPanelHtml, momentsPanelMode, momentsPresetOptions, momentsReadout } from "./ui/moments-panel.mjs";
 import { fallWayHere, landedFlash, nearestLights, stormGloom, weatherOf, cloudCover, cloudLook, skyNeedsBuilding, heatOf, surfacesOf, riverCurrent, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, fxClouds, skyBuildKey } from "./engines/motion/sky-light.mjs";
 import { weatherScene, WEATHERS, sceneWeatherId, weatherLabel, SCENE_WEATHER_PREFIX } from "./engines/motion/sky-weather.mjs";
 import { forecastWeather, forecastDays, BLOCK_HOURS } from "./engines/motion/weather-forecast.mjs";
@@ -6100,6 +6103,8 @@ Hooks.on("getSceneControlButtons", (controls) => {
       onChange: () => repairPropsAsk() });
     add({ name: "animaterBreachWall", title: "Breach wall: click on a wall marked breakable to smash a gap in it there", icon: "fa-solid fa-block-brick", order: order + 1.6, button: true, visible: toolShown("toolBreachWall"),
       onChange: () => aimBreach() });
+    add({ name: "animaterMoments", title: "Moments: call a shudder, a pulse, a grey world — on every screen, changing nothing", icon: "fa-solid fa-wand-sparkles", order: order + 1.8, button: true, visible: toolShown("toolMoments"),
+      onChange: () => openMomentsPanel() });
     add({ name: "animaterClearBlood", title: "Clear blood: wipe the blood off the floor, on every screen", icon: "fa-solid fa-droplet-slash", order: order + 2, button: true, visible: toolShown("toolClearBlood"),
       onChange: () => clearBloodEverywhere() });
     add({ name: "animaterSplatBlood", title: "Splat blood: fresh blood on the ground around the selected tokens, kept with the scene", icon: "fa-solid fa-droplet", order: order + 2.25, button: true, visible: toolShown("toolSplatBlood"),
@@ -7685,6 +7690,8 @@ const writeGroundSoon = (sceneId, state) => {
   }, 2000);
 };
 const wetMinutesNow = () => { try { return hotSetting("wetMinutes"); } catch { return null; } };
+const dryHoursNow = () => { try { return hotSetting("dryHours"); } catch { return null; } };
+const thawHoursNow = () => { try { return hotSetting("thawHours"); } catch { return null; } };
 const groundPace = (id) => { try { return iceHours(id, hotSetting("iceHoursLeast"), hotSetting("iceHoursMost")); } catch { return iceHours(id); } };
 const groundOf = () => {
   const id = canvas?.scene?.id;
@@ -7698,7 +7705,7 @@ const groundOf = () => {
         try { return JSON.parse(localStorage.getItem(key) ?? "null"); } catch { return null; }
       },
       save: (state) => { try { localStorage.setItem(key, JSON.stringify(state)); } catch { /* storage refused */ } writeGroundSoon(id, state); },
-      pace: () => groundPace(id), wetMinutes: wetMinutesNow,
+      pace: () => groundPace(id), wetMinutes: wetMinutesNow, dryHours: dryHoursNow, thawHours: thawHoursNow,
     });
   }
   return groundWeather;
@@ -7727,7 +7734,7 @@ const groundAway = () => {
         if (!kept) { try { kept = JSON.parse(localStorage.getItem(`${ID}.ground.${game.world?.id}.${scene.id}`) ?? "null"); } catch { kept = null; } }
         if (!kept && !scene.regions?.some((r) => { try { return regionFloor({ name: r.name, flag: floorFlagOf(r) }) === "water"; } catch { return false; } })) continue;
         const { calendaria, weather } = awayWeather(scene);
-        writeGroundSoon(scene.id, groundStep(kept && Number.isFinite(kept.at) ? kept : null, { now, pace: groundPace(scene.id), wetMinutes: wetMinutesNow(), ...(weatherOffIn(scene) ? { rain: 0, snow: 0, temperature: 15, air: 15, sun: daylight } : tuneFalling(groundInputs({ calendaria, scene: weatherWordOf(scene), temperature: weather.temperature, sun: daylight }), tuneOfScene(scene))) }));
+        writeGroundSoon(scene.id, groundStep(kept && Number.isFinite(kept.at) ? kept : null, { now, pace: groundPace(scene.id), wetMinutes: wetMinutesNow(), dryHours: dryHoursNow(), thawHours: thawHoursNow(), ...(weatherOffIn(scene) ? { rain: 0, snow: 0, temperature: 15, air: 15, sun: daylight } : tuneFalling(groundInputs({ calendaria, scene: weatherWordOf(scene), temperature: weather.temperature, sun: daylight }), tuneOfScene(scene))) }));
       }
     } catch { /* never breaks the clock */ }
   }, 1500);
@@ -7878,6 +7885,536 @@ const lookSky = () => {
 let drawnNow = null;
 let skyCoverNow = 0, floorWeather = null, skyHeat = 0, skyStorm = 0, skyOpen = 1, skyWindAngle = 0, skyFalling = { rain: 0, snow: 0 }, skyWindNow = 0, skyWords = "";
 let skyBuiltKey = null;
+// Moments (engines/camera/screen-moments.mjs): the effects Animater already draws, called by hand. Everything else
+// here reads the game and acts on it, which leaves one gap — the GM who needs the floor to shudder because the thing
+// in the dark just moved, and no roll will ever tell us so. A moment is called on one screen, shown on the screens
+// the GM chose, changes nothing in the world, and stops.
+// Where it happens is what makes it worth having: the whole screen, a place on the map (strongest for whoever is
+// looking at that place), or the tokens and tiles that were picked — which it then follows about, rocking them,
+// riding them up and down, or drawing a rope between them.
+const MOMENT_MESSAGE = "moment";
+let momentCalls = [], momentFrame = 0, momentLayer = null, momentLast = null;
+const momentBoard = () => { try { return globalThis.document?.getElementById?.("board") ?? null; } catch { return null; } };
+// Two things CSS cannot do on its own: pulling the colours apart, and dragging everything sideways. Both are plain
+// SVG filters, put in the page once and named from the board's own filter list.
+const MOMENT_FILTER_ID = "animater-moment-filters";
+function momentFilters() {
+  if (!globalThis.document?.createElementNS || document.getElementById(MOMENT_FILTER_ID)) return;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.id = MOMENT_FILTER_ID;
+  svg.setAttribute("aria-hidden", "true");
+  svg.style.cssText = "position:fixed;width:0;height:0;pointer-events:none";
+  svg.innerHTML = `<defs>
+    <filter id="animater-split"><feOffset in="SourceGraphic" dx="0" dy="0" result="r"/><feColorMatrix in="r" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="rr"/><feOffset in="SourceGraphic" dx="0" dy="0" result="b"/><feColorMatrix in="b" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="bb"/><feBlend in="SourceGraphic" in2="rr" mode="screen" result="one"/><feBlend in="one" in2="bb" mode="screen"/></filter>
+    <filter id="animater-smear"><feGaussianBlur in="SourceGraphic" stdDeviation="0 0"/></filter>
+  </defs>`;
+  document.body.append(svg);
+}
+const momentSplitAt = (amount) => {
+  const f = document.getElementById(MOMENT_FILTER_ID)?.querySelector("#animater-split");
+  if (!f) return;
+  const px = (amount * 7).toFixed(2);
+  f.children[0].setAttribute("dx", `-${px}`);
+  f.children[2].setAttribute("dx", px);
+};
+const momentSmearAt = (amount, angle = 0) => {
+  const blur = document.getElementById(MOMENT_FILTER_ID)?.querySelector("#animater-smear feGaussianBlur");
+  if (!blur) return;
+  const span = amount * 9;
+  blur.setAttribute("stdDeviation", `${(span * Math.abs(Math.cos(angle))).toFixed(2)} ${(span * Math.abs(Math.sin(angle)) * 0.35).toFixed(2)}`);
+};
+const momentLayerMake = () => {
+  if (momentLayer?.isConnected) return momentLayer;
+  if (!globalThis.document?.createElement || !globalThis.document?.body?.append) return null;
+  const el = document.createElement("div");
+  el.className = "animater-moments";
+  el.innerHTML = `<svg class="an-links" aria-hidden="true"></svg>`;
+  document.body.append(el);
+  momentLayer = el;
+  return el;
+};
+
+// Things a moment has taken hold of: what each looked like before, so it can be put back exactly. Nothing here is
+// ever written to a document — a sway moves the picture of a token, not the token.
+const momentHeld = new Map();
+const momentThingOf = (id) => { try { return canvas?.tokens?.get?.(id) ?? canvas?.tiles?.get?.(id) ?? null; } catch { return null; } };
+const momentMeshOf = (thing) => thing?.mesh ?? null;
+function momentRelease(id) {
+  const was = momentHeld.get(id);
+  momentHeld.delete(id);
+  if (!was) return;
+  try { was.mesh.angle = was.angle; was.mesh.position.set(was.x, was.y); } catch { /* the thing is gone */ }
+}
+const momentReleaseAll = () => { for (const id of [...momentHeld.keys()]) momentRelease(id); };
+// A sway or a bob, put on the picture of a thing and taken off again. Foundry redraws tokens often and would undo
+// it, so it is set again every frame rather than once.
+function momentHold(id, { lean = 0, lift = 0 } = {}) {
+  const thing = momentThingOf(id), mesh = momentMeshOf(thing);
+  if (!mesh?.position) { momentRelease(id); return; }
+  let was = momentHeld.get(id);
+  if (!was || was.mesh !== mesh) {
+    was = { mesh, angle: mesh.angle ?? 0, x: mesh.position.x, y: mesh.position.y };
+    momentHeld.set(id, was);
+  }
+  const tall = thing?.h || thing?.document?.height * (canvas?.grid?.size || 100) || 100;
+  try { mesh.angle = was.angle + lean; mesh.position.set(was.x, was.y + lift * tall); } catch { momentRelease(id); }
+}
+
+const momentsOff = () => {
+  momentCalls = [];
+  const board = momentBoard();
+  if (board?.style) { board.style.transform = ""; board.style.filter = ""; board.style.willChange = ""; }
+  momentReleaseAll();
+  try { momentLayer?.remove?.(); } catch { /* already gone */ }
+  momentLayer = null;
+  momentFrame = 0;
+  momentPanelLit();
+};
+// The camera as the engine wants it: where the middle of the view is on the map, and how much map a screen covers.
+const momentView = () => {
+  try {
+    const pivot = canvas?.stage?.pivot, scale = canvas?.stage?.scale?.x;
+    if (!pivot || !(scale > 0)) return null;
+    return { x: pivot.x, y: pivot.y, scale, width: globalThis.innerWidth || 1600, height: globalThis.innerHeight || 900 };
+  } catch { return null; }
+};
+// A place on the map, in pixels on this screen, so a layer or a line can be drawn over it.
+const momentOnScreen = (x, y) => {
+  try { const p = canvas.stage.worldTransform.apply({ x, y }); return Number.isFinite(p?.x) ? p : null; } catch { return null; }
+};
+// Where the things a moment was given are now: the middle of the ones still on this scene.
+const momentThingsAt = (ids) => {
+  const spots = (ids ?? []).map(momentThingOf).filter((t) => t?.center).map((t) => t.center);
+  if (!spots.length) return null;
+  return { x: spots.reduce((s, p) => s + p.x, 0) / spots.length, y: spots.reduce((s, p) => s + p.y, 0) / spots.length, spread: spots.length };
+};
+// The lines between the things a tether was given: each to the next, so three tokens make two lines and not three.
+function momentLinks(thing) {
+  const spots = (thing.ids ?? []).map(momentThingOf).filter((t) => t?.center).map((t) => t.center);
+  const out = [];
+  for (let i = 0; i + 1 < spots.length; i++) {
+    const from = momentOnScreen(spots[i].x, spots[i].y), to = momentOnScreen(spots[i + 1].x, spots[i + 1].y);
+    if (from && to) out.push(tetherPath(from, to, { kind: thing.style, strength: thing.strength, at: thing.call.at, now: Date.now() }));
+  }
+  return out;
+}
+// One pass over the screen: the board moved and graded, the layers drawn over it, the things rocked, the lines run.
+const momentsPaint = () => {
+  momentCalls = momentsLeft(momentCalls, Date.now());
+  const board = momentBoard();
+  if (!momentCalls.length || !board?.style) { momentsOff(); return; }
+  const { board: look, layers, things } = screenFrom(momentCalls, Date.now(), momentView()), grid = canvas?.grid?.size || 100;
+  board.style.willChange = "transform, filter";
+  board.style.transform = `translate(${(look.shakeX * grid * 0.25).toFixed(2)}px, ${(look.shakeY * grid * 0.25).toFixed(2)}px) rotate(${look.roll.toFixed(3)}deg)`;
+  const grades = [];
+  if (look.blur > 0.001) grades.push(`blur(${(look.blur * 6).toFixed(2)}px)`);
+  if (look.grey > 0.001) grades.push(`grayscale(${look.grey.toFixed(3)}) contrast(${(1 + look.grey * 0.12).toFixed(3)})`);
+  if (look.split > 0.001 || look.smear > 0.001) momentFilters();
+  if (look.split > 0.001) { momentSplitAt(look.split); grades.push("url(#animater-split)"); }
+  if (look.smear > 0.001) { momentSmearAt(look.smear, (Date.now() / 900) % 6.283); grades.push("url(#animater-smear)"); }
+  board.style.filter = grades.join(" ");
+  const host = momentLayerMake();
+  if (!host) { momentFrame = requestAnimationFrame(momentsPaint); return; }
+  const wanted = new Set();
+  for (let i = 0; i < layers.length; i++) {
+    const layer = layers[i], key = `${layer.kind}:${i}`;
+    wanted.add(key);
+    let el = host.querySelector(`[data-moment="${key}"]`);
+    if (!el) { el = document.createElement("div"); el.dataset.moment = key; el.className = `an-moment an-moment-${layer.kind}`; host.append(el); }
+    const where = layer.x !== null ? { x: layer.x, y: layer.y } : layer.ids?.length ? momentThingsAt(layer.ids) : null;
+    const spot = where ? momentOnScreen(where.x, where.y) : null;
+    const scale = canvas?.stage?.scale?.x || 1;
+    const reach = (layer.radius ?? (where?.spread ? grid * 2.5 : grid * 3)) * scale;
+    if (spot) {
+      el.style.left = `${spot.x.toFixed(1)}px`;
+      el.style.top = `${spot.y.toFixed(1)}px`;
+      el.style.width = el.style.height = `${(reach * 2).toFixed(1)}px`;
+      el.dataset.placed = "1";
+    } else { el.style.left = el.style.top = ""; el.style.width = el.style.height = ""; delete el.dataset.placed; }
+    el.style.opacity = layer.strength.toFixed(3);
+    if (layer.colour) el.style.setProperty("--an-moment-colour", layer.colour);
+    if (layer.kind === "dust") el.style.setProperty("--an-moment-run", layer.t.toFixed(3));
+  }
+  for (const el of [...host.children]) if (el.dataset.moment && !wanted.has(el.dataset.moment)) el.remove();
+  // What the moments have taken hold of: rocked and ridden, and the ones nothing holds any more let go.
+  const holding = new Set();
+  const lines = [];
+  for (const thing of things) {
+    if (thing.kind === "tether") { lines.push(...momentLinks(thing).map((points) => ({ points, thing }))); continue; }
+    (thing.ids ?? []).forEach((id, n) => { holding.add(id); momentHold(id, thingSway(thing.call, Date.now(), n)); });
+  }
+  for (const id of [...momentHeld.keys()]) if (!holding.has(id)) momentRelease(id);
+  momentDrawLinks(host, lines);
+  momentFrame = requestAnimationFrame(momentsPaint);
+};
+// The tethers themselves, as one piece of SVG over the map.
+function momentDrawLinks(host, lines) {
+  const svg = host.querySelector(".an-links");
+  if (!svg) return;
+  svg.style.display = lines.length ? "" : "none";
+  if (!lines.length) { svg.innerHTML = ""; return; }
+  svg.innerHTML = lines.map(({ points, thing }) => {
+    const how = TETHERS[thing.style] ?? TETHERS.rope;
+    const d = points.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
+    const colour = thing.colour ?? "#9fd4ff";
+    const glow = how.glow ? `<path d="${d}" stroke="${colour}" stroke-width="${how.width * 3}" opacity="${(thing.strength * 0.35).toFixed(3)}" fill="none" stroke-linecap="round"/>` : "";
+    return `${glow}<path d="${d}" stroke="${colour}" stroke-width="${how.width}" opacity="${thing.strength.toFixed(3)}" fill="none" stroke-linecap="round"${how.dash ? ` stroke-dasharray="${how.dash}"` : ""}/>`;
+  }).join("");
+}
+// The map's own shockwave, the one a blast sends out: the ring that bends the ground and everything standing on it
+// (energy-blast.mjs blastRipple, through the distortion host). Sent once as the moment lands, not drawn each frame,
+// because the host runs it from there exactly as a blast's.
+function momentShockwave(call) {
+  const grid = canvas?.grid?.size || 100;
+  const where = call.x !== null ? { x: call.x, y: call.y } : momentThingsAt(call.ids);
+  if (!where) return;
+  const radius = call.radius ?? (grid * 2.5);
+  const ripple = blastRipple({ x: where.x, y: where.y, radius, kind: "force", grid, level: canvas?.level?.id ?? null });
+  if (!ripple) return;
+  // How hard the GM asked for, and for how long they asked.
+  ripple.strength *= Math.max(0.1, call.strength);
+  if (call.ms) ripple.lengthMs = Math.round(Math.min(4000, call.ms));
+  try { distortionHost.onEffect({ data: { animaterWarp: ripple, moduleName: ID, sceneId: canvas.scene?.id }, destroyed: false, ended: false, worldPosition: { x: where.x, y: where.y } }); } catch { /* the floor still bends elsewhere */ }
+}
+const momentsShow = (call) => {
+  if (!call) return;
+  momentCalls = [...momentsLeft(momentCalls, Date.now()), call];
+  if (MOMENTS[call.kind]?.on === "warp") momentShockwave(call);
+  if (!momentFrame && typeof globalThis.requestAnimationFrame === "function") momentFrame = requestAnimationFrame(momentsPaint);
+  momentPanelLit();
+};
+// Called on this screen and sent to the rest. The GM's clock is what everyone counts from, so a moment reaching a
+// slow client arrives part-way through rather than starting again there.
+const momentCallHere = (kind, how = {}) => {
+  const call = momentCall(kind, { ...how, at: Date.now() });
+  if (!call) return null;
+  const audience = momentAudience(how.audience);
+  momentLast = call;
+  if (!audience || audience.includes(game.user.id)) momentsShow(call);
+  try { game.socket.emit(`module.${ID}`, { type: MOMENT_MESSAGE, sender: clientId, call, ...(audience ? { audience } : {}) }); } catch { /* shown here at least */ }
+  return call;
+};
+const momentsStopEverywhere = () => {
+  momentsOff();
+  try { game.socket.emit(`module.${ID}`, { type: MOMENT_MESSAGE, sender: clientId, stop: true }); } catch { /* stopped here at least */ }
+};
+// One kind of moment, stopped everywhere: pressing a tile that is already lit means stop, not another one.
+const momentStopKind = (kind) => {
+  momentsPutOut(kind);
+  try { game.socket.emit(`module.${ID}`, { type: MOMENT_MESSAGE, sender: clientId, stop: kind }); } catch { /* stopped here at least */ }
+};
+const momentsPutOut = (kind) => {
+  momentCalls = momentsWithout(momentCalls, kind);
+  if (!momentCalls.length) { momentsOff(); return; }
+  momentPanelLit();
+};
+// Only a GM may reach into another screen like this, and what arrives is read back through the engine rather than
+// trusted as it comes: a colour ends up in a style.
+const momentHeard = (data, senderId) => {
+  if (data?.type !== MOMENT_MESSAGE || !game.users.get(senderId)?.isGM) return;
+  if (data.stop === true) { momentsOff(); return; }
+  if (typeof data.stop === "string") { momentsPutOut(data.stop); return; }
+  momentsShow(momentCall(data.call?.kind, data.call ?? {}));
+};
+Hooks.on("canvasTearDown", momentsOff);
+
+// Pointing at the map: the same ring the cave-in and the blast use (aimOnMap), so how wide a moment reaches is
+// shown on the map and sized with the wheel rather than typed into a box. How many squares it was left at is
+// remembered, as theirs are. Nothing is placed and nothing is saved: a click is a place and a size.
+let momentSquares = 3;
+const momentTint = (colour) => { const hex = /^#([0-9a-fA-F]{6})$/.exec(String(colour ?? "")); return hex ? Number.parseInt(hex[1], 16) : 0x9fd4ff; };
+function momentAimAt(kind, asked, then) {
+  const tint = momentTint(asked.colour ?? MOMENTS[kind]?.colour);
+  const armed = aimOnMap({
+    squares: momentSquares,
+    setSquares: (s) => { momentSquares = s; },
+    line: tint, fill: tint,
+    fire: (p, radius) => { then({ x: p.x, y: p.y, radius }); momentPanelLit(); },
+  });
+  if (armed) ui.notifications?.info(`${MOMENTS[kind]?.name ?? "Moment"}: click where it happens. Scroll to change how far it reaches, Shift to double it. Escape or right click to cancel.`);
+  momentPanelLit();
+}
+
+// The GM's dashboard (ui/moments-panel.mjs draws it; this drives it).
+let momentsPanel = null;
+const momentsPanelClose = () => { try { momentsPanel?.remove?.(); } catch { /* gone */ } momentsPanel = null; stopCaveInAim(); };
+// What is running, said on the buttons and in the readout, so nothing is left on by mistake.
+function momentPanelLit() {
+  if (!momentsPanel?.isConnected) return;
+  const live = new Set(momentCalls.map((c) => c.kind));
+  for (const button of momentsPanel.querySelectorAll("[data-an-moment]")) button.classList.toggle("is-on", live.has(button.dataset.anMoment));
+  const readout = momentsPanel.querySelector("[data-an-readout]");
+  if (readout) readout.innerHTML = momentsReadout(momentCalls, MOMENTS);
+  momentsPanel.querySelector("[data-an-stop]")?.toggleAttribute("disabled", !momentCalls.length);
+  momentsPanel.classList.toggle("is-aiming", !!caveInAim);
+}
+const momentPanelPick = (name) => momentsPanel?.querySelector(`[data-an-seg="${name}"] .on`)?.dataset?.[`an${name[0].toUpperCase()}${name.slice(1)}`] ?? null;
+const momentPanelAsk = () => {
+  const box = momentsPanel;
+  const num = (sel, fallback = null) => { const v = Number(box.querySelector(sel)?.value); return Number.isFinite(v) ? v : fallback; };
+  const where = momentPanelPick("where") ?? "screen";
+  const seconds = num("[data-an-seconds]", 0);
+  const audience = momentPanelPick("who") === "players" ? game.users.filter((u) => u.active && !u.isGM).map((u) => u.id) : null;
+  return {
+    strength: num("[data-an-strength]") ?? undefined,
+    ms: seconds > 0 ? seconds * 1000 : null,
+    fade: (num("[data-an-fade]", 0) || 0) * 1000 || null,
+    colour: box.querySelector("[data-an-colour]")?.value || undefined,
+    style: box.querySelector("[data-an-style]")?.value || undefined,
+    beat: box.querySelector("[data-an-beat]")?.checked === true,
+    where,
+    audience,
+    ids: where === "tokens" ? momentPicked() : null,
+  };
+};
+// What the GM has picked: the selected tokens, and any tiles selected on the tiles layer.
+const momentPicked = () => {
+  const tokens = (canvas?.tokens?.controlled ?? []).map((t) => t.id);
+  const tiles = (canvas?.tiles?.controlled ?? []).map((t) => t.id);
+  return [...tokens, ...tiles];
+};
+function momentsFire(kind) {
+  // A lit tile pressed again means stop that one. Aiming counts as running, so a second press calls off the ring.
+  if (momentRunning(momentCalls, kind, Date.now())) { momentStopKind(kind); return; }
+  if (caveInAim) { stopCaveInAim(); momentPanelLit(); return; }
+  const asked = momentPanelAsk();
+  // What a moment wants is the engine's to say, not a list kept here.
+  const needs = momentNeeds(kind);
+  if (needs && asked.where !== "tokens") { ui.notifications?.warn(`Animater: set Where to Picked — ${MOMENTS[kind]?.name ?? kind} works on what you choose.`); return; }
+  if (needs === "things" && !asked.ids?.length) { ui.notifications?.warn("Animater: pick a token or a tile first."); return; }
+  if (needs === "two" && (asked.ids?.length ?? 0) < 2) { ui.notifications?.warn("Animater: pick two or more, and a line is drawn between them."); return; }
+  if (asked.where === "tokens" && !asked.ids?.length) { ui.notifications?.warn("Animater: pick something first, or set it to the whole screen."); return; }
+  // The ring says how far it reaches, so the panel does not ask for a number as well.
+  if (asked.where === "point") { momentAimAt(kind, asked, ({ x, y, radius }) => momentCallHere(kind, { ...asked, x, y, radius })); return; }
+  momentCallHere(kind, asked);
+}
+function openMomentsPanel() {
+  if (momentsPanel?.isConnected) { momentsPanelClose(); return; }
+  if (!game.user?.isGM || !globalThis.document?.createElement) return;
+  const box = document.createElement("div");
+  box.className = "animater animater-moments-panel";
+  // Every style any moment has, each marked with whose it is, so the one list serves the tether and the sway.
+  const styles = { ...Object.fromEntries(Object.entries(TETHERS).map(([k, v]) => [k, { ...v, forKind: "tether" }])),
+    ...Object.fromEntries(Object.entries(SWAYS).map(([k, v]) => [k, { ...v, forKind: "sway" }])) };
+  box.innerHTML = momentsPanelHtml({ moments: MOMENTS, wheres: WHERES, styles, presets: presetsAll(momentPresetsKept()) });
+  document.body.append(box);
+  momentsPanel = box;
+  // Only what the chosen mode can do is offered (ui/moments-panel.mjs); the rest is hidden, not greyed.
+  const rows = () => momentsPanelMode(box, momentPanelPick("where") ?? "screen");
+  box.addEventListener("click", (event) => {
+    const seg = event.target?.closest?.("[data-an-where], [data-an-who]");
+    if (seg) {
+      for (const sib of seg.parentElement.children) sib.classList.toggle("on", sib === seg);
+      rows();
+      return;
+    }
+    const kind = event.target?.closest?.("[data-an-moment]")?.dataset?.anMoment;
+    if (kind) { momentsFire(kind); return; }
+    if (event.target?.closest?.("[data-an-stop]")) { momentsStopEverywhere(); return; }
+    if (event.target?.closest?.("[data-an-play]")) { momentPresetPlay(); return; }
+    if (event.target?.closest?.("[data-an-save]")) { void momentPresetKeep(); return; }
+    if (event.target?.closest?.("[data-an-forget]")) { void momentPresetForget(); return; }
+    if (event.target?.closest?.("[data-an-macro]")) { momentMacroCopy(); return; }
+    if (event.target?.closest?.("[data-an-make]")) { void momentMacroMake(); return; }
+    if (event.target?.closest?.("[data-an-close]")) momentsPanelClose();
+  });
+  const dial = box.querySelector("[data-an-strength]"), val = box.querySelector("[data-an-strength-val]");
+  dial?.addEventListener("input", () => { if (val) val.textContent = `${Math.round(Number(dial.value) * 100)}%`; });
+  momentPanelDrag(box);
+  rows();
+  momentPanelLit();
+}
+// Dragged by its header to wherever the GM wants it, and put back there next time. Each screen its own place: this
+// is about where that person's hands and their map are, so it is kept on the client and nowhere else.
+const MOMENT_SPOT_KEY = `${ID}.momentsPanelAt`;
+function momentPanelDrag(box) {
+  const header = box.querySelector("header");
+  if (!header) return;
+  const put = (left, top) => {
+    // Never dragged off the edge: a panel that cannot be grabbed again is a panel that is gone.
+    const wide = globalThis.innerWidth || 1600, tall = globalThis.innerHeight || 900;
+    const x = Math.min(Math.max(8, left), Math.max(8, wide - box.offsetWidth - 8));
+    const y = Math.min(Math.max(8, top), Math.max(8, tall - 40));
+    box.style.left = `${Math.round(x)}px`;
+    box.style.top = `${Math.round(y)}px`;
+    box.style.right = box.style.bottom = "auto";
+    return { x, y };
+  };
+  try {
+    const kept = JSON.parse(globalThis.localStorage?.getItem(MOMENT_SPOT_KEY) ?? "null");
+    if (Number.isFinite(kept?.x) && Number.isFinite(kept?.y)) put(kept.x, kept.y);
+  } catch { /* never dragged, or storage refused */ }
+  header.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.target?.closest?.("button")) return;
+    event.preventDefault();
+    const box0 = box.getBoundingClientRect(), fromX = event.clientX - box0.left, fromY = event.clientY - box0.top;
+    const move = (e) => put(e.clientX - fromX, e.clientY - fromY);
+    const done = (e) => {
+      globalThis.removeEventListener("pointermove", move, true);
+      globalThis.removeEventListener("pointerup", done, true);
+      const at = put(e.clientX - fromX, e.clientY - fromY);
+      try { globalThis.localStorage?.setItem(MOMENT_SPOT_KEY, JSON.stringify(at)); } catch { /* storage refused */ }
+    };
+    globalThis.addEventListener("pointermove", move, true);
+    globalThis.addEventListener("pointerup", done, true);
+  });
+}
+Hooks.on("canvasTearDown", momentsPanelClose);
+
+// Sets of moments called as one: the ones we ship, and the table's own kept in a world setting so every GM at it
+// has them. A set is only ever moments, read back through the engine before any of it is shown.
+const momentPresetsKept = () => { try { const kept = hotSetting("momentPresets"); return kept && typeof kept === "object" ? kept : {}; } catch { return {}; } };
+const momentPresetChosen = () => momentsPanel?.querySelector("[data-an-preset]")?.value ?? "";
+const momentPresetsRedraw = () => {
+  const select = momentsPanel?.querySelector("[data-an-preset]");
+  if (!select) return;
+  const was = select.value;
+  select.innerHTML = momentsPresetOptions(presetsAll(momentPresetsKept()));
+  if ([...select.options].some((o) => o.value === was)) select.value = was;
+};
+// Called where the panel says, not where the set was kept: the same set is a roof falling here or over there.
+function momentPresetPlay() {
+  const preset = presetsAll(momentPresetsKept())[momentPresetChosen()];
+  if (!preset) { ui.notifications?.warn("Animater: choose a set first."); return; }
+  const asked = momentPanelAsk();
+  if (asked.where === "tokens" && !asked.ids?.length) { ui.notifications?.warn("Animater: pick something first, or set it to the whole screen."); return; }
+  const send = ({ x = null, y = null, radius = null } = {}) => {
+    for (const call of presetCalls(preset, { at: Date.now(), where: asked.where, x, y, radius, ids: asked.ids })) {
+      momentCallHere(call.kind, { ...call, audience: asked.audience });
+    }
+  };
+  if (asked.where === "point") { momentAimAt(momentPresetChosen(), asked, send); return; }
+  send();
+}
+// What is running now, kept for the table. A world setting, so it is one GM's work and every GM's to use.
+async function momentPresetKeep() {
+  const made = presetFrom(momentCalls, "");
+  if (!made) { ui.notifications?.warn("Animater: call some moments first, then keep them."); return; }
+  const name = await momentAskName(made.name);
+  if (name === null) return;
+  const key = `own-${Date.now().toString(36)}`;
+  try {
+    await game.settings.set(ID, "momentPresets", { ...momentPresetsKept(), [key]: { name, moments: made.moments } });
+    momentPresetsRedraw();
+    const select = momentsPanel?.querySelector("[data-an-preset]");
+    if (select) select.value = key;
+    ui.notifications?.info(`Animater: kept "${name}" — ${made.moments.length} moments.`);
+  } catch (err) { ui.notifications?.error(`Animater: could not keep the set (${err?.message ?? err}).`); }
+}
+async function momentPresetForget() {
+  const key = momentPresetChosen(), all = presetsAll(momentPresetsKept());
+  if (!all[key]?.own) { ui.notifications?.warn("Animater: only a set of your own can be forgotten."); return; }
+  const kept = { ...momentPresetsKept() };
+  delete kept[key];
+  try { await game.settings.set(ID, "momentPresets", kept); momentPresetsRedraw(); ui.notifications?.info("Animater: that set is forgotten."); }
+  catch (err) { ui.notifications?.error(`Animater: could not forget it (${err?.message ?? err}).`); }
+}
+// Asked for plainly, and a GM who changes their mind gets null rather than a set called "undefined".
+async function momentAskName(fallback) {
+  try {
+    const said = await foundry.applications.api.DialogV2.prompt({
+      window: { title: "Keep these moments" },
+      content: `<p>What are these moments called?</p><input type="text" name="name" value="${foundry.utils.escapeHTML?.(fallback) ?? fallback}" style="width:100%">`,
+      ok: { label: "Keep", callback: (event, button) => button.form.elements.name.value },
+    });
+    return said ? String(said).slice(0, 60) : null;
+  } catch { return fallback || null; }
+}
+
+// The last moment, written down as a line a macro can hold: on the clipboard where there is one, whispered where
+// there is not, so it is never lost.
+function momentMacroCopy() {
+  const line = momentMacro(momentLast, ID);
+  if (!line) { ui.notifications?.warn("Animater: call a moment first, then copy it."); return; }
+  const told = () => ui.notifications?.info("Animater: the moment is on the clipboard. Paste it into a script macro.");
+  try { void globalThis.navigator?.clipboard?.writeText?.(line).then(told).catch(() => momentMacroWhisper(line)); } catch { momentMacroWhisper(line); }
+  if (!globalThis.navigator?.clipboard?.writeText) momentMacroWhisper(line);
+}
+const momentMacroWhisper = (line) => {
+  try { ChatMessage.create({ content: `<pre style="white-space:pre-wrap">${foundry.utils.escapeHTML?.(line) ?? line}</pre>`, whisper: [game.user.id] }); } catch { console.log("Animater moment:", line); }
+};
+// The same line, made into a macro in the GM's own directory because they asked for it with the button. The one
+// thing in all of Moments that writes a document, and it writes a macro of theirs and nothing of the world's.
+async function momentMacroMake() {
+  const line = momentMacro(momentLast, ID);
+  if (!line) { ui.notifications?.warn("Animater: call a moment first, then make a macro of it."); return; }
+  const name = `Moment: ${MOMENTS[momentLast.kind]?.name ?? momentLast.kind}${momentLast.where === "point" ? " (here)" : momentLast.where === "tokens" ? " (picked)" : ""}`;
+  try {
+    const macro = await Macro.create({ name, type: "script", scope: "global", command: line, img: "icons/magic/perception/eye-ringed-glow-angry-red.webp" });
+    ui.notifications?.info(`Animater: made the macro "${name}". Drag it to your bar.`);
+    macro?.sheet?.render(true);
+  } catch (err) { ui.notifications?.error(`Animater: could not make the macro (${err?.message ?? err}).`); }
+}
+// Arriving on a scene (engines/motion/scene-arrival.mjs). A map is simply there today, at full size, on the first
+// frame the GM pulls the party to it; this gives it a moment to settle in. Never on by itself: each scene says for
+// itself what it does, the module setting is only what a scene falls back to, and a scene nobody has asked arrives
+// exactly as it always did.
+// The picture is all of it on purpose: the beat moves the board, veils it, flashes over it and names the place.
+// It does not touch the world's audio, because the wounded view already owns that (worldMuffle) and two features
+// pulling at one gain is how a player ends a session with no sound.
+let arrivalRun = 0, arrivalBox = null, arrivalScene = null;
+const arrivalBeatOf = (scene) => arrivalHere(scene?.flags?.[ID]?.arrival, hotSetting("sceneArrival"));
+// The line under the name: what the GM wrote for this scene, else the hour and the weather Animater already knows.
+const arrivalSaid = (scene) => {
+  const clock = clockNow();
+  return arrivalWords({
+    name: scene?.name ?? "", day: Number.isFinite(clock?.day) ? clock.day : null, clock,
+    weather: String(weatherWordOf(scene) ?? "").toLowerCase(),
+    own: scene?.flags?.[ID]?.arrivalSays ?? "",
+  });
+};
+// Everything the beat touched, put back exactly as it was, whatever ended it.
+// (Asked of the page carefully: this runs on canvasTearDown, which the tests fire against a bare stub of a
+// document, and a beat putting the board back must never be the thing that throws.)
+const arrivalBoard = () => { try { return globalThis.document?.getElementById?.("board") ?? null; } catch { return null; } };
+const arrivalOver = () => {
+  arrivalRun++;
+  const board = arrivalBoard();
+  if (board?.style) { board.style.transform = ""; board.style.filter = ""; board.style.willChange = ""; }
+  try { arrivalBox?.remove?.(); } catch { /* already gone */ }
+  arrivalBox = null;
+};
+function playArrival(scene) {
+  arrivalOver();
+  const beat = arrivalBeatOf(scene);
+  if (beat === "off" || hotSetting("sceneArrivalLocal") === false || !allowsMotion(localQuality())) return;
+  const board = arrivalBoard();
+  if (!board?.style || !globalThis.document?.body?.append || typeof globalThis.requestAnimationFrame !== "function") return;
+  const words = scene?.flags?.[ID]?.arrivalCard === "off" ? null : arrivalSaid(scene);
+  const box = document.createElement("div");
+  box.className = "animater-arrival";
+  box.innerHTML = `<div class="an-veil"></div><div class="an-flash"></div>${words?.name ? `<div class="an-card"><div class="an-name"></div><div class="an-under"></div></div>` : ""}`;
+  document.body.append(box);
+  arrivalBox = box;
+  const veil = box.querySelector(".an-veil"), flash = box.querySelector(".an-flash"), card = box.querySelector(".an-card");
+  if (card) { card.querySelector(".an-name").textContent = words.name; card.querySelector(".an-under").textContent = words.under; }
+  // A click, a key or anything else that wants the map ends it at once and leaves the map as it would have been.
+  box.addEventListener("pointerdown", arrivalOver);
+  const ms = ARRIVAL_MS[beat] ?? 2600, mine = ++arrivalRun, began = performance.now();
+  board.style.willChange = "transform, filter";
+  const step = (now) => {
+    if (mine !== arrivalRun || !document.body.contains(box)) return;
+    const t = Math.min(1, (now - began) / ms);
+    const at = arrivalAt(beat, t), shake = arrivalShake(beat, t), grid = canvas?.grid?.size || 100;
+    // The shake is in squares, as the engine gives it, so it reads the same on a map of any scale.
+    board.style.transform = `scale(${at.zoom.toFixed(4)}) translate(${(at.dx * 100).toFixed(3)}%, ${(at.dy * 100).toFixed(3)}%) translate(${(shake.x * grid * 0.25).toFixed(2)}px, ${(shake.y * grid * 0.25).toFixed(2)}px)`;
+    board.style.filter = at.blur > 0.01 || at.light < 0.999 ? `blur(${at.blur.toFixed(2)}px) brightness(${at.light.toFixed(3)})` : "";
+    veil.style.opacity = at.veil.toFixed(3);
+    flash.style.opacity = arrivalFlash(beat, t).toFixed(3);
+    if (card) card.style.opacity = (t < 0.12 ? t / 0.12 : t > 0.72 ? Math.max(0, (1 - t) / 0.28) : 1).toFixed(3);
+    if (t < 1) requestAnimationFrame(step); else arrivalOver();
+  };
+  requestAnimationFrame(step);
+}
+// Only on arriving: a scene drawn again under the party's feet (a wall edited, a light moved) is not an arrival.
+Hooks.on("canvasReady", () => {
+  const id = canvas?.scene?.id ?? null;
+  if (id === arrivalScene) return;
+  arrivalScene = id;
+  try { playArrival(canvas?.scene); } catch (err) { arrivalOver(); runtime?.trace?.("arrival", err?.message ?? String(err)); }
+});
+Hooks.on("canvasTearDown", arrivalOver);
+
 const rebuildSky = () => {
   try {
     if (!canvas?.ready) return;
@@ -10560,12 +11097,17 @@ let fireTimer = 0;
 const fireCombatOf = (scene) => (game.combats?.contents ?? []).find((c) => c.started === true && (!c.scene || c.scene.id === scene.id)) ?? null;
 // The wind the fire reads: the sky's own, out of doors only where this screen can tell there is no ceiling over the
 // fire (underCeiling answers for the viewed scene alone; another scene's fire burns windless rather than guessing).
+// The same reading carries what is falling (`wet`, 0 a dry sky to 1 a downpour: rain, and wet snow for half of
+// itself), which is what fights the fire: the spread damped, what smoulders cooled, what burns put out a round early
+// (engines/props/fire-spread.mjs). A dead calm in the pouring rain is still a reading worth having, so the wind alone
+// no longer decides whether there is one.
 function fireWindOf(scene, at) {
   const strength = Number(skyWindNow) || 0;
-  if (!(strength > 0) || !at || scene?.id !== canvas?.scene?.id) return null;
+  const wet = Math.min(1, (Number(skyFalling?.rain) || 0) + 0.5 * (Number(skyFalling?.snow) || 0));
+  if ((!(strength > 0) && !(wet > 0)) || !at || scene?.id !== canvas?.scene?.id) return null;
   let outdoor = false;
   try { outdoor = !underCeiling(at); } catch { outdoor = false; }
-  return { outdoor, angle: Number(skyWindAngle) || 0, strength };
+  return { outdoor, angle: Number(skyWindAngle) || 0, strength, wet };
 }
 const fireRect = (v) => ({ x: v.x, y: v.y, w: v.width, h: v.height });
 const fireMid = (rect) => ({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 });
@@ -13513,6 +14055,7 @@ Hooks.once("init", () => {
     ['toolClearRubble','Show the Clear rubble button','In the Animater controls.'],
     ['toolRepairProps','Show the Repair broken props button','In the Animater controls, for the GM: unhides every broken prop in the scene and puts its walls, doors, windows and decorations back, as the scene configuration\'s Repair button does.'],
     ['toolBreachWall','Show the Breach wall button','In the Animater controls, for the GM: click on a wall marked Breakable wall: Yes to breach it there at once.'],
+    ['toolMoments','Show the Moments button','In the Animater controls, for the GM: a panel that calls a shudder, a colour over everything, a grey world or a view that will not settle, on every screen at once. It changes nothing in the world and it all stops.'],
     ['toolClearBlood','Show the Clear blood button','In the Animater controls. Blood still fades by itself.'],
     ['toolSplatBlood','Show the Splat blood button','In the Animater controls, for the GM: old blood on the ground around the selected tokens, kept with the scene until Clear blood.'],
     ['toolBakeBlood','Show the Bake blood button','In the Animater controls, for the GM: the blood on the floor becomes one tile the scene keeps, saved in the world\'s files.'],
@@ -13994,6 +14537,16 @@ Hooks.once("init", () => {
   skyPair("snowCover", "snowCoverLocal", "Snow cover", "Falling snow whitens the open ground within minutes of game time, first in patches, and melts within minutes once it is above freezing. Kept per scene.");
   skyPair("weatherOnMap", "weatherOnMapLocal", "Weather on the map", "Animater draws Calendaria\u2019s weather itself: clouds seen from above with their shadows where the sun throws them, rain, drizzle, hail, snow and sleet blowing with the wind, fog, sand, ash, embers, petals and leaves, and the fantasy weathers (blood and acid rain, aurora, ley sparks, divine light, a black sun, static, spectral wisps, meteors, a tornado). All in one pass on the graphics card, whatever the weather. FXMaster\u2019s effects for Calendaria\u2019s weather are hidden on your screen while this is on (its settings are never changed).");
   registerSetting("lightningFlashStrength", { name: "Lightning flash strength", hint: "How bright lightning flashes are on your screen: 0 none, 1 as they come. A repeating bright flash can be hard on the eyes: this is yours to turn down.", scope: "client", config: true, type: Number, default: 1, range: { min: 0, max: 1, step: 0.05 } });
+  // Arriving on a scene: what a scene does when it has not chosen for itself. Off, so nothing changes for anyone
+  // until a GM asks a scene for it (engines/motion/scene-arrival.mjs).
+  // The table's own sets of moments (the Moments panel keeps them): a world setting, so one GM's work is every
+  // GM's to use. Only ever moments, and read back through the engine before any of it is shown.
+  registerSetting("momentPresets", { name: "Moment sets", scope: "world", config: false, type: Object, default: {} });
+  registerSetting("sceneArrival", { name: "Arriving on a scene", scope: "world", config: true, type: String, default: "off",
+    choices: { ...ARRIVALS },
+    hint: "What the party sees in the first seconds on a map they have just been pulled to, for scenes that have not chosen for themselves. Each scene can say for itself instead, on its own Animater tab — a beat that suits a reveal is tiresome on a corridor they cross four times a session, so most scenes are best left with none." });
+  registerSetting("sceneArrivalLocal", { name: "Scene arrivals on my screen", scope: "client", config: true, type: Boolean, default: true,
+    hint: "Turn off to be taken straight to every map, however the scene is set. A click or a key ends one early in any case." });
   registerSetting("cloudDarkness", { name: "Storm darkness", hint: "How dark the outdoors gets by day when a storm shuts the sky altogether (a thunderstorm, a blizzard, or Cloud cover at full): 0 not at all, the default about dusk. Plain cloud and overcast only dull the day. Lights show up against it. A scene can say otherwise in the Weather panel.", scope: "world", config: true, type: Number, default: 0.5, range: { min: 0, max: 1, step: 0.05 } });
   registerSetting("stormSceneDarkness", { name: "Storms change the scene's darkness", hint: "A storm that shuts the sky raises the scene's real Darkness Level, and puts it back when the storm ends, so vision, the rules and modules that read it (PF2e light levels, PF2e Visioner) treat it as the darkness it is. Storm darkness says how far: at 100% the scene is fully dark. Past the scene's global light limit, creatures without darkvision or a light lose sight of the outdoors. Off: storm darkness is only a look. A scene can opt out in its configuration.", scope: "world", config: true, type: Boolean, default: false, onChange: () => { try { lookSky(); } catch { /* no canvas yet */ } } });
   registerSetting("weatherLooks", { scope: "world", config: false, type: Object, default: {} });
@@ -14194,6 +14747,11 @@ Hooks.once("init", () => {
   registerSetting("stepKickAmount", { name: "How much a step kicks up", hint: "The chips, dust, splinters, blades and spray thrown up at each step, on every floor, against the usual: lower for less (fainter too), 0 for none. Footprints and trampled grass stay.", scope: "world", config: true, type: Number, default: 1, range: { min: 0, max: 1.5, step: 0.05 } });
   registerSetting("iceHoursLeast", { name: "Water freezes in at least (game hours)", hint: "How long water takes to freeze over, and to thaw, the whole way. Each scene takes its own time between this and the most below, by the game clock.", scope: "world", config: true, type: Number, default: 24, range: { min: 1, max: 240, step: 1 } });
   registerSetting("wetMinutes", { name: "Ground gets wet in (game minutes)", hint: "How long the hardest rain takes to soak the ground, by the game clock. Lighter rain takes longer: ordinary rain about half as long again, a drizzle about four times as long.", scope: "world", config: true, type: Number, default: 5, range: { min: 1, max: 60, step: 1 } });
+  // The pace wet ground and lying snow go at. The defaults are what the real things do, so a GM who wants the map
+  // to keep up with a session's pace is turning them down from life rather than away from a made-up number
+  // (engines/motion/ambient-life.mjs).
+  registerSetting("dryHours", { name: "Wet ground dries in (game hours)", hint: "How long a soaking takes to dry on a sunny, warm day, by the game clock. Everything else keeps its proportion to it: with no sun and ten degrees the same ground holds its water for most of a day, and under rain, or near freezing, it does not dry at all. Three hours is roughly life: a millimetre of water needs about an hour of full sun.", scope: "world", config: true, type: Number, default: 3, range: { min: 0.5, max: 48, step: 0.5 } });
+  registerSetting("thawHours", { name: "Snow clears in (game hours)", hint: "How long a full cover takes to go in a thaw at three degrees with no sun. Warmth and sun both quicken it, and below freezing it does not go at all. Thirty-four hours is roughly life: snow melts at about three and a half millimetres of water per degree above freezing per day in the open.", scope: "world", config: true, type: Number, default: 34, range: { min: 2, max: 240, step: 1 } });
   registerSetting("iceHoursMost", { name: "Water freezes in at most (game hours)", hint: "See above. The same as the least: every scene takes just that long.", scope: "world", config: true, type: Number, default: 48, range: { min: 1, max: 240, step: 1 } });
   registerSetting("floorBloodSeconds", { name: "How long blood stays on the floor", hint: "In seconds of game time, so it waits while the clock stands still; it fades over the last quarter of that. It darkens as it dries, in under a minute of game time.", scope: "world", config: true, type: Number, default: 300, range: { min: 20, max: 600, step: 10 } });
   registerSetting("floorBloodForever", { name: "Blood stays until cleared", hint: "Blood on the floor never fades, and comes back with the scene, saved in it now and then by the GM's screen. Rain and water can still take it until the scene reloads; after that it is old blood they leave alone. Clear blood wipes it all; Bake blood turns it into a tile.", scope: "world", config: true, type: Boolean, default: false });
@@ -14748,6 +15306,15 @@ Hooks.on("renderSceneConfig", (app, html) => {
   under.className = "form-group";
   under.innerHTML = `<label>Underground</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.underground"${app.document?.getFlag?.(ID, "underground") ? " checked" : ""}></div><p class="hint">A ceiling overhead everywhere in this scene (a dungeon, a cave, a crypt): a heavy creature's step shakes dust down from it. Cave or hall acoustics count as underground too; rooms under a roof region always do. In a scene with levels, each level can say otherwise in its own settings: a cellar under a farmyard.</p>`;
   tab.append(under);
+  // Arriving on this scene: the scene's own choice, and what the card says while it happens.
+  const arrive = document.createElement("div"), arriveNow = String(app.document?.getFlag?.(ID, "arrival") ?? "");
+  arrive.className = "form-group";
+  arrive.innerHTML = `<label>Arriving on this scene</label><div class="form-fields"><select name="flags.${ID}.arrival">${[["", "From the module"], ...Object.entries(ARRIVALS)].map(([v, l]) => `<option value="${v}"${v === arriveNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">What the party sees in the first seconds when you pull them here. A beat that suits a reveal is tiresome on a corridor they cross four times a session, so most maps are best left as they are. A click or a key ends one early.</p>`;
+  tab.append(arrive);
+  const arriveCard = document.createElement("div"), cardNow = String(app.document?.getFlag?.(ID, "arrivalCard") ?? "");
+  arriveCard.className = "form-group";
+  arriveCard.innerHTML = `<label>Name the place</label><div class="form-fields"><select name="flags.${ID}.arrivalCard">${[["", "Name it as they arrive"], ["off", "Say nothing"]].map(([v, l]) => `<option value="${v}"${v === cardNow ? " selected" : ""}>${l}</option>`).join("")}</select><input type="text" name="flags.${ID}.arrivalSays" value="${foundry.utils.escapeHTML?.(String(app.document?.getFlag?.(ID, "arrivalSays") ?? "")) ?? ""}" placeholder="(the hour and the weather)"></div><p class="hint">Under the scene's name, the hour from the calendar and the weather Animater is drawing. Write a line of your own here and that is said instead, on this map only.</p>`;
+  tab.append(arriveCard);
   const eyes = document.createElement("div"), eyesNow = String(app.document?.getFlag?.(ID, "eyes") ?? "");
   eyes.className = "form-group";
   eyes.innerHTML = `<label>Eyes in the dark</label><div class="form-fields"><select name="flags.${ID}.eyes">${[["", "Now and then (one pair, long quiet between)"], ["often", "Often (something is watching)"], ["never", "Never"]].map(([v, l]) => `<option value="${v}"${v === eyesNow ? " selected" : ""}>${l}</option>`).join("")}</select></div><p class="hint">In an underground scene, a pair of eyes glints back from a dark corner for a few seconds and is gone when light or a creature comes near ("Eyes in the dark").</p>`;
@@ -15605,6 +16172,7 @@ Hooks.once("ready", () => {
     if (data?.type === DECOR_BREAK_MESSAGE) { void receiveDecorBreak(data, senderId).catch((e) => console.warn("Animater props (decoration):", e?.message ?? e)); return; }
     if (data?.type === WALL_BREAK_MESSAGE) { void receiveWallBreak(data, senderId).catch((e) => console.warn("Animater props (door):", e?.message ?? e)); return; }
     if (data?.type === BLAST_MESSAGE) { if (data.blast?.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) playBlast(data.blast); return; }
+    if (data?.type === MOMENT_MESSAGE) { if (data.sender !== clientId) momentHeard(data, senderId); return; }
     if (data?.type === SHOTS_MESSAGE) { shotsHeard(data); return; }
     if (data?.type === CLEAR_BLOOD_MESSAGE) { if (data.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) { floorBlood.clear(data.level ?? null); bloodLoaded = bloodElsewhere(bloodLoaded.map(packMark), data.level ?? null).map(unpackMark); } return; }
     // A player's private roll reaches only its audience (core/privacy.mjs audienceOf).
@@ -15976,6 +16544,12 @@ Hooks.once("ready", () => {
     movement:previewShowcaseMovement,
   });
   game.modules.get(ID).api = {
+    // Moments, for a macro or another module: moment({ kind, strength, where, x, y, radius, ids, ms, fade, colour,
+    // audience }). A GM's to call, as the panel's buttons are; it changes nothing in the world and stopMoments()
+    // ends all of it. The copy button on the panel writes exactly this line.
+    moment: (asked = {}) => { if (!game.user?.isGM) return null; return momentCallHere(asked.kind, asked); },
+    stopMoments: () => { if (!game.user?.isGM) return false; momentsStopEverywhere(); return true; },
+    moments: () => clone(MOMENTS),
     creatureShowcase:tokenId=>clone(showcaseTools.snapshot(tokenId)),
     bossEntrance:(tokenId,options)=>showcaseTools.playBoss(tokenId,options),
     stopBossEntrance:options=>{ app?.workspace?.creatureShowcase?.restoreBossWindow();return showcaseTools.stopBoss(options); },

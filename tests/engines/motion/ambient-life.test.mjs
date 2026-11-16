@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, nextFlockMs, flockPath } from '../../../scripts/engines/motion/ambient-life.mjs';
+import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, nextFlockMs, flockPath, dryingRate, meltRate, DRY_SUNNY_HOURS, MELT_THAW_HOURS } from '../../../scripts/engines/motion/ambient-life.mjs';
 
 test('seasonOf reads Calendaria’s season type and Simple Calendar Reborn’s icon', () => {
   assert.equal(seasonOf({ name: 'Summer', seasonalType: 'summer' }), 'summer');
@@ -37,6 +37,83 @@ test('leaves fall most in autumn and in the wind, none in winter', () => {
   assert.ok(leavesOf({ season: 'autumn', wind: 0 }).rate > leavesOf({ season: 'summer', wind: 1 }).rate);
   assert.ok(leavesOf({ season: 'summer', wind: 1 }).rate > leavesOf({ season: 'summer', wind: 0 }).rate);
   assert.ok(leavesOf({ season: 'autumn' }).colors.length > 1);
+});
+
+test('the ground dries at the rate the sky allows, not at one rate for all weather', () => {
+  // Measured against the real thing: pan evaporation runs about six times higher in July than in January, and the
+  // energy says a millimetre of water needs about 2.45 MJ a square metre - roughly an hour of full sun. So a sunny
+  // afternoon takes a film off in a few hours while the same ground under cloud holds it for a day or more. The
+  // ground used to dry in eight hours whatever the sky was doing, which made a wet, overcast evening impossible.
+  const hours = (r) => (r > 0 ? 8 / r : Infinity);
+  const sunny = dryingRate({ sun: 1, temperature: 25 });
+  const dull = dryingRate({ sun: 0, temperature: 10 });
+  assert.ok(hours(sunny) > 2 && hours(sunny) < 4, `a sunny afternoon: ${hours(sunny).toFixed(1)} h`);
+  assert.ok(hours(dull) > 20, `overcast and cool: ${hours(dull).toFixed(1)} h`);
+  assert.ok(sunny > dull * 6, 'and the one is many times the other, as the seasons are');
+
+  // Nothing dries under a sky that is still falling: the air over the ground is saturated.
+  assert.equal(dryingRate({ sun: 1, temperature: 25, rain: 1 }), 0);
+  assert.equal(dryingRate({ sun: 1, temperature: 25, snow: 1 }), 0);
+  assert.equal(dryingRate({ sun: 0.4, temperature: 20, rain: 0.02 }) > 0, true, 'a few spots are not rain');
+
+  // Near freezing it stops: what is there turns to ice rather than to vapour (the ice is kept separately).
+  assert.equal(dryingRate({ sun: 1, temperature: 2 }), 0);
+  assert.equal(dryingRate({ sun: 1, temperature: -8 }), 0);
+  assert.ok(dryingRate({ sun: 1, temperature: 6 }) > 0);
+
+  // No temperature from anywhere: something middling, and still ruled by the sun.
+  assert.ok(dryingRate({ sun: 1 }) > dryingRate({ sun: 0 }) * 5);
+  assert.ok(dryingRate({ sun: 0 }) > 0, 'but it never stops altogether in the open');
+});
+
+test('snow goes at a thaw\'s pace, which is days and not hours', () => {
+  // Snowmelt has a standard measure: the degree-day factor, millimetres of water melted per degree above freezing
+  // per day. It runs 2-6, about 3.5 in the open. Against that, eight hours at three degrees was far too quick.
+  const hours = (r) => (r > 0 ? 1 / r : Infinity);
+  assert.equal(meltRate({ temperature: 0 }), 0, 'at freezing it does not melt');
+  assert.equal(meltRate({ temperature: -5, sun: 1 }), 0, 'nor below it, whatever the sun does');
+  const thaw = hours(meltRate({ temperature: 3 }));
+  assert.ok(thaw > 24 && thaw < 60, `a thaw at three degrees takes a day or two: ${thaw.toFixed(0)} h`);
+  const warmDay = hours(meltRate({ temperature: 12, sun: 1 }));
+  assert.ok(warmDay > 4 && warmDay < 12, `a warm day with sun clears it: ${warmDay.toFixed(1)} h`);
+  assert.ok(meltRate({ temperature: 6, sun: 1 }) > meltRate({ temperature: 6, sun: 0 }), 'the sun helps');
+  assert.ok(meltRate({ temperature: 10 }) > meltRate({ temperature: 5 }) * 1.9, 'and it is the degrees that do it');
+});
+
+test('the GM sets the pace, against what the real thing does', () => {
+  // The defaults are life; a table that wants the map to keep up with a session turns them down from there.
+  assert.equal(dryingRate({ sun: 1, temperature: 25 }, { sunnyHours: DRY_SUNNY_HOURS }), dryingRate({ sun: 1, temperature: 25 }));
+  const quick = dryingRate({ sun: 0, temperature: 10 }, { sunnyHours: DRY_SUNNY_HOURS / 4 });
+  assert.ok(Math.abs(quick / dryingRate({ sun: 0, temperature: 10 }) - 4) < 1e-9, 'asked for a quarter of the time, it goes four times as fast');
+  assert.equal(dryingRate({ sun: 1, temperature: 25, rain: 1 }, { sunnyHours: 0.5 }), 0, 'and still nothing under rain');
+  assert.equal(dryingRate({ sun: 1, temperature: 1 }, { sunnyHours: 0.5 }), 0, 'nor near freezing');
+  // A number that means nothing falls back to life rather than stopping the weather.
+  for (const bad of [0, -3, null, undefined, NaN, 'soon']) {
+    assert.equal(dryingRate({ sun: 1, temperature: 25 }, { sunnyHours: bad }), dryingRate({ sun: 1, temperature: 25 }), String(bad));
+    assert.equal(meltRate({ temperature: 5 }, { thawHours: bad }), meltRate({ temperature: 5 }), String(bad));
+  }
+  const fast = meltRate({ temperature: 3 }, { thawHours: MELT_THAW_HOURS / 2 });
+  assert.ok(Math.abs(fast / meltRate({ temperature: 3 }) - 2) < 1e-9, 'half the hours, twice the melt');
+  assert.equal(meltRate({ temperature: -2 }, { thawHours: 1 }), 0, 'and nothing melts below freezing however it is set');
+
+  // Through the whole model, as the shell passes it.
+  const hour = 3600;
+  const g = (dry) => { let kept = { wet: 1, snow: 0, ice: 0, at: 0 }; return createGroundWeather({ load: () => kept, save: (s) => { kept = s; }, dryHours: () => dry }).update({ now: 2 * hour, sun: 1, temperature: 22 }).wet; };
+  assert.ok(g(1) < g(12), 'a map told to dry in an hour is drier than one told to take twelve');
+});
+
+test('a wet night stays wet', () => {
+  // The whole point of the change, as a scene would live it: rain stops at dusk, and the ground is still wet when
+  // the party wakes.
+  let kept = null;
+  const ground = createGroundWeather({ load: () => kept, save: (s) => { kept = s; } });
+  const hour = 3600;
+  ground.update({ now: 0 });
+  assert.equal(ground.update({ now: hour, rain: 1, temperature: 11 }).wet, 1, 'an hour of rain');
+  const night = ground.update({ now: 9 * hour, rain: 0, sun: 0, temperature: 9 }).wet;
+  assert.ok(night > 0.5, `eight hours of a cool night and it is still wet: ${night.toFixed(2)}`);
+  // And a sunny morning still takes it off within the day.
+  assert.equal(ground.update({ now: 16 * hour, rain: 0, sun: 1, temperature: 22 }).wet, 0, 'gone by afternoon');
 });
 
 test('the ground wets in the rain and dries after, whitens in the snow and melts above freezing, carried by the clock', () => {
