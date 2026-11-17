@@ -4689,19 +4689,6 @@ body.animater-aiming #board {
   animation: animater-handout-rain 0.7s linear infinite;
 }
 @keyframes animater-handout-rain { to { transform: translate(-28px, 112px); } }
-/* The dark that gathers over the map behind a handout, so the page is the lit thing in the room. */
-#animater-handout-veil {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  background: #05070b;
-  opacity: 0;
-  transition: opacity 420ms ease;
-  /* Under Foundry's own windows, which sit far higher, and under the bleed; over the map, which is the point.
-     Left to `auto` it falls behind whichever interface element next opens a stacking context, and is never seen. */
-  z-index: 60;
-}
-#animater-handout-veil.animater-on { opacity: var(--an-ho-veil, 0); }
 /* The rolled edge of a scroll, running down the page as it opens. */
 .animater-handout-rod {
   position: absolute;
@@ -4742,6 +4729,144 @@ body.animater-aiming #board {
   pointer-events: none;
   border-radius: 50%;
   background: radial-gradient(50% 50% at 50% 50%, rgba(226, 210, 178, 0.5) 0%, transparent 70%);
+}
+
+/* ---------------------------------------------------------------------------------------------------------------
+   A handout arriving, over the whole screen (scripts/engines/camera/handout-arrival.mjs).
+   The first version dressed Foundry's own window, and a window is what it stayed: a title bar, a close button and
+   the sidebar behind it. This is the page itself, on a darkened room, with none of the interface in the picture.
+   Every number still comes from the engine as a custom property; nothing here does arithmetic beyond turning a
+   fraction into a percentage.
+   --------------------------------------------------------------------------------------------------------------- */
+.animater-handout-stage {
+  position: fixed;
+  inset: 0;
+  /* Over everything, Foundry's own windows included: the window this replaces is still open underneath, hidden. */
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  cursor: zoom-out;
+}
+/* The window the stage stands in for. Kept open so Foundry's own bookkeeping is untouched, and never seen. */
+.animater-handout-instead { display: none !important; }
+.animater-handout-stage .animater-handout-dark {
+  position: absolute;
+  inset: 0;
+  background: #05060a;
+  opacity: 0;
+  transition: opacity 340ms ease;
+}
+/* Darker than the old veil over the map, because nothing else is lighting the room now. The scene's own darkness
+   still deepens it: a handout read at midnight sits in more black than one read at noon. */
+.animater-handout-stage.animater-on .animater-handout-dark { opacity: calc(0.74 + var(--an-ho-veil, 0) * 0.24); }
+.animater-handout-stage.animater-leaving .animater-handout-dark { opacity: 0; }
+
+/* The paper. The handout's own picture or words sit inside it, with the paper showing as a margin all round. */
+.animater-handout-sheet {
+  position: relative;
+  max-width: 88vw;
+  padding: 20px;
+  background:
+    linear-gradient(118deg, rgba(255, 255, 255, 0.1) 0 22%, rgba(0, 0, 0, 0) 22% 58%, rgba(0, 0, 0, 0.07) 58% 100%),
+    radial-gradient(130% 100% at 22% 12%, #e8dcc0 0 46%, #cdbe9c 46% 78%, #b5a37e 78% 100%);
+  box-shadow: 0 0 0 2px #3a2d1c, 0 26px 50px rgba(0, 0, 0, 0.62);
+  transform-origin: 50% 50%;
+  will-change: transform, opacity, clip-path;
+  filter: brightness(var(--an-ho-bright, 1));
+}
+/* Where each look is held. A pinned page hangs from its top corners; a page held up is held near its foot. */
+.animater-handout-sheet.animater-ho-pinned { transform-origin: 50% 4%; }
+.animater-handout-sheet.animater-ho-held { transform-origin: 50% 96%; }
+.animater-handout-sheet.animater-ho-wide { max-width: 94vw; }
+.animater-handout-art {
+  display: block;
+  max-width: min(78vw, 1240px);
+  max-height: 76vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+/* A page of words is given a column to be read in rather than stretched across the screen. */
+.animater-handout-art.animater-handout-words {
+  width: min(66ch, 78vw);
+  max-width: none;
+  overflow: auto;
+  color: #3a2d1c;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 16px;
+  line-height: 1.55;
+  padding-right: 6px;
+}
+.animater-handout-art.animater-handout-words img { max-width: 100%; height: auto; }
+.animater-handout-art.animater-handout-words a { color: #8b2f20; }
+.animater-handout-cap {
+  margin: 12px 2px 0;
+  color: #4a3b26;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 14px;
+  font-style: italic;
+  text-align: center;
+}
+/* Said once, quietly, and only after it has arrived: nobody should have to guess how to put a handout down. */
+.animater-handout-put {
+  position: absolute;
+  right: 22px;
+  bottom: 16px;
+  color: rgba(226, 216, 196, 0.72);
+  font-size: 12.5px;
+  letter-spacing: 0.3px;
+  opacity: 0;
+  transition: opacity 420ms ease;
+}
+.animater-handout-stage.animater-landed .animater-handout-put { opacity: 1; }
+.animater-handout-stage.animater-leaving .animater-handout-put { opacity: 0; }
+/* The pins a page is hung on, tapped in as it catches. */
+.animater-handout-pin {
+  position: absolute;
+  top: -7px;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  z-index: 4;
+  pointer-events: none;
+  opacity: var(--an-ho-pins, 0);
+  transform: scale(calc(1 + (1 - var(--an-ho-pins, 0)) * 1.4));
+  background: radial-gradient(circle at 36% 32%, #d8d2c6 0 38%, #8d8577 38% 100%);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(0, 0, 0, 0.45);
+}
+.animater-handout-pin.animater-handout-pin-left { left: 13%; }
+.animater-handout-pin.animater-handout-pin-right { right: 13%; }
+/* The pool of a lamp carried across a page lying in the dark. */
+.animater-handout-lamp {
+  position: absolute;
+  top: -40%;
+  bottom: -40%;
+  width: 72%;
+  left: calc(var(--an-ho-lamp-x, -0.55) * 100%);
+  z-index: 3;
+  pointer-events: none;
+  opacity: var(--an-ho-lamp, 0);
+  mix-blend-mode: screen;
+  background: radial-gradient(closest-side, rgba(255, 226, 170, 0.62) 0 40%, rgba(255, 226, 170, 0.22) 40% 68%, transparent 68% 100%);
+}
+/* The creases a folded letter keeps once it is flat again. */
+.animater-handout-crease {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 2;
+  pointer-events: none;
+  opacity: calc(0.14 + var(--an-ho-crease-show, 0) * 0.76);
+  background: linear-gradient(90deg, transparent, rgba(90, 70, 40, 0.45) 12%, rgba(90, 70, 40, 0.45) 88%, transparent);
+}
+.animater-handout-crease.animater-handout-crease-a { top: 33.3%; }
+.animater-handout-crease.animater-handout-crease-b { top: 66.6%; }
+/* Put down again. */
+.animater-handout-stage.animater-leaving .animater-handout-sheet {
+  opacity: 0;
+  transform: scale(0.985) translateY(2vh);
+  transition: opacity 250ms ease, transform 250ms ease;
 }
 
 /* ---------------------------------------------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BURST_DEFAULT, explodes, blastDelay, blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "../../../scripts/engines/props/prop-blast.mjs";
+import { BURST_DEFAULT, explodes, blastDelay, blastTargets, energyBlastTargets, ignitableInArea } from "../../../scripts/engines/props/prop-blast.mjs";
 import { propGuesses, propTraits } from "../../../scripts/engines/props/prop-traits.mjs";
 import { canBreak } from "../../../scripts/engines/props/prop-material.mjs";
 import { validBreakRequest, breakNoteFor } from "../../../scripts/engines/props/prop-requests.mjs";
@@ -99,24 +99,7 @@ test("burst targets: windows, metal and stone too, Won't break and Never stay, a
   assert.deepEqual(off.map((t) => t.type).filter((k) => k === "wall"), []);
 });
 
-test("tokens inside the burst, by their centres, on its level", () => {
-  const tokens = [
-    { name: "Valeros", x: 550, y: 450, w: 100, h: 100, level: "ground" },  // centre 1 square away
-    { name: "Ezren", x: 650, y: 450, w: 100, h: 100, level: "ground" },    // centre 2 squares away: in
-    { name: "Merisiel", x: 750, y: 450, w: 100, h: 100, level: "ground" }, // 3 squares: out
-    { name: "Kyra", x: 500, y: 500, w: 100, h: 100, level: "up" },         // another level
-    { name: "Ogre", x: 300, y: 300, w: 200, h: 200, level: "ground" },     // Large, centre (400, 400): 1.41 squares
-  ];
-  assert.deepEqual(tokensInBurst(tokens, { x: 500, y: 500 }, 2, grid, ["ground"]), ["Valeros", "Ezren", "Ogre"]);
-  assert.deepEqual(tokensInBurst(tokens, { x: 500, y: 500 }, 1, grid, ["ground"]), ["Valeros"]);
-  assert.deepEqual(tokensInBurst([], { x: 0, y: 0 }, 2, grid, []), []);
-});
 
-test("the GM's whisper", () => {
-  assert.equal(blastWhisper(2, []), "<p><b>Powder keg exploded — 2-square burst.</b></p>");
-  assert.match(blastWhisper(3, ["Valeros", "<Ezren>"]), /Inside: Valeros, &lt;Ezren&gt;\./);
-  assert.equal(blastWhisper(1, ["A", "B"]), "<p><b>Powder keg exploded — 1-square burst.</b></p><p>Inside: A, B.</p>");
-});
 
 test("spilled powder in a fire area: only broken tiles whose powder is spilled and whose centre is inside", () => {
   const spilled = (id, cx, cy) => prop(id, "Keg_Powder.webp", cx, cy, { hidden: true, flags: { animater: { prop: { broken: kegNote("spilled") } } } });
@@ -248,4 +231,38 @@ test("spilled powder caught by a fire area explodes once", () => {
   assert.deepEqual(validBreakRequest(ignite(), { tile: prop("keg", "Keg_Powder.webp", 500, 500), scene: blastScene(), grid, sender: player, ...onFire }), { ok: false, why: "cause" });
   // still off unless on
   assert.deepEqual(validBreakRequest(ignite(), { tile: keg, scene: { id: "s", flags: {} }, grid, sender: player, ...onFire }), { ok: false, why: "off" });
+});
+
+// An energy blast is not a keg: it goes by what its own energy breaks, which is what a spell's area goes by.
+const energyAt = (grid2 = grid) => ({ centre: { x: 500, y: 500 }, radius: 200, grid: grid2, scene: blastScene(), levels: [] });
+
+test("an energy blast breaks only what its own energy breaks, nearest first", () => {
+  const tiles = [
+    prop("crate", "Crate_Wood.webp", 600, 500),    // a square away: wood, which fire takes
+    prop("statue", "Statue_Stone.webp", 500, 600), // a square away: stone, which only force breaks
+    prop("bush", "Bush_Green.webp", 500, 400),     // a square away: a plant, which only burns
+    prop("urn", "Urn_Clay.webp", 200, 500),        // three squares: out of reach whatever the energy
+  ];
+  assert.deepEqual(energyBlastTargets({ ...energyAt(), damageType: "fire", tiles }).map((t) => t.id), ["crate", "bush"]);
+  const force = energyBlastTargets({ ...energyAt(), damageType: "force", tiles }).map((t) => t.id);
+  assert.ok(force.includes("statue"), "force is what a statue yields to");
+  assert.ok(!force.includes("bush"), "and it does nothing to a bush");
+  assert.deepEqual(energyBlastTargets({ ...energyAt(), damageType: "psychic", tiles }), [], "psychic breaks nothing at all");
+  assert.ok(!energyBlastTargets({ ...energyAt(), damageType: "fire", tiles }).some((t) => t.id === "urn"), "and nothing out of reach");
+});
+
+test("an energy blast with no energy, no reach or no middle breaks nothing", () => {
+  assert.deepEqual(energyBlastTargets({ ...energyAt(), damageType: null, tiles: [prop("crate", "Crate_Wood.webp", 600, 500)] }), []);
+  assert.deepEqual(energyBlastTargets({ ...energyAt(), radius: 0, damageType: "fire", tiles: [prop("crate", "Crate_Wood.webp", 600, 500)] }), []);
+  assert.deepEqual(energyBlastTargets({}), []);
+});
+
+test("an energy blast reaches props, decorations and doors alike, each with the delay its distance earns", () => {
+  const out = energyBlastTargets({ ...energyAt(), damageType: "fire",
+    tiles: [prop("crate", "Crate_Wood.webp", 600, 500)],
+    decor: [prop("bush", "Bush_Green.webp", 500, 560)],
+    walls: [door("door", [450, 350, 550, 350]), door("far", [450, 150, 550, 150])] });
+  assert.deepEqual(out.map((t) => t.type), ["decor", "tile", "wall"], "nearest first, whatever kind of thing it is");
+  assert.deepEqual(out.map((t) => t.id), ["bush", "crate", "door"]);
+  for (const t of out) assert.ok(t.delay >= 120 && t.delay <= 250, `${t.id} ${t.delay}`);
 });

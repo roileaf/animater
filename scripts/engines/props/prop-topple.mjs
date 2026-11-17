@@ -1,10 +1,8 @@
 // A toppled statue or pillar: where it lies, the rubble Region it leaves (v14 modifyMovementCost, walking costs double)
-// and the GM's whisper about who stands under the fall, and how it looks falling (toppleLayout). Pure: no Foundry globals.
-import { onLevel } from "./prop-pick.mjs";
+// and how it looks falling (toppleLayout). Pure: no Foundry globals.
 import { seededRandom } from "../fragments/fragments.mjs";
 
 const RUBBLE_COLOR = "#7a6a55";
-const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const tidy = (v) => Math.round(v * 1000) / 1000 + 0; // no float dust, no -0
 
 // How far a toppled statue reaches from its centre, in its longer sides. It lies its full height from its base: in the
@@ -37,29 +35,7 @@ export function rubbleRegionData({ strip, tileId, levels = [], bottom = null, to
   };
 }
 
-// Whether two convex polygons (flat x, y lists) overlap with area: a shared edge or corner alone is not enough.
-function overlap(a, b) {
-  for (const poly of [a, b]) {
-    for (let i = 0; i < poly.length; i += 2) {
-      const j = (i + 2) % poly.length, ax = poly[j + 1] - poly[i + 1], ay = poly[i] - poly[j]; // an edge's normal
-      const range = (p) => { let lo = Infinity, hi = -Infinity; for (let k = 0; k < p.length; k += 2) { const d = p[k] * ax + p[k + 1] * ay; lo = Math.min(lo, d); hi = Math.max(hi, d); } return [lo, hi]; };
-      const [alo, ahi] = range(a), [blo, bhi] = range(b), eps = 1e-6 * Math.hypot(ax, ay);
-      if (ahi <= blo + eps || bhi <= alo + eps) return false;
-    }
-  }
-  return true;
-}
 
-// The names of the tokens {name, x, y, w, h, level} whose square overlaps the strip, on the fall's levels.
-export function tokensUnderStrip(tokens, strip, levels) {
-  const poly = stripPolygon(strip);
-  return (tokens ?? []).filter((t) => onLevel(t.level, levels) && overlap(poly, [t.x, t.y, t.x + t.w, t.y, t.x + t.w, t.y + t.h, t.x, t.y + t.h])).map((t) => t.name);
-}
-
-export function toppleWhisper(propName, names = []) {
-  if (!names.length) return "";
-  return `<p><b>${esc(propName || "A statue")} toppled.</b></p><p>Under the fall: ${names.map(esc).join(", ")}.</p>`;
-}
 
 // --- The look (approved mock "Breaking more", scene 6) ---
 // The plinth stays as a broken stump; the figure tips along the hit, and from above it lengthens as it goes down (its

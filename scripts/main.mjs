@@ -22,7 +22,7 @@ import { createPropWreckage, WALL_GAP } from "./engines/props/prop-wreck.mjs";
 import { tileRect } from "./engines/props/prop-geometry.mjs";
 import { readNote } from "./engines/props/prop-break.mjs";
 import { BURN_MS, burnLightData, fireTimers, unhideLights, firesOf } from "./engines/props/prop-lights.mjs";
-import { propMaterial, canBreak } from "./engines/props/prop-material.mjs";
+import { propMaterial, canBreak, handBreaker } from "./engines/props/prop-material.mjs";
 import { smokeCellsOf, smokeSourcesOf, smokeOpeningsOf, smokeWalls, smokeAfterRounds, smokeUpdatesFor, THICK as SMOKE_THICK } from "./engines/props/smoke-field.mjs";
 import { smokeGridOf, storedSmokeGrid, smokeCellList, smokeLevelOf, smokeDensityAt } from "./engines/props/smoke-edges.mjs";
 import { createSmokeLooks, smokePuffs, smokeSheets, smokeSeedOf, airHazeFor, SMOKE_SORT_LAYER } from "./engines/props/smoke-look.mjs";
@@ -43,6 +43,7 @@ import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, smashFrom, ne
 import { windowOnFlight, createMissFlights, missFlies } from "./engines/props/window-miss.mjs";
 import { hitOutcome, windowThrough, throughAt } from "./engines/props/window-through.mjs";
 import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt, forceOpenWording, showForceDC } from "./engines/props/force-open.mjs";
+import { pickLockWording, pickLockPrompt, pickLockResult, pickLockLine, lockPicked, lockDCOf, lockTierOf, lockSuccessesNeeded, lockProgressOf } from "./engines/props/pick-lock.mjs";
 import { DOOR_ATTACK_SYSTEMS, doorStats, doorCracked, doorHpLine, strikeReaches, strikeIdentifier, doorAttackOf, doorAttackCheck, doorAttackRoller, doorHitUpdate, strikeHasAmmo, pickDoorStamp } from "./engines/props/door-attack.mjs";
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
@@ -56,9 +57,9 @@ import { iceBreakSound, iceBreakVoice, newKeys } from "./engines/regions/ice-bre
 import { iceWords } from "./engines/regions/ice-break-word.mjs";
 import { PANEL_OPENS, panelOpens, panelOpensMode, panelPressMemory } from "./engines/regions/panel-gesture.mjs";
 import { fireRoundDue, fireNextLast, fireReseed, fireScenesOf, fireAwake, areaCellsLit, blockedLists, wallBetween, grassCells, FIRE_PERIOD } from "./engines/props/fire-rounds.mjs";
-import { rubbleRegionData, tokensUnderStrip, toppleWhisper } from "./engines/props/prop-topple.mjs";
+import { rubbleRegionData } from "./engines/props/prop-topple.mjs";
 import { DECOR_BREAK_MESSAGE, DECOR_NAMES, burningDecorIds, decorPlaceOf, decorSourceView, decorIdParts, decorNamedLights, decorSpilled, decorIgnites, createDecorIndex, decorTargets, readDecorBroken, liveBroken, validDecorBreakRequest, decorBrokenAfter, decorRubbleId, decorRepairUpdates, decorRegionRepair, carryDecorBroken, decorWreckChanges, createDecorQueue, decorPrunedRubble, decorOnlySave, decorDrawn, decorToppledPrune, keptWebCorners, decorCaveBreakable, createDecorRedraw } from "./engines/props/decor-break.mjs";
-import { blastTargets, tokensInBurst, blastWhisper, ignitableInArea } from "./engines/props/prop-blast.mjs";
+import { blastTargets, energyBlastTargets, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML, smokeLightFieldHTML, SMOKE_LIGHT_FLAG } from "./ui/prop-config.mjs";
 import { bulkBreakableUpdates, windowLike } from "./engines/props/wall-break-bulk.mjs";
 import { damageTypesOfItem, areaIdOf, areaOriginRefOf, placedRecordOf, typesBreaking, rollDamageTypes } from "./engines/props/area-damage.mjs";
@@ -104,7 +105,8 @@ import { createScreenTint, canTint } from "./engines/camera/screen-tint.mjs";
 import { createKillCam, canKillCam, killCamLength, killCamMs, KILL_CAM_LENGTH } from "./engines/camera/kill-cam.mjs";
 import { lensSplashFor, lingerLevel, lensAmount, woundOf, lensWho, lensRoleWanted, nearestNear, lensReach, LENS_REACH, LENS_BLOOD, LENS_BASE_SECONDS } from "./engines/camera/lens-blood.mjs";
 import { createLensBloodOverlay } from "./engines/camera/lens-blood-draw.mjs";
-import { HANDOUT_ARRIVALS, handoutAt, handoutDust, handoutHasDust, handoutHasRod, handoutHasRods, handoutHere, handoutLight, handoutMs, handoutPick, handoutSeed } from "./engines/camera/handout-arrival.mjs";
+import { HANDOUT_ARRIVALS, handoutAt, handoutDust, handoutHasCreases, handoutHasDust, handoutHasLamp, handoutHasPins, handoutHasRod, handoutHasRods, handoutHere, handoutIsWide, handoutLampAt, handoutLight, handoutMs, handoutPick, handoutPins, handoutSeed, handoutSound, handoutSoundAt } from "./engines/camera/handout-arrival.mjs";
+import { BUNDLED_SOUND_DIRS } from "../data/bundled-sounds.mjs";
 import { BLEED_ALIVE_MOST, BLEED_DEFAULTS, BLEED_LOOKS, BLEED_SHUDDER_MS, bleedFrame, bleedLooks, bleedShudder, bleedSplats, bleedWanted, hurtLevel } from "./engines/camera/interface-bleed.mjs";
 import { createFriendHitPlayer, friendHitClip, isFriendlyHit, FRIEND_HIT_CLIPS, JB2A_MODULES } from "./engines/camera/lens-friend-hit.mjs";
 import { lensEffectHit, lensEffectTypes } from "./engines/camera/lens-effects.mjs";
@@ -5481,6 +5483,7 @@ const blastsOn = () => bothSettingsOn("energyBlast");
 // What a blast does to the creatures it catches (engines/motion/blast-reactions.mjs), over them.
 const blastReactions = createBlastReactions({ PIXI: globalThis.PIXI, root: floorLayer("blastReactions", 780), meshOf: (id) => canvas.tokens?.get(id)?.mesh ?? null, sizeOf: (id) => { const t = canvas.tokens?.get(id); return t ? Math.max(t.w, t.h) || 0 : 0; }, grid: () => canvas.grid?.size ?? 100 });
 const blastsTouch = () => { try { return hotSetting("blastReactions") !== false; } catch { return true; } };
+const blastsBreak = () => { try { return hotSetting("blastBreaks") !== false; } catch { return true; } };
 Hooks.on("canvasTearDown", () => { blastReactions.clear(); });
 const energyBlasts = createEnergyBlasts({ PIXI: globalThis.PIXI, floor: floorLayer("blastFloor", 490), above: floorLayer("blastAbove", 770), glow: glowRootOf, map: () => mapFloor(), render: (mesh, options) => canvas.app.renderer.render(mesh, options), markSeconds: () => { try { return Number(hotSetting("floorBloodSeconds")) || 120; } catch { return 120; } } });
 Hooks.on("canvasTearDown", () => { energyBlasts.clear(); });
@@ -5509,7 +5512,11 @@ const windowReachedBy = (user, doc) => {
 const askWindow = (doc) => {
   const inReach = game.user.isGM || windowReachedBy(game.user, doc);
   if (!mayUseWindow({ isGM: game.user.isGM, canDoors: game.user.can("WALL_DOORS"), paused: game.paused, inReach })) { if (game.paused) ui.notifications?.warn("GAME.PausedWarning", { localize: true }); else if (!inReach) ui.notifications?.warn("Animater: you are too far away to reach that window."); return; }
-  if (windowClick({ locked: doc.flags?.[ID]?.windowLocked === true }) === "rattle") { ui.notifications?.info("Animater: that window is locked."); return; }
+  if (windowClick({ locked: doc.flags?.[ID]?.windowLocked === true }) === "rattle") {
+    const pickable = !!pickLockWording(game.system.id);
+    ui.notifications?.info(pickable ? "Animater: that window is locked. Right click it to pick the lock." : "Animater: that window is locked.");
+    return;
+  }
   if (game.user.isGM) void toggleWindow(doc); else game.socket?.emit(`module.${ID}`, { type: WINDOW_MESSAGE, sceneId: doc.parent?.id, wallId: doc.id });
 };
 // The GM's right click, as on a door: locked shut, or unlocked.
@@ -5542,7 +5549,15 @@ const drawWindowControls = () => {
     control.eventMode = "static"; control.cursor = "pointer"; control.hitArea = new PIXI.Rectangle(-size / 2, -size / 2, size, size); control.windowDoc = doc; control.windowHover = false; control.windowBorder = control.addChild(new PIXI.Graphics().lineStyle(Math.max(1, size * 0.04), 0xff5500, 0.9).drawRoundedRect(-size / 2, -size / 2, size, size, size * 0.12)); lookWindowControl(control);
     control.on("pointerover", () => { control.windowHover = true; lookWindowControl(control); }); control.on("pointerout", () => { control.windowHover = false; lookWindowControl(control); });
     control.on("pointerdown", (event) => { if (event.button !== 0) return; event.stopPropagation(); askWindow(doc); });
-    control.on("rightdown", (event) => { event.stopPropagation(); if (game.user.isGM) void lockWindow(doc); });
+    // A right click locks or unlocks it for the GM, as a door's does. For anyone else — and for the GM holding Alt —
+    // a locked window offers the picks instead, which is the only thing that was ever missing from a window that
+    // rattles: it said no, and gave nobody anything to do about it.
+    control.on("rightdown", (event) => {
+      event.stopPropagation();
+      const alt = event.data?.originalEvent?.altKey === true || game.keyboard?.isModifierActive?.("Alt") === true;
+      if (game.user.isGM && !alt) { void lockWindow(doc); return; }
+      if (lockedKindOf(doc) === "window") pickLockAsk(doc, doc.parent, true);
+    });
     control.visible = windowControlSeen(doc);
     root.addChild(control);
   }
@@ -5659,6 +5674,8 @@ const fireBlast = (p, kind, radius, variant = null) => {
       void scene?.updateEmbeddedDocuments("Token", updates, { animate: true });
     }, 250);
   }
+  // What it breaks is the GM's own write, so it runs here and nowhere else; every other screen is only shown it.
+  if (game.user.isGM && blastsBreak()) void propSafe("blast breaks", () => breakWithBlast(canvas.scene, { centre: { x: blast.x, y: blast.y }, radius, damageType: variant?.base ?? kind }));
 };
 let blastSquares = 2;
 const aimBlast = (kind, variant = null) => {
@@ -10964,7 +10981,6 @@ async function applyPropBreak(scene, doc, cause, rawNote, user) {
       if (region) note = { ...note, region: region.id };
     }
     await doc.update({ hidden: true, [`flags.${ID}.prop.broken`]: note }, { animater: { propBreak: true } });
-    if (check.fall) void whisperTopple(scene, doc, check.fall).catch((e) => runtime?.trace("props", `topple whisper: ${e?.message ?? e}`));
     // The tile is already written: a failed wall batch is only reported.
     if (check.wallUpdates.length) await scene.updateEmbeddedDocuments("Wall", check.wallUpdates).catch((e) => runtime?.trace("props", `walls not opened: ${e?.message ?? e}`));
     if (check.lightUpdates?.length) await scene.updateEmbeddedDocuments("AmbientLight", check.lightUpdates).catch((e) => runtime?.trace("props", `lights not put out: ${e?.message ?? e}`));
@@ -10983,13 +10999,6 @@ async function makeRubbleRegion(scene, doc, strip) {
     const [region] = await scene.createEmbeddedDocuments("Region", [rubbleRegionData({ strip, tileId: doc.id, levels: [...(doc.levels ?? [])], bottom, top })]);
     return region ?? null;
   } catch (e) { runtime?.trace("props", `rubble not made: ${e?.message ?? e}`); return null; }
-}
-// The GMs are whispered who stands under a toppling statue; nobody under it, no whisper.
-async function whisperTopple(scene, doc, strip) {
-  const grid = propGrid(scene), tokens = (scene.tokens?.contents ?? []).map((t) => ({ name: t.name, x: t.x, y: t.y, w: t.width * grid, h: t.height * grid, level: t.level }));
-  const html = toppleWhisper(doc.name || "A statue", tokensUnderStrip(tokens, strip, [...(doc.levels ?? [])]));
-  if (!html) return;
-  await ChatMessage.create({ whisper: game.users.filter((u) => u.isGM).map((u) => u.id), speaker: { alias: "Animater" }, content: html });
 }
 // Deletes rubble regions by id, skipping any already gone.
 async function deletePropRegions(scene, ids) {
@@ -11010,9 +11019,10 @@ function blastPlace(cause, scene) {
   const src = cause.sourceId ? scene.tiles?.get(cause.sourceId) : null;
   return src ? { source: propTileView(src), levels: [...(src.levels ?? [])] } : {};
 }
-// A powder keg goes off (GM): the GMs are whispered the burst and who stands in it, then everything breakable in the
-// burst is broken through the usual relays (applyPropBreak, applyWallBreak), 120-250 ms after by distance. A keg it
-// sets off runs its own blast from applyPropBreak. No token damage: the GM rules that.
+// A powder keg goes off (GM): everything breakable in the burst is broken through the usual relays (applyPropBreak,
+// applyWallBreak), 120-250 ms after by distance. A keg it sets off runs its own blast from applyPropBreak.
+// No token damage and nothing in chat: the GM can see the burst, and what it does to the creatures in it is theirs
+// to rule. Roi, of the whispers this used to post: "remove the gm whisper chat messages for such stuff".
 async function runBlast(scene, doc, note) {
   if (!game.users.activeGM?.isSelf || !scene || !doc) return;
   const grid = propGrid(scene), r = tileRect(doc), centre = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
@@ -11023,10 +11033,6 @@ async function runBlast(scene, doc, note) {
 async function runBlastAt(scene, { centre, burst, levels, sourceId }) {
   if (!game.users.activeGM?.isSelf || !scene) return;
   const grid = propGrid(scene);
-  const tokens = (scene.tokens?.contents ?? []).map((t) => ({ name: t.name, x: t.x, y: t.y, w: t.width * grid, h: t.height * grid, level: t.level }));
-  const gms = game.users.filter((u) => u.isGM).map((u) => u.id);
-  await ChatMessage.create({ whisper: gms, speaker: { alias: "Animater" }, content: blastWhisper(burst, tokensInBurst(tokens, centre, burst, grid, levels)) })
-    .catch((e) => runtime?.trace("props", `blast whisper: ${e?.message ?? e}`));
   const cause = { kind: "blast", sourceId }, look = { ...cause, damageType: "fire" }; // the wreck's look is scorched
   const targets = blastTargets({ centre, burst, grid, tiles: scene.tiles.contents.map(propTileView), walls: (scene.walls?.contents ?? []).map(wallView), scene, levels, sourceId });
   const decorSeen = decorViews(scene, levels), decorHit = blastTargets({ centre, burst, grid, tiles: decorSeen, walls: [], scene, levels, sourceId });
@@ -11051,6 +11057,48 @@ async function runBlastAt(scene, { centre, burst, levels, sourceId }) {
       void applyWallBreak(scene, wall, cause, note, game.user).catch((e) => runtime?.trace("props", `blast door: ${e?.message ?? e}`));
     }
   }), t.delay);
+}
+// An energy blast the GM set off breaks what its own energy breaks (energyBlastTargets: the material rules a spell's
+// area goes by, so fire takes the rug and psychic leaves the crates standing), nearest first. The cause is an area of
+// the GM's own naming no template, which is the GM's word as any of its own writes (prop-areas areaCauseRefusal); a
+// keg it breaks runs its own blast from there. No whisper and no damage: the GM can see what it caught, and what it
+// does to the creatures in it is theirs to rule.
+async function breakWithBlast(scene, { centre, radius, damageType }) {
+  if (!game.users.activeGM?.isSelf || !scene || !damageType || !(radius > 0) || !propsOn(scene)) return;
+  const grid = propGrid(scene), levels = canvas?.level?.id ? [canvas.level.id] : [];
+  const tiles = tilesOnLevel(scene.tiles.contents.map(propTileView), levels);
+  const decorSeen = propSafe("blast decorations", () => decorViews(scene, levels)) ?? [];
+  const cause = { kind: "area", damageType, at: { x: centre.x, y: centre.y } };
+  const targets = energyBlastTargets({ centre, radius, damageType, grid, tiles, walls: (scene.walls?.contents ?? []).map(wallView), decor: decorSeen, scene, levels });
+  for (const hit of targets) setTimeout(() => propSafe("blast break", () => {
+    const seed = Math.floor(Math.random() * 0x7fffffff);
+    if (hit.type === "tile") {
+      const target = scene.tiles.get(hit.id);
+      if (!target) return;
+      const note = breakNoteFor({ tile: propTileView(target), walls: scene.walls?.contents ?? [], grid, cause, seed, from: centre, scene });
+      void applyPropBreak(scene, target, cause, note, game.user).catch((e) => runtime?.trace("props", `blast prop: ${e?.message ?? e}`));
+    } else if (hit.type === "decor") {
+      const view = decorSeen.find((v) => v.id === hit.id), region = view && scene.regions.get(view.decor.regionId);
+      if (!region) return;
+      const note = breakNoteFor({ tile: view, walls: [], grid, cause, seed, from: centre, scene });
+      void applyDecorBreak(scene, region, view.decor.key, cause, note, game.user).catch((e) => runtime?.trace("props", `blast decoration: ${e?.message ?? e}`));
+    } else {
+      const wall = scene.walls?.get(hit.id);
+      if (!wall) return;
+      const note = wallNoteFor({ wall: wallView(wall), scene, cause, seed, from: centre });
+      void applyWallBreak(scene, wall, cause, note, game.user).catch((e) => runtime?.trace("props", `blast door: ${e?.message ?? e}`));
+    }
+  }), hit.delay);
+  // Fire reaches the powder a keg spilled earlier, as a fire area does.
+  if (damageType !== "fire") return;
+  const reaches = (q) => Math.hypot(q.x - centre.x, q.y - centre.y) <= radius;
+  for (const t of propSafe("blast powder", () => ignitableInArea(tiles, reaches)) ?? []) {
+    const target = scene.tiles.get(t.id);
+    if (!target) continue;
+    const lit = { kind: "ignite", damageType: "fire", at: { x: centre.x, y: centre.y } };
+    const note = breakNoteFor({ tile: propTileView(target), walls: [], grid, cause: lit, seed: Math.floor(Math.random() * 0x7fffffff), from: centre, scene });
+    void applyPropBreak(scene, target, lit, note, game.user).catch((e) => runtime?.trace("props", `blast powder: ${e?.message ?? e}`));
+  }
 }
 // Burning lamp oil (GM): one temporary fire light at the broken tile (prop-lights.mjs burnLightData: its glow, the
 // fire-pot loop and smoke; the wreck draws the flames), deleted after BURN_MS. Each GM that becomes the active one
@@ -12242,7 +12290,6 @@ async function applyDecorBreak(scene, regionDoc, key, cause, rawNote, user) {
     }
     // An edit that landed while the write was in flight left its toppled entries to it (final review M7).
     void pruneToppledDecor(regionDoc).catch((e) => runtime?.trace("props", `decor prune: ${e?.message ?? e}`));
-    if (check.fall) void whisperTopple(scene, { name: DECOR_NAMES[entry.kind], levels: [...region.levels] }, check.fall).catch((e) => runtime?.trace("props", `topple whisper: ${e?.message ?? e}`));
     // As a tile's (applyPropBreak): its Light prop puts the lights on it out, its lamp oil catches, its black powder goes off.
     // Written broken first, so a blast that reaches back here is refused as broken and a chain ends.
     if (check.lightUpdates?.length) await scene.updateEmbeddedDocuments("AmbientLight", check.lightUpdates).catch((e) => runtime?.trace("props", `lights not put out: ${e?.message ?? e}`));
@@ -12479,6 +12526,42 @@ async function undoPropBreak(doc, { deleted = false } = {}) {
   if (u.deleteLights?.length) await deletePropFires(scene, u.deleteLights);
   if (u.deleteRegions?.length) await deletePropRegions(scene, u.deleteRegions);
 }
+// The GM's own hammer, on a tile's HUD: this prop broken where it stands, or put back. Foundry's HUD has no room to
+// ask a question, so the button does what it says at once; putting it back is the same undo that unhiding a broken
+// tile runs. Players never see it, nor does a tile that is not a prop, nor a scene whose props do not break.
+const propHudButton = (hud, element) => {
+  const root = element instanceof HTMLElement ? element : element?.[0];
+  const doc = hud?.object?.document ?? hud?.document ?? null, scene = doc?.parent;
+  if (!root?.querySelector || !doc || !scene || game.user?.isGM !== true) return;
+  if (scene.flags?.[ID]?.breakableProps !== true || root.querySelector(".animater-prop-break")) return;
+  const grid = propGrid(scene), view = propTileView(doc), material = propMaterial(view, grid);
+  if (material === "none") return;
+  const broken = !!doc.flags?.[ID]?.prop?.broken;
+  const traits = propTraits(view, grid, scene);
+  const damageType = broken ? null : handBreaker(material, { cuttable: traits.cuttable, rule: traits.rule });
+  if (!broken && !damageType) return; // nothing ordinary breaks it; the GM's other tools still can
+  const label = broken ? "Put it back (Animater)" : "Break it (Animater)";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "control-icon animater-prop-break";
+  button.dataset.tooltip = label;
+  button.setAttribute("aria-label", label);
+  button.innerHTML = `<i class="fa-solid ${broken ? "fa-arrow-rotate-left" : "fa-hammer"}" inert></i>`;
+  // Once: a second click while the write is on its way would ask for the same break twice.
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (button.disabled) return;
+    button.disabled = true;
+    // Putting it back is showing it again: the undo that runs on an unhidden broken tile clears the note and gives
+    // its walls and lights back. Clearing the note alone would leave the prop hidden with nothing to say why.
+    if (broken) { void propSafe("hud repair", () => doc.update({ hidden: false })); return; }
+    const r = tileRect(doc);
+    void propSafe("hud break", () => requestPropBreak(doc, { kind: "area", damageType, at: { x: r.x + r.width / 2, y: r.y + r.height / 2 } }));
+  });
+  (root.querySelector(".col.right") ?? root).append(button);
+};
+Hooks.on("renderTileHUD", (hud, element) => propSafe("tile hud", () => propHudButton(hud, element)));
 // Repair (GM): every broken tile of the scene unhidden and cleared in one tile batch; its walls, and every broken door
 // put back to its own type, state and restrictions (a locked door stays locked), in one wall batch. Prop walls are never
 // doors (broken ones included), and the batch names each wall once anyway (mergeWallFixes).
@@ -12798,6 +12881,139 @@ async function rollForceOpen(actor, tokenDoc, wallDoc, traits) {
   }
   return false;
 }
+// ----------------------------------------------------------------------------------------------------------------
+// Picking a lock (engines/props/pick-lock.mjs). A locked door offers it beside Force it open; a locked window, which
+// until now could only be rattled, offers it on a right click. The one who tries rolls on their own screen; the GM's
+// screen judges that roll against the lock it reads from the wall itself — never the DC the message claims — and is
+// the only one that writes. Nothing is said in chat but a broken toolkit, which is a thing the table has to know.
+// ----------------------------------------------------------------------------------------------------------------
+const PICK_STAMP_MS = 120000;
+let pickLockStamp = null; // {actorId, flag, match(doc), until}: for systems whose roll carries no data of ours
+Hooks.on("preCreateChatMessage", (doc, _data, _options, userId) => propSafe("pick lock stamp", () => {
+  const s = pickLockStamp;
+  if (!s || userId !== game.user.id) return;
+  if (Date.now() > s.until) { pickLockStamp = null; return; }
+  if (doc?.speaker?.actor !== s.actorId || !s.match(doc)) return;
+  doc.updateSource({ [`flags.${ID}.pickLock`]: s.flag });
+  pickLockStamp = null;
+}));
+const stampPickLock = (actor, flag, match) => { pickLockStamp = { actorId: actor.id, flag, match, until: Date.now() + PICK_STAMP_MS }; };
+const clearPickLockStamp = (flag) => { if (pickLockStamp?.flag === flag) pickLockStamp = null; };
+// A lock lives on the wall with everything else the GM set about it breaking.
+const lockOwnOf = (doc) => doc?.flags?.[ID]?.breakWall ?? {};
+// What this wall is, when it has a lock that is shut right now: a door Foundry calls locked, or one of our own
+// windows the GM locked. Null for anything else, which is most walls.
+const lockedKindOf = (doc) => {
+  if (doc?.documentName !== "Wall") return null;
+  if ((doc.door === 1 || doc.door === 2) && doc.ds === 2) return "door";
+  if (closesWindow(doc.flags?.[ID]?.window) && doc.flags?.[ID]?.windowLocked === true) return "window";
+  return null;
+};
+const PICK_WHY = {
+  far: "Your token has to stand next to it to pick the lock.",
+  many: "Select the token that picks the lock.",
+  none: "Select your token next to it to pick the lock.",
+};
+// The system's own check for picking a lock, its message flagged {wallId, dc, tokenId} (the GM ignores the dc and
+// reads the wall's). PF2e and SF2e: Thievery against the lock. D&D 5e: Dexterity (Sleight of Hand). Daggerheart: a
+// Finesse roll against the difficulty. Draw Steel: an Agility test, hard for the locks that want its top tier.
+async function rollPickLock(actor, tokenDoc, wallDoc, dc) {
+  const sys = game.system.id, flag = { wallId: wallDoc.id, dc, tokenId: tokenDoc.id }, data = { flags: { [ID]: { pickLock: flag } } };
+  if (sys === "pf2e" || sys === "sf2e") {
+    // The system's own Pick a Lock action where it has one, as Force Open uses the system's Force Open: it brings the
+    // action's traits and tags its message, which a bare Thievery check does not. A plain check is the fallback.
+    const actions = game.pf2e?.actions ?? game.sf2e?.actions;
+    const act = typeof actions?.get === "function" ? actions.get("pick-a-lock") : null;
+    if (typeof act?.use === "function") {
+      stampPickLock(actor, flag, (doc) => {
+        const ctx = doc.flags?.[sys]?.context ?? doc.flags?.pf2e?.context;
+        return Array.isArray(ctx?.options) ? ctx.options.includes("action:pick-a-lock") : true;
+      });
+      try { await act.use({ actors: [actor], difficultyClass: { value: dc } }); } finally { clearPickLockStamp(flag); }
+      return true;
+    }
+    const skill = actor.skills?.thievery;
+    const roll = typeof skill?.check?.roll === "function" ? (args) => skill.check.roll(args) : typeof skill?.roll === "function" ? (args) => skill.roll(args) : null;
+    if (!roll) return false;
+    stampPickLock(actor, flag, (doc) => {
+      const ctx = doc.flags?.[sys]?.context ?? doc.flags?.pf2e?.context;
+      return !ctx || ctx.type === "skill-check" || ctx.domains?.includes?.("thievery") === true;
+    });
+    try { await roll({ dc: { value: dc }, label: "Pick a Lock" }); } finally { clearPickLockStamp(flag); }
+    return true;
+  }
+  if (sys === "dnd5e") {
+    // Thieves' tools, which is how 5e picks a lock and why a rogue's tool proficiency matters. Sleight of Hand is
+    // only the fallback, for a 5e old enough to have no tool check of its own.
+    if (typeof actor.rollToolCheck === "function") {
+      await actor.rollToolCheck({ tool: "thief", target: dc }, {}, { data });
+      return true;
+    }
+    if (typeof actor.rollSkill !== "function") return false;
+    await actor.rollSkill({ skill: "slt", target: dc }, {}, { data });
+    return true;
+  }
+  if (sys === "daggerheart") {
+    if (typeof actor.rollTrait !== "function") return false;
+    stampPickLock(actor, flag, (doc) => doc.type === "dualityRoll" && !!doc.rolls?.length);
+    try { await actor.rollTrait("finesse", { roll: { type: "trait", trait: "finesse", difficulty: dc } }); } finally { clearPickLockStamp(flag); }
+    return true;
+  }
+  if (sys === "draw-steel") {
+    if (typeof actor.system?.rollCharacteristic !== "function") return false;
+    await actor.system.rollCharacteristic("agility", { difficulty: lockTierOf(lockOwnOf(wallDoc)) >= 3 ? "hard" : "medium" }, {}, { data });
+    return true;
+  }
+  return false;
+}
+// Picking it, for the token beside it (the same reach rule Force Open goes by). confirm shows the prompt first.
+function pickLockAsk(doc, scene, confirm) {
+  const sys = game.system.id, kind = lockedKindOf(doc);
+  if (!pickLockWording(sys) || !kind || !propsOn(scene)) return false;
+  if (game.paused && !game.user.isGM) { ui.notifications?.warn("GAME.PausedWarning", { localize: true }); return true; }
+  const own = lockOwnOf(doc), dc = lockDCOf(own, sys);
+  const needed = lockSuccessesNeeded(own, sys), progress = lockProgressOf(own, sys);
+  const grid = propGrid(scene), foot = (t) => ({ id: t.id, x: t.x, y: t.y, w: t.width * grid, h: t.height * grid, level: t.level });
+  const controlled = (canvas?.tokens?.controlled ?? []).map((t) => t.document).filter((d) => d?.parent === scene && d.isOwner && d.actor);
+  const owned = game.user.isGM ? [] : (scene.tokens?.contents ?? []).filter((d) => d.isOwner && d.actor);
+  const pick = forceOpenRoller(wallView(doc), { controlled: controlled.map(foot), owned: owned.map(foot) }, grid);
+  const tokenDoc = pick.token ? scene.tokens.get(pick.token.id) : null;
+  if (!tokenDoc?.actor) { ui.notifications?.info(PICK_WHY[pick.why] ?? PICK_WHY.none); return true; }
+  void (async () => {
+    const showDC = showForceDC({ system: sys, isGM: !!game.user.isGM, settings: forceDCSettings(sys) });
+    const ok = !confirm || await foundry.applications.api.DialogV2.confirm({ window: { title: `Pick the lock: ${tokenDoc.name}` },
+      content: `<p>${pickLockPrompt({ system: sys, dc, showDC, progress, needed })}</p>`, rejectClose: false });
+    if (ok && !(await rollPickLock(tokenDoc.actor, tokenDoc, doc, dc))) ui.notifications?.warn("This game system's roll for picking a lock is not available.");
+  })().catch((e) => runtime?.trace("props", `pick lock: ${e?.message ?? e}`));
+  return true;
+}
+// The GM's screen judges it: the lock as the GM reads it, the roll as the GM has the message, and the only write.
+Hooks.on("createChatMessage", (message) => { void propSafe("pick lock", () => judgePickLock(message))?.catch?.((e) => runtime?.trace("props", `pick lock judge: ${e?.message ?? e}`)); });
+async function judgePickLock(message) {
+  if (!game.users.activeGM?.isSelf) return;
+  const flag = message?.flags?.[ID]?.pickLock;
+  if (!flag?.wallId) return;
+  const scene = game.scenes.find((s) => s.walls?.get(flag.wallId)) ?? canvas?.scene;
+  const doc = scene?.walls?.get(flag.wallId), kind = lockedKindOf(doc);
+  if (!doc || !kind || !propsOn(scene)) return;
+  await afterDice({ type: "check", messageId: message.id });
+  const sys = game.system.id, own = lockOwnOf(doc);
+  const dc = lockDCOf(own, sys), needed = lockSuccessesNeeded(own, sys);
+  const got = pickLockResult({ system: sys, message, dc, own });
+  const after = lockPicked({ progress: lockProgressOf(own, sys), gained: got.gained, needed });
+  // Open it the way this kind of thing opens: a door is unlocked and shut, a window simply unlocked.
+  const update = after.opened
+    ? { ...(kind === "door" ? { ds: 0 } : { [`flags.${ID}.windowLocked`]: false }), [`flags.${ID}.breakWall.lockProgress`]: 0 }
+    : { [`flags.${ID}.breakWall.lockProgress`]: after.progress };
+  await doc.update(update);
+  // Nothing is said about a lock that held or gave a little: the next prompt carries how far along it is, and the
+  // roll is already in chat. Broken picks are different — that is an item gone, which the table has to know about.
+  if (!got.breaks) return;
+  const who = message.author?.id ?? message.user?.id;
+  const whisper = [...new Set([...ChatMessage.getWhisperRecipients("GM").map((u) => u.id), ...(who ? [who] : [])])];
+  await ChatMessage.create({ content: `<p>${pickLockLine({ ...after, breaks: true, gained: 0, needed, name: kind === "window" ? "The window's lock" : "The lock" })}</p>`,
+    speaker: { alias: kind === "window" ? "Window" : "Door" }, whisper }).catch((e) => runtime?.trace("props", `pick lock line: ${e?.message ?? e}`));
+}
 const ROLLER_WHY = {
   far: "Your token has to stand next to the door to force it open.",
   many: "Select the token that forces the door open.",
@@ -12818,8 +13034,11 @@ function forceOpenFromDoor(wall, event) {
   const view = wallView(doc), traits = wallTraits(view, scene, sys), canForce = !!w && traits.forceOpen;
   if (traits.kind !== "door" || (!canForce && !attackable) || doc.ds === 1 || view.flags?.[ID]?.breakWall?.broken) return false;
   if (game.paused && !game.user.isGM) { ui.notifications?.warn("GAME.PausedWarning", { localize: true }); return true; }
-  // PF2e: a choice of forcing it or attacking it (door-attack.mjs); elsewhere straight to Force open.
-  if (attackable) { void doorChoice(doc, scene, traits, canForce).catch((e) => runtime?.trace("props", `door choice: ${e?.message ?? e}`)); return true; }
+  // A locked door can be picked as well as forced or hit, in any system that has the roll.
+  const canPick = lockedKindOf(doc) === "door" && !!pickLockWording(sys);
+  // PF2e: a choice of forcing it, picking it or attacking it (door-attack.mjs); elsewhere straight to the one thing.
+  if (attackable || (canPick && canForce)) { void doorChoice(doc, scene, traits, canForce, canPick).catch((e) => runtime?.trace("props", `door choice: ${e?.message ?? e}`)); return true; }
+  if (canPick) return pickLockAsk(doc, scene, true);
   return forceOpenAsk(doc, scene, traits, true);
 }
 // Force open for the token beside the door (forceOpenRoller): confirm shows the "Force it open?" prompt first.
@@ -12839,15 +13058,24 @@ function forceOpenAsk(doc, scene, traits, confirm) {
 }
 Hooks.on("createChatMessage", (message) => { void propSafe("force open", () => breakDoorsOnForceOpen(message))?.catch?.((e) => runtime?.trace("props", `force open: ${e?.message ?? e}`)); });
 // Attacking a door (PF2e, engines/props/door-attack.mjs). The door's prompt: Force it open (when it can be) or Attack the door.
-async function doorChoice(doc, scene, traits, canForce) {
+async function doorChoice(doc, scene, traits, canForce, canPick = false) {
   const sys = game.system.id, showDC = showForceDC({ system: sys, isGM: !!game.user.isGM, settings: forceDCSettings(sys) });
+  const attackable = DOOR_ATTACK_SYSTEMS.has(sys);
   const stats = doorStats(doc.flags?.[ID]?.breakWall, traits.material), lines = [];
   if (canForce) lines.push(forceOpenPrompt(sys, traits.material, traits.forceDC, showDC));
-  lines.push(showDC ? `Attack the door? A Strike vs AC ${stats.ac}` : "Attack the door? A Strike");
+  if (canPick) {
+    const own = lockOwnOf(doc);
+    lines.push(pickLockPrompt({ system: sys, dc: lockDCOf(own, sys), showDC, progress: lockProgressOf(own, sys), needed: lockSuccessesNeeded(own, sys) }));
+  }
+  if (attackable) lines.push(showDC ? `Attack the door? A Strike vs AC ${stats.ac}` : "Attack the door? A Strike");
   const buttons = [...(canForce ? [{ action: "force", label: "Force it open", icon: "fa-solid fa-door-open" }] : []),
-    { action: "attack", label: "Attack the door", icon: "fa-solid fa-hammer", default: true }, { action: "cancel", label: "Cancel", icon: "fa-solid fa-xmark" }];
+    // Picking it is the quiet way in, so it leads where it is offered at all.
+    ...(canPick ? [{ action: "pick", label: "Pick the lock", icon: "fa-solid fa-key", default: !attackable }] : []),
+    ...(attackable ? [{ action: "attack", label: "Attack the door", icon: "fa-solid fa-hammer", default: attackable }] : []),
+    { action: "cancel", label: "Cancel", icon: "fa-solid fa-xmark" }];
   const choice = await foundry.applications.api.DialogV2.wait({ window: { title: "Door" }, content: lines.map((l) => `<p>${l}</p>`).join(""), buttons, rejectClose: false });
   if (choice === "force") forceOpenAsk(doc, scene, traits, false);
+  else if (choice === "pick") pickLockAsk(doc, scene, false);
   else if (choice === "attack") await attackDoorFromDoor(doc, scene, stats);
 }
 const ATTACKER_WHY = { many: "Select the token that attacks the door.", none: "Select your token to attack the door." };
@@ -14560,6 +14788,7 @@ Hooks.once("init", () => {
   skyPair("cavePebbles", "cavePebblesLocal", "Pebbles underfoot", "In an underground scene, now and then a step on stone or earth kicks a pebble skittering ahead, bouncing and rolling to a stop.");
   registerSetting("blastReactions", { name: "Blasts touch the creatures", hint: "Creatures caught in an energy blast react: fire sets them alight a while, cold rimes them with frost, lightning crackles round them, force and sound throw them back, the void and the mind make them tremble. A show only.", scope: "world", config: true, type: Boolean, default: true });
   registerSetting("blastReactionSeconds", { name: "Blast reactions last", hint: "How many seconds a caught creature burns, stays rimed, crackles or trembles.", scope: "world", config: true, type: Number, range: { min: REACTION_SECONDS.min, max: REACTION_SECONDS.max, step: 1 }, default: REACTION_SECONDS.usual });
+  registerSetting("blastBreaks", { name: "Energy blasts break what they catch", hint: "A blast breaks the props, doors, windows and decorations its own energy would break: fire takes a rug and lights lamp oil, force and sonic smash stone, psychic breaks nothing at all. The same rules a spell's area goes by. Turn it off to keep blasts to the eye alone.", scope: "world", config: true, type: Boolean, default: true });
   registerSetting("blastPush", { name: "Force and sonic blasts really push", hint: "The creatures they catch are really moved half a square away from the blast (never through a wall), instead of only being thrown back and settling. It changes where their tokens stand.", scope: "world", config: true, type: Boolean, default: false });
   skyPair("energyBlast", "energyBlastLocal", "Energy blasts", "The GM can set off a blast of fire, cold, lightning, acid, force, void, radiance, sound, poison or the mind (the Energy blast button in the Animater controls; scroll to size it): a flash, a shockwave bending the floor, the energy, and a mark left behind. A show only: no one is hurt. Heavy on the graphics card for the few seconds it plays.");
   skyPair("caveRubble", "caveRubbleLocal", "Cave-ins", "The GM can bring a ceiling down (the Cave-in button in the Animater controls, scroll to size it): the view shakes, rocks fall and bounce, dust rolls out on the air, and the rubble stays where it fell.");
@@ -17971,15 +18200,27 @@ Hooks.once("ready", () => {
 // showed it to (ImagePopout._handleShareImage builds one locally from the shareImage socket), so each client decides
 // for itself how the page arrives and what light it is under. Nothing is sent, nothing is saved, and a player who
 // wants none of it simply sees the window Foundry has always opened.
+// The window itself is never seen when a look is chosen: it is hidden and a full screen stands in for it, because a
+// handout dressed as a dialog is still a dialog. It is kept open all the same, so Foundry's own bookkeeping — who
+// may see it, what it is of, what closing it means — is none of our business.
 // ----------------------------------------------------------------------------------------------------------------
-const HANDOUT_VEIL_ID = "animater-handout-veil";
 const prefersStill = () => {
   try { return globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true; } catch { return false; }
 };
-// The look this screen uses: its own switch first, then the scene's choice, then the table's.
-const handoutLookNow = () => {
+// Which page this popout is of, when Foundry says. A page shown on its own carries its uuid across with the share,
+// so every screen can ask the page itself how it wants to arrive. Opened any other way there is no page to ask.
+const handoutPageLook = (app) => {
+  try {
+    const uuid = app?.options?.uuid;
+    if (!uuid) return null;
+    const page = foundry.utils?.fromUuidSync?.(uuid);
+    return page?.flags?.[ID]?.handout ?? null;
+  } catch { return null; }
+};
+// The look this screen uses: its own switch first, then the page's own choice, the scene it arrives into, the table's.
+const handoutLookNow = (app) => {
   if (shakeSetting("handoutArrivalLocal", true) === false) return "off";
-  return handoutHere(canvas?.scene?.flags?.[ID]?.handout, shakeSetting("handoutArrival", "off"));
+  return handoutHere(handoutPageLook(app), canvas?.scene?.flags?.[ID]?.handout, shakeSetting("handoutArrival", "off"));
 };
 // Whether a flame of the party's own is what they are reading by: a light placed on the scene, or a token carrying
 // one. Only ever asked once, as a handout opens.
@@ -18000,84 +18241,339 @@ const handoutSceneLight = () => {
     });
   } catch { return handoutLight({}); }
 };
-// The dark over the map behind a handout. One element, shared by however many are open.
-let handoutOpen = 0;
-const handoutVeil = (on, amount = 0) => {
-  try {
-    if (!globalThis.document?.body?.append) return;
-    let el = document.getElementById(HANDOUT_VEIL_ID);
-    if (!on) { el?.classList.remove("animater-on"); return; }
-    if (!el) { el = document.createElement("div"); el.id = HANDOUT_VEIL_ID; document.body.append(el); }
-    el.style.setProperty("--an-ho-veil", String(amount));
-    requestAnimationFrame(() => el.classList.add("animater-on"));
-  } catch { /* no page to darken */ }
+// The stage a handout arrives on: the whole screen, the room behind it dark, and none of the interface in the
+// picture. Foundry still opens its own window — that is what carries the permissions, the uuid and the bookkeeping —
+// but the window is hidden and this stands in its place. Putting the handout down closes it.
+// One at a time: a second handout shown while one is up takes its place.
+let handoutStage = null;
+// Sounds waiting for their moment. A handout put down before the pins go in must not tap afterwards over an empty map.
+const handoutStageSounds = new Set();
+const handoutStageDown = (immediate = false) => {
+  const open = handoutStage;
+  if (!open) return;
+  handoutStage = null;
+  try { clearTimeout(open.timer); } catch { /* already run */ }
+  for (const t of handoutStageSounds) clearTimeout(t);
+  handoutStageSounds.clear();
+  const gone = () => {
+    try { open.el.remove(); } catch { /* already gone */ }
+    try { open.root?.classList?.remove("animater-handout-instead"); } catch { /* window already let go */ }
+    try { open.app?.close?.(); } catch { /* already closing */ }
+  };
+  if (immediate) { gone(); return; }
+  open.el.classList.add("animater-leaving");
+  open.el.classList.remove("animater-on", "animater-landed");
+  // The dark was set outright rather than left to the fade, so it is taken off the same way.
+  try { open.dark.style.opacity = "0"; } catch { /* already gone */ }
+  setTimeout(gone, 280);
 };
+// Escape puts it down, as it would close the window it stands in for.
+const handoutStageKey = (event) => { if (event?.key === "Escape" && handoutStage) { event.preventDefault(); handoutStageDown(); } };
+try { globalThis.document?.addEventListener?.("keydown", handoutStageKey, true); } catch { /* no document, no handouts */ }
+
+// What is on the paper: the handout's own picture, or a page of words set in a column to be read.
+const handoutArtEl = (art) => {
+  if (art?.kind === "image") {
+    const img = document.createElement("img");
+    img.className = "animater-handout-art";
+    img.src = String(art.src);
+    img.alt = String(art.alt ?? "");
+    return img;
+  }
+  const box = document.createElement("div");
+  box.className = "animater-handout-art animater-handout-words";
+  box.innerHTML = String(art?.html ?? "");
+  return box;
+};
+const handoutAdd = (parent, className) => {
+  const el = document.createElement("div");
+  el.className = className;
+  parent.append(el);
+  return el;
+};
+// It arrives. Everything a frame needs comes from the engine; nothing here decides how anything moves.
+const handoutShow = ({ app, root, chosen, seedText, art, caption }) => {
+  try {
+    if (!globalThis.document?.body?.append || !art) return false;
+    const seed = handoutSeed(seedText);
+    const look = handoutPick(chosen, seed);
+    if (look === "off") return false;
+    handoutStageDown(true);
+    const light = handoutSceneLight();
+    const el = document.createElement("div");
+    el.className = "animater-handout-stage";
+    el.style.setProperty("--an-ho-veil", String(light.veil));
+    const dark = handoutAdd(el, "animater-handout-dark");
+    // How dark the room goes, which the stylesheet fades to. A transition makes no progress on a screen that is not
+    // painting, so the fade is a nicety and the number below is what actually guarantees it (set again at landing).
+    const veilTo = 0.74 + light.veil * 0.24;
+    const sheet = document.createElement("div");
+    sheet.className = `animater-handout-sheet animater-ho-${look}`;
+    if (handoutIsWide(look)) sheet.classList.add("animater-ho-wide");
+    sheet.append(handoutArtEl(art));
+    if (caption) {
+      const cap = handoutAdd(sheet, "animater-handout-cap");
+      cap.textContent = String(caption);
+    }
+    // The scene it arrives into is the light it is read by: warm from a flame, cold from a wet sky.
+    const lit = handoutAdd(sheet, "animater-handout-light");
+    if (light.flicker) lit.classList.add("animater-handout-flicker");
+    if (light.wet) lit.classList.add("animater-handout-wet");
+    lit.style.setProperty("--an-ho-warm", String(light.warm));
+    lit.style.setProperty("--an-ho-cool", String(light.cool));
+    lit.style.setProperty("--an-ho-lit", String(light.paper));
+    el.append(sheet);
+    const put = handoutAdd(el, "animater-handout-put");
+    put.textContent = "click anywhere to put it down";
+    document.body.append(el);
+    try { root?.classList?.add("animater-handout-instead"); } catch { /* no window to hide */ }
+    el.addEventListener("click", () => handoutStageDown());
+    // The dark comes on with a forced reflow and not inside a frame: a screen that is not painting runs no frames at
+    // all, and a handout shown to somebody looking at another window would arrive on a fully lit interface.
+    // The reflow is what gives the transition an opacity of 0 to start from.
+    void el.offsetWidth;
+    el.classList.add("animater-on");
+    // Paper settling, a scroll running out, a pin tapped in: played here and nowhere else, as the arrival itself is.
+    // A look with no sound shipped for it yet is still an arrival, just a quiet one.
+    const heard = soundsOn() ? handoutSound(look, BUNDLED_SOUND_DIRS.handouts ?? [], seed) : null;
+    if (heard) {
+      const play = () => {
+        // AudioHelper.play answers with a promise, not a Sound: a file that has gone missing rejects, and without
+        // the catch that is an unhandled rejection in the console rather than a handout that is simply quiet.
+        try { void foundry.audio.AudioHelper.play({ src: `modules/${ID}/assets/sounds/handouts/${heard}`, volume: 0.55, loop: false }, false)?.catch?.(() => {}); }
+        catch { /* the handout still arrives in silence */ }
+      };
+      // Where the sound belongs to a moment rather than the whole movement (the pins going in, the page touching the
+      // table), it waits for that moment. Asked for less motion, there is no movement to wait through.
+      const at = prefersStill() ? 0 : handoutSoundAt(look) * (handoutMs(look) || 0);
+      if (at > 0) handoutStageSounds.add(setTimeout(play, at)); else play();
+    }
+    handoutStage = { el, app, root, sheet, dark, timer: 0 };
+
+    // What this look brings with it. None of them are built for a look that does not ask for them.
+    const rod = handoutHasRod(look) ? handoutAdd(sheet, "animater-handout-rod") : null;
+    const rods = handoutHasRods(look)
+      ? ["left", "right"].map((side) => handoutAdd(sheet, `animater-handout-rod-side animater-handout-rod-${side}`))
+      : [];
+    const dust = handoutHasDust(look) ? handoutAdd(sheet, "animater-handout-dust") : null;
+    const pins = handoutHasPins(look)
+      ? ["left", "right"].map((side) => handoutAdd(sheet, `animater-handout-pin animater-handout-pin-${side}`))
+      : [];
+    const lamp = handoutHasLamp(look) ? handoutAdd(sheet, "animater-handout-lamp") : null;
+    const creases = handoutHasCreases(look)
+      ? ["a", "b"].map((which) => handoutAdd(sheet, `animater-handout-crease animater-handout-crease-${which}`))
+      : [];
+
+    const landed = () => {
+      el.classList.add("animater-landed");
+      // Whatever the fade managed, the room is this dark now. The transition goes first: a transition that has made
+      // no progress (a screen that is not painting) keeps overriding the value it is travelling towards, so setting
+      // the number alone leaves the room lit. By now the fade is long over on any screen that was drawing.
+      dark.style.transition = "none";
+      dark.style.opacity = String(veilTo);
+      sheet.classList.remove("animater-handout-arriving");
+      for (const key of ["--an-ho-op", "--an-ho-sc", "--an-ho-x", "--an-ho-y", "--an-ho-rot", "--an-ho-fold",
+        "--an-ho-crease", "--an-ho-roll", "--an-ho-spread", "--an-ho-dust"]) sheet.style.removeProperty(key);
+      // Arrived, it is simply a lit page: the lamp has been set down, the rods let go, the pins are in.
+      sheet.style.setProperty("--an-ho-bright", "1");
+      sheet.style.setProperty("--an-ho-pins", "1");
+      sheet.style.setProperty("--an-ho-crease-show", "0");
+      rod?.remove();
+      for (const bar of rods) bar.remove();
+      dust?.remove();
+      lamp?.remove();
+    };
+    // Asked for less motion: the page is there, lit by the scene, which is the whole of it without the move.
+    if (prefersStill()) { landed(); return true; }
+    const ms = handoutMs(look) || 1;
+    sheet.classList.add("animater-handout", "animater-handout-arriving");
+    const began = performance.now();
+    let done = false;
+    const land = () => { if (done) return; done = true; landed(); };
+    // A screen that is not drawing runs no frames at all: a tab behind another, a window minimised. Without this the
+    // arrival would stop where it stood and the page would keep its rods and its clip until somebody looked again.
+    handoutStage.timer = setTimeout(land, ms + 400);
+    const step = (now) => {
+      if (!el.isConnected || handoutStage?.el !== el) return land();
+      if (done) return;
+      const t = Math.min(1, (now - began) / ms);
+      const f = handoutAt(look, t);
+      sheet.style.setProperty("--an-ho-op", String(f.opacity));
+      sheet.style.setProperty("--an-ho-sc", String(f.scale));
+      sheet.style.setProperty("--an-ho-x", String(f.dx));
+      sheet.style.setProperty("--an-ho-y", String(f.dy));
+      sheet.style.setProperty("--an-ho-rot", String(f.rot));
+      sheet.style.setProperty("--an-ho-fold", String(f.fold));
+      sheet.style.setProperty("--an-ho-crease", String(f.crease));
+      sheet.style.setProperty("--an-ho-roll", String(f.roll));
+      sheet.style.setProperty("--an-ho-spread", String(f.spread));
+      sheet.style.setProperty("--an-ho-bright", String(f.bright));
+      if (dust) sheet.style.setProperty("--an-ho-dust", String(handoutDust(look, t)));
+      if (pins.length) sheet.style.setProperty("--an-ho-pins", String(handoutPins(look, t)));
+      if (creases.length) sheet.style.setProperty("--an-ho-crease-show", String(1 - t));
+      if (lamp) {
+        const beam = handoutLampAt(look, t);
+        sheet.style.setProperty("--an-ho-lamp-x", String(beam.x));
+        sheet.style.setProperty("--an-ho-lamp", String(beam.strength));
+      }
+      if (t < 1) { requestAnimationFrame(step); return; }
+      land();
+    };
+    requestAnimationFrame(step);
+    return true;
+  } catch (error) {
+    console.warn("Animater | handout arrival", error);
+    return false;
+  }
+};
+
+// A page as a handout: its picture, or its words. A PDF or a video is left to Foundry's own window — there is
+// nothing of either you could lay on a table.
+const handoutArtOfPage = async (page) => {
+  if (!page) return null;
+  if (page.type === "image" && page.src) return { kind: "image", src: page.src, alt: page.name ?? "" };
+  if (page.type !== "text" || !page.text?.content) return null;
+  let html = String(page.text.content);
+  try {
+    const enriched = await globalThis.CONFIG?.ux?.TextEditor?.enrichHTML?.(html, { secrets: false, relativeTo: page });
+    if (typeof enriched === "string" && enriched.length) html = enriched;
+  } catch { /* the page as it was written is still the page */ }
+  return { kind: "words", html };
+};
+
+// A picture the GM shows (Show Players with "Image only", a journal image page, art from a sheet).
 Hooks.on("renderImagePopout", (app, element) => {
   const root = element instanceof HTMLElement ? element : element?.[0];
-  if (!root?.classList || root.dataset?.animaterHandout === "1") return;
-  const chosen = handoutLookNow();
-  if (chosen === "off") return;
-  const look = handoutPick(chosen, handoutSeed(app?.options?.src ?? app?.options?.window?.title ?? ""));
-  const light = handoutSceneLight();
-  root.dataset.animaterHandout = "1";
-  root.classList.add("animater-handout");
-  const content = root.querySelector(".window-content") ?? root;
-  try { if (!content.style.position) content.style.position = "relative"; } catch { /* styled elsewhere */ }
-  const lit = document.createElement("div");
-  lit.className = "animater-handout-light";
-  if (light.flicker) lit.classList.add("animater-handout-flicker");
-  if (light.wet) lit.classList.add("animater-handout-wet");
-  lit.style.setProperty("--an-ho-warm", String(light.warm));
-  lit.style.setProperty("--an-ho-cool", String(light.cool));
-  lit.style.setProperty("--an-ho-lit", String(light.paper));
-  content.append(lit);
-  handoutOpen += 1;
-  handoutVeil(true, light.veil);
-  // Asked for less motion: the page is lit by the scene and simply there, which is the whole point without the move.
-  if (prefersStill()) return;
-  const rod = handoutHasRod(look) ? document.createElement("div") : null;
-  if (rod) { rod.className = "animater-handout-rod"; content.append(rod); }
-  // A map is wound on two of them, one going out to each side.
-  const rods = handoutHasRods(look) ? ["left", "right"].map((side) => {
-    const bar = document.createElement("div");
-    bar.className = `animater-handout-rod-side animater-handout-rod-${side}`;
-    content.append(bar);
-    return bar;
-  }) : [];
-  const dust = handoutHasDust(look) ? document.createElement("div") : null;
-  if (dust) { dust.className = "animater-handout-dust"; content.append(dust); }
-  const ms = handoutMs(look) || 1;
-  root.classList.add("animater-handout-arriving");
-  const began = performance.now();
-  const step = (now) => {
-    if (!root.isConnected) return;
-    const t = Math.min(1, (now - began) / ms);
-    const f = handoutAt(look, t);
-    root.style.setProperty("--an-ho-op", String(f.opacity));
-    root.style.setProperty("--an-ho-sc", String(f.scale));
-    root.style.setProperty("--an-ho-x", String(f.dx));
-    root.style.setProperty("--an-ho-y", String(f.dy));
-    root.style.setProperty("--an-ho-rot", String(f.rot));
-    root.style.setProperty("--an-ho-fold", String(f.fold));
-    root.style.setProperty("--an-ho-crease", String(f.crease));
-    root.style.setProperty("--an-ho-roll", String(f.roll));
-    root.style.setProperty("--an-ho-spread", String(f.spread));
-    if (dust) content.style.setProperty("--an-ho-dust", String(handoutDust(look, t)));
-    if (t < 1) { requestAnimationFrame(step); return; }
-    // Arrived: Foundry's own window again, with the scene's light still on the page.
-    root.classList.remove("animater-handout-arriving");
-    for (const key of ["--an-ho-op", "--an-ho-sc", "--an-ho-x", "--an-ho-y", "--an-ho-rot", "--an-ho-fold", "--an-ho-crease", "--an-ho-roll", "--an-ho-spread"]) root.style.removeProperty(key);
-    rod?.remove();
-    for (const bar of rods) bar.remove();
-    dust?.remove();
+  const src = app?.options?.src;
+  if (!src) return;
+  const title = app?.options?.window?.title ?? "";
+  handoutShow({ app, root, chosen: handoutLookNow(app), seedText: String(src),
+    art: { kind: "image", src, alt: title }, caption: app?.options?.caption ?? "" });
+});
+// A journal the GM shows arrives the same way. Foundry opens the sheet itself on every screen from its own showEntry;
+// this only listens for it, so nothing new crosses the wire, and a journal a player opens for themselves is left
+// alone — an arrival is for a thing handed to them, not for the notes they are keeping.
+const handoutShownFor = new Map();
+const HANDOUT_SHOWN_MS = 6000;
+const handoutShownNote = (uuid) => {
+  try {
+    if (!uuid) return;
+    const now = Date.now();
+    for (const [key, when] of handoutShownFor) if (now - when > HANDOUT_SHOWN_MS) handoutShownFor.delete(key);
+    handoutShownFor.set(String(uuid), now);
+    // A page is shown by opening the journal it lives in, so that is the sheet that will arrive.
+    const page = foundry.utils?.fromUuidSync?.(uuid);
+    const parent = page?.parent?.uuid;
+    if (parent) handoutShownFor.set(String(parent), now);
+  } catch { /* an unloaded pack has nothing to note */ }
+};
+Hooks.once("ready", () => {
+  try { game.socket?.on?.("showEntry", (uuid) => handoutShownNote(uuid)); } catch { /* no socket, no shows */ }
+});
+// There is no local hook to listen for here. Journal.show emits "showEntry" to the other clients and then calls
+// Journal._showEntry on its own, which renders the sheet and calls nothing; Foundry has never had a "showEntry" hook.
+// So a handout arrives on the screens it was shown to, and the GM who showed it keeps the plain sheet they were
+// already reading — which is the right way round: the dark is for the table, not for the one running it.
+const handoutShownTake = (uuid) => {
+  const key = String(uuid ?? "");
+  const when = handoutShownFor.get(key);
+  if (when === undefined) return null;
+  handoutShownFor.delete(key);
+  return Date.now() - when <= HANDOUT_SHOWN_MS ? key : null;
+};
+Hooks.on("renderJournalEntrySheet", (app, element) => {
+  const root = element instanceof HTMLElement ? element : element?.[0];
+  const entry = app?.document;
+  if (!handoutShownTake(entry?.uuid)) return;
+  if (shakeSetting("handoutArrivalLocal", true) === false) return;
+  // The page they were shown may want its own arrival, then the journal, then the scene, then the table.
+  const pageId = app?.options?.pageId ?? app?.pageId ?? null;
+  const page = pageId ? entry?.pages?.get?.(pageId) : null;
+  const chosen = handoutHere(
+    page?.flags?.[ID]?.handout,
+    entry?.flags?.[ID]?.handout,
+    canvas?.scene?.flags?.[ID]?.handout,
+    shakeSetting("handoutArrival", "off"),
+  );
+  if (handoutPick(chosen, 0) === "off") return;
+  // Reading the page may have to wait (its links are filled in first), so the window is hidden at once and the
+  // stage takes its place when the paper is ready. Without that the sheet would be seen for a frame or two first.
+  void (async () => {
+    const art = await handoutArtOfPage(page);
+    if (!art) return;
+    handoutShow({ app, root, chosen, seedText: page?.uuid ?? entry?.uuid ?? entry?.name ?? "",
+      art, caption: page?.name && page.type === "image" ? page.name : "" });
+  })();
+});
+// The window it stands in for closing — by Foundry, by another module, by the GM — takes the stage with it.
+const handoutClosed = (app) => { if (handoutStage && handoutStage.app === app) handoutStageDown(true); };
+Hooks.on("closeJournalEntrySheet", (app) => handoutClosed(app));
+// One page may want its own arrival whatever the map or the table says: the treasure map is spread open, the ransom
+// note is unfolded. The page keeps the choice, so it travels with the handout into any scene and any world.
+const HANDOUT_PAGE_SHEETS = ["Image", "Text", "Video", "PDF"];
+const handoutPageRow = (app, element) => {
+  const root = element instanceof HTMLElement ? element : element?.[0];
+  if (!root?.querySelector || app?.isView === true || root.querySelector(".animater-handout-page")) return;
+  const where = root.querySelector('[data-application-part="content"]') ?? root.querySelector("form") ?? root;
+  const now = String(app?.document?.flags?.[ID]?.handout ?? "");
+  const row = document.createElement("div");
+  row.className = "form-group animater-handout-page";
+  const options = [["", "From the scene or the module"], ...Object.entries(HANDOUT_ARRIVALS)]
+    .map(([v, l]) => `<option value="${v}"${v === now ? " selected" : ""}>${l}</option>`).join("");
+  row.innerHTML = `<label>How this one arrives</label><div class="form-fields"><select name="flags.${ID}.handout">${options}</select></div><p class="hint">How this page reaches the players when you show it to them, whatever the map or the module says. A map is spread open, a letter unfolds. It arrives when you show it, not when a player opens the journal themselves.</p>`;
+  where.append(row);
+};
+for (const kind of HANDOUT_PAGE_SHEETS) Hooks.on(`renderJournalEntryPage${kind}Sheet`, handoutPageRow);
+// A GM should not have to open a page for editing to say how it arrives. The journal carries a button of its own in
+// the window header, beside the close button, and it asks about the page in front of them and about the journal at
+// once. The page's own choice wins; the journal speaks for every page that says nothing.
+const handoutRow = (name, label, now, blank) => {
+  const options = [["", blank], ...Object.entries(HANDOUT_ARRIVALS)]
+    .map(([v, l]) => `<option value="${v}"${v === now ? " selected" : ""}>${l}</option>`).join("");
+  return `<div class="form-group"><label>${label}</label><div class="form-fields"><select name="${name}">${options}</select></div></div>`;
+};
+const handoutFlagOf = (doc) => String(doc?.flags?.[ID]?.handout ?? "");
+const handoutAsk = async (entry, page) => {
+  if (!entry) return;
+  const safe = (text) => foundry.utils?.escapeHTML?.(String(text ?? "")) ?? String(text ?? "");
+  const content = `<div class="animater-handout-ask">`
+    + (page ? handoutRow("page", `This page: ${safe(page.name)}`, handoutFlagOf(page), "From the journal, the scene or the module") : "")
+    + handoutRow("entry", "This journal, for pages that say nothing", handoutFlagOf(entry), "From the scene or the module")
+    + `<p class="hint">How a handout reaches the players when you show it to them: a map is spread open, a letter unfolds. It arrives when you show it, not when a player opens the journal themselves.</p></div>`;
+  const said = await foundry.applications.api.DialogV2.wait({ window: { title: "How this arrives (Animater)" }, position: { width: 460 }, rejectClose: false, content,
+    buttons: [{ action: "save", label: "Save", icon: "fa-solid fa-check", default: true, callback: (_event, button) => new foundry.applications.ux.FormDataExtended(button.form).object }, { action: "cancel", label: "Cancel" }] });
+  if (!said || typeof said !== "object") return;
+  // Nothing chosen is not a choice stored: the flag comes off, and the page falls back to whatever is above it.
+  const put = async (doc, value) => {
+    if (!doc) return;
+    const want = String(value ?? "");
+    if (want === handoutFlagOf(doc)) return;
+    if (want) await doc.setFlag(ID, "handout", want);
+    else await doc.unsetFlag(ID, "handout");
   };
-  requestAnimationFrame(step);
+  await put(page, said.page);
+  await put(entry, said.entry);
+};
+const handoutButton = (app, element, entry, pageNow) => {
+  const root = element instanceof HTMLElement ? element : element?.[0];
+  const header = root?.querySelector?.(".window-header") ?? root?.closest?.(".application")?.querySelector?.(".window-header") ?? app?.window?.header ?? null;
+  if (!header || !entry || game.user?.isGM !== true || header.querySelector(".animater-handout-button")) return;
+  const label = "How this arrives (Animater)";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "header-control icon fa-solid fa-scroll animater-handout-button";
+  button.dataset.tooltip = label;
+  button.setAttribute("aria-label", label);
+  button.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); void handoutAsk(entry, pageNow()); });
+  (header.querySelector("button[data-action=toggleControls]") ?? header.querySelector("button[data-action=close]"))?.before(button);
+};
+Hooks.on("renderJournalEntrySheet", (app, element) => {
+  const entry = app?.document;
+  handoutButton(app, element, entry, () => entry?.pages?.get?.(app?.pageId ?? app?.options?.pageId ?? ""));
 });
-Hooks.on("closeImagePopout", () => {
-  handoutOpen = Math.max(0, handoutOpen - 1);
-  if (handoutOpen === 0) handoutVeil(false);
-});
-Hooks.on("canvasTearDown", () => { handoutOpen = 0; handoutVeil(false); });
+Hooks.on("closeImagePopout", (app) => handoutClosed(app));
+// Leaving the scene puts down whatever was still being read: the room it arrived into is not there any more.
+Hooks.on("canvasTearDown", () => handoutStageDown(true));
 
 // ----------------------------------------------------------------------------------------------------------------
 // The interface bleeds (engines/camera/interface-bleed.mjs). Blood on the camera and the tunnel at low health stop

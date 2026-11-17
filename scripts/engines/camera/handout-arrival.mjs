@@ -4,9 +4,14 @@
 // front of the party — and lights it with the scene it arrives into, so a map read by one torch at midnight does not
 // look like the same map read at noon.
 //
-// Whose choice it is. The look is the table's (the module setting), and any one scene may say otherwise for itself
-// (handoutHere), the way an arrival does. Nothing here decides to show anything: Foundry's own window still opens,
-// still closes, still has its buttons. This only says how it gets there and what light it is under.
+// It is not a window. Roi, of the first version: "it just shows the window opening differently... hardly immersive".
+// That was fair — dressing Foundry's frame leaves a title bar, a close button and the sidebar behind it, and no
+// amount of unfolding makes a dialog into a sheet of paper. A handout now takes the screen: the room goes dark, the
+// page arrives at the size of a thing held in front of you, and a click puts it down again.
+//
+// Whose choice it is. The look is the table's (the module setting), and any one scene, journal or page may say
+// otherwise for itself (handoutHere). Nothing here decides to show anything: the GM still shows a handout the way
+// they always have. This only says how it gets there and what light it is under.
 //
 // Pure: no Foundry, no DOM. The shell runs the clock and owns the element; every number a frame needs is decided
 // here and handed over as fractions of the page, so the shell never does arithmetic of its own.
@@ -19,16 +24,24 @@ export const HANDOUT_ARRIVALS = Object.freeze({
   laid: "Laid down: put on the table in front of them, knocking up dust",
   held: "Held up: raised from below and held there, swaying until it settles",
   blown: "Blown in: a loose page caught by the wind, tumbling until it lands",
+  pinned: "Pinned up: swung in from the side and pinned, swaying until it stops",
+  lamp: "Lamplight over it: already lying there in the dark, a lamp carried across it",
   any: "Whichever suits it: a different one each time",
 });
 
-// How long each takes. Under a second and a half: a handout is read, not watched, and a GM who shows four in a row
-// must not be made to wait through four of these.
-// A map takes the longest of them: it is two hands pulling against each other, not one edge falling open.
-export const HANDOUT_MS = Object.freeze({ unfold: 900, unroll: 1100, spread: 1250, laid: 820, held: 1000, blown: 1400 });
+// How long each takes. Under a second and a half for the ones that are a movement: a handout is read, not watched,
+// and a GM who shows four in a row must not be made to wait through four of these.
+// A map takes the longest of the movements: it is two hands pulling against each other, not one edge falling open.
+// Lamplight is the exception and is meant to be slow — it is a light being carried, and hurrying it is a flicker.
+export const HANDOUT_MS = Object.freeze({
+  unfold: 900, unroll: 1100, spread: 1250, laid: 820, held: 1000, blown: 1400, pinned: 900, lamp: 1800,
+});
 
 // The ones `any` may choose between: everything that actually arrives.
-export const HANDOUT_LOOKS = Object.freeze(["unfold", "unroll", "spread", "laid", "held", "blown"]);
+export const HANDOUT_LOOKS = Object.freeze(["unfold", "unroll", "spread", "laid", "held", "blown", "pinned", "lamp"]);
+
+// A map is wider than it is tall, and is given the room for it; everything else arrives as a page.
+export const handoutIsWide = (look) => handoutPick(look) === "spread";
 
 const clamp01 = (v) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0);
 const known = (look) => (Object.hasOwn(HANDOUT_ARRIVALS, look) ? look : null);
@@ -54,9 +67,14 @@ export function handoutPick(look, seed = 0) {
   return HANDOUT_LOOKS[Math.min(HANDOUT_LOOKS.length - 1, Math.floor(n * HANDOUT_LOOKS.length))];
 }
 
-// What this scene does with a handout: its own choice (flags.animater.handout), else the table's, else nothing.
-export function handoutHere(flag, setting) {
-  return known(flag) ?? known(setting) ?? "off";
+// Which look wins, narrowest first: the page's own choice, then the scene it arrives into, then the table's setting,
+// and nothing if none of them says anything. Anything unrecognised is not a choice and is passed over.
+export function handoutHere(...choices) {
+  for (const choice of choices) {
+    const look = known(choice);
+    if (look) return look;
+  }
+  return "off";
 }
 
 // How long this look takes, 0 when it does not arrive at all.
@@ -75,7 +93,7 @@ export const handoutMs = (look) => HANDOUT_MS[handoutPick(look)] ?? 0;
  *   spread   how much of each side a map's two rods have not uncovered yet, a fraction of the width (0.5 shut)
  */
 export function handoutAt(look, t) {
-  const rest = { opacity: 1, scale: 1, dx: 0, dy: 0, rot: 0, fold: 0, crease: 0, roll: 0, spread: 0 };
+  const rest = { opacity: 1, scale: 1, dx: 0, dy: 0, rot: 0, fold: 0, crease: 0, roll: 0, spread: 0, bright: 1 };
   const how = handoutPick(look);
   if (how === "off") return rest;
   const p = clamp01(t), e = ease(p), left = 1 - e;
@@ -116,6 +134,20 @@ export function handoutAt(look, t) {
       dy: 1.06 * Math.pow(left, 1.4) + 0,
       rot: -2.4 * damp(p, 2.5, 2.2) + 0 };
   }
+  if (how === "pinned") {
+    // Swung in from the left on whoever's hand, caught at the top corners, and left swinging on its pins until the
+    // swing dies. It hangs from near its top edge, so the shell leans it about that corner and not its middle.
+    return { ...rest,
+      opacity: clamp01(p / 0.1),
+      dx: -1.15 * Math.pow(left, 1.25) + 0,
+      dy: 0.1 * left,
+      rot: -15 * Math.pow(left, 1.3) + 4.4 * damp(p, 3, 2.6) + 0 };
+  }
+  if (how === "lamp") {
+    // Nothing of it moves: it is already lying there. A lamp is carried across it and the page comes out of the dark
+    // as the light passes. The sweep itself is handoutLampAt; this is only how lit the paper is by then.
+    return { ...rest, opacity: clamp01(p / 0.05), bright: 0.18 + 0.78 * ease(p) };
+  }
   // blown: in from above, tumbling, flat by the time it lands.
   return { ...rest,
     opacity: clamp01(p / 0.08),
@@ -125,11 +157,61 @@ export function handoutAt(look, t) {
     scale: 1 - 0.14 * left };
 }
 
+/**
+ * The sound a handout makes as it arrives, from whatever this build actually ships for that look. `names` is the
+ * bundled index's own list for the handouts folder, so a file taken out of assets simply stops being chosen rather
+ * than being asked for and failing to load. Null when the look has no sound of its own yet, which is not a fault:
+ * the arrival is still seen.
+ * The same handout picks the same take every time, the way its look does, so one page does not sound different on
+ * two screens.
+ */
+export function handoutSound(look, names = [], seed = 0) {
+  const how = handoutPick(look, seed);
+  if (how === "off") return null;
+  const mine = (names ?? []).filter((n) => typeof n === "string" && n.startsWith(`${how}-`)).sort();
+  if (!mine.length) return null;
+  const n = Number.isFinite(seed) ? Math.abs(seed) % 1 : 0;
+  return mine[Math.min(mine.length - 1, Math.floor(n * mine.length))];
+}
+
+/**
+ * When in the arrival its sound starts, as a fraction of the arrival. Most begin with it: the paper is already
+ * moving on the first frame, and that is the sound. Two do not — a page pinned up is silent until the pins go in
+ * (handoutPins), and a page laid down until it touches the table (handoutDust) — and a tap heard half a second
+ * before the pin reaches the wall is the kind of thing that reads as broken without anyone being able to say why.
+ */
+export function handoutSoundAt(look) {
+  const how = handoutPick(look);
+  if (how === "pinned") return 0.46;
+  if (how === "laid") return 0.4;
+  return 0;
+}
+
 // Whether this look wants the extras the shell can draw: the rolled rod of a scroll, the two rods of a map spread
 // open, the dust a laid page knocks up.
 export const handoutHasRod = (look) => handoutPick(look) === "unroll";
 export const handoutHasRods = (look) => handoutPick(look) === "spread";
 export const handoutHasDust = (look) => handoutPick(look) === "laid";
+export const handoutHasPins = (look) => handoutPick(look) === "pinned";
+export const handoutHasCreases = (look) => handoutPick(look) === "unfold";
+export const handoutHasLamp = (look) => handoutPick(look) === "lamp";
+
+// The pins of a page pinned up: 0 before they are tapped in, 1 once they are. They go in as the swing starts, not
+// when the page first appears, or the paper would be hanging from nothing on the way across.
+export function handoutPins(look, t) {
+  if (!handoutHasPins(look)) return 0;
+  return clamp01((clamp01(t) - 0.46) / 0.12);
+}
+
+// The lamp carried across a page lying in the dark: where its pool of light is, in page widths from the left edge
+// (negative is off the page on that side), and how strong it is. Nothing for any other look.
+export function handoutLampAt(look, t) {
+  if (!handoutHasLamp(look)) return { x: 0, strength: 0 };
+  // Carried, not thrown: it leaves and arrives gently but crosses the middle at an even pace. A cubic ease out here
+  // put the light off the far edge by halfway, which read as a flash rather than someone walking a lamp across.
+  const p = clamp01(t), e = p * p * (3 - 2 * p);
+  return { x: -0.55 + 1.9 * e, strength: clamp01(p / 0.14) * clamp01(1 - Math.max(0, p - 0.9) / 0.1) * 0.9 + 0.1 };
+}
 
 // The dust a laid page knocks up: how strong it is this frame, 0 before it lands and after it has drifted off.
 export function handoutDust(look, t) {

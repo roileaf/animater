@@ -2,6 +2,7 @@
 import { MATERIALS } from "../engines/props/prop-material.mjs";
 import { CONTENTS, STYLE_CHOICES, propGuesses, burstOf } from "../engines/props/prop-traits.mjs";
 import { defaultForceDC, ownForceDC, forceOpenWording } from "../engines/props/force-open.mjs";
+import { LOCKS, LOCK_QUALITIES, lockQualityOf, ownLockDC, lockDCOf, lockSuccessesNeeded, pickLockWording } from "../engines/props/pick-lock.mjs";
 import { wallMaterialOf, GLASS_PANES, WALL_MATERIALS } from "../engines/props/wall-break.mjs";
 import { DOOR_ATTACK_SYSTEMS, DOOR_STAT_KEYS, defaultDoorStats, ownDoorStat, doorStats, doorHp, defaultWallStats } from "../engines/props/door-attack.mjs";
 
@@ -75,6 +76,21 @@ function forceDCField({ own, mat, system, disabled }) {
   return `<div class="form-group"><label>Force open ${w.dc}</label><div class="form-fields"><input type="number" name="flags.${ID}.breakWall.forceDC" min="1" max="60" step="1" value="${value}" placeholder="Automatic (${auto})" ${data}${disabled ? " disabled" : ""}></div><p class="hint">Blank goes by material. A roll from the sheet is checked against the closest door's ${w.dc}.</p></div>`;
 }
 
+// The lock on a door or a window: its quality, and the GM's own DC over the top of it. Both live in the same place
+// for either kind, because a wall is one or the other and never both.
+function lockFields({ own, system, disabled, kind }) {
+  const w = pickLockWording(system);
+  if (!w) return "";
+  const quality = lockQualityOf(own), needed = lockSuccessesNeeded(own, system);
+  const ways = needed > 1 ? ` It takes ${needed} successes.` : "";
+  const list = LOCK_QUALITIES.map((q) => [q, `${LOCKS[q].label}${w.dc ? ` (${w.dc} ${lockDCOf({ lock: q }, system)})` : ""}`]);
+  const dcField = w.dc
+    ? `<div class="form-group"><label>Lock ${w.dc}</label><div class="form-fields"><input type="number" name="flags.${ID}.breakWall.lockDC" min="1" max="60" step="1" value="${ownLockDC(own) ?? ""}" placeholder="Automatic (${lockDCOf({ lock: quality }, system)})"${disabled ? " disabled" : ""}></div><p class="hint">Blank goes by the lock's quality.</p></div>`
+    : `<p class="hint">Draw Steel has no DC here: an Agility test of tier 2 opens most locks, tier 3 a good or superior one.</p>`;
+  return `<div class="form-group"><label>Lock</label><div class="form-fields"><select name="flags.${ID}.breakWall.lock"${disabled ? " disabled" : ""}>${options(list, quality)}</select></div><p class="hint">What is picked when this ${kind} is locked: a player right-clicks it with their token beside it and rolls ${w.skill}.${ways} A critical success is worth two, a critical failure breaks the picks, and what has been got so far is never lost.</p></div>
+      ${dcField}`;
+}
+
 // A fire light's own "Fills the room with smoke" (flags.animater.smokeSource), for the light configuration's Animater
 // tab. It lives here beside the scene's own switch, not inline in main.mjs, so the two halves of one GM-facing
 // decision are written and read in one place — and so the flag name is checkable without reading main.mjs's text.
@@ -136,10 +152,12 @@ export function wallBreakFieldsHTML({ door, own = {}, sceneOn = false, system, w
       <div class="form-group"><label>Can be forced open</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.breakWall.forceOpen"${own.forceOpen === false ? "" : " checked"}${off(!isDoor)}></div><p class="hint">${forceOpenHint(system)}</p></div>
       ${forceDCField({ own, mat, system, disabled: !isDoor })}
       ${doorStatFields({ own, mat, system, disabled: !isDoor })}
+      ${lockFields({ own, system, disabled: !isDoor, kind: "door" })}
     </div>
     <div data-group="window"${isDoor ? " hidden" : ""}>
       <div class="form-group"><label>Window</label><div class="form-fields"><select name="flags.${ID}.breakWall.window"${off(isDoor)}>${options([["", `Automatic (${GLASS_PANES.includes(windowKind) ? "yes: a glass window" : "no"})`], ["yes", "Yes"], ["no", "No"]], own.window === true ? "yes" : own.window === false ? "no" : ["yes", "no"].includes(own.window) ? own.window : "")}</select></div><p class="hint">${sceneOn ? "This scene has Breakable props on." : "Needs Breakable props on in the scene."} Whether this wall is a window that can break. Automatic: yes when its Animater window (below) is glass, leaded, mosaic, rose or frosted. When it breaks it opens: a glass window becomes an open one, shutters stand open. Repair puts it back.</p></div>
       <div class="form-group"><label>Material</label><div class="form-fields"><select name="flags.${ID}.breakWall.windowMaterial"${off(isDoor)}>${options(panes, pane)}</select></div><p class="hint">Glass breaks to most blows, cold, fire and any shove, and a strike made through it, hit or miss, always shatters it. Won't break keeps it whole. A broken window lets sight, light and sound through but still blocks movement.</p></div>
+      ${lockFields({ own, system, disabled: isDoor, kind: "window" })}
     </div>
     ${wallGroupHTML({ own, sceneOn, system, show: isWall })}
   </fieldset>`;

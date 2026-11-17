@@ -1,11 +1,12 @@
-// Powder kegs: what sets one off, what its burst reaches and when, and the GM's whisper. Pure: no Foundry globals.
+// Powder kegs: what sets one off, and what its burst reaches and when. Pure: no Foundry globals.
 // A keg holds black powder (propTraits().contents === "powder"). Fire, electricity or another blast explodes it; any
 // other break spills the powder, which a later fire area can still set off (ignitableInArea). The note of a broken keg
 // keeps `powder` ("spilled" | "exploded") and `burst` (squares, 1-4).
 import { propMaterial } from "./prop-material.mjs";
 import { wallTraits, canBreakWall, wallMid } from "./wall-break.mjs";
 import { projectOnWall } from "./wall-breach.mjs";
-import { onLevel } from "./prop-pick.mjs";
+import { onLevel, propsInArea } from "./prop-pick.mjs";
+import { doorsInArea } from "./wall-triggers.mjs";
 import { BURST_DEFAULT } from "./prop-traits.mjs";
 
 export { BURST_DEFAULT };
@@ -13,7 +14,6 @@ const SETS_OFF = new Set(["fire", "electricity"]);
 const EDGE = 1e-6; // a target exactly on the burst's edge is inside it
 const centreOf = (t) => ({ x: t.x + t.width / 2, y: t.y + t.height / 2 });
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
 export function explodes({ contents, damageType, blast } = {}) {
   return contents === "powder" && (blast === true || SETS_OFF.has(damageType));
@@ -57,17 +57,26 @@ export function blastTargets({ centre, burst = BURST_DEFAULT, grid = 100, tiles 
   return out.sort((a, b) => a.delay - b.delay);
 }
 
-// The names of the tokens {name, x, y, w, h, level} whose centre is in the burst, on its levels.
-export function tokensInBurst(tokens, centre, burst, grid = 100, levels) {
-  return (tokens ?? []).filter((t) => onLevel(t.level, levels) && inBurst({ x: t.x + t.w / 2, y: t.y + t.h / 2 }, centre, burst, grid)).map((t) => t.name);
-}
-
-export function blastWhisper(burst, names = []) {
-  const inside = names.length ? `<p>Inside: ${names.map(esc).join(", ")}.</p>` : "";
-  return `<p><b>Powder keg exploded — ${burst}-square burst.</b></p>${inside}`;
-}
 
 // The broken kegs whose powder spilled and whose centre lies in an area (testPoint): a fire area sets them off.
 export function ignitableInArea(tiles, testPoint) {
   return (tiles ?? []).filter((t) => t?.flags?.animater?.prop?.broken?.powder === "spilled" && testPoint(centreOf(t)) === true);
+}
+
+// An energy blast is not a powder keg. A keg is force and fire and breaks everything it reaches; a blast breaks only
+// what its own energy breaks, by the same material rules a spell's area goes by, so psychic leaves the crates
+// standing and fire takes the rug. Tiles, decorations and doors alike, nearest first, each with the delay its
+// distance earns. Pure: the caller has already narrowed the tiles and decorations to the blast's levels.
+export function energyBlastTargets({ centre, radius = 0, damageType = null, grid = 100, tiles = [], walls = [], decor = [], scene, levels } = {}) {
+  if (!centre || !(radius > 0) || !damageType) return [];
+  const testPoint = (p) => dist(p, centre) <= radius + EDGE;
+  const near = (thing) => blastDelay(dist(centreOf(thing), centre), radius);
+  const out = [
+    ...propsInArea(tiles, testPoint, grid, damageType).map((t) => ({ type: "tile", id: t.id, delay: near(t) })),
+    ...propsInArea(decor, testPoint, grid, damageType).map((v) => ({ type: "decor", id: v.id, delay: near(v) })),
+    ...(doorsInArea(walls, testPoint, scene, damageType, levels, centre) ?? []).map((w) => ({ type: "wall", id: w.id,
+      // a plain wall is breached where the blast meets it, a door or window reached by its middle
+      delay: blastDelay(dist(wallTraits(w, scene).kind === "wall" ? projectOnWall(w.c, centre) : wallMid(w), centre), radius) })),
+  ];
+  return out.sort((a, b) => a.delay - b.delay);
 }

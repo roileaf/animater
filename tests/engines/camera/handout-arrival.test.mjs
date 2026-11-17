@@ -4,12 +4,16 @@ import {
   HANDOUT_ARRIVALS, HANDOUT_MS, HANDOUT_LOOKS,
   handoutAt, handoutHere, handoutMs, handoutPick, handoutSeed,
   handoutHasRod, handoutHasRods, handoutHasDust, handoutDust, handoutLight,
+  handoutHasPins, handoutHasCreases, handoutHasLamp, handoutPins, handoutLampAt, handoutIsWide, handoutSound, handoutSoundAt,
 } from '../../../scripts/engines/camera/handout-arrival.mjs';
 
 test('every look that arrives takes a known time, and off takes none', () => {
   for (const look of HANDOUT_LOOKS) {
     assert.ok(HANDOUT_MS[look] > 0, `${look} lasts`);
-    assert.ok(HANDOUT_MS[look] <= 1500, `${look} is not something anyone waits through`);
+    // Lamplight is the one exception and is meant to be slow: it is somebody walking a lamp across a page, and
+    // hurrying it reads as a flash rather than a light being carried.
+    const most = look === 'lamp' ? 1800 : 1500;
+    assert.ok(HANDOUT_MS[look] <= most, `${look} is not something anyone waits through`);
     assert.ok(HANDOUT_ARRIVALS[look], `${look} is offered by name`);
   }
   assert.equal(handoutMs('off'), 0);
@@ -74,12 +78,19 @@ test('a frame past either end is the frame at that end', () => {
   }
 });
 
-test('the scene speaks first, then the table, then nothing', () => {
-  assert.equal(handoutHere('unroll', 'laid'), 'unroll', 'the scene’s own choice wins');
-  assert.equal(handoutHere(null, 'laid'), 'laid', 'else the table’s');
+test('the page speaks first, then the scene, then the table, then nothing', () => {
+  assert.equal(handoutHere('unroll', 'laid'), 'unroll', 'the narrower choice wins');
+  assert.equal(handoutHere(null, 'laid'), 'laid', 'else the next one out');
   assert.equal(handoutHere(undefined, undefined), 'off', 'and with neither, nothing happens');
   assert.equal(handoutHere('rubbish', 'held'), 'held', 'a flag nobody recognises is not a look');
   assert.equal(handoutHere('off', 'held'), 'off', 'a scene may say plainly that it wants none');
+  // The treasure map is spread open wherever it is shown, whatever this map or this table has chosen.
+  assert.equal(handoutHere('spread', 'unroll', 'laid'), 'spread', 'the page itself has the last word');
+  assert.equal(handoutHere(null, 'unroll', 'laid'), 'unroll', 'a page with no choice leaves it to the scene');
+  assert.equal(handoutHere(null, null, 'laid'), 'laid', 'and a scene with none leaves it to the table');
+  assert.equal(handoutHere('off', 'unroll', 'laid'), 'off', 'one picture may ask to arrive plainly');
+  assert.equal(handoutHere('', null, undefined), 'off');
+  assert.equal(handoutHere(), 'off', 'asked nothing, it does nothing');
 });
 
 test('whichever suits it picks one look, the same one for the same handout', () => {
@@ -170,4 +181,97 @@ test('nonsense asked of the light is daylight, not a crash', () => {
   const bad = handoutLight({ darkness: NaN, weather: null, underground: undefined, lit: undefined });
   assert.ok(Number.isFinite(bad.warm) && Number.isFinite(bad.paper));
   assert.equal(handoutLight().wet, false);
+});
+
+test('a page pinned up swings in from the side and hangs where it was put', () => {
+  const start = handoutAt('pinned', 0);
+  assert.ok(start.dx < -1, 'it starts off the screen to the left');
+  assert.ok(start.rot < -10, 'and at an angle, as it would be in somebody\'s hand');
+  const end = handoutAt('pinned', 1);
+  assert.equal(end.dx, 0);
+  assert.equal(end.dy, 0);
+  assert.equal(end.rot, 0, 'and comes to rest square, not left hanging crooked');
+  // It swings both ways before it stops: a pendulum, not a slide into place.
+  const turns = [];
+  let was = handoutAt('pinned', 0.5).rot;
+  for (let i = 51; i <= 100; i++) {
+    const now = handoutAt('pinned', i / 100).rot;
+    if ((now > was && turns.at(-1) !== 'up') || (now < was && turns.at(-1) !== 'down')) turns.push(now > was ? 'up' : 'down');
+    was = now;
+  }
+  assert.ok(turns.length >= 2, 'it swings past square more than once');
+});
+
+test('the pins go in as it catches, not while it is still crossing the room', () => {
+  assert.equal(handoutPins('pinned', 0), 0);
+  assert.equal(handoutPins('pinned', 0.3), 0, 'nothing holds it while it is still on its way');
+  assert.ok(handoutPins('pinned', 0.52) > 0, 'they are tapped in as it catches');
+  assert.equal(handoutPins('pinned', 1), 1);
+  for (const look of HANDOUT_LOOKS) if (look !== 'pinned') assert.equal(handoutPins(look, 0.7), 0, look);
+});
+
+test('a lamp is carried across a page lying in the dark, at an even pace', () => {
+  assert.equal(handoutLampAt('laid', 0.5).strength, 0, 'no other look has a lamp');
+  const start = handoutLampAt('lamp', 0);
+  assert.ok(start.x < 0, 'it comes from off the page');
+  const mid = handoutLampAt('lamp', 0.5);
+  assert.ok(mid.x > 0.2 && mid.x < 0.6, 'and is over the middle of the page halfway through, not already past it');
+  assert.ok(handoutLampAt('lamp', 1).x > 1, 'and has gone past the far edge by the end');
+  // Never backwards: a light being carried only goes one way.
+  let was = -Infinity;
+  for (let i = 0; i <= 100; i++) {
+    const now = handoutLampAt('lamp', i / 100).x;
+    assert.ok(now >= was, `at ${i}`);
+    was = now;
+  }
+});
+
+test('the paper comes out of the dark as the lamp passes, and every other look is simply lit', () => {
+  assert.ok(handoutAt('lamp', 0).bright < 0.25, 'it starts nearly black');
+  assert.ok(handoutAt('lamp', 0.5).bright > handoutAt('lamp', 0.2).bright, 'and keeps coming up');
+  assert.ok(handoutAt('lamp', 1).bright > 0.9, 'and is readable by the end');
+  for (const look of HANDOUT_LOOKS) if (look !== 'lamp') {
+    assert.equal(handoutAt(look, 0.4).bright, 1, `${look} is lit by the scene, not by this`);
+  }
+});
+
+test('only the looks that want extras get them, and a map is the only wide one', () => {
+  for (const look of HANDOUT_LOOKS) {
+    assert.equal(handoutHasPins(look), look === 'pinned', look);
+    assert.equal(handoutHasCreases(look), look === 'unfold', look);
+    assert.equal(handoutHasLamp(look), look === 'lamp', look);
+    assert.equal(handoutIsWide(look), look === 'spread', look);
+  }
+  assert.equal(handoutHasPins('off'), false);
+  assert.equal(handoutIsWide('nonsense'), false);
+});
+
+test('a handout is heard as whatever this build actually ships for its look', () => {
+  const names = ['unfold-234886.ogg', 'unroll-112579.ogg', 'unroll-753282.ogg', 'spread-447931.ogg', 'spread-447932.ogg'];
+  assert.equal(handoutSound('unfold', names, 0.1), 'unfold-234886.ogg');
+  assert.equal(handoutSound('off', names, 0.1), null, 'a handout that does not arrive makes no sound');
+  assert.equal(handoutSound('laid', names, 0.1), null, 'nor does a look with nothing shipped for it yet');
+  assert.equal(handoutSound('unfold', [], 0.1), null, 'nor one with nothing shipped at all');
+  // One page sounds the same on every screen: same seed, same take.
+  for (const seed of [0, 0.2, 0.49, 0.5, 0.99]) {
+    assert.equal(handoutSound('unroll', names, seed), handoutSound('unroll', names, seed));
+  }
+  // Both takes of a look are reachable, and nothing else leaks in.
+  const takes = new Set([...Array(50).keys()].map((i) => handoutSound('unroll', names, i / 50)));
+  assert.deepEqual([...takes].sort(), ['unroll-112579.ogg', 'unroll-753282.ogg']);
+  for (const seed of [0.05, 0.4, 0.95]) assert.ok(handoutSound('spread', names, seed).startsWith('spread-'), 'spread keeps to its own');
+});
+
+test('a sound that belongs to a moment waits for it, and the rest start with the movement', () => {
+  // The pin tap is a tenth of a second long; played on the first frame it lands half a second before the page
+  // reaches the wall, which reads as broken without anyone being able to say why.
+  assert.ok(handoutSoundAt('pinned') > 0.4, 'the tap waits for the pins');
+  assert.ok(Math.abs(handoutSoundAt('pinned') - 0.46) < 0.01, 'and goes in when they do (handoutPins)');
+  assert.ok(handoutPins('pinned', handoutSoundAt('pinned')) >= 0, 'the two agree on when that is');
+  assert.ok(handoutSoundAt('laid') > 0, 'a page laid down is silent until it touches');
+  assert.ok(handoutDust('laid', handoutSoundAt('laid') + 0.05) > 0, 'which is when the dust comes up');
+  for (const look of ['unfold', 'unroll', 'spread', 'held', 'blown', 'lamp']) {
+    assert.equal(handoutSoundAt(look), 0, `${look} is already making its sound on the first frame`);
+  }
+  assert.equal(handoutSoundAt('off'), 0);
 });

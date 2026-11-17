@@ -43,9 +43,10 @@ test("a key is held from the GM's check until its region write lands (D5)", () =
   assert.match(apply, /queued: queuedDecorKeys\(regionDoc\.id\)/);
   // the hold lasts until the coalesced write resolves
   assert.ok(apply.indexOf("await queueDecorWrite(") > 0 && apply.indexOf("await queueDecorWrite(") < apply.indexOf("finally"));
-  // the rubble and whisper come only after the GM's check, the whisper only once the write landed
+  // the rubble comes only after the GM's check; there is nothing else to order, because the whisper that used to
+  // follow the write is gone, at Roi's word: "remove the gm whisper chat messages for such stuff"
   assert.ok(apply.indexOf("makeRubbleRegion(") > apply.indexOf("validDecorBreakRequest("));
-  assert.ok(apply.indexOf("whisperTopple(") > apply.indexOf("await queueDecorWrite("));
+  assert.ok(!apply.includes("whisperTopple("), "a toppled decoration says nothing in chat");
   assert.match(main, /const decorQueue = createDecorQueue\(/);
   assert.match(main, /const queuedDecorKeys = \(regionId\) => decorQueue\.keys\(regionId\)/);
 });

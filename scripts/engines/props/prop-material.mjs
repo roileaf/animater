@@ -75,3 +75,11 @@ export function canBreak(material, cause = {}, { cuttable = false, rule = null }
   if (!BREAKING.has(damageType)) return false;
   return BROKEN_BY[material] ? BROKEN_BY[material].has(damageType) : true;
 }
+
+// What breaks this, for a GM who simply says "break it" (pure): the first ordinary damage its material yields to, so
+// the wreck looks like something that could really have done it — a crate splinters, a statue is shattered by force, a
+// bush burns. Null for what no ordinary damage touches; the GM's own tools can still break that.
+const BY_HAND = ["bludgeoning", "slashing", "force", "fire", "acid"];
+export function handBreaker(material, traits = {}) {
+  return BY_HAND.find((damageType) => canBreak(material, { damageType }, traits)) ?? null;
+}

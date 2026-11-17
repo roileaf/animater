@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { MATERIALS, nameTokens, guessMaterial, propMaterial, propShape, canBreak, MAX_SIDE } from "../../../scripts/engines/props/prop-material.mjs";
+import { handBreaker, MATERIALS, nameTokens, guessMaterial, propMaterial, propShape, canBreak, MAX_SIDE } from "../../../scripts/engines/props/prop-material.mjs";
 import { propGuesses } from "../../../scripts/engines/props/prop-traits.mjs";
 
 test("material is guessed from the file name only, by name tokens", () => {
@@ -104,4 +104,16 @@ test("plants: every other cause, blasts, and the size limit stays 3 for everythi
   assert.equal(guessMaterial("bw_spiderweb_204.webp"), "plant");
   assert.equal(propGuesses("bw_spiderweb_204.webp").cuttable, true);
   assert.equal(guessMaterial("bw_plant_bush_green_201.webp"), "plant");
+});
+
+test("what a GM's plain 'break it' uses: the first ordinary damage the material yields to", () => {
+  assert.equal(handBreaker("wood"), "bludgeoning");
+  assert.equal(handBreaker("glass"), "bludgeoning");
+  assert.equal(handBreaker("clay"), "bludgeoning");
+  assert.equal(handBreaker("metal"), "bludgeoning");
+  assert.equal(handBreaker("stone"), "force", "nothing lesser marks stone");
+  assert.equal(handBreaker("plant"), "fire", "a bush is burned, not hit");
+  assert.equal(handBreaker("plant", { cuttable: true }), "slashing", "a web or a vine is cut");
+  assert.equal(handBreaker("none"), null, "and what will not break is left alone");
+  assert.equal(handBreaker("nonsense"), null);
 });

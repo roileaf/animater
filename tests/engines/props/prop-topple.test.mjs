@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { propGuesses, propTraits, breakStyle } from "../../../scripts/engines/props/prop-traits.mjs";
 import { guessMaterial } from "../../../scripts/engines/props/prop-material.mjs";
-import { toppleStrip, stripPolygon, rubbleRegionData, tokensUnderStrip, toppleWhisper, toppleLayout, TOPPLE_MS, TOPPLE_REACH } from "../../../scripts/engines/props/prop-topple.mjs";
+import { toppleStrip, stripPolygon, rubbleRegionData, toppleLayout, TOPPLE_MS, TOPPLE_REACH } from "../../../scripts/engines/props/prop-topple.mjs";
 import { propSound, BREAK_SOUNDS, TOPPLE_SOUNDS } from "../../../scripts/engines/props/prop-sounds.mjs";
 import { flatMark } from "../../../scripts/engines/props/prop-wreck-layout.mjs";
 import { validBreakRequest, breakNoteFor, undoUpdates, repairUpdates } from "../../../scripts/engines/props/prop-requests.mjs";
@@ -47,19 +47,6 @@ test("rubble: the tile's choice beats the scene's", () => {
   assert.equal(propTraits(t(""), 100, off).rubble, false);
   assert.equal(propTraits(t("yes"), 100, off).rubble, true);
   assert.equal(propTraits(t("no"), 100, on).rubble, false);
-});
-test("whisper names who is under it; nobody, no whisper", () => {
-  const s = strip();
-  const tk = (name, x, y, level) => ({ name, x, y, w: 100, h: 100, level });
-  assert.deepEqual(tokensUnderStrip([tk("Kyra", 350, 250), tk("Far", 900, 900)], s), ["Kyra"]);
-  // a token that only touches the strip's edge is not under it; one that overlaps a corner is
-  assert.deepEqual(tokensUnderStrip([tk("Edge", 525, 250), tk("Corner", 400, 320)], s), ["Corner"]);
-  // another level is not under it
-  assert.deepEqual(tokensUnderStrip([tk("Up", 350, 250, "l2"), tk("Here", 350, 250, "l1")], s, ["l1"]), ["Here"]);
-  assert.equal(toppleWhisper("Statue", []), "");
-  const html = toppleWhisper("Statue <b>", ["Kyra", "A&B"]);
-  assert.match(html, /Statue &lt;b&gt;/);
-  assert.match(html, /Kyra, A&amp;B/);
 });
 
 // --- GM validation, notes, undo and Repair ---
