@@ -1,5 +1,23 @@
 # Changelog
 
+## 4.5.0
+
+Handouts arrive on the table instead of in a window, blasts break what they catch, and a lock can be picked.
+
+- **A handout takes the screen.** Showing a page used to open a grey window over the map, with a title bar, a close button and the sidebar behind it — a thing the interface did, not a thing anybody handed anyone. Now the room goes dark and the page arrives at the size of something held in front of you, in one of eight ways: a letter unfolding along its creases, a scroll running open, a map pulled apart with a rod to each side, a page laid on the table knocking up dust, one held up and swaying, one blown in on the wind, one pinned up and left swinging, or one already lying in the dark with a lamp carried across it. A click or Escape puts it down. Each page, each journal and each scene can choose its own, and there is a button on the journal's own window to say which.
+
+- **It keeps the look its system gives it.** A page that your system or a module dresses — Kingmaker's parchment and illuminated capitals, say — arrives wearing exactly that, not plain text on plain paper. Nothing of it is hard-coded: whatever a journal stylesheet does, the handout does too.
+
+- **And it is heard.** Seven of the eight have a sound of their own, cut from CC0 recordings: paper unfolding, a scroll running out, a map pulled open, a pin tapped in, a lamp set down beside it. The pin waits for the pins to actually go in rather than sounding as the page is still crossing the room.
+
+- **Energy blasts break what they catch.** A blast now breaks the props, decorations, doors and windows its own energy would break, by the same rules a spell's area already goes by: fire burns a bush to ash and sets off a powder keg, force shatters stone, psychic leaves everything standing. It can be turned off for the table.
+
+- **A prop can be broken by hand.** A tile's own heads-up display has a hammer to break the prop where it stands, and an arrow to put it back.
+
+- **Locks can be picked.** A locked door offers it beside Force it open and Attack the door; a locked window, which until now could only be rattled at, offers it too. Each lock has a quality — poor through superior — that sets what it takes, and you can set a DC of your own. In Pathfinder 2e it follows the real rules: several successes for a better lock, a critical success worth two of them, a critical failure that breaks your picks, and progress that is never taken back. D&D 5e goes by its own difficulties and rolls thieves' tools; other systems get one roll and keep their picks.
+
+- **Less chatter.** The whispers announcing that a powder keg went off or a statue fell are gone. You can see the burst.
+
 ## 4.4.4
 
 Moments can be heard, and their dashboard is laid out properly.
