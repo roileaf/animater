@@ -171,3 +171,20 @@ test('verified fixture stages precisely the reviewed runtime closure and license
   assert.ok(!(await readdir(stage)).includes('publication'));
   await assert.rejects(stageRelease(root), /dist already exists/);
 });
+
+test('a CSS fragment reference is not mistaken for a file', async (t) => {
+  // An inline SVG points at its own filter with url(%23n), and ordinary CSS does it with filter: url(#n). Both were
+  // read as filenames, so the audit went looking for a file called "#n" and the whole run died on ENOENT before it
+  // could report anything at all.
+  const { root } = await fixture(t);
+  await writeFile(path.join(root, 'styles/grain.png'), 'fixture');
+  await writeFile(path.join(root, 'styles/test.css'), [
+    'div { filter: url(#noise); }',
+    `i { background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence/></filter><rect filter='url(%23n)'/></svg>"); }`,
+    'b { background: url("./grain.png"); }',
+  ].join('\n'));
+  const inventory = await runtimeInventory(root, ['LICENSE.txt']);
+  const paths = inventory.files.map((f) => f.path);
+  assert.ok(paths.includes('styles/grain.png'), 'a real file beside it is still followed');
+  assert.ok(!paths.some((p) => /#|%23/.test(p)), 'and nothing is looked for by the name of a fragment');
+});

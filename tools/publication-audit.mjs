@@ -114,6 +114,10 @@ export async function runtimeInventory(root = MODULE_ROOT, extras = []) {
       if (/\.css$/.test(relative)) {
         for (const match of source.matchAll(/(?:url\(\s*["']?([^)'"\s]+)|@import\s+["']([^"']+))/g)) {
           const reference = match[1] ?? match[2];
+          // A reference that is only a fragment names something inside the document, never a file: `filter: url(#n)`
+          // and the same written `url(%23n)` inside a data URI, which is how an inline SVG points at its own filter.
+          // Taken for a filename it sends the whole audit looking for a file called "#n" and the run dies there.
+          if (/^(?:#|%23)/i.test(reference)) continue;
           if (reference.startsWith('/modules/animater/')) pending.push(reference.slice('/modules/animater/'.length).split(/[?#]/)[0]);
           else if (/^(?:data:|https?:|\/)/.test(reference)) externalReferences.add(reference);
           else pending.push(slash(path.relative(root, path.resolve(path.dirname(filename), reference.split(/[?#]/)[0]))));
