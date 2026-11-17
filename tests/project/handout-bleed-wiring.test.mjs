@@ -322,3 +322,34 @@ test('a handout put down before its moment never taps over an empty map', () => 
   assert.ok(block.includes('for (const t of handoutStageSounds) clearTimeout(t);'), 'and putting it down cancels what has not played');
   assert.ok(block.includes('handoutStageSounds.clear();'));
 });
+
+test('a page keeps the look its own system gives it', () => {
+  // Roi, of a Kingmaker charter arriving as plain serif on plain paper: "can handouts keep their styling?"
+  // The parchment is painted by the module on .journal-entry-content, under the sheet's own classes. Put those
+  // classes back around a copy and it comes along, with nothing here knowing the module exists.
+  const at = main.indexOf('const handoutDressedArt = (root) => {');
+  assert.ok(at > 0, 'the page can be taken dressed');
+  const block = main.slice(at, main.indexOf('\r\n};', at) + 3);
+  assert.ok(block.includes('String(root.className ?? "")'), "the sheet's own classes go on the wrapper");
+  assert.ok(block.includes('document.createElement(content.tagName)'), 'and the same kind of element, not only the class');
+  assert.ok(block.includes('article.cloneNode(true)'), 'a copy, because the sheet underneath is still live');
+  assert.ok(!block.includes('content.cloneNode'), 'and only the one page, not the whole journal behind it');
+  assert.ok(block.includes('"button, .reveal'), "a GM's own controls do not come with it");
+  assert.match(main, /const art = handoutDressedArt\(root\) \?\? await handoutArtOfPage\(page\);/,
+    'a page with its own look wears it; anything else falls back to our paper');
+  assert.match(main, /if \(art\?\.kind === "dressed"\) sheet\.classList\.add\("animater-ho-dressed"\);/);
+});
+
+test('our own paper stands aside for a page that brings its own', () => {
+  // Parchment sitting on paper is one surface too many.
+  assert.ok(css.includes('.animater-handout-sheet.animater-ho-dressed'), 'the paper is dressed down');
+  const at = css.indexOf('.animater-handout-sheet.animater-ho-dressed');
+  const block = css.slice(at, css.indexOf('}', at));
+  assert.match(block, /background: none/);
+  assert.match(block, /padding: 0/);
+  // The sheet's classes drag Foundry's own window rules in with them, which have to be undone.
+  const art = css.slice(css.indexOf('.animater-handout-art.animater-handout-dressed {'));
+  assert.match(art.slice(0, 400), /position: static/);
+  // A module may put its controls back after the copy is made, so they are kept out of the picture here too.
+  assert.ok(css.includes('.animater-handout-art.animater-handout-dressed button'), 'late controls stay hidden');
+});

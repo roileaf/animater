@@ -18271,8 +18271,45 @@ const handoutStageDown = (immediate = false) => {
 const handoutStageKey = (event) => { if (event?.key === "Escape" && handoutStage) { event.preventDefault(); handoutStageDown(); } };
 try { globalThis.document?.addEventListener?.("keydown", handoutStageKey, true); } catch { /* no document, no handouts */ }
 
+// The page dressed as its own system dresses it: the sheet's classes on a wrapper, with a copy of the sheet's
+// content underneath them. Every journal stylesheet is written against that chain — Kingmaker paints its parchment
+// on .journal-entry-content under .pf2e-km, a system sets its fonts the same way — so the look comes along without
+// this knowing anything about any of them. Roi, seeing a Kingmaker charter arrive as plain serif on plain paper:
+// "can handouts keep their styling?"
+// It is a copy, not the page itself: the sheet underneath is still live, and taking its children would leave it
+// holding nothing. A copy is read, not used, which is what a handout is.
+const handoutDressedArt = (root) => {
+  try {
+    const content = root?.querySelector?.(".journal-entry-content");
+    const article = root?.querySelector?.("article.journal-entry-page");
+    if (!content || !article) return null;
+    // The chain is rebuilt around the one page rather than copied whole: the real content also holds the journal's
+    // own banner across the top, and in a journal read as one scroll it holds every other page besides. A handout
+    // is one page, with nothing of the journal it happens to live in.
+    // Built of the same kind of element, not merely the same classes: a stylesheet may ask for section.journal-entry-
+    // content, and a div wearing the class gets Foundry's plain parchment instead of the one the module paints.
+    const pagesEl = article.parentElement;
+    const outer = document.createElement(content.tagName);
+    outer.className = content.className;
+    const inner = document.createElement(pagesEl?.tagName ?? "div");
+    inner.className = pagesEl?.className ?? "journal-entry-pages";
+    const copy = article.cloneNode(true);
+    // Nothing that acts on it comes along: the pencil belongs to the GM's own sheet, and a module's own "Reveal"
+    // control is for the GM reading the journal, not for the table being handed the page.
+    for (const gone of copy.querySelectorAll("button, .reveal, .edit-container, .editor-edit, .journal-page-edit")) gone.remove();
+    inner.append(copy);
+    outer.append(inner);
+    return { kind: "dressed", node: outer, sheetClasses: String(root.className ?? "") };
+  } catch { return null; }
+};
 // What is on the paper: the handout's own picture, or a page of words set in a column to be read.
 const handoutArtEl = (art) => {
+  if (art?.kind === "dressed") {
+    const wrap = document.createElement("div");
+    wrap.className = `${art.sheetClasses} animater-handout-art animater-handout-dressed`;
+    wrap.append(art.node);
+    return wrap;
+  }
   if (art?.kind === "image") {
     const img = document.createElement("img");
     img.className = "animater-handout-art";
@@ -18310,6 +18347,8 @@ const handoutShow = ({ app, root, chosen, seedText, art, caption }) => {
     const sheet = document.createElement("div");
     sheet.className = `animater-handout-sheet animater-ho-${look}`;
     if (handoutIsWide(look)) sheet.classList.add("animater-ho-wide");
+    // A page that brings its own look wears it: my paper stands aside rather than sitting under its parchment.
+    if (art?.kind === "dressed") sheet.classList.add("animater-ho-dressed");
     sheet.append(handoutArtEl(art));
     if (caption) {
       const cap = handoutAdd(sheet, "animater-handout-cap");
@@ -18499,7 +18538,8 @@ Hooks.on("renderJournalEntrySheet", (app, element) => {
   // Reading the page may have to wait (its links are filled in first), so the window is hidden at once and the
   // stage takes its place when the paper is ready. Without that the sheet would be seen for a frame or two first.
   void (async () => {
-    const art = await handoutArtOfPage(page);
+    // The page as its system drew it, when the sheet has drawn one; else its picture or its words on our own paper.
+    const art = handoutDressedArt(root) ?? await handoutArtOfPage(page);
     if (!art) return;
     handoutShow({ app, root, chosen, seedText: page?.uuid ?? entry?.uuid ?? entry?.name ?? "",
       art, caption: page?.name && page.type === "image" ? page.name : "" });

@@ -4869,6 +4869,45 @@ body.animater-aiming #board {
   transition: opacity 250ms ease, transform 250ms ease;
 }
 
+/* A page that brings its own look. The wrapper carries the sheet's own classes so the system's journal stylesheet
+   applies to the copy underneath (Kingmaker's parchment, a system's fonts); those classes also drag in Foundry's own
+   window rules, which are undone here so it sits on the stage instead of floating like a window. My paper steps
+   aside entirely: parchment on paper is one surface too many. */
+.animater-handout-sheet.animater-ho-dressed {
+  padding: 0;
+  background: none;
+  box-shadow: 0 26px 50px rgba(0, 0, 0, 0.62);
+}
+.animater-handout-art.animater-handout-dressed {
+  position: static;
+  display: block;
+  inset: auto;
+  width: min(74vw, 1000px);
+  max-width: none;
+  max-height: 84vh;
+  overflow: auto;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  transform: none;
+  pointer-events: auto;
+}
+/* A module that dresses journals may put its own controls back on the page after it has been copied (Kingmaker adds
+   a GM's "Reveal" button). Stripping them once is not enough, so they are kept out of the picture here as well. */
+.animater-handout-art.animater-handout-dressed button,
+.animater-handout-art.animater-handout-dressed .reveal,
+.animater-handout-art.animater-handout-dressed .edit-container {
+  display: none !important;
+}
+/* The page inside it is as tall as it needs to be: on a sheet it fills a window, here it is a sheet of paper. */
+.animater-handout-art.animater-handout-dressed .journal-entry-content,
+.animater-handout-art.animater-handout-dressed .journal-entry-pages {
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+}
+
 /* ---------------------------------------------------------------------------------------------------------------
    The interface bleeds (scripts/engines/camera/interface-bleed.mjs).
    One layer over the whole window, never catching a click. What the canvas already does to itself at low health,
