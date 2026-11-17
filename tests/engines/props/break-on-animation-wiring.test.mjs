@@ -56,21 +56,27 @@ test("claims are held only while the GM may still write the break, so a refused 
   assert.ok(t.includes("askClaimed({ ask, written, release: () => propAreas.release(areaUuid, claimId), wait: CLAIM_SETTLE_MS })"));
   assert.doesNotMatch(t, /void ask(Prop|Wall|Decor)\(/);
   assert.ok(t.includes("flagsOf(scene.tiles.get(thing.id))?.prop?.broken"));
-  assert.ok(t.includes("flagsOf(scene.walls?.get(thing.id))?.breakWall?.broken"));
+  // A door the GM wore down rather than broke was written too, so its HP moving counts as done (wearWall).
+  assert.ok(t.includes("return !!own?.broken || own?.hp !== hpWas.get(thing.id);"));
   assert.ok(t.includes("decorBroken ?? []).some((e) => e?.key === thing.decor?.key)"));
   assert.ok(t.includes('prop?.broken?.powder !== "spilled"'));
 });
 
 test("a spell with no damage type on its item breaks from its roll only, the GM reading that roll itself", () => {
   const b = body("breakAreaProps");
-  assert.ok(b.includes("const types = spell.length ? rolled.filter((t) => spell.includes(t)) : rolled, named = spell.length ? {} : { messageId: message.id }"));
+  assert.ok(b.includes("const types = spell.length ? rolled.filter((t) => spell.includes(t)) : rolled;"));
+  // The roll is always named: a spell that names its own types still takes only those (areaPlaceTypes prefers the
+  // spell's), but the GM needs the message to read what the roll came to when spells wear doors down.
+  assert.ok(b.includes("const named = { messageId: message.id };"));
   assert.ok(b.includes("breakAreaThings(propAreas.get(area.templateId) ?? area, types, named)"));
   // the animation path passes the item's types only: with none, nothing breaks until the roll
   assert.ok(body("breakAreaOnPlay").includes("breakAreaThings(now, now.damageTypes ?? [])"));
   const g = body("areaPlaceTypes");
-  assert.ok(g.includes('if (own.length || typeof cause?.messageId !== "string") return own;'));
-  assert.ok(g.includes("game.messages?.get(cause.messageId)"));
-  assert.ok(g.includes("rollDamageTypes(summary, { itemUuid, actorUuid, sender: { id: user?.id, isGM: user?.isGM === true }, now })"));
+  assert.ok(g.includes("return own.length ? own : areaPlaceRoll(doc, cause, user, now).types;"), "the spell's own types come first");
+  const r = body("areaPlaceRoll");
+  assert.ok(r.includes('if (typeof cause?.messageId !== "string") return { types: [], total: 0 };'));
+  assert.ok(r.includes("game.messages?.get(cause.messageId)"));
+  assert.ok(r.includes("rollDamageTypes(summary, { itemUuid, actorUuid, sender: { id: user?.id, isGM: user?.isGM === true }, now })"));
 });
 
 test("a fire area melts the thin ice it covers, asked of the GM once for the area", () => {

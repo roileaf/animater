@@ -216,6 +216,47 @@ test("door fieldset (PF2e): AC, Hardness, HP and Broken Threshold, blank = Autom
   assert.match(wallBreakFieldsHTML({ door: 1, system: "pf2e", own: { hp: 7 } }), /7 of 20 HP left/);
   assert.doesNotMatch(html, /HP left/);
 });
+test("one Spells break it for the whole wall, whichever kind it is", () => {
+  // It belongs to a door, a window and a plain wall alike, so it sits outside both groups: one field of that name on
+  // the form, never two to merge back into one on save the way the materials have to be.
+  for (const args of [{ door: 1 }, { door: 0 }, { door: 0, windowWall: true }]) {
+    const html = wallBreakFieldsHTML({ system: "pf2e", own: {}, ...args });
+    assert.equal(html.split('breakWall.spells"').length - 1, 1, "exactly one of it");
+    assert.doesNotMatch(html, /breakWall\.spells"[^>]*disabled/, "and it is never the disabled half of a pair");
+    assert.match(html, /<option value="yes" selected>Yes</, "spells break it unless the GM says otherwise");
+  }
+  assert.match(wallBreakFieldsHTML({ door: 1, system: "pf2e", own: { spells: "no" } }), /breakWall\.spells"[^>]*>[\s\S]*?<option value="no" selected>No</);
+  // It stands after all three groups, so a window's form shows it as plainly as a door's.
+  const one = wallBreakFieldsHTML({ door: 1, system: "pf2e", own: {} });
+  assert.ok(one.indexOf('breakWall.spells"') > one.indexOf('data-group="wall"'), "below the groups, belonging to none");
+});
+
+test("one wall carries its own Repair, and only when there is something to put back", () => {
+  const button = (own) => wallBreakFieldsHTML({ door: 1, system: "pf2e", own }).includes('data-action="animater-repair-wall"');
+  assert.equal(button({}), false, "an intact door is offered nothing to do");
+  assert.equal(button({ lock: "good" }), false);
+  assert.equal(button({ broken: { seed: 1 } }), true);
+  assert.equal(button({ hp: 7 }), true, "a door that took damage and is still standing");
+  assert.equal(button({ breachOf: "w1" }), true, "and a breach's other piece");
+  // It says which of the three it is, so the GM knows what they are about to put back.
+  assert.match(wallBreakFieldsHTML({ door: 1, system: "pf2e", own: { broken: { seed: 1 } } }), /This one is broken\./);
+  assert.match(wallBreakFieldsHTML({ door: 1, system: "pf2e", own: { hp: 7 } }), /taken damage and is still standing/);
+  assert.match(wallBreakFieldsHTML({ door: 0, system: "pf2e", own: { breachOf: "w1" } }), /one of the two pieces a breach left/);
+  // Its own wall and nothing else: that is the whole reason it is not the scene's Repair button.
+  assert.match(wallBreakFieldsHTML({ door: 1, system: "pf2e", own: { broken: { seed: 1 } } }), /leaves everything else on the scene exactly where it is/);
+});
+
+test("a lock takes as many ways in as the GM says", () => {
+  const html = wallBreakFieldsHTML({ door: 1, system: "pf2e", own: {} });
+  assert.match(html, /breakWall\.lockSuccesses" min="1" max="20"[^>]*placeholder="Automatic \(4\)"/, "an average PF2e lock takes four");
+  assert.match(wallBreakFieldsHTML({ door: 1, system: "pf2e", own: { lockSuccesses: 8 } }), /breakWall\.lockSuccesses"[^>]*value="8"/);
+  // Outside PF2e the automatic number is one, and the field is still there: the GM may want a stubborn lock anywhere.
+  assert.match(wallBreakFieldsHTML({ door: 1, system: "dnd5e", own: {} }), /breakWall\.lockSuccesses"[^>]*placeholder="Automatic \(1\)"/);
+  assert.match(wallBreakFieldsHTML({ door: 1, system: "draw-steel", own: {} }), /breakWall\.lockSuccesses"/);
+  // A system with no lockpicking at all is offered none of it.
+  assert.doesNotMatch(wallBreakFieldsHTML({ door: 1, system: "swade", own: {} }), /breakWall\.lockSuccesses"/);
+});
+
 test("door fieldset: no attack stats outside PF2e", () => {
   for (const sys of ["dnd5e", "sf2e", "daggerheart", "draw-steel", undefined]) assert.doesNotMatch(wallBreakFieldsHTML({ door: 1, system: sys }), /breakWall\.(ac|hardness|maxHp|bt)"/);
 });

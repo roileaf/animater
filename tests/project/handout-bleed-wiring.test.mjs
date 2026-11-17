@@ -148,7 +148,7 @@ test('an arrival lands even on a screen that is drawing no frames', () => {
 test('one arrival serves both, rather than two that drift apart', () => {
   assert.match(main, /const handoutShow = \(\{ app, root, chosen, seedText, art, caption \}\) => \{/);
   assert.match(main, /chosen: handoutLookNow\(app\), seedText: String\(src\)/, 'a picture');
-  assert.match(main, /art, caption: page\?\.name && page\.type === "image" \? page\.name : "" \}\);/, 'and a journal page');
+  assert.match(main, /art, caption: page\?\.name && page\.type === "image" \? page\.name : "" \}\)/, 'and a journal page');
 });
 
 test('what is laid on the paper is the handout itself, and a kind with nothing to lay keeps its window', () => {
@@ -274,7 +274,7 @@ test('a GM says how a handout arrives from where the journal is read, not only f
 });
 
 test('the button asks about the page in front of the GM and about the journal behind it', () => {
-  const at = main.indexOf('const handoutAsk = async (entry, page)');
+  const at = main.indexOf('const handoutAsk = async (entry, page');
   assert.ok(at > 0, 'there is something to ask');
   const block = main.slice(at, main.indexOf('\r\n};', at) + 3);
   assert.ok(block.includes('handoutRow("page"'), 'the page in front of them');
@@ -352,4 +352,29 @@ test('our own paper stands aside for a page that brings its own', () => {
   assert.match(art.slice(0, 400), /position: static/);
   // A module may put its controls back after the copy is made, so they are kept out of the picture here too.
   assert.ok(css.includes('.animater-handout-art.animater-handout-dressed button'), 'late controls stay hidden');
+});
+
+test('a GM can see an arrival before the table does, and it is the same arrival', () => {
+  // One call plays it, and both the real showing and the preview go through it: a preview built its own way would be
+  // a demonstration of itself rather than of what the players will get.
+  assert.match(main, /const handoutPlay = async \(\{ app, root, page, entry, chosen \}\) => \{/);
+  const play = main.indexOf('const handoutPlay = async ({');
+  assert.ok(play > 0);
+  assert.match(main.slice(play, play + 600), /handoutDressedArt\(root\) \?\? await handoutArtOfPage\(page\)/,
+    'the preview is of the page as its own system drew it, exactly as the showing is');
+  const shown = main.indexOf('Hooks.on("renderJournalEntrySheet"');
+  assert.match(main.slice(shown, shown + 1200), /void handoutPlay\(\{ app, root, page, entry, chosen \}\)/,
+    'the showing calls it too');
+
+  // The button that asks how a handout arrives is also where it is tried, and Preview leaves the dialog standing.
+  const ask = main.indexOf('const handoutAsk = async (entry, page');
+  assert.ok(ask > 0);
+  const block = main.slice(ask, ask + 2400);
+  assert.match(block, /action: "preview"/, 'the dialog has a Preview of its own');
+  assert.match(block, /if \(said\.preview !== true\) break;/, 'and asks again afterwards, so a look can be tried twice');
+  assert.match(block, /handoutHere\(chose\.page, chose\.entry/,
+    'it plays what the choices in the form would do, unsaved ones included');
+  // Nothing of a preview reaches another screen: it is the GM looking at their own handout.
+  assert.ok(!/emit\(|socket/.test(block), 'a preview is not sent anywhere');
+  assert.match(main, /void handoutAsk\(entry, pageNow\(\), \{ app, root \}\)/, 'the open sheet is what it previews from');
 });

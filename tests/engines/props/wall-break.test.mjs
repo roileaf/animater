@@ -1,19 +1,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { wallTraits, canBreakWall, wallMid, crossesWall, wallNote, readWallNote, wallBreakUpdate, wallRestoreUpdate, wallRepairUpdates } from "../../../scripts/engines/props/wall-break.mjs";
+import { wallTraits, canBreakWall, spellsBreak, wallMid, crossesWall, wallNote, readWallNote, wallBreakUpdate, wallRestoreUpdate, wallRepairUpdates } from "../../../scripts/engines/props/wall-break.mjs";
 
 const scene = (f = {}) => ({ id: "s", flags: { animater: { breakableProps: true, ...f } } });
 const wall = (extra = {}) => ({ id: "d1", c: [300, 200, 400, 200], door: 1, ds: 0, move: 20, sight: 20, light: 20, sound: 20, levels: [], flags: {}, ...extra });
 const own = (o) => ({ flags: { animater: { breakWall: o } } });
 
 test("any door on a breakable scene is a wood door unless the GM says otherwise", () => {
-  assert.deepEqual(wallTraits(wall(), scene()), { kind: "door", material: "wood", forceOpen: true, forceDC: null });
+  assert.deepEqual(wallTraits(wall(), scene()), { kind: "door", material: "wood", forceOpen: true, forceDC: null, spells: true });
   assert.equal(wallTraits(wall({ door: 2 }), scene()).kind, "door");
   assert.equal(wallTraits(wall({ door: 0 }), scene()).kind, null);
   assert.equal(wallTraits(wall(), { id: "s", flags: {} }).kind, null);
   assert.equal(wallTraits(wall(), scene({ breakWalls: false })).kind, null);
   assert.equal(wallTraits(wall(own({ door: "never" })), scene()).kind, null);
-  assert.deepEqual(wallTraits(wall(own({ material: "metal", forceOpen: false })), scene()), { kind: "door", material: "metal", forceOpen: false, forceDC: null });
+  assert.deepEqual(wallTraits(wall(own({ material: "metal", forceOpen: false })), scene()), { kind: "door", material: "metal", forceOpen: false, forceDC: null, spells: true });
   assert.equal(wallTraits(wall(own({ material: "lava" })), scene()).material, "wood");
 });
 
@@ -82,7 +82,7 @@ test("wallMid and crossesWall", () => {
 const win = (extra = {}) => wall({ id: "w1", door: 0, flags: { animater: { breakWall: { window: true } } }, ...extra });
 const noneWin = () => win({ flags: { animater: { breakWall: { window: true, material: "none" } } } });
 test("only a wall marked Window is a window; glass unless Won't break", () => {
-  assert.deepEqual(wallTraits(win(), scene()), { kind: "window", material: "glass", forceOpen: false, forceDC: null });
+  assert.deepEqual(wallTraits(win(), scene()), { kind: "window", material: "glass", forceOpen: false, forceDC: null, spells: true });
   assert.equal(wallTraits(wall({ door: 0 }), scene()).kind, null);
   assert.equal(wallTraits(wall({ door: 0, flags: { animater: { window: "glass" } } }), scene()).kind, "window"); // a glass window is breakable by itself (Automatic)
   assert.equal(wallTraits(wall({ door: 0, flags: { animater: { window: "curtained" } } }), scene()).kind, null); // a window without glass is not
@@ -259,4 +259,24 @@ test("Repair restores a hit door's HP: its hp flag goes, broken or not", () => {
   assert.equal(up["flags.animater.breakWall.-=broken"], null);
   assert.equal(up["flags.animater.breakWall.-=hp"], null);
   assert.equal(wallRepairUpdates([hit, wall()]).length, 1);
+});
+
+test("a wall barred against spells turns away an area and nothing else", () => {
+  assert.equal(spellsBreak(wall()), true, "spells break it unless the GM says otherwise");
+  assert.equal(spellsBreak(wall(own({ spells: "no" }))), false);
+  assert.equal(spellsBreak(wall(own({ spells: false }))), false, "an older form may have saved a checkbox");
+  assert.equal(spellsBreak(wall(own({ spells: "yes" }))), true);
+  assert.equal(wallTraits(wall(own({ spells: "no" })), scene()).spells, false);
+  assert.equal(wallTraits(win({ flags: { animater: { breakWall: { window: true, spells: "no" } } } }), scene()).spells, false);
+
+  // The fireball is turned away...
+  const barred = wallTraits(wall(own({ spells: "no" })), scene());
+  assert.equal(canBreakWall(barred, { damageType: "fire", area: true }), false);
+  assert.equal(canBreakWall(barred, { damageType: "force", area: true }), false);
+  // ...and everything done by hand still lands: a swung weapon, a shove, a keg beside it.
+  assert.equal(canBreakWall(barred, { damageType: "fire" }), true);
+  assert.equal(canBreakWall(barred, { slam: { size: 2 } }), true);
+  assert.equal(canBreakWall(barred, { blast: true }), true);
+  // An ordinary door is unchanged by any of this: an area still breaks it.
+  assert.equal(canBreakWall(wallTraits(wall(), scene()), { damageType: "fire", area: true }), true);
 });

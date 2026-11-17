@@ -35,14 +35,29 @@ export function wallTraits(wall, scene, system) {
   const door = on && (wall?.door === 1 || wall?.door === 2) && own.door !== "never";
   if (!door && on && wall?.door === 0 && windowOn(wall)) {
     const pane = PANES.includes(own.windowMaterial) ? own.windowMaterial : own.material;
-    return { kind: "window", material: wallMaterialOf(pane, "window"), forceOpen: false, forceDC: null };
+    return { kind: "window", material: wallMaterialOf(pane, "window"), forceOpen: false, forceDC: null, spells: spellsBreak(wall) };
   }
   // A plain wall the GM marked breakable (never by default, never in bulk): its structure is its own field. Never a
   // window of any kind (windowLike: the walls Wall Configuration hides the wall group on), and never a piece of a breach
   // (breachOf: part B) until Repair: one breach per wall.
-  if (!door && on && wall?.door === 0 && wallOn(wall) && !windowLike(wall) && !own.breachOf) return { kind: "wall", material: wallMaterialOf(own.wallMaterial, "wall"), forceOpen: false, forceDC: null };
+  if (!door && on && wall?.door === 0 && wallOn(wall) && !windowLike(wall) && !own.breachOf) return { kind: "wall", material: wallMaterialOf(own.wallMaterial, "wall"), forceOpen: false, forceDC: null, spells: spellsBreak(wall) };
   const material = wallMaterialOf(own.material, "door");
-  return { kind: door ? "door" : null, material, forceOpen: own.forceOpen !== false, forceDC: forceDCOf(own, material, system) };
+  return { kind: door ? "door" : null, material, forceOpen: own.forceOpen !== false, forceDC: forceDCOf(own, material, system), spells: spellsBreak(wall) };
+}
+
+// Whether this wall has anything to put back: broken, one of the two pieces a breach left, or a door that has taken
+// damage and is still standing. Repair clears all three, and a wall with none of them has nothing to repair.
+export function wallHurt(own) {
+  const o = own ?? {};
+  return !!o.broken || (typeof o.breachOf === "string" && o.breachOf !== "") || Number.isInteger(o.hp);
+}
+
+// Whether a spell's area breaks this wall (breakWall.spells, Yes unless the GM said No). A door barred against magic is
+// still broken by hands: a shove, a swung weapon, a Force Open roll, a powder keg beside it. Only the area of a spell —
+// a fireball over it — is turned away, because that is the one the GM asked to be able to rule out.
+export function spellsBreak(wall) {
+  const choice = wall?.flags?.animater?.breakWall?.spells;
+  return !(choice === false || choice === "no");
 }
 
 // Whether a wall is a breakable window (its door type aside): the GM's Window choice, Yes or No (true/false from before
@@ -99,6 +114,8 @@ export function wallFormDoor(wall, selected) {
 // Whether this cause breaks a wall of these traits. A pure damage and slam rule: Force Open and smash have their own rule.
 // A blast breaks any door or window the GM has not set to Won't break.
 export function canBreakWall(traits, cause = {}) {
+  // A wall the GM barred against spells turns away an area and nothing else (spellsBreak).
+  if (cause.area === true && traits?.spells === false) return false;
   if (cause.blast === true) return (traits?.kind === "door" || traits?.kind === "window" || traits?.kind === "wall") && traits.material !== "none";
   const size = Number(cause.slam?.size), slam = Number.isFinite(size) ? size : 0;
   if (traits?.kind === "wall") {

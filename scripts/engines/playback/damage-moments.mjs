@@ -100,7 +100,10 @@ export function damageFromMessage(message, systemId) {
   // types: every damage type in the roll, the largest share first (lens blood asks whether any of it was physical;
   // the lens effects show the first two energy types).
   const types = [...new Set(parts.filter((p) => p.type).sort((a, b) => b.total - a.total).map((p) => normalizeDamageType(p.type)))];
-  return { type: normalizeDamageType(best.type), types, tokenIds, actorIds, sourceTokenId: message?.speaker?.token ?? null, attackKind: attackKindOf(message, systemId), crit,
+  // total: everything the roll came to, all its parts together. What a door or a wall takes the blow as (door-attack
+  // wallDamageResult): a structure has one Hardness and one pool of HP, not one of each per damage type.
+  const total = parts.reduce((n, p) => n + (Number(p.total) || 0), 0);
+  return { type: normalizeDamageType(best.type), types, total, tokenIds, actorIds, sourceTokenId: message?.speaker?.token ?? null, attackKind: attackKindOf(message, systemId), crit,
     itemUuid, itemName: item?.name ?? null, itemSlug: item?.slug ?? item?.system?.slug ?? strikeSlugFromOptions(pf?.options) ?? null,
     actorUuid: origin?.actor ?? null, synthetic: isSyntheticItem(item) || syntheticUuid(itemUuid) || strikeLostItem(message, systemId) };
 }

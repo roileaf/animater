@@ -16,7 +16,7 @@ export function doorsInArea(walls, testPoint, scene, damageType, levels, at) {
   return (walls ?? []).filter((w) => {
     if (!reachable(w, scene, levels)) return false;
     const traits = wallTraits(w, scene);
-    if (!canBreakWall(traits, { damageType })) return false;
+    if (!canBreakWall(traits, { damageType, area: true })) return false;
     if (traits.kind !== "wall") return testPoint(wallMid(w)) === true;
     return finite(at) && testPoint(projectOnWall(w.c, at)) === true;
   });

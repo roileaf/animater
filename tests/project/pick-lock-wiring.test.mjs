@@ -53,7 +53,9 @@ test('the one who tries rolls; the GM judges against its own lock and is the onl
   assert.ok(judge.includes('await afterDice('), 'after the dice have finished rolling');
   assert.ok(judge.includes('{ ds: 0 }'), 'a door is unlocked');
   assert.ok(judge.includes('[`flags.${ID}.windowLocked`]: false'), 'a window is unlocked');
-  assert.ok(judge.includes('lockProgress`]: after.progress'), 'and a lock that held keeps what it gave up');
+  // held is after.progress, unless the GM was asked and said the lock holds after all (success-choices.mjs).
+  assert.ok(judge.includes('let opened = after.opened, held = after.progress;'), 'and a lock that held keeps what it gave up');
+  assert.ok(judge.includes('lockProgress`]: held'), 'which is what is written');
 });
 
 test('nothing is said in chat but a broken toolkit', () => {
@@ -69,6 +71,7 @@ test('a lock is set up where everything else about the wall is', () => {
     const html = wallBreakFieldsHTML({ ...args, sceneOn: true });
     assert.ok(html.includes('breakWall.lock"'), `${what} has a lock quality`);
     assert.ok(html.includes('breakWall.lockDC"'), `${what} has a DC of its own`);
+    assert.ok(html.includes('breakWall.lockSuccesses"'), `${what} takes as many ways in as the GM says`);
     for (const q of LOCK_QUALITIES) assert.ok(html.includes(`value="${q}"`), `${what} offers ${q}`);
   }
   // A system with no lockpicking roll is offered no lock at all, rather than a field that does nothing.

@@ -36,6 +36,15 @@ test("a good area request breaks the door and the update opens it", () => {
     "flags.animater.breakWall.broken": { ...r.note, restore: { door: 1, ds: 0, move: 20, sight: 20, light: 20, sound: 20 } } });
 });
 
+test("the GM refuses an area over a door barred against spells, and takes the shove that follows", () => {
+  const barred = wall({ flags: { animater: { breakWall: { spells: "no" } } } });
+  const cause = { kind: "area", areaUuid: AREA, damageType: "fire", at: { x: 350, y: 100 } };
+  const note = wallNoteFor({ wall: barred, cause, seed: 7, from: { x: 350, y: 100 } });
+  const r = validWallBreakRequest({ cause, note }, { wall: barred, scene: scene(), grid: 100, sender, ...placed });
+  assert.equal(r.ok, false);
+  assert.equal(r.why, "material", "the door's own rule turned it away, as a metal door turns away fire");
+});
+
 test("refused, each with its own why", () => {
   const req = (cause) => ({ cause, note: wallNoteFor({ wall: wall(), cause, seed: 7, from: { x: 350, y: 100 } }) });
   const area = req({ kind: "area", areaUuid: AREA, damageType: "fire", at: { x: 350, y: 100 } });

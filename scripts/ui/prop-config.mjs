@@ -2,8 +2,8 @@
 import { MATERIALS } from "../engines/props/prop-material.mjs";
 import { CONTENTS, STYLE_CHOICES, propGuesses, burstOf } from "../engines/props/prop-traits.mjs";
 import { defaultForceDC, ownForceDC, forceOpenWording } from "../engines/props/force-open.mjs";
-import { LOCKS, LOCK_QUALITIES, lockQualityOf, ownLockDC, lockDCOf, lockSuccessesNeeded, pickLockWording } from "../engines/props/pick-lock.mjs";
-import { wallMaterialOf, GLASS_PANES, WALL_MATERIALS } from "../engines/props/wall-break.mjs";
+import { LOCKS, LOCK_QUALITIES, lockQualityOf, ownLockDC, ownLockSuccesses, lockDCOf, lockSuccessesNeeded, pickLockWording } from "../engines/props/pick-lock.mjs";
+import { wallMaterialOf, wallHurt, GLASS_PANES, WALL_MATERIALS } from "../engines/props/wall-break.mjs";
 import { DOOR_ATTACK_SYSTEMS, DOOR_STAT_KEYS, defaultDoorStats, ownDoorStat, doorStats, doorHp, defaultWallStats } from "../engines/props/door-attack.mjs";
 
 const ID = "animater";
@@ -76,6 +76,25 @@ function forceDCField({ own, mat, system, disabled }) {
   return `<div class="form-group"><label>Force open ${w.dc}</label><div class="form-fields"><input type="number" name="flags.${ID}.breakWall.forceDC" min="1" max="60" step="1" value="${value}" placeholder="Automatic (${auto})" ${data}${disabled ? " disabled" : ""}></div><p class="hint">Blank goes by material. A roll from the sheet is checked against the closest door's ${w.dc}.</p></div>`;
 }
 
+// Whether a spell's area breaks this door, window or wall (wall-break spellsBreak). No bars the fireball and nothing
+// else: hands, weapons, shoves, a Force Open roll and a powder keg still break it, which is the whole point of the
+// field — a door that only yields to someone standing at it. It sits outside the door and window groups and belongs to
+// all three kinds at once, so there is one field of this name on the form and no two-into-one merge to do on save.
+function spellsField({ own = {} } = {}) {
+  const no = own.spells === false || own.spells === "no";
+  return `<div class="form-group"><label>Spells break it</label><div class="form-fields"><select name="flags.${ID}.breakWall.spells">${options([["yes", "Yes"], ["no", "No"]], no ? "no" : "yes")}</select></div><p class="hint">No keeps a spell's area from breaking this door, window or wall: a fireball over it leaves it standing. Everything done by hand still breaks it — a shove, a weapon, a strike through it, a Force Open roll, a powder keg beside it.</p></div>`;
+}
+
+// This one wall put back, without touching the rest of the scene. Only on a wall with something to put back: a
+// button that does nothing is worse than no button, and on an intact door there is nothing to do.
+function wallRepairField({ own = {} } = {}) {
+  if (!wallHurt(own)) return "";
+  const line = own.broken ? "This one is broken."
+    : typeof own.breachOf === "string" && own.breachOf ? "This is one of the two pieces a breach left."
+      : "This one has taken damage and is still standing.";
+  return `<div class="form-group"><label>Repair</label><div class="form-fields"><button type="button" data-action="animater-repair-wall"><i class="fa-solid fa-hammer"></i> Put this one back</button></div><p class="hint">${line} Puts this door, window or wall back as it was — whole, closed, its HP restored, and a breach closed up with the piece it was split into — and leaves everything else on the scene exactly where it is.</p></div>`;
+}
+
 // The lock on a door or a window: its quality, and the GM's own DC over the top of it. Both live in the same place
 // for either kind, because a wall is one or the other and never both.
 function lockFields({ own, system, disabled, kind }) {
@@ -84,11 +103,16 @@ function lockFields({ own, system, disabled, kind }) {
   const quality = lockQualityOf(own), needed = lockSuccessesNeeded(own, system);
   const ways = needed > 1 ? ` It takes ${needed} successes.` : "";
   const list = LOCK_QUALITIES.map((q) => [q, `${LOCKS[q].label}${w.dc ? ` (${w.dc} ${lockDCOf({ lock: q }, system)})` : ""}`]);
+  // How many ways in it takes, over the top of the quality's own number: a stubborn lock on a vault door, a tired one
+  // on a cellar hatch. Blank goes by the quality, which outside PF2e and SF2e is one success.
+  const autoWays = lockSuccessesNeeded({ lock: quality }, system);
+  const waysField = `<div class="form-group"><label>Successes to pick</label><div class="form-fields"><input type="number" name="flags.${ID}.breakWall.lockSuccesses" min="1" max="20" step="1" value="${ownLockSuccesses(own) ?? ""}" placeholder="Automatic (${autoWays})"${disabled ? " disabled" : ""}></div><p class="hint">How many successful checks open it. Blank goes by the lock's quality.</p></div>`;
   const dcField = w.dc
     ? `<div class="form-group"><label>Lock ${w.dc}</label><div class="form-fields"><input type="number" name="flags.${ID}.breakWall.lockDC" min="1" max="60" step="1" value="${ownLockDC(own) ?? ""}" placeholder="Automatic (${lockDCOf({ lock: quality }, system)})"${disabled ? " disabled" : ""}></div><p class="hint">Blank goes by the lock's quality.</p></div>`
     : `<p class="hint">Draw Steel has no DC here: an Agility test of tier 2 opens most locks, tier 3 a good or superior one.</p>`;
   return `<div class="form-group"><label>Lock</label><div class="form-fields"><select name="flags.${ID}.breakWall.lock"${disabled ? " disabled" : ""}>${options(list, quality)}</select></div><p class="hint">What is picked when this ${kind} is locked: a player right-clicks it with their token beside it and rolls ${w.skill}.${ways} A critical success is worth two, a critical failure breaks the picks, and what has been got so far is never lost.</p></div>
-      ${dcField}`;
+      ${dcField}
+      ${waysField}`;
 }
 
 // A fire light's own "Fills the room with smoke" (flags.animater.smokeSource), for the light configuration's Animater
@@ -102,13 +126,18 @@ export function smokeLightFieldHTML({ on = false } = {}) {
   return `<div class="form-group"><label data-tooltip="${esc(tip)}">Fills the room with smoke</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.${SMOKE_LIGHT_FLAG}"${on === true ? " checked" : ""}></div></div>`;
 }
 
-export function propSceneFieldsHTML({ on = false, chance = 25, breakWalls, rubble = false, fireSpreads = false, smokeFills = false } = {}) {
+export function propSceneFieldsHTML({ on = false, chance = 25, breakWalls, rubble = false, fireSpreads = false, smokeFills = false, askSuccess = false, wearDoors = false, wearSystem = false } = {}) {
+  const wear = wearSystem
+    ? `<div class="form-group"><label>Spells wear doors down</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.wearDoors"${wearDoors === true ? " checked" : ""}></div><p class="hint">A spell's area stops blowing a door open on the strength of its damage type alone. Instead it waits for the damage to be rolled, takes the door's Hardness off that, and the rest off its HP (Wall Configuration → Breakable): at the Broken Threshold it cracks, and only at 0 does it break. Breakable plain walls go the same way; windows still shatter, and so does everything else a spell breaks. A spell nobody ever rolls damage for now leaves a door standing. Off by default, because it changes what a fireball already does to a door.</p></div>`
+    : "";
   const n = Number(chance), pct = Number.isFinite(n) && n >= 0 && n <= 100 ? n : 25;
   return `<div class="form-group"><label>Breakable props</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.breakableProps"${on === true ? " checked" : ""}></div><p class="hint">Prop tiles (barrels, crates, pots) break from spells, shoves and missed swings and leave wreckage.</p></div>
     <div class="form-group"><label>Fire spreads</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.fireSpreads"${fireSpreads === true ? " checked" : ""}></div><p class="hint">A burning prop sets fire to what is next to it, round by round.</p></div>
     <div class="form-group"><label>Fires fill rooms with smoke</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.smokeFills"${smokeFills === true ? " checked" : ""}></div><p class="hint">With Fire spreads on, a fire indoors fills its room with smoke, round by round, and the smoke drains out of open doors and windows. Thick smoke blocks sight; thin smoke conceals a creature standing in it (with PF2e Visioner). Only rooms: a fire out of doors fills nothing. Off by default, because it suits a closed inn or a mine far better than an open market.</p></div>
     <div class="form-group"><label>Chance a miss breaks a prop (%)</label><div class="form-fields"><input type="number" min="0" max="100" step="1" name="flags.${ID}.propMissChance" value="${pct}"></div></div>
     <div class="form-group"><label>Doors and windows break</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.breakWalls"${breakWalls === false ? "" : " checked"}></div><p class="hint">With Breakable props on, doors (and windows the GM marks breakable) can be smashed open by hits, Force Open and heavy shoves, and walls the GM marks breakable can be breached by powder kegs, some spells and huge creatures slammed into them.</p></div>
+    ${wear}
+    <div class="form-group"><label>Ask me what a success does</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.askSuccess"${askSuccess === true ? " checked" : ""}></div><p class="hint">A won Force Open or lockpicking roll waits for you before anything moves, so you can say what happens first and let the door go when you are ready. You can break it open, let it hold while you take HP off it, or rule that it does not open at all; a critical Force Open can also push it open without wrecking it. Off by default: with it off a success does what the rules say at once, as it always has.</p></div>
     <div class="form-group"><label>Rubble is difficult terrain</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.rubbleDifficult"${rubble === true ? " checked" : ""}></div><p class="hint">A statue or pillar that topples leaves rubble that costs double to walk through. Each tile can override this. Read when it topples: changing it later does not change rubble already there.</p></div>
     <div class="form-group"><label>Repair</label><div class="form-fields"><button type="button" data-action="animater-repair-props"><i class="fa-solid fa-hammer"></i> Repair broken props</button></div><p class="hint">Puts back every broken prop, door, window, breached wall and decoration on this scene.</p></div>
     <div class="form-group"><label>Doors and windows</label><div class="form-fields"><button type="button" data-action="animater-breakable-all"><i class="fa-solid fa-door-open"></i> Make all doors and windows breakable</button><button type="button" data-action="animater-breakable-none"><i class="fa-solid fa-ban"></i> Make none breakable</button></div><p class="hint">Set every door and window on this scene at once (GM only): all breakable, or none. Doors and windows already broken are left alone.</p></div>`;
@@ -160,5 +189,7 @@ export function wallBreakFieldsHTML({ door, own = {}, sceneOn = false, system, w
       ${lockFields({ own, system, disabled: isDoor, kind: "window" })}
     </div>
     ${wallGroupHTML({ own, sceneOn, system, show: isWall })}
+    ${spellsField({ own })}
+    ${wallRepairField({ own })}
   </fieldset>`;
 }

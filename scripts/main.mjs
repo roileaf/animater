@@ -36,15 +36,16 @@ import { PROP_BREAK_MESSAGE, validBreakRequest, slamPlausible, breakNoteFor, cle
 import { propsInArea, propsOnPath, onLevel, tilesOnLevel } from "./engines/props/prop-pick.mjs";
 import { ownWalls, blockingWalls, wallStop } from "./engines/props/prop-walls.mjs";
 import { wallMid, readWallNote, wallTraits, wallBreakFormMerge, wallFormDoor, canBreakWall, HOLE_LIGHT } from "./engines/props/wall-break.mjs";
-import { wallBreachUpdate, breachPartData, wallRepairPlan, breachWallAt, breachableWalls, breachPartOf, crossingPoint, areaShapeCentre, templateShape } from "./engines/props/wall-breach.mjs";
+import { wallBreachUpdate, breachPartData, wallRepairPlan, wallRepairGroup, breachWallAt, breachableWalls, breachPartOf, crossingPoint, areaShapeCentre, templateShape } from "./engines/props/wall-breach.mjs";
 import { firePatchAt } from "./engines/props/prop-wreck-layout.mjs";
 import { WALL_BREAK_MESSAGE, cleanWallCause, wallNoteFor, validWallBreakRequest, handEdited, handEditUpdate, slamSenderOk, breaksSure } from "./engines/props/wall-break-requests.mjs";
 import { doorsInArea, wallsCrossed, wallsUnderTravel, forceOpenOf, smashFrom, nextToMiss } from "./engines/props/wall-triggers.mjs";
 import { windowOnFlight, createMissFlights, missFlies } from "./engines/props/window-miss.mjs";
 import { hitOutcome, windowThrough, throughAt } from "./engines/props/window-through.mjs";
-import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt, forceOpenWording, showForceDC } from "./engines/props/force-open.mjs";
+import { FORCE_OPEN_SYSTEMS, closestForcedDoor, forceOpenRoller, forceOpenPrompt, forceOpenResult, forceOpenWording, showForceDC } from "./engines/props/force-open.mjs";
 import { pickLockWording, pickLockPrompt, pickLockResult, pickLockLine, lockPicked, lockDCOf, lockTierOf, lockSuccessesNeeded, lockProgressOf } from "./engines/props/pick-lock.mjs";
-import { DOOR_ATTACK_SYSTEMS, doorStats, doorCracked, doorHpLine, strikeReaches, strikeIdentifier, doorAttackOf, doorAttackCheck, doorAttackRoller, doorHitUpdate, strikeHasAmmo, pickDoorStamp } from "./engines/props/door-attack.mjs";
+import { FORCE_CHOICES, PICK_CHOICES, MAX_FORCE_DAMAGE, forceOpenChoices, pickLockChoices, forceDamageResult, lockHeldProgress } from "./engines/props/success-choices.mjs";
+import { DOOR_ATTACK_SYSTEMS, doorStats, doorHp, doorCracked, doorHpLine, wallDamageResult, strikeReaches, strikeIdentifier, doorAttackOf, doorAttackCheck, doorAttackRoller, doorHitUpdate, strikeHasAmmo, pickDoorStamp } from "./engines/props/door-attack.mjs";
 import { createWallWreckage } from "./engines/props/wall-wreck.mjs";
 import { propTraits } from "./engines/props/prop-traits.mjs";
 import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsOf, dropLostDecorFire, regionBurns, createQuenchGate, quenchedBy, quenchUpdates, quenchSmokeUpdate, repairFireUpdates } from "./engines/props/fire-spread.mjs";
@@ -12474,6 +12475,70 @@ async function writeBreach(scene, doc, check) {
   catch (e) { if (partId) await scene.deleteEmbeddedDocuments("Wall", [partId]).catch(() => {}); throw e; }
   return true;
 }
+// A spell's blow on a door or a wall that wears down: its HP written and the GM told, or nothing at all when there is
+// no damage roll to go by. {broken} says whether it took the last HP and should now break; {done} is what applyWallBreak
+// answers when it did not. The write is a bare HP flag, so Repair clears it as it clears a door hit by a Strike.
+async function wearWall(doc, scene, damage) {
+  const view = wallView(doc), traits = wallTraits(view, scene, game.system.id);
+  // No roll, or one this area's own item and caster did not make: the spell leaves it standing rather than breaking
+  // it on the strength of its damage type, which is the whole of what this switch turns off.
+  if (!(damage > 0)) { runtime?.trace("props", "wears down: no damage roll for this area"); return { broken: false, done: false }; }
+  const out = wallDamageResult({ own: view?.flags?.[ID]?.breakWall ?? {}, kind: traits.kind, material: traits.material, damage });
+  if (out.broken) return { broken: true, done: false };
+  try {
+    await doc.update({ [`flags.${ID}.breakWall.hp`]: out.hp }, { animater: { doorHit: true } });
+    postDoorLine({ ...out, name: traits.kind === "wall" ? "Wall" : "Door" });
+  } catch (e) { runtime?.trace("props", `wears down: ${e?.message ?? e}`); return { broken: false, done: false }; }
+  return { broken: false, done: true };
+}
+// A roll that won is spent either way, so the same message can never force the same door twice.
+const markForceOpenUsed = (cause) => {
+  if (!cause?.messageId) return;
+  forceOpenUsed.add(cause.messageId);
+  void game.messages?.get(cause.messageId)?.setFlag(ID, "forceOpenUsed", true).catch((e) => runtime?.trace("props", `force open mark: ${e?.message ?? e}`));
+};
+// Whether this scene's GM asked to be asked what a won roll does (the scene's Ask me what a success does).
+const askSuccessOn = (scene) => scene?.flags?.[ID]?.askSuccess === true && scene?.flags?.[ID]?.breakableProps === true;
+// What the GM says a won Force Open did. Their own screen, their own dialog: the writes were always theirs, and the
+// waiting is the point — the door holds until they have finished saying what is happening. Null when the dialog was
+// closed rather than answered, which spends nothing and leaves the door as it stands.
+async function askForceOutcome(doc, scene, cause) {
+  const sys = game.system.id, view = wallView(doc), traits = wallTraits(view, scene, sys);
+  const message = cause.messageId ? game.messages?.get(cause.messageId) : null;
+  const judged = forceOpenResult({ system: sys, message, dc: traits.forceDC, material: traits.material });
+  const choices = forceOpenChoices({ crit: judged.crit === true, system: sys });
+  const own = view?.flags?.[ID]?.breakWall ?? {};
+  const stats = doorStats(own, traits.material), hp = doorHp(own, stats);
+  const damage = choices.includes("damage")
+    ? `<div class="form-group"><label>Damage</label><div class="form-fields"><input type="number" name="damage" min="0" max="${MAX_FORCE_DAMAGE}" step="1" value="${stats.hardness + 1}"></div><p class="hint">Its Hardness ${stats.hardness} comes off first, and the rest off its ${hp} of ${stats.maxHp} HP. Enough still breaks it.</p></div>`
+    : "";
+  const said = await foundry.applications.api.DialogV2.wait({
+    window: { title: judged.crit === true ? "Forced open — a critical success" : "Forced open" },
+    position: { width: 440 }, rejectClose: false,
+    content: `<p>The ${traits.material === "reinforced" ? "reinforced wooden" : traits.material} door was forced${judged.crit === true ? " outright" : ""}. What happens?</p>${damage}`,
+    buttons: choices.map((choice) => ({ action: choice, label: FORCE_CHOICES[choice], default: choice === "break",
+      callback: (_event, button) => ({ choice, damage: Number(new foundry.applications.ux.FormDataExtended(button.form).object?.damage ?? 0) }) })),
+  });
+  return said && typeof said === "object" ? said : null;
+}
+// The GM's choice, written. True when that is the end of it; false when the blow they measured took the door's last
+// HP, and it breaks after all through the one path that breaks doors.
+async function applyForceChoice(doc, scene, cause, said) {
+  if (said.choice === "none") { markForceOpenUsed(cause); return true; }
+  if (said.choice === "open") {
+    // It is forced open and whole: a locked door is no longer locked, because it is standing open.
+    await doc.update({ ds: CONST.WALL_DOOR_STATES.OPEN }, { animater: { wallBreak: true }, sound: false });
+    markForceOpenUsed(cause);
+    return true;
+  }
+  const view = wallView(doc), traits = wallTraits(view, scene, game.system.id);
+  const out = forceDamageResult({ own: view?.flags?.[ID]?.breakWall ?? {}, material: traits.material, damage: said.damage });
+  if (out.broken) return false;
+  await doc.update({ [`flags.${ID}.breakWall.hp`]: out.hp }, { animater: { doorHit: true } });
+  markForceOpenUsed(cause);
+  postDoorLine(out);
+  return true;
+}
 async function applyWallBreak(scene, doc, cause, rawNote, user) {
   if (!game.users.activeGM?.isSelf || !scene || !doc || wallWriting.has(doc.id)) return false;
   wallWriting.add(doc.id);
@@ -12492,16 +12557,28 @@ async function applyWallBreak(scene, doc, cause, rawNote, user) {
         return true;
       }
     }
-    const check = validWallBreakRequest({ cause, note: rawNote }, { wall: wallView(doc), scene, grid, sender: user, roll: Math.random(), ...await wallPlace(cause, scene, grid, user), ...blastPlace(cause, scene), ...areaPlace(cause, user) });
+    const placed = areaPlace(cause, user);
+    const check = validWallBreakRequest({ cause, note: rawNote }, { wall: wallView(doc), scene, grid, sender: user, roll: Math.random(), ...await wallPlace(cause, scene, grid, user), ...blastPlace(cause, scene), ...placed });
     if (!check.ok) { runtime?.trace("props", `door not broken: ${check.why}`); return false; }
+    // Spells wear doors down: a spell's area does not break this by its damage type alone. The blow is what the roll
+    // came to, read by the GM from its own copy of the message (never the sender's number), Hardness off it first.
+    // Only the blow that takes the last HP goes on to break it, down the one path that breaks doors.
+    if (cause.kind === "area" && wearsDownHere(scene) && worn(wallView(doc), scene)) {
+      const wear = await wearWall(doc, scene, Number(placed.area?.rollTotal) || 0);
+      if (!wear.broken) return wear.done;
+    }
+    // The roll is good; what it does is the GM's to say, where they asked to be asked. Only a choice of "break it
+    // open" carries on down here, and so does a measured blow that turned out to be the door's last.
+    if (cause.kind === "force-open" && askSuccessOn(scene)) {
+      const said = await askForceOutcome(doc, scene, cause);
+      if (!said) return false;
+      if (said.choice !== "break" && await applyForceChoice(doc, scene, cause, said)) return true;
+    }
     if (check.split) return await writeBreach(scene, doc, check);
     const { _id, ...update } = check.update;
     await doc.update(update, { animater: { wallBreak: true }, sound: false });
     if (hit) { doorHitsUsed.add(cause.messageId); postDoorLine(hit); }
-    if (cause.kind === "force-open") {
-      forceOpenUsed.add(cause.messageId);
-      void game.messages?.get(cause.messageId)?.setFlag(ID, "forceOpenUsed", true).catch((e) => runtime?.trace("props", `force open mark: ${e?.message ?? e}`));
-    }
+    if (cause.kind === "force-open") markForceOpenUsed(cause);
     return true;
   } finally { wallWriting.delete(doc.id); }
 }
@@ -12592,6 +12669,20 @@ async function repairAllProps(scene = canvas?.scene) {
   // The rooms the fires smoked out are clear again: the cells, their geometry, the concealment region and the fence.
   await clearSmokeNow(scene);
   return r.tiles.length;
+}
+// One wall put back, and nothing else on the scene touched: a broken door or window, a door that took damage and is
+// still standing, or a breached wall — which is two pieces, so either one picked puts the pair back (wallRepairGroup).
+// Sherp, who plays with this: "A way to click to repair certain things like doors without repairing whole scene."
+async function repairOneWall(scene, doc) {
+  if (!game.user?.isGM || !scene || !doc) return false;
+  const views = (scene.walls?.contents ?? []).map(wallView);
+  const { updates, deletes } = wallRepairPlan(wallRepairGroup(wallView(doc), views));
+  if (!updates.length && !deletes.length) return false;
+  const del = propDel();
+  // The breach's part B goes first, so the wall put back whole never overlaps it — the order Repair all goes in.
+  if (deletes.length) await scene.deleteEmbeddedDocuments("Wall", deletes, { animater: { wallRepair: true } });
+  if (updates.length) await scene.updateEmbeddedDocuments("Wall", updates.map((w) => withDeletes(w, del)), { animater: { wallRepair: true }, sound: false });
+  return true;
 }
 // What breaks props (engines/props/prop-triggers.mjs): an area's damage roll, a missed melee strike, a forced path.
 // The client that rolled or moved asks; the GM checks. A prop's error never breaks the play it rides on.
@@ -12689,16 +12780,24 @@ Hooks.on("canvasReady", () => { propSafe("area reload", rememberLoadedAreas); })
 // (chosen at cast, a kineticist impulse), those of the damage roll the cause names, read from this screen's own copy of
 // that message and only when it is a damage roll of the area's own item and caster, by the sender (any, for a GM),
 // within the area's ttl (area-damage.mjs rollDamageTypes).
-function areaPlaceTypes(doc, cause, user, now) {
-  const own = areaDamageTypes(doc);
-  if (own.length || typeof cause?.messageId !== "string") return own;
+// The damage roll the cause names, as this screen reads it and only when it really is this area's: {types, total}.
+// The types rollDamageTypes accepts, and what the whole roll came to — the number a door or a wall takes the blow as
+// when spells wear them down. Never the sender's word for either: the GM reads its own copy of the message.
+function areaPlaceRoll(doc, cause, user, now) {
+  if (typeof cause?.messageId !== "string") return { types: [], total: 0 };
   return propSafe("area roll", () => {
     const message = game.messages?.get(cause.messageId), d = message ? damageFromMessage(message, game.system.id) : null;
-    if (!d) return [];
+    if (!d) return { types: [], total: 0 };
     const { itemUuid, actorUuid } = areaOriginOf(doc);
     const summary = { isDamage: true, itemUuid: d.itemUuid, actorUuid: d.actorUuid ?? uuidOwners(d.itemUuid).actorUuid, authorId: (message.author ?? message.user)?.id ?? null, timestamp: message.timestamp, types: d.types?.length ? d.types : [d.type] };
-    return rollDamageTypes(summary, { itemUuid, actorUuid, sender: { id: user?.id, isGM: user?.isGM === true }, now });
-  }) ?? [];
+    const types = rollDamageTypes(summary, { itemUuid, actorUuid, sender: { id: user?.id, isGM: user?.isGM === true }, now });
+    // A roll this area's own item and caster did not make buys nothing, its number least of all.
+    return { types, total: types.length ? Math.max(0, Math.floor(Number(d.total) || 0)) : 0 };
+  }) ?? { types: [], total: 0 };
+}
+function areaPlaceTypes(doc, cause, user, now) {
+  const own = areaDamageTypes(doc);
+  return own.length ? own : areaPlaceRoll(doc, cause, user, now).types;
 }
 // The placed area an area or ignite cause names, as this screen's own documents hold it (prop-areas.mjs areaRefusal):
 // what this screen remembered when it was placed (who, when, its shape), else, for an area placed before this screen
@@ -12719,7 +12818,8 @@ function areaPlace(cause, user) {
   try { const actor = actorUuid ? fromUuidSync(actorUuid) : null; ownsOrigin = !!user && actor?.testUserPermission?.(user, "OWNER") === true; } catch { ownsOrigin = false; }
   const levels = doc ? [...(doc.levels ?? [])] : [...(rec?.levels ?? [])];
   return { now, area: { uuid, sceneId: doc?.parent?.id ?? null, authorId: placed.authorId ?? null, authorIsGM: !!(placed.authorId && game.users.get(placed.authorId)?.isGM),
-    ownsOrigin, rememberedAt: placed.rememberedAt, bounds: propSafe("area box", () => areaBoxOf(doc)) ?? null, testPoint: rec?.testPoint ?? (doc ? areaTestOf(doc) : undefined), levels, at: rec?.centre ?? (doc ? areaShapeCentreOf(doc) : null), damageTypes: doc ? areaPlaceTypes(doc, cause, user, now) : [] } };
+    ownsOrigin, rememberedAt: placed.rememberedAt, bounds: propSafe("area box", () => areaBoxOf(doc)) ?? null, testPoint: rec?.testPoint ?? (doc ? areaTestOf(doc) : undefined), levels, at: rec?.centre ?? (doc ? areaShapeCentreOf(doc) : null), damageTypes: doc ? areaPlaceTypes(doc, cause, user, now) : [],
+    rollTotal: doc ? areaPlaceRoll(doc, cause, user, now).total : 0 } };
 }
 for (const hook of ["deleteMeasuredTemplate", "deleteRegion"]) Hooks.on(hook, (doc) => propAreas.forget(doc.uuid));
 // Everything inside a remembered area on its level that one of the given damage types breaks (the first of them that
@@ -12728,6 +12828,12 @@ for (const hook of ["deleteMeasuredTemplate", "deleteRegion"]) Hooks.on(hook, (d
 // held while its request is out and given back when the GM does not write it (askClaimed), so a refused ask from the
 // animation leaves the thing to the damage roll. messageId: the damage roll that set it off, for a spell whose item names
 // no damage type (the GM reads that roll's types itself). True when anything was asked for.
+// Spells wear doors down (the scene's switch), where the game system gives doors Hardness and HP at all — PF2e does,
+// and nothing here invents a table for a system that has none. Sherp, who plays with this: "Spells like fireball that
+// break doors/windows should only break after considering HP and Hardness."
+const wearsDownHere = (scene) => scene?.flags?.[ID]?.wearDoors === true && DOOR_ATTACK_SYSTEMS.has(game.system.id);
+// The kinds that wear down: a door and a breakable plain wall, both of which have a structure's Hardness and HP.
+const worn = (wall, scene) => ["door", "wall"].includes(wallTraits(wall, scene, game.system.id).kind);
 const CLAIM_SETTLE_MS = PROP_REFUSED_MS + 1500;
 function breakAreaThings(area, types, { messageId } = {}) {
   const scene = area?.scene;
@@ -12750,7 +12856,12 @@ function breakAreaThings(area, types, { messageId } = {}) {
   const grid = propGrid(scene), tiles = tilesOnLevel(scene.tiles.contents.map(propTileView), area.levels), walls = (scene.walls?.contents ?? []).map(wallView);
   const decor = propSafe("area decorations", () => decorViews(scene, area.levels)) ?? [], id = (t) => t.id;
   const hits = typesBreaking(types, (type) => propsInArea(tiles, area.testPoint, grid, type), id).filter(({ thing }) => propAreas.claim(area.templateId, thing.id));
+  // With Spells wear doors down on, a door or a wall is not broken by the animation landing on it: there is no number
+  // yet, and the number is the whole point. It waits for the damage roll (messageId), which the GM reads for itself.
+  // Windows are not worn down — no window has HP — so they shatter at impact as they always have.
+  const wearing = wearsDownHere(scene) && typeof messageId !== "string";
   const doors = typesBreaking(types, (type) => propSafe("area doors", () => doorsInArea(walls, area.testPoint, scene, type, area.levels, area.centre ?? area.at)) ?? [], id)
+    .filter(({ thing }) => !(wearing && worn(thing, scene)))
     .filter(({ thing }) => propAreas.claim(area.templateId, `wall:${thing.id}`));
   const spills = !types.includes("fire") ? [] : (propSafe("area powder", () => ignitableInArea(tiles, area.testPoint)) ?? []).filter((t) => propAreas.claim(area.templateId, `ignite:${t.id}`));
   const decorHits = typesBreaking(types, (type) => propsInArea(decor, area.testPoint, grid, type), id).filter(({ thing }) => propAreas.claim(area.templateId, thing.id));
@@ -12769,7 +12880,11 @@ function breakAreaThings(area, types, { messageId } = {}) {
   for (const { thing, type } of decorHits) held(thing.id, () => askDecor(scene, thing, cause(type), area.at),
     () => (flagsOf(scene.regions?.get(thing.decor?.regionId))?.decorBroken ?? []).some((e) => e?.key === thing.decor?.key)
       || readFire(decorFireOf(scene.regions?.get(thing.decor?.regionId))[thing.decor?.key])?.burning === true);
-  for (const { thing, type } of doors) held(`wall:${thing.id}`, () => askWall(scene, thing.id, cause(type), area.at), () => !!flagsOf(scene.walls?.get(thing.id))?.breakWall?.broken);
+  // A door the GM wore down rather than broke was written just as surely as one that fell: its HP moved. Reading only
+  // "broken" would give the claim back and let the same area come at the same door twice.
+  const hpWas = new Map(doors.map(({ thing }) => [thing.id, flagsOf(scene.walls?.get(thing.id))?.breakWall?.hp]));
+  for (const { thing, type } of doors) held(`wall:${thing.id}`, () => askWall(scene, thing.id, cause(type), area.at),
+    () => { const own = flagsOf(scene.walls?.get(thing.id))?.breakWall; return !!own?.broken || own?.hp !== hpWas.get(thing.id); });
   for (const t of spills) held(`ignite:${t.id}`, () => askProp(scene, t.id, { kind: "ignite", damageType: "fire", at: area.at, areaUuid, ...roll }, area.at),
     () => flagsOf(scene.tiles.get(t.id))?.prop?.broken?.powder !== "spilled");
   for (const v of decorSpills) held(`ignite:${v.id}`, () => askDecor(scene, v, { kind: "ignite", damageType: "fire", at: area.at, areaUuid, ...roll }, area.at),
@@ -12804,7 +12919,10 @@ function breakAreaProps(message) {
   // The roll's types the spell itself deals (the GM accepts no other), its largest share first. A spell whose item names
   // none (chosen at cast, a kineticist impulse) takes the roll's own, naming the roll: the GM reads it again itself.
   const spell = area.damageTypes ?? [], rolled = [...new Set([d.type, ...(d.types ?? [])])].filter(Boolean);
-  const types = spell.length ? rolled.filter((t) => spell.includes(t)) : rolled, named = spell.length ? {} : { messageId: message.id };
+  const types = spell.length ? rolled.filter((t) => spell.includes(t)) : rolled;
+  // The roll is always named now. A spell whose item names its own types still takes only those (areaPlaceTypes
+  // prefers the spell's), but the GM needs the message to read what the roll came to when spells wear doors down.
+  const named = { messageId: message.id };
   if (!types.length) return;
   const ask = () => propSafe("area damage", () => breakAreaThings(propAreas.get(area.templateId) ?? area, types, named));
   const wait = propAreas.delayFor(area);
@@ -12987,6 +13105,17 @@ function pickLockAsk(doc, scene, confirm) {
   })().catch((e) => runtime?.trace("props", `pick lock: ${e?.message ?? e}`));
   return true;
 }
+// The GM's say on a lock that just gave: it opens, or it holds after all and sits on the brink, so the next success
+// opens it and nothing that was won is taken back. A dialog closed rather than answered leaves it locked.
+async function askPickOutcome(doc, kind) {
+  const said = await foundry.applications.api.DialogV2.wait({
+    window: { title: kind === "window" ? "The window's lock gives" : "The lock gives" },
+    position: { width: 400 }, rejectClose: false,
+    content: `<p>The last pin turns. What happens?</p>`,
+    buttons: pickLockChoices().map((choice) => ({ action: choice, label: PICK_CHOICES[choice], default: choice === "open" })),
+  });
+  return typeof said === "string" ? said : "none";
+}
 // The GM's screen judges it: the lock as the GM reads it, the roll as the GM has the message, and the only write.
 Hooks.on("createChatMessage", (message) => { void propSafe("pick lock", () => judgePickLock(message))?.catch?.((e) => runtime?.trace("props", `pick lock judge: ${e?.message ?? e}`)); });
 async function judgePickLock(message) {
@@ -13001,10 +13130,16 @@ async function judgePickLock(message) {
   const dc = lockDCOf(own, sys), needed = lockSuccessesNeeded(own, sys);
   const got = pickLockResult({ system: sys, message, dc, own });
   const after = lockPicked({ progress: lockProgressOf(own, sys), gained: got.gained, needed });
+  // A lock that just gave waits for the GM, where they asked it to: the last pin turns when they say it does.
+  let opened = after.opened, held = after.progress;
+  if (opened && askSuccessOn(scene) && (await askPickOutcome(doc, kind)) === "none") {
+    opened = false;
+    held = lockHeldProgress(needed);
+  }
   // Open it the way this kind of thing opens: a door is unlocked and shut, a window simply unlocked.
-  const update = after.opened
+  const update = opened
     ? { ...(kind === "door" ? { ds: 0 } : { [`flags.${ID}.windowLocked`]: false }), [`flags.${ID}.breakWall.lockProgress`]: 0 }
-    : { [`flags.${ID}.breakWall.lockProgress`]: after.progress };
+    : { [`flags.${ID}.breakWall.lockProgress`]: held };
   await doc.update(update);
   // Nothing is said about a lock that held or gave a little: the next prompt carries how far along it is, and the
   // roll is already in chat. Broken picks are different — that is an item gone, which the table has to know about.
@@ -15721,7 +15856,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
   // Breakable props: the GM's switch for this scene, the miss chance, and Repair (GM only).
   if (!root.querySelector(`[name="flags.${ID}.breakableProps"]`)) {
     const flags = app.document?.flags?.[ID] ?? {}, props = document.createElement("div");
-    props.innerHTML = propSceneFieldsHTML({ on: flags.breakableProps === true, chance: flags.propMissChance, breakWalls: flags.breakWalls, rubble: flags.rubbleDifficult === true, fireSpreads: flags.fireSpreads === true, smokeFills: flags.smokeFills === true });
+    props.innerHTML = propSceneFieldsHTML({ on: flags.breakableProps === true, chance: flags.propMissChance, breakWalls: flags.breakWalls, rubble: flags.rubbleDifficult === true, fireSpreads: flags.fireSpreads === true, smokeFills: flags.smokeFills === true, askSuccess: flags.askSuccess === true, wearDoors: flags.wearDoors === true, wearSystem: DOOR_ATTACK_SYSTEMS.has(game.system.id) });
     const repair = props.querySelector('[data-action="animater-repair-props"]');
     repair.disabled = !game.user?.isGM;
     repair.addEventListener("click", async (event) => {
@@ -15850,6 +15985,19 @@ Hooks.on("renderWallConfig", (app, html) => {
   set.innerHTML = wallBreakFieldsHTML({ door: wallFormDoor(doc), own: doc?.flags?.[ID]?.breakWall, windowKind: doc?.flags?.[ID]?.window, sceneOn, system: game.system.id, windowWall });
   const fieldset = set.firstElementChild;
   appendWallSection(root, fieldset);
+  // Put this one back (GM only). The sheet closes afterwards: what it is showing — broken, its HP, the Repair button
+  // itself — is no longer true of the wall, and a form left open over it would save the old reading back.
+  const repair = fieldset.querySelector('[data-action="animater-repair-wall"]');
+  if (repair) {
+    repair.disabled = game.user?.isGM !== true;
+    repair.addEventListener("click", async (event) => {
+      event.preventDefault();
+      repair.disabled = true;
+      const done = await repairOneWall(doc?.parent, doc).catch((e) => { runtime?.trace("props", `repair wall: ${e?.message ?? e}`); return false; });
+      if (done) await app.close?.();
+      else { repair.disabled = false; ui.notifications?.info("This one has nothing to put back."); }
+    });
+  }
   const select = root.querySelector('select[name="door"]'), group = fieldset.querySelector('[data-group="door"]');
   const windowGroup = fieldset.querySelector('[data-group="window"]'), wallGroup = fieldset.querySelector('[data-group="wall"]');
   // A plain wall's hint lines (what breaches it, its Table 11-4 stats) follow its Material select.
@@ -18520,6 +18668,16 @@ const handoutShownTake = (uuid) => {
   handoutShownFor.delete(key);
   return Date.now() - when <= HANDOUT_SHOWN_MS ? key : null;
 };
+// It arrives on this screen: the page as its system drew it when the sheet has drawn one, else its picture or its
+// words on our own paper. One call serves both a handout actually shown to the table and a GM previewing one, because
+// a preview that went any other way would be worth nothing. False when there is nothing to show, or nothing to do.
+const handoutPlay = async ({ app, root, page, entry, chosen }) => {
+  if (handoutPick(chosen, 0) === "off") return false;
+  const art = handoutDressedArt(root) ?? await handoutArtOfPage(page);
+  if (!art) return false;
+  return handoutShow({ app, root, chosen, seedText: page?.uuid ?? entry?.uuid ?? entry?.name ?? "",
+    art, caption: page?.name && page.type === "image" ? page.name : "" }) !== false;
+};
 Hooks.on("renderJournalEntrySheet", (app, element) => {
   const root = element instanceof HTMLElement ? element : element?.[0];
   const entry = app?.document;
@@ -18537,13 +18695,7 @@ Hooks.on("renderJournalEntrySheet", (app, element) => {
   if (handoutPick(chosen, 0) === "off") return;
   // Reading the page may have to wait (its links are filled in first), so the window is hidden at once and the
   // stage takes its place when the paper is ready. Without that the sheet would be seen for a frame or two first.
-  void (async () => {
-    // The page as its system drew it, when the sheet has drawn one; else its picture or its words on our own paper.
-    const art = handoutDressedArt(root) ?? await handoutArtOfPage(page);
-    if (!art) return;
-    handoutShow({ app, root, chosen, seedText: page?.uuid ?? entry?.uuid ?? entry?.name ?? "",
-      art, caption: page?.name && page.type === "image" ? page.name : "" });
-  })();
+  void handoutPlay({ app, root, page, entry, chosen });
 });
 // The window it stands in for closing — by Foundry, by another module, by the GM — takes the stage with it.
 const handoutClosed = (app) => { if (handoutStage && handoutStage.app === app) handoutStageDown(true); };
@@ -18573,16 +18725,32 @@ const handoutRow = (name, label, now, blank) => {
   return `<div class="form-group"><label>${label}</label><div class="form-fields"><select name="${name}">${options}</select></div></div>`;
 };
 const handoutFlagOf = (doc) => String(doc?.flags?.[ID]?.handout ?? "");
-const handoutAsk = async (entry, page) => {
+// Preview plays the arrival on the GM's own screen and asks again, so a look can be tried, kept or changed without
+// leaving the dialog — and without showing anything to the table. It plays what these choices would actually do,
+// unsaved ones included, which means reading them back out of the form rather than off the documents.
+const handoutAsk = async (entry, page, { app, root } = {}) => {
   if (!entry) return;
   const safe = (text) => foundry.utils?.escapeHTML?.(String(text ?? "")) ?? String(text ?? "");
-  const content = `<div class="animater-handout-ask">`
-    + (page ? handoutRow("page", `This page: ${safe(page.name)}`, handoutFlagOf(page), "From the journal, the scene or the module") : "")
-    + handoutRow("entry", "This journal, for pages that say nothing", handoutFlagOf(entry), "From the scene or the module")
-    + `<p class="hint">How a handout reaches the players when you show it to them: a map is spread open, a letter unfolds. It arrives when you show it, not when a player opens the journal themselves.</p></div>`;
-  const said = await foundry.applications.api.DialogV2.wait({ window: { title: "How this arrives (Animater)" }, position: { width: 460 }, rejectClose: false, content,
-    buttons: [{ action: "save", label: "Save", icon: "fa-solid fa-check", default: true, callback: (_event, button) => new foundry.applications.ux.FormDataExtended(button.form).object }, { action: "cancel", label: "Cancel" }] });
-  if (!said || typeof said !== "object") return;
+  const formOf = (button) => new foundry.applications.ux.FormDataExtended(button.form).object;
+  let chose = { page: handoutFlagOf(page), entry: handoutFlagOf(entry) };
+  let said = null;
+  for (;;) {
+    const content = `<div class="animater-handout-ask">`
+      + (page ? handoutRow("page", `This page: ${safe(page.name)}`, chose.page, "From the journal, the scene or the module") : "")
+      + handoutRow("entry", "This journal, for pages that say nothing", chose.entry, "From the scene or the module")
+      + `<p class="hint">How a handout reaches the players when you show it to them: a map is spread open, a letter unfolds. It arrives when you show it, not when a player opens the journal themselves. Preview plays it here, for you alone.</p></div>`;
+    said = await foundry.applications.api.DialogV2.wait({ window: { title: "How this arrives (Animater)" }, position: { width: 460 }, rejectClose: false, content,
+      buttons: [{ action: "save", label: "Save", icon: "fa-solid fa-check", default: true, callback: (_event, button) => formOf(button) },
+        { action: "preview", label: "Preview", icon: "fa-solid fa-eye", callback: (_event, button) => ({ ...formOf(button), preview: true }) },
+        { action: "cancel", label: "Cancel" }] });
+    if (!said || typeof said !== "object") return;
+    if (said.preview !== true) break;
+    chose = { page: String(said.page ?? ""), entry: String(said.entry ?? "") };
+    const chosen = handoutHere(chose.page, chose.entry, canvas?.scene?.flags?.[ID]?.handout, shakeSetting("handoutArrival", "off"));
+    let played = false;
+    try { played = await handoutPlay({ app, root, page, entry, chosen }); } catch (e) { runtime?.trace("camera", `handout preview: ${e?.message ?? e}`); }
+    if (played !== true) ui.notifications?.info(page ? "Nothing to show: this arrival is off, or the page has no picture or words yet." : "Open the page you want to preview first.");
+  }
   // Nothing chosen is not a choice stored: the flag comes off, and the page falls back to whatever is above it.
   const put = async (doc, value) => {
     if (!doc) return;
@@ -18604,7 +18772,7 @@ const handoutButton = (app, element, entry, pageNow) => {
   button.className = "header-control icon fa-solid fa-scroll animater-handout-button";
   button.dataset.tooltip = label;
   button.setAttribute("aria-label", label);
-  button.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); void handoutAsk(entry, pageNow()); });
+  button.addEventListener("click", (event) => { event.preventDefault(); event.stopPropagation(); void handoutAsk(entry, pageNow(), { app, root }); });
   (header.querySelector("button[data-action=toggleControls]") ?? header.querySelector("button[data-action=close]"))?.before(button);
 };
 Hooks.on("renderJournalEntrySheet", (app, element) => {

@@ -51,8 +51,8 @@ test("the prompt speaks each system's words", () => {
 
 test("PF2e: the outcome against the door's DC; no outcome or another DC compares the total", () => {
   const pf = (outcome, total, dcValue = 15, natural = 10, ns = "pf2e") => ({ rolls: [d20(total, natural)], flags: { [ns]: { context: { options: ["action:force-open"], outcome, dc: dcValue === null ? null : { value: dcValue } } } } });
-  assert.deepEqual(forceOpenResult({ system: "pf2e", message: pf("success", 16), dc: 15 }), { ok: true });
-  assert.deepEqual(forceOpenResult({ system: "pf2e", message: pf("criticalSuccess", 26), dc: 15 }), { ok: true });
+  assert.deepEqual(forceOpenResult({ system: "pf2e", message: pf("success", 16), dc: 15 }), { ok: true, crit: false });
+  assert.deepEqual(forceOpenResult({ system: "pf2e", message: pf("criticalSuccess", 26), dc: 15 }), { ok: true, crit: true });
   assert.deepEqual(forceOpenResult({ system: "pf2e", message: pf("failure", 12), dc: 15 }), { ok: false, why: "outcome" });
   assert.deepEqual(forceOpenResult({ system: "pf2e", message: pf("criticalFailure", 3), dc: 15 }), { ok: false, why: "outcome" });
   // a natural 20 lifts a failure to a success: the system's outcome against the door's DC says so
@@ -72,7 +72,7 @@ test("PF2e: the outcome against the door's DC; no outcome or another DC compares
 
 test("D&D 5e: total against the DC", () => {
   const m = (total, natural = 10) => ({ rolls: [d20(total, natural)] });
-  assert.deepEqual(forceOpenResult({ system: "dnd5e", message: m(15), dc: 15 }), { ok: true });
+  assert.deepEqual(forceOpenResult({ system: "dnd5e", message: m(15), dc: 15 }), { ok: true, crit: false });
   assert.deepEqual(forceOpenResult({ system: "dnd5e", message: m(14), dc: 15 }), { ok: false, why: "outcome" });
   assert.equal(forceOpenResult({ system: "dnd5e", message: m(14, 20), dc: 15 }).ok, false); // a natural 20 is no auto-success on a check
 });

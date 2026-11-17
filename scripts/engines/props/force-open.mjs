@@ -99,19 +99,26 @@ const daggerheartCritical = (roll) => {
 // dc: the DC the GM read from the wall (never one the message claims); material: the door's (Draw Steel's tier rule).
 // PF2e/SF2e: the system's outcome when it was rolled against this same DC, else the total against it by PF2e's degrees.
 // D&D 5e: total >= DC. Daggerheart: a critical, or total >= difficulty. Draw Steel: tier 2+ for wood, tier 3 otherwise.
+// crit: whether the roll was a critical one, where this system has such a thing on a check at all. PF2e and SF2e
+// have their degrees, Daggerheart its matching duality dice, Draw Steel its third tier. D&D 5e has no critical on an
+// ability check — a natural 20 is only a 20 — so a 5e door never reports one, and nothing here invents one for it.
 export function forceOpenResult({ system, message, dc, material } = {}) {
   const roll = (system === "daggerheart" ? message?.system?.roll : null) ?? Array.from(message?.rolls ?? [])[0];
   const total = Number(roll?.total);
   if (!roll || !Number.isFinite(total) || !FORCE_OPEN_SYSTEMS.has(system)) return { ok: false, why: "roll" };
-  const verdict = (ok) => (ok ? { ok: true } : { ok: false, why: "outcome" });
-  if (system === "draw-steel") return verdict(drawSteelTier(roll) >= (matOf(material) === "wood" ? 2 : 3));
+  const verdict = (ok, crit = false) => (ok ? { ok: true, crit: crit === true } : { ok: false, why: "outcome" });
+  if (system === "draw-steel") {
+    const tier = drawSteelTier(roll);
+    return verdict(tier >= (matOf(material) === "wood" ? 2 : 3), tier >= 3);
+  }
   if (!isNum(dc)) return verdict(false);
   if (system === "pf2e" || system === "sf2e") {
     const ctx = message?.flags?.[system]?.context ?? message?.flags?.pf2e?.context;
-    if (ctx?.outcome && Number(ctx?.dc?.value) === dc) return verdict(PF2E_WINS.includes(ctx.outcome));
-    return verdict(pf2eDegree(total, dc, natural20(roll)) >= 2);
+    if (ctx?.outcome && Number(ctx?.dc?.value) === dc) return verdict(PF2E_WINS.includes(ctx.outcome), ctx.outcome === "criticalSuccess");
+    const degree = pf2eDegree(total, dc, natural20(roll));
+    return verdict(degree >= 2, degree === 3);
   }
-  if (system === "daggerheart") return verdict(daggerheartCritical(roll) || total >= dc);
+  if (system === "daggerheart") return verdict(daggerheartCritical(roll) || total >= dc, daggerheartCritical(roll));
   return verdict(total >= dc);
 }
 

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   LOCKS, LOCK_DEFAULT, LOCK_QUALITIES, PICK_LOCK_SYSTEMS,
-  lockQualityOf, ownLockDC, lockDCOf, lockTierOf, lockSuccessesNeeded, lockProgressOf,
+  lockQualityOf, ownLockDC, ownLockSuccesses, lockDCOf, lockTierOf, lockSuccessesNeeded, lockProgressOf,
   pickLockWording, pickLockPrompt, pickLockResult, lockPicked, pickLockLine,
 } from "../../../scripts/engines/props/pick-lock.mjs";
 
@@ -61,6 +61,25 @@ test("only the systems whose own action counts successes count them", () => {
   for (const sys of ["pf2e", "sf2e"]) assert.equal(lockSuccessesNeeded({ lock: "good" }, sys), 5, sys);
   // Inventing a multi-success lock for a system that never had one would be a house rule.
   for (const sys of ["dnd5e", "daggerheart", "draw-steel"]) assert.equal(lockSuccessesNeeded({ lock: "good" }, sys), 1, sys);
+});
+
+test("the GM's own number of successes beats the quality's, in every system", () => {
+  assert.equal(ownLockSuccesses({ lockSuccesses: 7 }), 7);
+  assert.equal(ownLockSuccesses({ lockSuccesses: "7" }), 7, "a form saves it as text");
+  assert.equal(ownLockSuccesses({ lockSuccesses: 0 }), null);
+  assert.equal(ownLockSuccesses({ lockSuccesses: 21 }), null);
+  assert.equal(ownLockSuccesses({ lockSuccesses: 2.5 }), null);
+  assert.equal(ownLockSuccesses({}), null);
+  // A vault door that takes more than its quality says, and a tired lock that takes less.
+  assert.equal(lockSuccessesNeeded({ lock: "poor", lockSuccesses: 8 }, "pf2e"), 8);
+  assert.equal(lockSuccessesNeeded({ lock: "superior", lockSuccesses: 1 }, "pf2e"), 1);
+  // Elsewhere it is the GM's own call too: setting a number is not inventing a rule, it is using one.
+  assert.equal(lockSuccessesNeeded({ lock: "good", lockSuccesses: 3 }, "dnd5e"), 3);
+  assert.equal(lockSuccessesNeeded({ lock: "good", lockSuccesses: 3 }, "draw-steel"), 3);
+  // Nonsense falls back to the quality, so a half-typed field never locks a door shut for good.
+  assert.equal(lockSuccessesNeeded({ lock: "good", lockSuccesses: 0 }, "pf2e"), 5);
+  // Progress still cannot claim the lock is open: an eight-success lock holds at seven.
+  assert.equal(lockProgressOf({ lock: "poor", lockSuccesses: 8, lockProgress: 9 }, "pf2e"), 7);
 });
 
 test("progress is kept on the door, and never claims the lock is already open", () => {

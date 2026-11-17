@@ -26,6 +26,14 @@ test("an area leaves broken doors, other levels and switched-off scenes alone", 
   assert.deepEqual(doorsInArea([metal], all, scene(), "force").map((w) => w.id), ["d1"]);
 });
 
+test("an area passes over a door the GM barred against spells", () => {
+  const all = () => true;
+  const barred = wall({ flags: { animater: { breakWall: { spells: "no" } } } });
+  assert.deepEqual(doorsInArea([barred], all, scene(), "fire"), [], "the fireball leaves it standing");
+  // The same door is still crossed and broken by a shove: only the spell is turned away.
+  assert.deepEqual(wallsCrossed({ from: { x: 350, y: 100 }, to: { x: 350, y: 300 } }, 2, [barred], scene()).map((w) => w.id), ["d1"]);
+});
+
 test("a forced path crosses doors in order; size decides", () => {
   const ws = [wall({ id: "a", c: [300, 200, 400, 200] }), wall({ id: "b", c: [300, 400, 400, 400] })];
   assert.deepEqual(wallsCrossed({ from: { x: 350, y: 100 }, to: { x: 350, y: 500 } }, 2, ws, scene()).map((w) => w.id), ["a", "b"]);

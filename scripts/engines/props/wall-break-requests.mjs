@@ -60,8 +60,9 @@ export function slamSenderOk({ sender, mover, from, senderTokens = [], grid = 10
   });
 }
 
-// What canBreakWall is asked: a slam uses the mover's own size when the GM knows it; a blast breaks any door or window.
-const breakCause = (cause, mover) => (cause.kind === "path" ? { slam: { size: sizeOf(mover?.size ?? cause.slam?.size) } } : cause.kind === "blast" ? { blast: true } : { damageType: cause.damageType });
+// What canBreakWall is asked: a slam uses the mover's own size when the GM knows it; a blast breaks any door or window;
+// an area is marked as one, so a wall the GM barred against spells can turn it away and still break to everything else.
+const breakCause = (cause, mover) => (cause.kind === "path" ? { slam: { size: sizeOf(mover?.size ?? cause.slam?.size) } } : cause.kind === "blast" ? { blast: true } : { damageType: cause.damageType, area: cause.kind === "area" });
 
 // The cause has to fit where things stand on the GM's screen. A smash is the GM's own and fits anywhere.
 // A blast reaches the wall's middle from its source keg (blastFrom: one that exploded), on the blast's levels.

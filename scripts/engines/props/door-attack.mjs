@@ -70,11 +70,27 @@ export function doorCracked(own, stats) {
   return hp > 0 && hp <= stats.bt && hp < stats.maxHp;
 }
 
-export function doorHpLine({ hp, maxHp, dealt, hardness, cracked = false }) {
+// name: what it is called in the line, so a plain wall worn down by a spell reads as a wall and not as a door.
+export function doorHpLine({ hp, maxHp, dealt, hardness, cracked = false, name = "Door" }) {
   const left = `${hp} of ${maxHp} HP left.`;
-  if (!dealt) return `Door: the blow does not get past its Hardness ${hardness}. ${left}`;
-  if (hp <= 0) return `Door: ${left} It breaks.`;
-  return cracked ? `Door: ${left} It is cracked.` : `Door: ${left}`;
+  if (!dealt) return `${name}: the blow does not get past its Hardness ${hardness}. ${left}`;
+  if (hp <= 0) return `${name}: ${left} It breaks.`;
+  return cracked ? `${name}: ${left} It is cracked.` : `${name}: ${left}`;
+}
+
+// A blow of `damage` on a breakable door or plain wall: its Hardness off first, the rest off its HP, and where that
+// leaves it. One piece of arithmetic for every blow a thing of this kind takes — a Strike at a door, a Force Open the
+// GM measured, a spell's area wearing it down — so no two of them can ever say different things about the same door.
+// kind "wall": a plain wall's structure (Table 11-4), which has no fields of its own on the sheet. Anything else: a
+// door's stats, the GM's own numbers included.
+export function wallDamageResult({ own = {}, kind = "door", material = "wood", damage = 0 } = {}) {
+  const wall = kind === "wall";
+  const stats = wall ? defaultWallStats(material) : doorStats(own, material);
+  const n = Number(damage), want = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+  const { dealt, hp } = doorDamage({ hp: doorHp(own, stats), damage: want, hardness: stats.hardness });
+  const cracked = doorCracked({ ...own, hp }, stats);
+  return { hp, dealt, maxHp: stats.maxHp, hardness: stats.hardness, bt: stats.bt, cracked, broken: hp <= 0,
+    line: doorHpLine({ hp, maxHp: stats.maxHp, dealt, hardness: stats.hardness, cracked, name: wall ? "Wall" : "Door" }) };
 }
 
 // Whether a Strike {ranged, feet} from this token's footprint {x, y, w, h, level} reaches the door: null, else why

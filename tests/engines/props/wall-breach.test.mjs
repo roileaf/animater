@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { wallTraits, canBreakWall, readWallNote, wallMaterialOf, wallRestoreUpdate } from "../../../scripts/engines/props/wall-break.mjs";
-import { projectOnWall, crossingPoint, breachSplit, wallBreachUpdate, breachPartData, wallRepairPlan, breachWallAt, breachableWalls, breachPartOf, areaShapeCentre, templateShape } from "../../../scripts/engines/props/wall-breach.mjs";
+import { wallTraits, canBreakWall, readWallNote, wallMaterialOf, wallRestoreUpdate, wallHurt } from "../../../scripts/engines/props/wall-break.mjs";
+import { projectOnWall, crossingPoint, breachSplit, wallBreachUpdate, breachPartData, wallRepairPlan, wallRepairGroup, breachWallAt, breachableWalls, breachPartOf, areaShapeCentre, templateShape } from "../../../scripts/engines/props/wall-breach.mjs";
 import { validWallBreakRequest, handEdited } from "../../../scripts/engines/props/wall-break-requests.mjs";
 import { doorsInArea, wallsCrossed } from "../../../scripts/engines/props/wall-triggers.mjs";
 import { blastTargets } from "../../../scripts/engines/props/prop-blast.mjs";
@@ -19,7 +19,7 @@ const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
 
 // ---- traits ----
 test("a plain wall breaks only when the GM marks it breakable; its material is its own field, wood when unknown", () => {
-  assert.deepEqual(wallTraits(plain("stone"), scene()), { kind: "wall", material: "stone", forceOpen: false, forceDC: null });
+  assert.deepEqual(wallTraits(plain("stone"), scene()), { kind: "wall", material: "stone", forceOpen: false, forceDC: null, spells: true });
   assert.equal(wallTraits(plain("brick"), scene()).material, "brick");
   assert.equal(wallTraits(plain("lava"), scene()).material, "wood");
   assert.equal(wallTraits({ ...plain(), flags: {} }, scene()).kind, null, "unmarked walls never break");
@@ -164,6 +164,42 @@ test("Repair with part B deleted by hand restores the original anyway; a breache
   const plan2 = wallRepairPlan([a, b, c]);
   assert.deepEqual(plan2.deletes.sort(), ["b2", "c3"]);
   assert.deepEqual(plan2.updates.map((u) => u._id), ["w1"]);
+});
+
+test("one wall put back on its own takes its breach's other piece with it, whichever was picked", () => {
+  const w = plain("wood");
+  const split = breachSplit(w.c, { x: 250, y: 200 }, { grid: 100, squares: 2 });
+  const note = { seed: 5, cutAngle: 1.2, from: { x: 250, y: 100 }, kind: "wall", material: "wood", mark: "scorch", gap: split.gap };
+  const { _id, ...up } = wallBreachUpdate(w, note, split, "b2");
+  const a = { ...w, c: up.c, flags: { animater: { breakWall: { ...w.flags.animater.breakWall, broken: up["flags.animater.breakWall.broken"] } } } };
+  const b = { ...w, id: "b2", c: split.parts[1], flags: { animater: { breakWall: { wall: "yes", wallMaterial: "wood", breachOf: "w1" } } } };
+  const door = { ...plain("stone"), id: "d7", door: 1 };
+
+  // Either piece picked gives both, so the wall never comes back standing on top of half of itself.
+  assert.deepEqual(wallRepairGroup(a, [a, b, door]).map((x) => x.id), ["w1", "b2"]);
+  assert.deepEqual(wallRepairGroup(b, [a, b, door]).map((x) => x.id), ["w1", "b2"]);
+  const plan = wallRepairPlan(wallRepairGroup(b, [a, b, door]));
+  assert.deepEqual(plan.deletes, ["b2"]);
+  assert.deepEqual(plan.updates.map((u) => u._id), ["w1"]);
+  // And the door standing beside them is not touched: that is the whole point of putting one back.
+  assert.ok(!plan.updates.some((u) => u._id === "d7") && !plan.deletes.includes("d7"));
+
+  // Anything that is not a breach is only itself.
+  assert.deepEqual(wallRepairGroup(door, [a, b, door]).map((x) => x.id), ["d7"]);
+  // Part B whose part A was deleted by hand still puts itself back rather than nothing at all.
+  assert.deepEqual(wallRepairGroup(b, [b]).map((x) => x.id), ["b2"]);
+  assert.deepEqual(wallRepairGroup(null, [a]), []);
+});
+
+test("a wall knows whether it has anything to put back", () => {
+  assert.equal(wallHurt({}), false, "an intact door has nothing to repair");
+  assert.equal(wallHurt(null), false);
+  assert.equal(wallHurt({ broken: { seed: 1 } }), true);
+  assert.equal(wallHurt({ breachOf: "w1" }), true, "a breach's other piece is half a wall");
+  assert.equal(wallHurt({ breachOf: "" }), false);
+  assert.equal(wallHurt({ hp: 7 }), true, "a door that took damage and is still standing");
+  assert.equal(wallHurt({ hp: 0 }), true);
+  assert.equal(wallHurt({ lock: "good", forceDC: 20 }), false, "its settings are not damage");
 });
 
 test("reading a breach note: the gap, restore.c and partId are checked", () => {

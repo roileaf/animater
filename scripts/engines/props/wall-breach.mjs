@@ -74,6 +74,19 @@ export function breachPartOf(wall) {
   return typeof id === "string" && id ? id : null;
 }
 
+// The walls one wall's repair really touches. A breach is two pieces of one wall — part A, which carries the note
+// naming part B, and part B itself — so putting either back means putting both back, or the gap would be repaired
+// into a wall standing on top of half of itself. Anything else is only itself.
+export function wallRepairGroup(wall, walls = []) {
+  if (!wall?.id) return [];
+  const partOf = breachPartOf(wall);
+  const a = partOf ? (walls ?? []).find((w) => w?.id === partOf) : wall;
+  if (!a) return [wall]; // part A is gone: put this piece back on its own rather than nothing at all
+  const partId = readWallNote(a?.flags?.animater?.breakWall?.broken)?.partId;
+  const b = typeof partId === "string" && partId ? (walls ?? []).find((w) => w?.id === partId) : null;
+  return b ? [a, b] : [a];
+}
+
 // Repair: every broken wall back as it was (wallRestoreUpdate), and every part B a breach made deleted (those still
 // there). A wall being deleted is not also updated.
 export function wallRepairPlan(walls) {

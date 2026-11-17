@@ -38,6 +38,7 @@ const DND5E_DC = { poor: 10, simple: 12, average: 15, good: 20, superior: 25 };
 const DAGGERHEART_DC = { poor: 11, simple: 13, average: 16, good: 19, superior: 22 };
 const DRAW_STEEL_TIER = { poor: 2, simple: 2, average: 2, good: 3, superior: 3 };
 const MAX_DC = 60;
+const MAX_SUCCESSES = 20;
 const WORDING = {
   pf2e: { skill: "Thievery", label: "Pick the lock", dc: "DC" },
   sf2e: { skill: "Thievery", label: "Pick the lock", dc: "DC" },
@@ -79,12 +80,20 @@ export function lockDCOf(own, system) {
 /** The power-roll tier a lock yields to, for the system that has no DC. */
 export const lockTierOf = (own) => DRAW_STEEL_TIER[lockQualityOf(own)];
 
+/** The GM's own number of successes on a lock (breakWall.lockSuccesses, 1 to 20, maybe saved as text), else null. */
+export function ownLockSuccesses(own) {
+  const n = whole(own?.lockSuccesses);
+  return n !== null && n >= 1 && n <= MAX_SUCCESSES ? n : null;
+}
+
 /**
- * How many successes this lock takes. PF2e and SF2e count them, because their own action does; everywhere else one
- * success opens it, which is what those systems' rules actually say about locks.
+ * How many successes this lock takes. The GM's own number wins wherever they set one, in every system — the same rule
+ * their own DC goes by, and a door that takes more or fewer ways in than its quality says is the GM's call to make.
+ * Left blank: PF2e and SF2e count them, because their own action does; everywhere else one success opens it, which is
+ * what those systems' rules actually say about locks.
  */
 export function lockSuccessesNeeded(own, system) {
-  return COUNTS_SUCCESSES.has(system) ? LOCKS[lockQualityOf(own)].successes : 1;
+  return ownLockSuccesses(own) ?? (COUNTS_SUCCESSES.has(system) ? LOCKS[lockQualityOf(own)].successes : 1);
 }
 
 /** How far along this lock already is (breakWall.lockProgress), never below zero and never past what it takes. */
