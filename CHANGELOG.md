@@ -1,5 +1,21 @@
 # Changelog
 
+## 4.5.1
+
+A door stops deciding things for itself: when it opens, what breaks it, and what puts it back are the GM's again.
+
+- **Ask me what a success does.** A new tick on the scene, off by default. With it on, a Force Open or lockpicking roll that succeeded writes nothing until you press something — the dialog standing open is the timing, so the door goes when you have finished saying what is happening. You can break it open, push it open unbroken (a critical success only), let it hold while you type the damage it took instead, or rule that it does not open at all. The roll is spent either way, so one roll can never force the same door twice. A lock that gives is the plainer case: unlock it, or it stays locked and sits one success short, because nothing won is ever taken back. D&D 5e is never offered "open it unbroken" — 5e has no critical on an ability check, and a natural 20 is only a 20.
+
+- **Successes to pick.** A lock's quality still sets how many ways in it takes, but now that is a default and not a rule: type a number on the door or window and it takes that many, in any game system. A vault door that takes eight, a tired cellar hatch that takes one.
+
+- **Spells break it: No.** A door, window or wall can be barred against spells. A fireball over it leaves it standing; everything done by hand still breaks it — a shove, a weapon, a strike through the glass, a Force Open roll, a powder keg beside it.
+
+- **Spells wear doors down.** Another scene tick, off by default, in PF2e, whose doors have Hardness and HP. A spell's area stops blowing a door open on the strength of its damage type: it waits for the damage to be rolled, takes the door's Hardness off the total, and the rest off its HP. At the Broken Threshold it cracks; only at 0 does it break. Breakable plain walls go the same way on their own structure. Windows still shatter, having no HP of their own, and props, decorations, powder and grass still catch the moment the spell lands.
+
+- **Put this one back.** A Repair button on a wall's own configuration, for just that door, window or wall — no need to put the whole scene back to mend one door. It shows only when there is something to mend, and a breached wall comes back as one wall, with the piece the breach split off it taken away.
+
+- **Preview a handout's arrival.** The journal's "How this arrives" button now has a Preview beside Save: it plays the arrival on your screen alone and asks again, so you can try a look, change it, and try another without showing anything to the table.
+
 ## 4.5.0
 
 Handouts arrive on the table instead of in a window, blasts break what they catch, and a lock can be picked.
