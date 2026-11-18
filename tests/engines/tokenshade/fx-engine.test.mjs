@@ -174,6 +174,47 @@ test('shader warm-up compiles every Tokenshade pass in the background, the way P
   delete sceneWarpProgram(P).glPrograms[7];
   assert.equal(buildSceneWarpNow(P,{...plain,gl:{...plain.gl,isContextLost:()=>true}}),false,'not on a lost context');
 });
+test('without background compiling, the damage looks are built one at a time in idle moments, before the first hit',async()=>{
+  const {buildWhenIdle,presetTypes,tokenshadePrograms}=await import('../../../scripts/engines/tokenshade/warmup.mjs');
+  const {DAMAGE_LOOK_PRESETS}=await import('../../../scripts/engines/playback/damage-moments.mjs');
+  const {builtinPreset}=await import('../../../scripts/engines/tokenshade/presets.mjs');
+  const types=presetTypes(DAMAGE_LOOK_PRESETS.map(n=>builtinPreset(n)));
+  for(const t of ['electric','adjustment','glow'])assert.ok(types.includes(t),`Electrocuted's ${t}`);
+  assert.equal(new Set(types).size,types.length,'each once');
+  assert.deepEqual(presetTypes([null,{params:[{filterType:'glow'},{filterType:'nope'}]}]),['glow'],'only real looks');
+  const cache=new Map();
+  class Program{constructor(v,f){this.vertexSrc=v;this.fragmentSrc=f;this.glPrograms={};}static from(v,f){const k=v+f;if(!cache.has(k))cache.set(k,new Program(v,f));return cache.get(k);}}
+  const P={Filter:{defaultVertexSrc:'vertex'},Program};
+  const programs=tokenshadePrograms(P,['electric','adjustment','glow']);
+  const built=[],slots=[];
+  let lost=false;
+  const gl={getExtension:()=>null,isContextLost:()=>lost};
+  const renderer={gl,CONTEXT_UID:7,shader:{generateProgram:({program})=>{built.push(program);program.glPrograms[7]={};}}};
+  // One program per idle slot: each build blocks the main thread in such a browser, so they never come together.
+  const idle=(fn)=>slots.push(fn);
+  programs[1].glPrograms[7]={};
+  const run=buildWhenIdle(renderer,programs,{idle,gap:0,later:(fn)=>fn()});
+  assert.equal(built.length,0,'nothing until the browser is idle');
+  slots.shift()();
+  assert.equal(built.length,1,'one per idle moment');
+  while(slots.length)slots.shift()();
+  assert.equal(await run,programs.length-1);
+  assert.ok(!built.includes(programs[1]),'not what PIXI already built');
+  assert.deepEqual(built,programs.filter((p,i)=>i!==1),'in the order given');
+  // With background compiling the parallel warm-up does it instead; a lost context or stop() ends it.
+  assert.equal(await buildWhenIdle({...renderer,gl:{...gl,getExtension:()=>({})}},programs,{idle,gap:0}),0);
+  for(const p of programs)delete p.glPrograms[7];
+  built.length=0;
+  const stopped=buildWhenIdle(renderer,programs,{idle,gap:0,later:(fn)=>fn()});
+  slots.shift()();stopped.stop();
+  while(slots.length)slots.shift()();
+  assert.equal(await stopped,1);
+  for(const p of programs)delete p.glPrograms[7];
+  const lostRun=buildWhenIdle(renderer,programs,{idle,gap:0,later:(fn)=>fn()});
+  lost=true;
+  while(slots.length)slots.shift()();
+  assert.equal(await lostRun,0,'not on a lost context');
+});
 test('the engine knows which tokens a look moves (a transform), not those it only colours',()=>{
   const engine=new TokenFxEngine({PIXI,ticker:()=>({add(){},remove(){}}),now:()=>0,world:()=>0});
   const rocking=fakeToken(),glowing=fakeToken();

@@ -4,12 +4,15 @@
 // With KHR_parallel_shader_compile the driver compiles in the background instead. Each
 // program is compiled and linked exactly as PIXI will (same sources, same attribute
 // binding); once it is ready, PIXI builds its own from them, which the browser's shader
-// cache answers in a few milliseconds. Without the extension nothing is warmed:
-// compiling up front would freeze the canvas just the same (except map distortion's single
-// scene program, built at once while the scene loads: buildSceneWarpNow).
+// cache answers in a few milliseconds. Without the extension compiling up front freezes the
+// canvas just the same, so only what would freeze a moment of play is built ahead, while the
+// scene loads and settles: map distortion's single scene program (buildSceneWarpNow), and the
+// damage looks every hit can bring, one per idle moment (buildWhenIdle).
 import { shaderSource, fieldSource } from './filter-factory.mjs';
 import { SPECS } from './filters/index.mjs';
 import { sceneWarpProgram } from './filters/scene-warp.mjs';
+
+export const parallelCompile = renderer => Boolean(renderer?.gl?.getExtension?.('KHR_parallel_shader_compile'));
 
 const COMPLETION_STATUS = 0x91b1; // COMPLETION_STATUS_KHR
 // Looks the catalogs reach for first (damage accents, hit reactions), then everything else.
@@ -46,6 +49,50 @@ export function buildSceneWarpNow(PIXI, renderer) {
 // not helping on this machine, so warming stops rather than freezing the canvas itself.
 export function warmShaders(PIXI, renderer, { types, sceneWarp = false, parallel = 3, tick = 40, slowBuild = 120, now = () => performance.now() } = {}) {
   return warmPrograms(renderer, [...(sceneWarp ? [sceneWarpProgram(PIXI)] : []), ...tokenshadePrograms(PIXI, types)], { parallel, tick, slowBuild, now });
+}
+
+// The Tokenshade passes a list of looks draws (presets as builtinPreset gives them), each once, in warm-up order.
+export function presetTypes(presets = []) {
+  const types = new Set();
+  for (const preset of presets) for (const p of preset?.params ?? []) if (SPECS[p?.filterType]) types.add(p.filterType);
+  return warmOrder([...types]);
+}
+
+// Without KHR_parallel_shader_compile (Firefox on Windows) a program compiles on the main thread the first time
+// it is used, so the first Electrocuted look on a struck token held the canvas for over a second. Building ahead
+// freezes just as long, but then it happens while the scene settles, not as a hit lands: one program per idle
+// moment (requestIdleCallback), `gap` ms apart, so frames still come between them. PIXI's own build
+// (generateProgram) asks for the link status, which is what makes the browser compile, and keeps the result, so
+// nothing is built twice. With the extension it does nothing: warmPrograms compiles in the background instead.
+// Resolves with how many it built; `stop()` on the returned promise ends it early.
+export function buildWhenIdle(renderer, programs = [], {
+  gap = 250, timeout = 2000,
+  idle = globalThis.requestIdleCallback ? (fn, o) => globalThis.requestIdleCallback(fn, o) : (fn) => setTimeout(fn, 0),
+  later = (fn, ms) => setTimeout(fn, ms),
+} = {}) {
+  const gl = renderer?.gl, uid = renderer?.CONTEXT_UID;
+  let stopped = false;
+  const done = new Promise(resolve => {
+    if (!gl || gl.getExtension?.('KHR_parallel_shader_compile')) return resolve(0);
+    const queue = programs.filter((p, i) => p && programs.indexOf(p) === i);
+    let built = 0;
+    const next = () => {
+      if (stopped || gl.isContextLost?.()) return resolve(built);
+      while (queue.length && queue[0].glPrograms[uid]) queue.shift();
+      if (!queue.length) return resolve(built);
+      idle(() => {
+        if (stopped || gl.isContextLost?.()) return resolve(built);
+        const program = queue.shift();
+        if (!program.glPrograms[uid]) {
+          try { renderer.shader.generateProgram({ program }); built++; } catch { /* a look this GPU cannot draw: PIXI reports it when it shows */ }
+        }
+        later(next, gap);
+      }, { timeout });
+    };
+    next();
+  });
+  done.stop = () => { stopped = true; };
+  return done;
 }
 
 // The same for any of PIXI's Program objects, in the order given.

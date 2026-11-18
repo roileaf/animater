@@ -10,7 +10,7 @@ import {createCreatureShowcaseTools} from './integrations/creature-showcase.mjs'
 import { setHidePrivateResults } from "./core/privacy.mjs";
 import { ID, validateRecipe, clone, matchRecipe, resolveAsset, FINISHER_ENDINGS } from "./core/model.mjs";
 import { registerFlashSettings, flashScreens } from "./engines/flash/flash-combat.mjs";
-import { damageFromMessage, damageFromParts, recallDamage, recallAttribution, hitRecipe, deathRecipe } from "./engines/playback/damage-moments.mjs";
+import { damageFromMessage, damageFromParts, recallDamage, recallAttribution, hitRecipe, deathRecipe, DAMAGE_LOOK_PRESETS } from "./engines/playback/damage-moments.mjs";
 import { displaceAllowed, landingSpot, wallDistance, withinKnockback } from "./engines/motion/displacement.mjs";
 import { hpPath, hpState, hpChange, isNpcActor, displaceHp } from "./systems/hp-state.mjs";
 import { bloodOnSheet, portraitBloodLevel, showPortraitBlood } from "./ui/portrait-blood.mjs";
@@ -201,7 +201,7 @@ import { MediaLibraryLoader } from './engines/media/media-library-sources.mjs';
 import { libraryPreferences } from './ui/media-library.mjs';
 import {TokenFxPreview} from './engines/preview/token-fx-preview.mjs';
 import {tokenFx} from './engines/tokenshade/api.mjs';
-import {warmShaders,warmPrograms,buildSceneWarpNow} from './engines/tokenshade/warmup.mjs';
+import {warmShaders,warmPrograms,buildSceneWarpNow,buildWhenIdle,parallelCompile,presetTypes,tokenshadePrograms} from './engines/tokenshade/warmup.mjs';
 import {sceneShaderPrograms} from './engines/motion/scene-shaders.mjs';
 import {sceneWarpProgram} from './engines/tokenshade/filters/scene-warp.mjs';
 import {normalizeLayers} from './engines/tokenshade/layers.mjs';
@@ -16704,7 +16704,10 @@ Hooks.once("ready", () => {
     const sceneWarp=distortsHere();
     // A warm-up already running is kept, unless this client has just started drawing map distortion.
     if(warming){if(!sceneWarp||warming.sceneWarp)return;warming.stop();}
-    const run=warmShaders(globalThis.PIXI,renderer,{sceneWarp});
+    // Without background compiling (Firefox on Windows), the damage looks a hit shows are built one per idle
+    // moment instead (warmup.mjs buildWhenIdle): otherwise the first Electrocuted look freezes the canvas.
+    const run=parallelCompile(renderer)?warmShaders(globalThis.PIXI,renderer,{sceneWarp})
+      :buildWhenIdle(renderer,tokenshadePrograms(globalThis.PIXI,presetTypes(DAMAGE_LOOK_PRESETS.map(name=>builtinPreset(name)))));
     run.sceneWarp=sceneWarp;warming=run;
     run.catch(error=>console.warn('Animater Tokenshade warm-up:',error.message)).finally(()=>{if(warming===run)warming=null;});
   },3000).unref?.();
