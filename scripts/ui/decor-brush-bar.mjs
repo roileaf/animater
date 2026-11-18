@@ -9,7 +9,11 @@ import { AREA_FLOORS, floorColour, floorName, caveColour } from '../engines/regi
 import { CAVE_AMOUNT, CAVE_CHOICES, caveMenu, WATER_KINDS, TEXTURE_STYLES } from '../engines/motion/region-steps.mjs';
 import { CROSSING_KINDS } from '../engines/regions/heights.mjs';
 
-export const BRUSH_SIZE = Object.freeze({ min: 0.5, max: 6, usual: 1.5 });
+// How wide the brush lays, in squares. A quarter of a square is the smallest worth offering: the map is read back for
+// painting at 1024 pixels on its long side, so on a 4000-pixel map a quarter-square dab is about three of those pixels
+// across and a tenth-square one barely a single pixel — a size that would promise an edge finer than the brush can see.
+// (Asked for, for the awkward places where two zones meet.)
+export const BRUSH_SIZE = Object.freeze({ min: 0.25, max: 6, usual: 1.5, step: 0.25 });
 export const BRUSH_THICK = Object.freeze({ min: 0.2, max: 2, usual: 0.8 });
 // How big the decorations it lays are, against each kind's usual size.
 export const BRUSH_SCALE = Object.freeze({ min: 0.3, max: 3, usual: 1 });
@@ -136,13 +140,13 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
       const modes = el('div', 'an-db-seg an-mp-heightmode');
       for (const [key, label, tip] of HEIGHT_MODES) { const b = el('button', remembered.heightMode === key ? 'an-db-on' : '', label); b.type = 'button'; b.dataset.heightMode = key; b.title = tip; b.setAttribute('aria-pressed', String(remembered.heightMode === key)); b.addEventListener('click', () => { remembered.heightMode = key; draw(); onChange(); }); modes.append(b); }
       row.append(modes);
-      if (remembered.heightMode === 'raise') { row.append(slider('Brush', BRUSH_SIZE, 'size', 0.5, ' sq'), edgeButtons()); extra.append(slider('How alike', BRUSH_TOL, 'tol', 1)); }
+      if (remembered.heightMode === 'raise') { row.append(slider('Brush', BRUSH_SIZE, 'size', BRUSH_SIZE.step, ' sq'), edgeButtons()); extra.append(slider('How alike', BRUSH_TOL, 'tol', 1)); }
       // Crossing: which kind; a ramp or a bridge as wide as the brush (a whole side of a raised part can slope).
       else {
         const kinds = el('div', 'an-db-seg an-mp-crosskind');
         for (const [key, label] of CROSSING_KINDS) { const b = el('button', remembered.crossKind === key ? 'an-db-on' : '', label); b.type = 'button'; b.dataset.crossKind = key; b.setAttribute('aria-pressed', String(remembered.crossKind === key)); b.addEventListener('click', () => { remembered.crossKind = key; draw(); onChange(); }); kinds.append(b); }
         row.append(kinds);
-        if (remembered.crossKind === 'ramp' || remembered.crossKind === 'bridge') row.append(slider('Brush', BRUSH_SIZE, 'size', 0.5, ' sq'));
+        if (remembered.crossKind === 'ramp' || remembered.crossKind === 'bridge') row.append(slider('Brush', BRUSH_SIZE, 'size', BRUSH_SIZE.step, ' sq'));
       }
       if (sceneTicks) {
         const now = sceneTicks.get() ?? {};
@@ -161,7 +165,7 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
       }
       // Edges: where a dab stops. Colour: what matches the colour where the stroke began. Model: the outline the segmentation
       // model sees under the pointer (a bridge is not the pool under it). Off: the whole ring.
-      row.append(slider('Brush', BRUSH_SIZE, 'size', 0.5, ' sq'), edgeButtons());
+      row.append(slider('Brush', BRUSH_SIZE, 'size', BRUSH_SIZE.step, ' sq'), edgeButtons());
       if (remembered.floor === 'cavern') {
         // Cave: what it holds, its colour and stage, as the region panel's Cavern section; size, how many and the rarer growth under More.
         const menu = caveMenuNow(), kind = remembered.cave.split('-')[0];
@@ -207,7 +211,7 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
       search.addEventListener('input', () => { query = search.value; filter(); });
       search.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const first = [...chips.children].find((c) => !c.hidden); if (first) pick(first.dataset.kind); } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); query = ''; search.value = ''; filter(); } });
       filter();
-      row.append(slider('Brush', BRUSH_SIZE, 'size', 0.5, ' sq'), slider('Density', BRUSH_THICK, 'thick', 0.1));
+      row.append(slider('Brush', BRUSH_SIZE, 'size', BRUSH_SIZE.step, ' sq'), slider('Density', BRUSH_THICK, 'thick', 0.1));
       extra.append(slider('Decoration size', BRUSH_SCALE, 'scale', 0.1), slider('Decoration height', BRUSH_TALL, 'tall', 0.1));
       // Rotation: shown in degrees once turned; Random sets every decoration its own way again.
       const turnBox = el('div', 'an-db-range an-db-turn'), deg = remembered.turn === null ? null : Math.round(((remembered.turn * 180) / Math.PI % 360 + 360) % 360);
@@ -236,7 +240,8 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
     if (typing) { const s = bar.querySelector('.an-db-search'); s?.focus(); s?.setSelectionRange(s.value.length, s.value.length); }
   };
   const api = { element: bar, close: () => { bar.remove(); if (remembered.lock === lock) remembered.lock = null; },
-    setSize: (v) => { remembered.size = Math.min(BRUSH_SIZE.max, Math.max(BRUSH_SIZE.min, Math.round(v * 2) / 2)); draw(); },
+    // Ctrl+wheel moves it by the same step the slider does, and lands on it exactly (0.1 + 0.2 is not 0.3 in binary).
+    setSize: (v) => { remembered.size = Math.min(BRUSH_SIZE.max, Math.max(BRUSH_SIZE.min, Math.round(v / BRUSH_SIZE.step) * BRUSH_SIZE.step)); draw(); },
     setThick: (v) => { remembered.thick = Math.min(BRUSH_THICK.max, Math.max(BRUSH_THICK.min, Math.round(v * 10) / 10)); draw(); },
     setScale: (v) => { remembered.scale = Math.min(BRUSH_SCALE.max, Math.max(BRUSH_SCALE.min, Math.round(v * 10) / 10)); draw(); },
     setEdges: (v) => { remembered.edges = EDGE_CHOICES.some(([k]) => k === v) ? v : 'colour'; draw(); },

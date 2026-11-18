@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.5.7
+
+- **A finer brush for map painting.** The brush now goes down to a quarter of a square, in quarter-square steps, on every tab that lays with one — floors and water, decorations, raised ground, ramps and bridges — by the slider, by Ctrl+wheel and by the `[` and `]` keys. It is for the awkward places where two zones meet, where half a square was wider than the gap. A quarter is as fine as it goes: painting reads the map back at 1024 pixels along its longest side, so on a large map a tenth-square dab would be under one of those pixels, and the brush would promise an edge it cannot see.
+
 ## 4.5.6
 
 - **Ponds with ducks on them cost half as much to draw.** A duck leaves a wake as it paddles, and the wake is kept up with it every frame — but before each one the module asked two slow questions over again: has this water frozen over, and which region is the duck swimming on? The first walks the settings, the scene and the ground's weather; the second tests the point against every region's outline. Both change slowly, and both were being asked sixty times a second for every duck on the map. They are now asked a few times a second, and afresh whenever the duck has swum a step of its own or the water freezes or thaws. Measured on a pond with ducks, frogs, fish and birds, the animals' share of a frame went from 2.4 to 1.1 milliseconds. Nothing about the wake itself changed: it is still drawn and carried along exactly as before.

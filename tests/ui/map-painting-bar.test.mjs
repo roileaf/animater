@@ -227,3 +227,28 @@ test('Floors: Cave holds fungus, crystals or mist in a colour and stage, size an
   assert.match(main, /const brushPool = \(c\) => \(c\.cave \? fl\.caves \?\? \[\] : fl\.saved\);/, 'growth keeps to its own regions, over the floors');
 
 });
+
+// Asked for: "map drawing tool, such as to draw water, able to scale down to 0.25 or even 0.1, would be handy for some
+// tricky areas on maps with weird zone transitions." A quarter of a square it is: painting is done on a read-back of
+// the map capped at 1024 pixels on its long side, so on a 4000-pixel map a quarter-square dab is about three of those
+// pixels across, and a tenth-square one is under a pixel — an edge finer than the brush can see.
+test('the brush goes down to a quarter of a square, by the slider, the wheel and the keys', async () => {
+  const { BRUSH_SIZE } = await import('../../scripts/ui/decor-brush-bar.mjs');
+  assert.equal(BRUSH_SIZE.min, 0.25);
+  assert.equal(BRUSH_SIZE.step, 0.25);
+  assert.equal(BRUSH_SIZE.max, 6, 'and the wide end is where it was');
+  const bar = read('scripts/ui/decor-brush-bar.mjs');
+  // Every Brush slider moves by that step: floors, decorations, raised ground, ramps and bridges.
+  const sliders = bar.split('\n').filter((l) => l.includes("slider('Brush', BRUSH_SIZE, 'size'"));
+  assert.equal(sliders.length, 4, 'all four tabs that lay with a brush');
+  assert.ok(sliders.every((l) => l.includes('BRUSH_SIZE.step')), 'none of them keeps a step of its own');
+  // Landing on the step exactly: a quarter is kind to floating point, but the rounding must still be the step's.
+  assert.match(bar, /Math\.round\(v \/ BRUSH_SIZE\.step\) \* BRUSH_SIZE\.step/);
+  // main.mjs kept its own copy of the bounds, which is how one of them could drift from the other: now it takes the bar's.
+  const main = read('scripts/main.mjs');
+  assert.match(main, /const DECOR_BRUSH = BRUSH_SIZE;/);
+  assert.match(main, /import \{ openBrushBar, brushChoices, BRUSH_EDGE, BRUSH_SIZE \}/);
+  assert.equal((main.match(/\(up \? 0\.5 : -0\.5\)|\? 0\.5 : -0\.5\)/g) ?? []).length, 0, 'no half-square step left in the wheel or the keys');
+  assert.match(main, /sizeNow\(\) \+ \(up \? DECOR_BRUSH\.step : -DECOR_BRUSH\.step\)/);
+  assert.match(main, /sizeNow\(\) \+ \(e\.key === "\]" \? DECOR_BRUSH\.step : -DECOR_BRUSH\.step\)/);
+});

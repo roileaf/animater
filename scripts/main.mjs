@@ -318,7 +318,7 @@ import { colourAt as floorColourAt, dabCells as floorDabCells, planFloorStroke, 
 import { toRegionData as floorRegionData, floorColour as floorTint, fitSize as floorFitSize, areaPixels as floorAreaPixels, toCaveRegionData, caveName, caveColour } from "./engines/regions/floor-detect.mjs";
 import { nearbyClicks as smartNearbyClicks, cleanSelection } from "./engines/regions/smart-select.mjs";
 import { decorRole, decorSettings, strokeShapes, circleArea as decorCircle, decorPlacements, trunkWalls, carryDecor, shapesBox } from "./engines/motion/decor-regions.mjs";
-import { openBrushBar, brushChoices, BRUSH_EDGE } from "./ui/decor-brush-bar.mjs";
+import { openBrushBar, brushChoices, BRUSH_EDGE, BRUSH_SIZE } from "./ui/decor-brush-bar.mjs";
 import { readHeight, readRamp, readOpenEdges, edgeTouches, openAt as heightOpenAt, OPEN_EDGES_MOST, heightField, walkerPath, nextHeight, rampFromDrag, rampOutline, heightRegionData, rampRegionData, cliffEdges, cliffRuns, heightsHoverLine, heightName, HEIGHT_STEP, BRIDGE_REACH, refitHeights, simplifyLoop, inAreas as inHeightAreas } from "./engines/regions/heights.mjs";
 import { swayAt, bridgeWeight, ropeWeight, pieceFrame, BRIDGE_REST } from "./engines/regions/crossing-sway.mjs";
 import { grownShape, lightPasses, reachableParts } from "./engines/regions/light-spill.mjs";
@@ -2661,7 +2661,8 @@ const decorBrushRoot = floorLayer("decorBrush");
 let decorBrushSyncAt = 0, decorBrushSyncTimer = null;
 const decorBrushSyncSoon = () => { if (decorBrushSyncTimer) return; const wait = Math.max(0, 100 - (performance.now() - decorBrushSyncAt)); decorBrushSyncTimer = setTimeout(() => { decorBrushSyncTimer = null; decorBrushSyncAt = performance.now(); if (decorBrushing) syncDecorations(); }, wait); };
 const NEW_DECOR_REGION = "animater-decor-new";
-const DECOR_BRUSH = { min: 0.5, max: 6, usual: 1.5 };
+// The bar's own bounds, not a second copy of them: the keys and the wheel move the brush by the step its slider uses.
+const DECOR_BRUSH = BRUSH_SIZE;
 const decorBrushTarget = (p) => regionsHere().find((r) => decorSettings(r.flags?.[ID]?.decor) && regionPointIn(p, regionAreas(r)));
 const startDecorBrush = (doc = null) => {
   stopDecorBrush();
@@ -3179,7 +3180,7 @@ const startDecorBrush = (doc = null) => {
     // 1, 2 and 3 switch the tabs (kept from Foundry's macro bar while the brush is out).
     if ((e.key === "1" || e.key === "2" || e.key === "3") && !(e.ctrlKey || e.metaKey || e.altKey)) { e.preventDefault(); e.stopImmediatePropagation(); state.bar?.setTab(e.key === "1" ? "floors" : e.key === "2" ? "decor" : "heights"); return; }
     if (e.key === "Escape") stopDecorBrush();
-    else if (e.key === "[" || e.key === "]") { const next = Math.min(DECOR_BRUSH.max, Math.max(DECOR_BRUSH.min, sizeNow() + (e.key === "]" ? 0.5 : -0.5))); state.bar?.setSize(next); draw(); }
+    else if (e.key === "[" || e.key === "]") { const next = Math.min(DECOR_BRUSH.max, Math.max(DECOR_BRUSH.min, sizeNow() + (e.key === "]" ? DECOR_BRUSH.step : -DECOR_BRUSH.step))); state.bar?.setSize(next); draw(); }
   };
   // The wheel still zooms the map; Ctrl+wheel sets the brush's size and Shift+wheel how thick it lays them (both kept from
   // Foundry, whose Ctrl or Shift+wheel would turn the selected tokens).
@@ -3195,7 +3196,7 @@ const startDecorBrush = (doc = null) => {
     else if (e.altKey && !(e.ctrlKey || e.metaKey || e.shiftKey)) state.bar?.setScale(brushChoices().scale + (up ? 0.1 : -0.1));
     else if (e.shiftKey && !(e.ctrlKey || e.metaKey)) state.bar?.turnBy(up ? -1 : 1);
     else if (e.shiftKey) state.bar?.setThick(brushChoices().thick + (up ? 0.1 : -0.1));
-    else { const next = Math.min(DECOR_BRUSH.max, Math.max(DECOR_BRUSH.min, sizeNow() + (up ? 0.5 : -0.5))); state.bar?.setSize(next); }
+    else { const next = Math.min(DECOR_BRUSH.max, Math.max(DECOR_BRUSH.min, sizeNow() + (up ? DECOR_BRUSH.step : -DECOR_BRUSH.step))); state.bar?.setSize(next); }
     draw();
   };
   const menu = (e) => { const from = state.rightAt; state.rightAt = null; if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > 6) return; e.preventDefault(); stopDecorBrush(); };
