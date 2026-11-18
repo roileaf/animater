@@ -385,3 +385,39 @@ test("reviewing marks the saved regions as saved and unticked, so they are not w
   app.markPictureSaved(plan, picked, [{ id: "made", name: "Grass 1" }]);
   assert.equal(app.detect.proposals[0].regionId, "made");
 });
+
+test("saving the current picture then another names regions against what the first wrote", async () => {
+  const regions = [];
+  const scene = { id: "scene", regions, createEmbeddedDocuments: async (_t, docs) => docs.map((d, i) => { const doc = { ...d, id: `r${regions.length + i}` }; regions.push(doc); return doc; }), updateEmbeddedDocuments: async () => [] };
+  class Quiet { async render() {} async close() {} }
+  const hull = rgba(4, 4, (set) => { for (const [x, y] of [[1, 1], [2, 1], [1, 2], [2, 2]]) set(x, y, 255); });
+  const square = { id: "area-1", share: 1, vertices: 4, loops: [{ hole: false, points: [0, 0, 2, 0, 2, 2, 0, 2] }], pixels: new Int32Array([0]) };
+  const { app } = await openFloorRegions({
+    src: "map.png", scene, sceneRect, levelId, tiles: [deckDoc, awningDoc], memory: null, autoMark: false, view: null,
+    Application: Quiet, notify() {}, warn() {}, choose: async () => "save",
+    detect: () => ({ proposals: [square], reason: "" }),
+    load: async (src) => src === "map.png" ? { ok: true, rgba: new Uint8ClampedArray(16), width: 2, height: 2 } : { ok: true, rgba: hull, width: 4, height: 4 },
+  });
+  await app.showPicture("tile:deck");
+  await app.showPicture("tile:awning");
+  app.drafts.get("tile:deck").choices = [row("area-1", "grass")];
+  app.drafts.get(`map:${levelId}`).choices = [row("area-1", "grass")];
+  await app.saveOtherPictures();
+  assert.equal(regions.length, 2);
+  assert.equal(new Set(regions.map((r) => r.name)).size, 2);
+});
+
+test("a region marked saved keeps the choices it was saved with as its baseline", async () => {
+  const scene = { id: "scene", regions: [], createEmbeddedDocuments: async (_t, docs) => docs.map((d, i) => ({ id: `n${i}`, name: d.name })), updateEmbeddedDocuments: async () => [] };
+  class Quiet { async render() {} async close() {} }
+  const { app } = await openFloorRegions({
+    src: "map.png", scene, sceneRect, levelId, tiles: [deckDoc], memory: null, autoMark: false, view: null,
+    Application: Quiet, notify() {}, warn() {},
+    detect: () => ({ proposals: [{ id: "area-1", share: 1, vertices: 4, loops: [{ hole: false, points: [0, 0, 2, 0, 2, 2, 0, 2] }], pixels: new Int32Array([0]) }], reason: "" }),
+    load: async () => ({ ok: true, rgba: new Uint8ClampedArray(16), width: 2, height: 2 }),
+  });
+  const picked = [row("area-1", "stone")];
+  const plan = planFloorCreate({ proposals: app.detect.proposals, picked, sceneRect, imageWidth: 2, imageHeight: 2, levelId, regions: [], plane: app.plane });
+  app.markPictureSaved(plan, picked, [{ id: "made", name: "Stone" }]);
+  assert.equal(app.detect.proposals[0].savedChoices.floor, "stone");
+});

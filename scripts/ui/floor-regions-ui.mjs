@@ -1759,7 +1759,11 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
         const sig = area.sig ?? areaSignature(detect.rgba, detect.width, detect.height, area.pixels);
         if (sig) entries.push({ key: `${sceneId}:${NONE_FLOOR}:${sig.join(",")}`, sig, floor: NONE_FLOOR, look: {} });
       }
-      if (entries.length) await hooks.memory.save(rememberAreas(this.memory, entries));
+      if (entries.length) {
+        const after = rememberAreas(this.memory, entries);
+        await hooks.memory.save(after);
+        this.memory = after;
+      }
     }
 
     // Marks areas by themselves when the window opens, from what the saved regions taught: the model cuts the map into
@@ -2288,11 +2292,17 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
     // The regions just written are saved regions now: their rows say so and are unticked, so a later save never writes them twice.
     markPictureSaved(plan, picked, docs) {
       const regionOf = new Map((plan.sources ?? []).map((id, i) => [id, docs?.[i]]));
+      const rows = new Map(picked.map((row) => [row.id, row]));
+      const saved = new Set(picked.filter((row) => row.checked).map((row) => row.id));
       for (const proposal of this.detect.proposals) {
         const doc = regionOf.get(proposal.id);
-        if (doc?.id) { proposal.regionId = doc.id; proposal.name = doc.name ?? proposal.name; proposal.geometryChanged = false; }
+        if (doc?.id) { proposal.regionId = doc.id; proposal.name = doc.name ?? proposal.name; }
+        const row = rows.get(proposal.id);
+        if (!saved.has(proposal.id) || !proposal.regionId || !row) continue;
+        proposal.geometryChanged = false;
+        const { id, checked, ...choices } = row;
+        proposal.savedChoices = { ...proposal.savedChoices, ...choices, overhead: proposal.overhead === true, stepsOwn: proposal.savedChoices?.floor === row.floor ? proposal.savedChoices?.stepsOwn ?? null : null };
       }
-      const saved = new Set(picked.filter((row) => row.checked).map((row) => row.id));
       this.paintPicture(picked.map((row) => ({ ...row, checked: row.checked && !saved.has(row.id) })), this.element?.querySelector ? sharedChoices(this.element) : null);
     }
 
@@ -2321,8 +2331,10 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       if (choice === "review") return true;
       if (choice !== "save") return false;
       let created = 0, updated = 0;
-      for (const { draft, picked, plan, plane } of others) {
-        const outcome = await this.commitPicture(plan, picked, { detect: draft.detect, plane, rejected: draft.rejected });
+      for (const { key } of others) {
+        const next = this.otherPicturePlans().find((other) => other.key === key);
+        if (!next) continue;
+        const outcome = await this.commitPicture(next.plan, next.picked, { detect: next.draft.detect, plane: next.plane, rejected: next.draft.rejected });
         created += outcome.created; updated += outcome.updated;
       }
       if (created + updated) hooks.notify?.(`${created ? `Created ${created} more region${created === 1 ? "" : "s"}.` : ""}${updated ? ` Updated ${updated} more saved region${updated === 1 ? "" : "s"}.` : ""}`.trim());
@@ -2354,8 +2366,8 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
         if (!outcome.cancelled && outcome.created + outcome.updated > 0) {
           hooks.notify?.(`${outcome.created ? `Created ${outcome.created} region${outcome.created === 1 ? "" : "s"}.` : ""}${outcome.updated ? ` Updated ${outcome.updated} saved region${outcome.updated === 1 ? "" : "s"}.` : ""}`.trim());
           const first = this.otherPicturePlans()[0];
+          this.markPictureSaved(plan, picked, outcome.docs);
           if (await this.saveOtherPictures()) {
-            this.markPictureSaved(plan, picked, outcome.docs);
             await this.showPicture(first.key);
             hooks.notify?.("Saved. Review this picture, then save it.");
             return;
