@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.5.2
+
+- **A rat has one tail.** J-P, on Discord, with a picture of it: "why does the rats have this bizarre too long double tail?" A rat's tail is drawn as it runs, swinging behind it, so the rat's own picture underneath is a rat without one — and the painted rat has its tail in the picture already. Laying the painted rat over the frame squeezed it to about half size to make room for a tail the frame did not have, and then the drawn tail went on top of the painted one. The painted rat is now matched body to body, so it is the size a rat has always been, and it keeps the one tail it was painted with.
+
 ## 4.5.1
 
 A door stops deciding things for itself: when it opens, what breaks it, and what puts it back are the GM's again.
