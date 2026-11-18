@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.5.8
+
+- **The map painting bar no longer fights the pointer.** Dragging the Brush slider moved it one notch and then stuck: the line in the bar's header is set again as the pointer moves over the map, and setting it drew the whole bar afresh, so the slider under the dragging pointer was thrown away mid-drag. The header's line and its undo and redo buttons now change where they stand, and nothing else is disturbed.
+- **No more brush ghosts left standing on the map.** The ring and the decorations it shows were drawn wherever the pointer last was over the map, and every choice the bar changed drew them there again — so clicking a slider painted a phantom brush out on the map that nothing ever laid down. They now leave the map with the pointer.
+- **Painting no longer stops dead until a reload.** A stroke that failed on its way to being saved left the brush holding every new stroke off: the map still said what a dab would add or rub out, and nothing happened, until the scene changed or the page was reloaded. The hold is now always let go, whatever the stroke did.
+- **Each kind of water is its own water.** Painting a waterfall up against a lake folded it into the lake and brought it back out a still pool, because the brush knew one floor called water. A still pool, a river, rapids, a waterfall and the sea are now each their own to the brush: a stroke grows only water of the kind picked, keeps off the other kinds the way it keeps off grass or stone, and rubs out only its own kind — so pick the lake's kind to rub the lake out.
+
 ## 4.5.7
 
 - **A finer brush for map painting.** The brush now goes down to a quarter of a square, in quarter-square steps, on every tab that lays with one — floors and water, decorations, raised ground, ramps and bridges — by the slider, by Ctrl+wheel and by the `[` and `]` keys. It is for the awkward places where two zones meet, where half a square was wider than the gap. A quarter is as fine as it goes: painting reads the map back at 1024 pixels along its longest side, so on a large map a tenth-square dab would be under one of those pixels, and the brush would promise an edge it cannot see.

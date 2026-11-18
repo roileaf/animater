@@ -103,6 +103,9 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
   const bar = document.createElement('div'); bar.id = 'an-decor-brush'; bar.className = 'an-decor-brush an-map-paint';
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
   let query = '', status = { text: '', undo: false, redo: false };
+  // The header's line and its two buttons, kept so a new status can change them where they stand: the whole bar is drawn
+  // afresh on every change, and a redraw here would take the slider out from under a pointer dragging it.
+  let statusEl = null, undoEl = null, redoEl = null;
   const draw = () => {
     // (Drawn afresh on every change; the search keeps its text, and its focus while typing in it.)
     const typing = document.activeElement?.classList?.contains('an-db-search') && bar.contains(document.activeElement);
@@ -116,9 +119,11 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
       t.innerHTML = `<i class="${icon}"></i>`; t.append(el('span', '', lock && key === 'decor' ? `Decorations: ${lock.name || 'region'}` : label));
       t.title = `${label} (${TAB_KEYS[key]})`; t.addEventListener('click', () => api.setTab(key)); head.append(t);
     }
-    head.append(el('span', 'an-mp-status', status.text));
+    statusEl = el('span', 'an-mp-status', status.text); head.append(statusEl);
     const iconBtn = (icon, title, on, fn) => { const b = el('button', 'an-mp-icon'); b.type = 'button'; b.title = title; b.setAttribute('aria-label', title); b.innerHTML = `<i class="${icon}"></i>`; b.disabled = !on; b.addEventListener('click', fn); return b; };
-    head.append(iconBtn('fa-solid fa-rotate-left', 'Undo (Ctrl+Z)', status.undo, () => onUndo()), iconBtn('fa-solid fa-rotate-right', 'Redo (Ctrl+Shift+Z)', status.redo, () => onRedo()));
+    undoEl = iconBtn('fa-solid fa-rotate-left', 'Undo (Ctrl+Z)', status.undo, () => onUndo());
+    redoEl = iconBtn('fa-solid fa-rotate-right', 'Redo (Ctrl+Shift+Z)', status.redo, () => onRedo());
+    head.append(undoEl, redoEl);
     const close = el('button', 'an-db-close an-mp-icon'); close.type = 'button'; close.setAttribute('aria-label', 'Close'); close.title = 'Close (Esc)'; close.innerHTML = '<i class="fa-solid fa-xmark"></i>'; close.addEventListener('click', () => { api.close(); onClose(); }); head.append(close);
     const body = el('div', 'an-mp-body');
     const slider = (label, bounds, key, step, unit = '', fmt = (v) => `${v}${unit}`) => { const box = el('label', 'an-db-range'), s = el('input'), shown = el('b', '', fmt(remembered[key])); s.type = 'range'; s.min = String(bounds.min); s.max = String(bounds.max); s.step = String(step); s.value = String(remembered[key]); s.addEventListener('input', () => { remembered[key] = Number(s.value); shown.textContent = fmt(Number(s.value)); onChange(); });
@@ -251,7 +256,13 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
     setTab: (tab) => { const next = (tab === 'floors' || tab === 'heights') && !lock ? tab : 'decor'; if (next === remembered.tab) return; remembered.tab = next; draw(); onTab(next); onChange(); },
     // (From a raised part's panel, Add crossing: Heights, crossing mode, that kind.)
     setCrossing: (kind) => { if (lock) return; remembered.heightMode = 'ramp'; if (CROSSING_KINDS.some(([k]) => k === kind)) remembered.crossKind = kind; const tabbed = remembered.tab !== 'heights'; remembered.tab = 'heights'; draw(); if (tabbed) onTab('heights'); onChange(); },
-    setStatus: (text, { undo = false, redo = false } = {}) => { status = { text: String(text ?? ''), undo, redo }; draw(); } };
+    // The line changes where it stands. (It is set as the pointer moves over the map and whenever a choice changes, so
+    // drawing the bar afresh here replaced the slider being dragged and the drag died on its first step.)
+    setStatus: (text, { undo = false, redo = false } = {}) => {
+      status = { text: String(text ?? ''), undo, redo };
+      if (statusEl && undoEl && redoEl) { statusEl.textContent = status.text; undoEl.disabled = !status.undo; redoEl.disabled = !status.redo; return; }
+      draw();
+    } };
   draw();
   (document.getElementById('board')?.parentElement ?? document.body).append(bar);
   return api;

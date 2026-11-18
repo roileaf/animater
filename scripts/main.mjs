@@ -289,7 +289,7 @@ import { THUNDER, weatherLevels, weatherIsOurs, thunderOnTopOf, thunderShape, th
 import { createDoorBursts, doorSends, doorPlace, burstTarget, flockPaths, flockSize } from "./engines/motion/door-burst.mjs";
 import { createFloorBlood, hitMarks, bleedStep, standingDrip, splatMarks, scaleMarks, packMark, unpackMark } from "./engines/motion/floor-blood.mjs";
 import { bakeBlood } from "./engines/motion/blood-bake.mjs";
-import { fallWindAngle, stepScale, textureOpacity, waterDepthLook, noLifeOnWater, unfitForLife, waterFlows, waterKindOf, activeStep, floodedByStep, paintsOverWater, showsTexture, stepEdge, stepFlags, stepLook, takesSeason, textureFloor, textureStyleOf, castsShadow, overShadowOf, dockStyleOf, showsPosts, caveLook, indoorEdgeOf } from "./engines/motion/region-steps.mjs";
+import { WATER_KINDS, fallWindAngle, stepScale, textureOpacity, waterDepthLook, noLifeOnWater, unfitForLife, waterFlows, waterKindOf, activeStep, floodedByStep, paintsOverWater, showsTexture, stepEdge, stepFlags, stepLook, takesSeason, textureFloor, textureStyleOf, castsShadow, overShadowOf, dockStyleOf, showsPosts, caveLook, indoorEdgeOf } from "./engines/motion/region-steps.mjs";
 import { createFloorLooks, createFloorTextures, skyForFloors } from "./engines/motion/floor-looks.mjs";
 import { createFloorMotion } from "./engines/motion/floor-motion.mjs";
 import { openStepsWindow, refreshStepsWindow } from "./ui/region-steps-ui.mjs";
@@ -315,7 +315,7 @@ import { createWebs, webCorners } from "./engines/motion/webs.mjs";
 import { createDecorations, decorWreckTile } from "./engines/motion/decorations.mjs";
 import { createDecorLights } from "./engines/motion/decor-lights.mjs";
 import { colourAt as floorColourAt, dabCells as floorDabCells, planFloorStroke, floorRegionName, modelMaskFor, hoverLine as floorHoverLine } from "./engines/regions/floor-brush.mjs";
-import { toRegionData as floorRegionData, floorColour as floorTint, fitSize as floorFitSize, areaPixels as floorAreaPixels, toCaveRegionData, caveName, caveColour } from "./engines/regions/floor-detect.mjs";
+import { toRegionData as floorRegionData, floorColour as floorTint, fitSize as floorFitSize, areaPixels as floorAreaPixels, toCaveRegionData, caveName, caveColour, floorName } from "./engines/regions/floor-detect.mjs";
 import { nearbyClicks as smartNearbyClicks, cleanSelection } from "./engines/regions/smart-select.mjs";
 import { decorRole, decorSettings, strokeShapes, circleArea as decorCircle, decorPlacements, trunkWalls, carryDecor, shapesBox } from "./engines/motion/decor-regions.mjs";
 import { openBrushBar, brushChoices, BRUSH_EDGE, BRUSH_SIZE } from "./ui/decor-brush-bar.mjs";
@@ -2758,7 +2758,7 @@ const startDecorBrush = (doc = null) => {
   // The level's floor regions as the brush sees them, and tinted on the map in their floor's colour.
   const refreshFloors = () => {
     const m = fl.map; fl.overlay.clear(); if (!m) return;
-    try { fl.saved = m.ui.savedAreaProposals(canvas.scene?.regions, { levelId: m.levelId, sceneRect: m.rect, width: m.width, height: m.height }).filter((s) => s.floor && !s.overhead); }
+    try { fl.saved = m.ui.savedAreaProposals(canvas.scene?.regions, { levelId: m.levelId, sceneRect: m.rect, width: m.width, height: m.height }).filter((s) => s.floor && !s.overhead).map((s) => ({ ...s, key: floorKeyOf(s.floor, s.savedChoices?.waterKind) })); }
     catch (err) { console.warn("Animater | map painting floors", err); fl.saved = []; }
     // (Cave growth the brush laid: its own regions over the floors, drawn fainter in its growth's colour.)
     try { fl.caves = m.ui.savedCaveAreas(canvas.scene?.regions, { levelId: m.levelId, sceneRect: m.rect, width: m.width, height: m.height }); }
@@ -2825,24 +2825,31 @@ const startDecorBrush = (doc = null) => {
   // (Decorations stand on the floor: the brush paints under them, and they show above it.)
   // Cave growth (the Cave tile) paints its own regions, over the floors: it keeps off other growth, not off floors, and floors off
   // neither. What the brush paints and the regions it keeps to: the floor, or the growth's word with the brush's cave regions.
-  const brushKey = (c) => (c.cave ? c.cave.cavern : c.floor);
+  // Water of one kind is its own floor to the brush: a waterfall painted up against a lake used to be folded into the lake and
+  // come out a still pool. Each kind keeps to its own regions, keeps off the others' and is rubbed out with its own kind picked.
+  const WATER_KEY_NAMES = Object.fromEntries(WATER_KINDS.map(([key, label]) => [`water:${key}`, label]));
+  const floorKeyOf = (floor, kind) => (floor === "water" ? `water:${WATER_KEY_NAMES[`water:${kind}`] ? kind : "still"}` : floor);
+  const keyName = (key) => WATER_KEY_NAMES[key] ?? floorName(key);
+  const brushKey = (c) => (c.cave ? c.cave.cavern : floorKeyOf(c.floor, c.waterKind));
   const brushPool = (c) => (c.cave ? fl.caves ?? [] : fl.saved);
-  const brushName = (c) => (c.cave ? caveName : undefined);
+  const brushName = (c) => (c.cave ? caveName : keyName);
+  // What a saved region is to the brush: its floor, or its water's kind.
+  const floorKey = (s) => s.key ?? s.floor;
   const brushTint = (c) => (c.cave ? caveColour(c.cave.cavern) : floorTint(c.floor));
   const claimedBy = (floor, pool = fl.saved) => {
     if (claimedKey?.saved === pool && claimedKey.floor === floor) return claimedMask;
-    claimedMask = new Uint8Array(fl.map.width * fl.map.height); for (const s of pool) if (s.floor !== floor) for (const px of s.pixels) claimedMask[px] = 1;
+    claimedMask = new Uint8Array(fl.map.width * fl.map.height); for (const s of pool) if (floorKey(s) !== floor) for (const px of s.pixels) claimedMask[px] = 1;
     claimedKey = { saved: pool, floor }; return claimedMask;
   };
   // Which floor region holds each pixel of the map image (the saved region's floor, or none), made again when the regions change.
   let ownerKey = null, ownerMap = null;
   const floorUnder = (i, pool = fl.saved) => {
     if (ownerKey !== pool) { ownerMap = new Uint16Array(fl.map.width * fl.map.height); pool.forEach((s, n) => { for (const px of s.pixels) ownerMap[px] = n + 1; }); ownerKey = pool; }
-    return pool[ownerMap[i] - 1]?.floor ?? null;
+    const s = pool[ownerMap[i] - 1]; return s ? floorKey(s) : null;
   };
   const setHoverText = (text) => { if ((fl.hoverText ?? "") === (text ?? "")) return; fl.hoverText = text ?? ""; refreshStatus(); };
   // What rubbing out `floor` may not touch: every pixel outside that floor's regions.
-  const notFloor = (floor, pool = fl.saved) => { const out = new Uint8Array(fl.map.width * fl.map.height).fill(1); for (const s of pool) if (s.floor === floor) for (const px of s.pixels) out[px] = 0; return out; };
+  const notFloor = (floor, pool = fl.saved) => { const out = new Uint8Array(fl.map.width * fl.map.height).fill(1); for (const s of pool) if (floorKey(s) === floor) for (const px of s.pixels) out[px] = 0; return out; };
   const hideHover = () => { hoverAt = null; if (fl.hover) fl.hover.visible = false; setHoverText(""); };
   const drawHover = () => {
     hoverTimer = null; const p = hoverAt, m = fl.map; if (!p || !m || state.down || !floorsOn() || decorBrushing !== state) return hideHover();
@@ -3056,14 +3063,18 @@ const startDecorBrush = (doc = null) => {
     fl.dabs.push(q);
     if (fl.within[Math.round(q.y) * fl.map.width + Math.round(q.x)]) paintDab(q); else askAt(q);
   };
-  const floorFinish = async () => {
+  // (Always in a finally: `fl.finishing` holds every new stroke off while one is being saved, so a throw on the way out left the
+  // brush showing what a dab would do and doing nothing, until the scene changed or the page was reloaded.)
+  const floorFinish = async () => { try { await floorSave(); } finally { fl.finishing = false; } };
+  const floorSave = async () => {
     // (A stroke still waiting on the model's answer is saved once it comes.)
     fl.finishing = true;
     while (fl.asking) await fl.asking;
-    if (fl.heights) { await heightFinish(); fl.heights = null; fl.finishing = false; if (decorBrushing === state) { clearStroke(); refreshHeights(); refreshStatus(); } return; }
+    if (fl.heights) { await heightFinish(); fl.heights = null; if (decorBrushing === state) { clearStroke(); refreshHeights(); refreshStatus(); } return; }
     const c = brushChoices(), saved = brushPool(c), m = fl.map;
     try {
-      const plan = planFloorStroke({ saved, floor: brushKey(c), stroke: fl.stroke, erase: fl.erasing, width: fl.map.width, height: fl.map.height });
+      // (The planner joins by the floor it is given: water's kind is part of that key, so one kind never folds into another's region.)
+      const plan = planFloorStroke({ saved: saved.map((s) => ({ ...s, floor: floorKey(s) })), floor: brushKey(c), stroke: fl.stroke, erase: fl.erasing, width: fl.map.width, height: fl.map.height });
       const scene = canvas.scene, opts = { sceneRect: m.rect, imageWidth: m.width, imageHeight: m.height, levelId: m.levelId }, shapesOf = (loops) => floorRegionData({ loops }, opts).shapes;
       const updates = [], creates = [], removes = [];
       for (const u of plan.updates) { const doc = scene.regions.get(u.regionId); if (!doc) continue; const before = doc.toObject().shapes, after = shapesOf(u.loops); await doc.update({ shapes: after }); updates.push({ id: doc.id, before, after }); }
@@ -3076,7 +3087,6 @@ const startDecorBrush = (doc = null) => {
       }
       if (updates.length || creates.length || removes.length) rememberDecorStep({ kind: "floor", updates, creates, removes });
     } catch (err) { console.warn("Animater | map painting floors", err); ui.notifications?.warn?.("The floor could not be saved."); }
-    fl.finishing = false;
     if (decorBrushing === state) { clearStroke(); refreshFloors(); refreshStatus(); }
   };
   const regionHooks = ["createRegion", "updateRegion", "deleteRegion"].map((hook) => [hook, Hooks.on(hook, () => { if (decorBrushing === state && !state.down) { refreshFloors(); refreshHeights(); refreshStatus(); } })]);
@@ -3162,7 +3172,9 @@ const startDecorBrush = (doc = null) => {
     begin(p); state.down = true; state.erasing = e.shiftKey; state.last = p; draw(); dab(p, e.shiftKey, true);
   };
   const move = (e) => {
-    if (!state.down && e.target !== view) { hideHover(); return; } const p = at(e); state.at = p; if (!state.down) state.erasing = e.shiftKey; draw();
+    // Off the map (over the bar, say): the ring and the ghost go with the pointer, instead of being left standing at the last
+    // place it was over the map and redrawn there by every choice the bar changes.
+    if (!state.down && e.target !== view) { hideHover(); if (state.at) { state.at = null; draw(); } return; } const p = at(e); state.at = p; if (!state.down) state.erasing = e.shiftKey; draw();
     if (hz.drag) { e.stopImmediatePropagation(); hz.drag.ramp.b = p; refreshHeights(); return; }
     if (hz.open) { e.stopImmediatePropagation(); const last = hz.open.circles.at(-1); if (Math.hypot(p.x - last.x, p.y - last.y) >= hz.open.r * 0.5) { hz.open.circles.push({ x: Math.round(p.x), y: Math.round(p.y), r: Math.round(hz.open.r) }); refreshHeights(); } return; }
     if (!state.down && heightsOn()) { hideHover(); heightsHover(p); return; }

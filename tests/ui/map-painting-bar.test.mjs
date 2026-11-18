@@ -82,7 +82,7 @@ test('main: one Map painting button paints floors and decorations, saving each s
   assert.match(main, /name: "animaterDecorate", title: "Map painting:[^"]*", icon: "fa-solid fa-paintbrush"/);
   assert.match(main, /\['toolDecorate','Show the Map painting button'/);
   assert.match(main, /const c = brushChoices\(\), saved = brushPool\(c\), m = fl\.map;/);
-  assert.match(main, /planFloorStroke\(\{ saved, floor: brushKey\(c\), stroke: fl\.stroke, erase: fl\.erasing, width: fl\.map\.width, height: fl\.map\.height \}\)/);
+  assert.match(main, /planFloorStroke\(\{ saved: saved\.map\(\(s\) => \(\{ \.\.\.s, floor: floorKey\(s\) \}\)\), floor: brushKey\(c\), stroke: fl\.stroke, erase: fl\.erasing, width: fl\.map\.width, height: fl\.map\.height \}\)/);
   assert.match(main, /rememberDecorStep\(\{ kind: "floor", updates, creates, removes \}\)/);
   assert.match(main, /name: floorRegionName\(c\.floor, names\), floor: c\.floor, texture: c\.texture, pattern: c\.pattern, waterKind: c\.waterKind, overWater: c\.overWater, edge: c\.edge === BRUSH_EDGE\.usual \? "" : c\.edge \}/, 'a new region takes the Soft edge, its style and its water kind');
   assert.match(main, /const data = c\.cave \? toCaveRegionData\(\{ loops: made\.loops \}, \{ \.\.\.opts, \.\.\.c\.cave, name: floorRegionName\(c\.cave\.cavern, names, caveName\) \}\)/, 'cave growth makes cave regions');
@@ -114,7 +114,7 @@ test('main: one Map painting button paints floors and decorations, saving each s
   // Roi, of keeping off decorations: "i changed my mind ... the decorations should be above the floor". The brush paints
   // under them; only other floors' regions are kept off.
   assert.doesNotMatch(main, /decorObstacles/);
-  assert.match(main, /claimedMask = new Uint8Array\(fl\.map\.width \* fl\.map\.height\); for \(const s of pool\) if \(s\.floor !== floor\)/);
+  assert.match(main, /claimedMask = new Uint8Array\(fl\.map\.width \* fl\.map\.height\); for \(const s of pool\) if \(floorKey\(s\) !== floor\)/);
   // Roi: "i dont see preview when i select to show texture". A floor that will be painted previews in its own texture.
   assert.match(main, /if \(!m\.ui\.paintsTexture\(c\.floor, c\.texture, canvas\.scene\?\.flags\?\.\[ID\]\?\.floorTextures \?\? ""\)\) return null;/);
   assert.match(main, /tile = floorTextures\.tileImage\(c\.floor, style\)/);
@@ -251,4 +251,60 @@ test('the brush goes down to a quarter of a square, by the slider, the wheel and
   assert.equal((main.match(/\(up \? 0\.5 : -0\.5\)|\? 0\.5 : -0\.5\)/g) ?? []).length, 0, 'no half-square step left in the wheel or the keys');
   assert.match(main, /sizeNow\(\) \+ \(up \? DECOR_BRUSH\.step : -DECOR_BRUSH\.step\)/);
   assert.match(main, /sizeNow\(\) \+ \(e\.key === "\]" \? DECOR_BRUSH\.step : -DECOR_BRUSH\.step\)/);
+});
+
+// Outrider, on 4.5.7: "if you use CTRL+scroll to change the size, the slider now glitches and stays locked to a short range
+// nearby if you try to drag it." The line under the pointer is set again on every move and every change, and setting it drew
+// the whole bar afresh, so the slider being dragged was thrown away and the drag died one step in.
+test('a new status line leaves the sliders standing, so a drag is not cut short', async () => {
+  fakeDom();
+  const { openBrushBar } = await import('../../scripts/ui/decor-brush-bar.mjs');
+  const bar = openBrushBar(), slider = find(bar.element, (n) => n.type === 'range');
+  assert.ok(slider, 'the Brush slider');
+  bar.setStatus('Over: Water, a dab grows it', { undo: true, redo: false });
+  assert.equal(find(bar.element, (n) => n.type === 'range'), slider, 'the very same element, not a fresh one');
+  assert.equal(find(bar.element, (n) => n.className === 'an-mp-status').textContent, 'Over: Water, a dab grows it');
+  const icons = all(bar.element, (n) => n.className === 'an-mp-icon');
+  assert.equal(icons[0].disabled, false, 'Undo is on'); assert.equal(icons[1].disabled, true, 'Redo is off');
+  bar.close();
+});
+
+// Outrider: "If you try to click it, it will change size and now draws fake artifacts on the screen that are ghosts of the
+// brush (never actually painted)." The ring and the ghost were drawn at the last place the pointer was over the map, and every
+// choice the bar changed drew them there again.
+test('the ring and the ghost leave the map with the pointer', async () => {
+  const main = read('scripts/main.mjs');
+  assert.match(main, /if \(!state\.down && e\.target !== view\) \{ hideHover\(\); if \(state\.at\) \{ state\.at = null; draw\(\); \} return; \}/);
+  // With nowhere to draw them, draw() clears the ring and puts the ghost out.
+  assert.match(main, /const showGhost = !!state\.at && !state\.down/);
+});
+
+// Outrider: "Sometimes when trying to draw, it will stop responding; it will show that you're trying to add or remove, but the
+// boundary doesn't change... I've had to F5 reload before I can work again." floorBegin turns every stroke away while
+// fl.finishing is set, and it was cleared on the way out of floorFinish: a throw before that left it set for good.
+test('a stroke that fails to save still lets the next one start', async () => {
+  const main = read('scripts/main.mjs');
+  assert.match(main, /const floorFinish = async \(\) => \{ try \{ await floorSave\(\); \} finally \{ fl\.finishing = false; \} \};/);
+  const save = main.slice(main.indexOf('const floorSave = async'), main.indexOf('const regionHooks'));
+  assert.equal((save.match(/fl\.finishing = false/g) ?? []).length, 0, 'cleared in the finally alone, never half-way through');
+  assert.match(save, /if \(fl\.heights\) \{ await heightFinish\(\);/, 'the heights way out is inside it too');
+  assert.match(main, /if \(fl\.finishing\) return false;/, 'and it is what holds a new stroke off');
+});
+
+// Outrider: "I have the lake here, but drawing the waterfall into bordering it will cause it to join the lake and flip out of
+// the waterfall mode." The brush knew one floor called water, so a stroke grew the first water region it touched and came back
+// out as that region's kind. Each kind of water is its own floor to the brush now: it joins its own, keeps off the others.
+test('water of one kind does not fold into water of another', async () => {
+  const main = read('scripts/main.mjs');
+  assert.match(main, /const floorKeyOf = \(floor, kind\) =>/);
+  assert.match(main, /const brushKey = \(c\) => \(c\.cave \? c\.cave\.cavern : floorKeyOf\(c\.floor, c\.waterKind\)\);/);
+  // A saved region carries the same key, and everything that asks "is this mine?" asks through it.
+  assert.match(main, /key: floorKeyOf\(s\.floor, s\.savedChoices\?\.waterKind\)/);
+  assert.match(main, /const floorKey = \(s\) => s\.key \?\? s\.floor;/);
+  assert.match(main, /for \(const s of pool\) if \(floorKey\(s\) !== floor\)/, 'painting keeps off the other kinds');
+  assert.match(main, /for \(const s of pool\) if \(floorKey\(s\) === floor\)/, 'and rubbing out takes only its own');
+  assert.match(main, /planFloorStroke\(\{ saved: saved\.map\(\(s\) => \(\{ \.\.\.s, floor: floorKey\(s\) \}\)\)/);
+  // The line under the pointer names the kind, so "keeps off it" says which water it means.
+  assert.match(main, /const keyName = \(key\) => WATER_KEY_NAMES\[key\] \?\? floorName\(key\);/);
+  assert.match(main, /const brushName = \(c\) => \(c\.cave \? caveName : keyName\);/);
 });
