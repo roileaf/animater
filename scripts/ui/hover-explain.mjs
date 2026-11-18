@@ -2,6 +2,7 @@
 // (recipe name, where it comes from, whether it lasts). Pure helpers plus a small DOM controller;
 // main.mjs wires it to hoverToken, the runtime, the lasting states and Sequencer's effects.
 import { cleanOrigin, nowPlayingRows, groupNowPlaying } from "./activity-actions.mjs";
+import { floated } from "./float-panel.mjs";
 
 export const HOVER_LIMIT = 6;
 
@@ -101,7 +102,8 @@ export function createHoverExplain({ document, enabled, isGM, rowsFor, view, toS
     el.className = "animater-hover-explain";
     el.setAttribute("role", "tooltip");
     el.hidden = true;
-    document.body.append(el);
+    // Its own document, not the page's: this one is given the document it works in (and a made-up one in the tests).
+    floated(el, "point", (node) => document.body.append(node));
     return el;
   };
   const conceal = () => { if (el) el.hidden = true; };

@@ -119,6 +119,28 @@ export function shadowLayerShown({ count = 0, alpha = 1, box = null } = {}, view
   return box.x - m < view.x + view.w && box.x + box.w + m > view.x
     && box.y - m < view.y + view.h && box.y + box.h + m > view.y;
 }
+/**
+ * How a shadow's blur is drawn. A PIXI blur is four passes each way at full size by default, which is what a sharp
+ * edge needs; a shadow is the one thing on the map whose whole purpose is to have no edge, so it is drawn in two
+ * passes at half size. That is about an eighth of the work for a softness nobody can tell apart from the old one,
+ * and unlike leaving a layer out it saves that work wherever the layer is — which is the case a GM looking at the
+ * whole map at once is always in.
+ */
+export const SHADOW_BLUR = Object.freeze({ quality: 2, resolution: 0.5 });
+/** A blur for shadows: `PIXI`'s own, drawn as SHADOW_BLUR says. */
+export function softBlur(PIXI, strength) {
+  const f = new PIXI.BlurFilter(strength);
+  try { f.quality = SHADOW_BLUR.quality; f.resolution = SHADOW_BLUR.resolution; } catch { /* an older filter takes what it is given */ }
+  return f;
+}
+/**
+ * Whether a floor's merged shadow layer is worth drawing (pure). The blur sits on this one layer, so it costs its pass
+ * once for every region standing on that floor; it is worth paying only while one of those regions still has shadows
+ * in it that are being drawn (`renderable`, which shadowLayerShown above turns off for the regions off the side of
+ * the screen). A layer turned right down — a cast layer with no sun on it — is never worth it.
+ */
+export const floorLayerShown = (layer) => !!layer && (layer.alpha ?? 1) > 0.004
+  && (layer.children ?? []).some((c) => c?.renderable !== false && (c.isSprite === true || (c.children?.length ?? 0) > 0));
 /** A region's box grown to hold one more decoration's shadows (pure): `reach` how far round it they can fall. */
 export function boxWith(box, { x, y }, reach) {
   const x0 = x - reach, y0 = y - reach, x1 = x + reach, y1 = y + reach;
@@ -226,6 +248,38 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
   let at = null;
   const shadows = () => shadowsOf(at), ground = () => groundOf(at), above = () => aboveOf(at), flat = () => flatOf(at);
   const pictures = new Map(), regions = new Map(), PICTURES_KEPT = 240;
+  // Shadows are blurred once for the whole floor, not once a region. Each region keeps a plain container of its own
+  // inside these three — so a region can still be taken away, or its feet baked, on its own — but the blur and the
+  // strength sit here, over the lot. That is three blurs on a map however many strokes have been painted on it
+  // (it was three a region, dozens on a planted map), and shadows from two strokes laid over each other no longer
+  // darken the ground twice: they go into one layer at their full strength and that layer is laid down once.
+  // One set a floor, not a scene: a region on a raised floor tile draws into that tile's own shadow container
+  // (`shadowsOf`), and merging those would put its shadows on the ground below it.
+  const floors = new Map();
+  const dropFloor = (floor) => {
+    if (!floor) return;
+    for (const layer of [floor.contact, floor.cast, floor.lamp]) { try { layer.parent?.removeChild(layer); layer.destroy({ children: true }); } catch { /* gone with the canvas */ } }
+    floors.delete(floor.host);
+  };
+  const floorOf = () => {
+    const host = shadows(), g = grid(), Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter;
+    const had = floors.get(host);
+    // (The host is remade when its tile is: a floor whose layers have left it is built again rather than drawn into.)
+    if (had && !had.contact.destroyed && had.contact.parent === host) {
+      if (had.grid !== g) { for (const [layer, strength, alpha] of [[had.contact, g * 0.05, false], [had.cast, g * 0.015, true], [had.lamp, g * 0.02, true]]) if (PIXI.BlurFilter) layer.filters = [softBlur(PIXI, strength), ...(alpha && Alpha ? [new Alpha(1)] : [])]; had.grid = g; }
+      return had;
+    }
+    if (had) dropFloor(had);
+    const layer = (strength, alpha, soften) => {
+      const c = new PIXI.Container(); c.eventMode = 'none';
+      if (PIXI.BlurFilter) c.filters = [softBlur(PIXI, strength), ...(soften && Alpha ? [new Alpha(1)] : [])];
+      c.alpha = alpha; host.addChild(c); return c;
+    };
+    // The dark at each foot, then the cast shadows (their strength is the sun's, aim()), then the lamps'.
+    const floor = { host, grid: g, count: 0, contact: layer(g * 0.05, 0.5, false), cast: layer(g * 0.015, 0, true), lamp: layer(g * 0.02, 0.6, true) };
+    floors.set(host, floor);
+    return floor;
+  };
   // The wind now (0-1, blowing toward angle in radians) and a clock for the cloth it stirs.
   let air = { strength: 0, angle: 0 }, clock = 0, litTrees = null;
   let sun = null, canopyTrees = false, open = new Map(), snow = { amount: 0, toSun: [0, 0], z: 0, low: 1, color: [1, 0.97, 0.9] };
@@ -251,6 +305,45 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
     ground().addChild(mesh);
     return { mesh, uniforms, textures: [art, dome] };
   };
+  // The dark at each decoration's foot is the one shadow that never moves: not with the sun, which only stretches the
+  // cast ones, and not with the lamps, which have a layer of their own. Once a region has settled it is drawn once
+  // into a picture, and that picture laid down in its place — so dozens of sprites drawn every frame become one quad.
+  // (Its picture is of the shadows themselves, sharp: the floor's blur lies over it where it lay over them, and what
+  // it is laid down at is the floor's strength, so the merge sees it as the sprites it stands for.)
+  // Taken away again the moment anything is added to the region
+  // or taken out of it (the brush, a decoration broken), and made afresh when the stroke ends.
+  const dropContactBake = (r) => {
+    if (!r?.baked) return;
+    try { r.baked.sprite.parent?.removeChild(r.baked.sprite); r.baked.sprite.destroy(); r.baked.texture.destroy(true); } catch { /* gone with the canvas */ }
+    r.sprites = r.sprites.filter((s) => s !== r.baked.sprite);
+    r.baked = null;
+    if (r.contact) r.contact.visible = true;
+  };
+  const bakeContact = (r) => {
+    dropContactBake(r);
+    if (!render || !PIXI.RenderTexture || !PIXI.Matrix || !r?.contact?.children?.length || !r.box) return;
+    // Room round the shadows for the floor's blur to spread into, and never a picture too big to make.
+    const pad = grid() * 0.4, box = { x: r.box.x - pad, y: r.box.y - pad, w: r.box.w + pad * 2, h: r.box.h + pad * 2 };
+    const k = Math.min(1, 2048 / Math.max(box.w, box.h, 1)), w = Math.max(1, Math.ceil(box.w * k)), h = Math.max(1, Math.ceil(box.h * k));
+    let texture = null;
+    const was = { alpha: r.contact.alpha, visible: r.contact.visible };
+    try {
+      texture = PIXI.RenderTexture.create({ width: w, height: h });
+      // Drawn at its full strength and shown at the layer's, so the picture is the shadows and nothing else.
+      r.contact.alpha = 1; r.contact.visible = true;
+      render(r.contact, texture, new PIXI.Matrix().translate(-box.x, -box.y).scale(k, k));
+    } catch { try { texture?.destroy(true); } catch { /* never made */ } texture = null; }
+    r.contact.alpha = was.alpha; r.contact.visible = was.visible;
+    if (!texture) return;
+    const sprite = new PIXI.Sprite(texture);
+    sprite.eventMode = 'none'; sprite.position.set(box.x, box.y); sprite.scale.set(1 / k); sprite.alpha = was.alpha;
+    // In the layer where the live one stood, so the shadows keep their order among themselves.
+    const layer = r.contact.parent;
+    if (layer) layer.addChildAt(sprite, layer.getChildIndex(r.contact)); else { try { sprite.destroy(); texture.destroy(true); } catch { /* gone */ } return; }
+    r.contact.visible = false;
+    r.baked = { sprite, texture };
+    r.sprites.push(sprite);
+  };
   const canvasOf = make ?? ((w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; });
   // A picture: its painting and silhouette as textures, made the first time it is asked for and kept.
   const picture = (d, look) => {
@@ -263,9 +356,13 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
     return { pic: pictures.get(p.key), scale: d.size / p.size };
   };
   const dropRegion = (r) => {
+    dropContactBake(r);
     for (const s of r.sprites) { try { s.parent?.removeChild(s); s.destroy({ children: true }); } catch { /* gone with the canvas */ } }
     r.sprites = [];
     if (r.snow) { try { r.snow.mesh.parent?.removeChild(r.snow.mesh); r.snow.mesh.destroy(); for (const t of r.snow.textures) t.destroy(true); } catch { /* gone */ } r.snow = null; }
+    // The last region to leave a floor takes its three blurred layers with it: an empty one is a pass for nothing.
+    if (r.floor) { r.floor.count = Math.max(0, r.floor.count - 1); if (!r.floor.count) dropFloor(r.floor); r.floor = null; }
+    r.contact = null; r.castLayer = null; r.lampLayer = null;
   };
   // What moves in the wind and how: cloth by its mask; plants and tree crowns from their middle out.
   const SWAY = { paper: { radial: 0, amp: 0.8, shade: 2.2, speed: 1.3, edge: 1 }, cloth: { radial: 0, amp: 0.35, shade: 2.6, speed: 0.8 }, plant: { radial: 1, amp: 1.5, shade: 0.35, speed: 0.7 }, crown: { radial: 1, amp: 0.6, shade: 0.25, speed: 0.45 } };
@@ -285,7 +382,9 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
       // Stretched along the way it falls: a child rotated to the sun inside, the silhouette turned back to the decoration's own way.
       s.rotation = sun.angle; s.scale.set((1 + reach / Math.max(w, 1) * 0.9), 1); s.inner.rotation = turnOf(d) - sun.angle;
     }
-    if (r.castLayer) r.castLayer.alpha = sun ? Math.min(0.6, sun.strength) : 0;
+    // How strong the cast shadows are is the floor's, not this region's: laid on once over all of them, so two strokes
+    // standing side by side cast one shadow's worth of dark where they fall together.
+    if (r.floor) r.floor.cast.alpha = sun ? Math.min(0.6, sun.strength) : 0;
   };
   // One decoration drawn into a region's layers, keeping hold of what it made (`r.drawn`) so that one can be taken away on
   // its own. The brush adds to a region dab by dab; without this the whole region — every sprite, every shadow — was thrown
@@ -297,6 +396,8 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
     const { pic, scale } = picture(d, seenLook); if (!pic) return null;
     const mine = { d, inLayers: [], inShadows: [] };
     if (pic.shadow && role !== 'flat') {
+      // The baked picture of this region's feet is a picture of the region as it was: one more foot and it is stale.
+      dropContactBake(r);
       const foot = place(new PIXI.Sprite(pic.shadow), d, pic, scale); foot.tint = 0x06070c; foot.position.set(d.x + g * 0.02, d.y + g * 0.03); foot.scale.set(foot.scale.x * 1.06, foot.scale.y * 1.06); contact.addChild(foot);
       // The cast one: an outer holder turned to the sun (to stretch), the silhouette inside turned to the decoration's own way.
       const holder = new PIXI.Container(), inner = new PIXI.Container(), sil = place(new PIXI.Sprite(pic.shadow), d, pic, scale); sil.position.set(0, 0); sil.rotation = 0; sil.tint = 0x06070c;
@@ -320,6 +421,7 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
   };
   // One decoration taken off the map again, leaving the rest of its region standing (a scatter the brush has just covered).
   const dropOne = (r, mine) => {
+    dropContactBake(r);
     const gone = new Set([...mine.inLayers, ...mine.inShadows]);
     for (const o of gone) { try { o.parent?.removeChild(o); o.destroy({ children: true }); } catch { /* gone with the canvas */ } }
     r.sprites = r.sprites.filter((s) => !gone.has(s));
@@ -374,27 +476,26 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
             if (mine) mine.hand = true;
           }
           had.key = key; had.restKey = restKey; had.brushedCount = fresh.length; had.prop = spec.settings?.prop;
-          aim(had); at = null;
+          aim(had); if (!spec.live) bakeContact(had); at = null;
           continue;
         }
         if (had) dropRegion(had);
         at = spec;
         const { placements, shown } = decorShown(spec, g), where = spec.settings?.where ?? 'surface';
-        const r = { key, restKey, brushedRef: fresh, brushedCount: fresh.length, placements: [...placements], shown: [...shown], where, look: spec.look, prop: spec.settings?.prop, sprites: [], shadowSprites: [], crowns: [], cloth: [], castLayer: null, contact: null, drawn: [], pictures: new Set(), box: null, tall: 0 };
-        // Shadows: the soft dark at each standing one's foot whatever the light, then the cast ones in a layer of their own (one alpha for all, so overlaps never stack darker).
-        const contact = new PIXI.Container(), cast = new PIXI.Container(), Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter;
-        if (PIXI.BlurFilter) { contact.filters = [new PIXI.BlurFilter(g * 0.05)]; cast.filters = [new PIXI.BlurFilter(g * 0.015), ...(Alpha ? [new Alpha(1)] : [])]; }
-        contact.alpha = 0.5; r.castLayer = cast; r.contact = contact;
-        // The lights' shadows: a layer of their own, filled as the lights near them are told (lamps()).
-        const lampLayer = new PIXI.Container(); if (PIXI.BlurFilter) lampLayer.filters = [new PIXI.BlurFilter(g * 0.02), ...(Alpha ? [new Alpha(1)] : [])]; lampLayer.alpha = 0.6;
-        r.lampLayer = lampLayer; r.casters = [];
+        const r = { key, restKey, brushedRef: fresh, brushedCount: fresh.length, placements: [...placements], shown: [...shown], where, look: spec.look, prop: spec.settings?.prop, sprites: [], shadowSprites: [], crowns: [], cloth: [], castLayer: null, contact: null, floor: null, drawn: [], pictures: new Set(), box: null, tall: 0, baked: null };
+        // Shadows: the soft dark at each standing one's foot whatever the light, the cast ones, and the lights' ones
+        // (filled as the lights near them are told, lamps()). This region's own three, with nothing on them: the blur
+        // and the strength belong to the floor they go into, so every region on that floor shares one of each.
+        const floor = floorOf(), contact = new PIXI.Container(), cast = new PIXI.Container(), lampLayer = new PIXI.Container();
+        for (const c of [contact, cast, lampLayer]) c.eventMode = 'none';
+        r.floor = floor; r.contact = contact; r.castLayer = cast; r.lampLayer = lampLayer; r.casters = [];
         const byHand = new Set(fresh.map(handKey));
         for (const d of shown) { const mine = drawOne(d, r, spec.look, where, g, contact, cast); if (mine && byHand.has(handKey(d))) mine.hand = true; }
-        shadows().addChild(contact); shadows().addChild(cast); shadows().addChild(lampLayer); r.sprites.push(contact, cast, lampLayer);
+        floor.contact.addChild(contact); floor.cast.addChild(cast); floor.lamp.addChild(lampLayer); floor.count++; r.sprites.push(contact, cast, lampLayer);
         // Snow on the standing ones (not underground). (A tree's crown carries its own, painted, as it opens over the creatures.)
         // (Not while a stroke still paints it (`live`): baked once, when the stroke ends.)
         if (where !== 'cave' && !spec.live) { const standing = shown.filter((d) => decorRole(d, where) === 'standing' && !DECOR_KINDS[d.kind].light).map((d) => ({ d, ...picture(d, { ...spec.look, snow: 0 }) })).filter((it) => it.pic); try { r.snow = bakeSnow(r, standing); } catch (err) { console.warn('Animater | decoration snow', err); } }
-        regions.set(spec.id, r); aim(r); at = null;
+        regions.set(spec.id, r); aim(r); if (!spec.live) bakeContact(r); at = null;
       }
       for (const [id, r] of regions) if (!seen.has(id)) { dropRegion(r); regions.delete(id); }
       // (Pictures for looks no longer shown let go once there are many: out of PIXI's cache, not destroyed, so a wreck or the
@@ -431,16 +532,20 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
     creatures(list = []) { const g = grid(); for (const r of regions.values()) for (const c of r.crowns) open.set(c, crownOpen(c.decor, list, g)); },
     // `view` what is on the screen now ({ x, y, w, h } on the map), for the shadow layers that need not be drawn.
     tick(seconds, view = null) {
-      // The blurred shadow layers. Each region has three — the dark at each foot, the cast shadows, the lamps' — and
-      // each is a blur, which costs a pass over the screen whether anything in it shows or not. A region with nothing
-      // standing in it, a cast layer with no sun on it, and a region well off the side of the screen are all passes
-      // paid for nothing, and on a full map there are dozens of them. Each comes back by itself as the view nears it.
+      // The shadow layers. Each region has three of its own — the dark at each foot, the cast shadows, the lamps' —
+      // and the floor they stand on has the three that carry the blur. A region with nothing standing in it, and one
+      // well off the side of the screen, are drawings paid for nothing; a floor whose regions are all in that state,
+      // or whose layer is turned right down (no sun on the cast shadows), is a whole blur pass paid for nothing.
+      // Each comes back by itself as the view nears it again.
       const g = grid();
       for (const r of regions.values()) {
         const near = g * 0.5, cast = near + shadowReach(r.tall ?? 1, sun?.length ?? 0, g), lamp = Math.max(cast, near + g * 2);
         const show = (layer, margin) => { if (layer) layer.renderable = shadowLayerShown({ count: layer.children.length, alpha: layer.alpha, box: r.box }, view, margin); };
         show(r.contact, near); show(r.castLayer, cast); show(r.lampLayer, lamp);
+        // The baked picture of the feet goes the same way: one quad, but one off the side of the screen all the same.
+        if (r.baked?.sprite) r.baked.sprite.renderable = shadowLayerShown({ count: 1, alpha: r.baked.sprite.alpha, box: r.box }, view, near);
       }
+      for (const f of floors.values()) { f.contact.renderable = floorLayerShown(f.contact); f.cast.renderable = floorLayerShown(f.cast); f.lamp.renderable = floorLayerShown(f.lamp); }
       // A crown eases open over a creature and closes again after it has gone (a third of a second either way).
       const rate = Math.min(1, seconds * 3);
       for (const r of regions.values()) for (const c of r.crowns) { const want = 1 - 0.75 * (open.get(c) ?? 0); c.alpha += (want - c.alpha) * rate; }
@@ -495,6 +600,6 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
     },
     get count() { let n = 0; for (const r of regions.values()) n += r.placements.length; return n; },
     get busy() { return regions.size > 0; },
-    clear() { for (const r of regions.values()) dropRegion(r); regions.clear(); open = new Map(); for (const p of pictures.values()) for (const t of [p?.art, p?.shadow, p?.trunk, p?.cloth]) { try { t?.destroy(true); } catch { /* gone */ } } pictures.clear(); },
+    clear() { for (const r of regions.values()) dropRegion(r); regions.clear(); for (const f of [...floors.values()]) dropFloor(f); open = new Map(); for (const p of pictures.values()) for (const t of [p?.art, p?.shadow, p?.trunk, p?.cloth]) { try { t?.destroy(true); } catch { /* gone */ } } pictures.clear(); },
   };
 }

@@ -5,6 +5,7 @@
 import { REGION_KINDS, regionKindOf, kindFlags, panelSections, moreSections, shownFloorOf, hasRoof, setRoof } from './region-panel-model.mjs';
 import { stepTabs, titled } from './region-steps-ui.mjs';
 import { SECTIONS, element, button, icon } from './region-panel-sections.mjs';
+import { floated } from './float-panel.mjs';
 
 const FLOOR_ICONS = Object.freeze({ cavern: 'fa-gem', lava: 'fa-fire', water: 'fa-water', ice: 'fa-icicles', snow: 'fa-snowflake', wood: 'fa-tree', sand: 'fa-umbrella-beach', grass: 'fa-seedling', dirt: 'fa-mountain', mud: 'fa-droplet', stone: 'fa-cubes' });
 
@@ -153,7 +154,7 @@ export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, 
     open(what) {
       close(); forget();
       open_ = what; box = element('div', 'an-region-panel'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-label', 'Region');
-      document.body.append(box);
+      floated(box, 'panel');
       // Its listeners come first, so whatever happens in drawing, close() takes everything away again.
       document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', escape, true);
       globalThis.window?.addEventListener?.('resize', place);

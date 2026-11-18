@@ -4,6 +4,8 @@
 // DOM controller; main.mjs wires it to the token HUD, the lasting states and the catalog settings.
 
 // A look's name without PF2e's "Spell Effect:" / "Effect:" prefix, which every effect shares: "Bless", not "Spell Effect…".
+import { floated } from "./float-panel.mjs";
+
 export const lookName = (name) => String(name ?? "").replace(/^\s*(?:spell\s+|stance:\s*)?effect\s*:\s*/i, "").trim() || String(name ?? "");
 
 // Flags: { [entryId]: { name, kind, flaggedAt, by } }, a world setting.
@@ -81,7 +83,7 @@ export function createTokenLooks({ document, rowsFor, act, isGM = () => false, t
       button.disabled = true;
       try { await act(action, row, token); } finally { draw(); }
     });
-    document.body.append(el);
+    floated(el, "panel");
     document.addEventListener("keydown", (event) => { if (event.key === "Escape") close(); });
     document.addEventListener("pointerdown", (event) => { if (el && !el.hidden && !el.contains(event.target)) close(); }, true);
     return el;

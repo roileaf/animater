@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.5.5
+
+- **Decorated maps draw faster still, wherever you are looking.** Last time, shadow layers off the side of the screen stopped being drawn; this time the work itself is smaller, so a GM looking at the whole map at once gets it too. A map's shadows are now blurred once for the floor they lie on instead of once for every stroke of undergrowth painted on it — three blurs on a planted map where there were dozens — and the blur is drawn in two passes at half size rather than four at full, which for a thing whose whole purpose is to have no edge looks the same. The dark at a settled stroke's feet, which never moves, is drawn once into a picture and laid down as one piece until something is added to that stroke or taken out of it. Regions on raised floor tiles keep their own shadows, on the tile where they belong.
+
+- **Strokes laid over each other no longer darken the ground twice.** A stroke of bushes with a stroke of trees painted across it used to lay its shadows down twice where they met, so that ground went darker than anything else on the map. Shadows now go into one layer and that layer is laid down once: a shadow is a shadow, however many strokes put it there.
+
+- **The Map Painter and Moments panels stay where they belong.** On some setups, opening either one pushed the Foundry sidebar across the screen and nothing in the panel could be clicked. Foundry's page lays its children out in a row, so a panel the module's stylesheet has not reached is not merely unstyled — it becomes another column of that row and shoves the sidebar aside. Every panel, tooltip and overlay the module puts on the page now checks where it landed and places itself if nothing else did. Where the stylesheet works, which is nearly everywhere, nothing changes at all.
+
 ## 4.5.4
 
 - **No freeze on the first hit in Firefox.** The first time a creature took damage in a session, Firefox on Windows could hold the whole map still for over a second as the hit landed: an Electric Arc's static froze for 1.3 seconds. The look a hit puts on the token (Electrocuted, Burning, Frostbitten and the rest) needs its shaders compiled, and most browsers do that in the background ahead of time. Firefox cannot, so it compiled them on the spot, mid-animation. Now, in a browser like that, they are compiled in the quiet moments just after a scene loads, one at a time with frames between them, so the first hit plays as smoothly as the tenth.

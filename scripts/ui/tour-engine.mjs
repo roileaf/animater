@@ -4,6 +4,8 @@
 // or a real click outside the caption ends the tour; `cleanup` then puts the editor back.
 // Editors add their own primitives through `surface(hand)`: Flash its stage and time slider, the
 // studio its timeline, path grid and settings dialog (flash-tour.mjs, finisher-tour.mjs).
+import { floated } from "./float-panel.mjs";
+
 export const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 export const center = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; };
 export class Interrupted extends Error {}
@@ -13,7 +15,7 @@ export async function runTour({ root, steps, snapshot, restore, cleanup = () => 
   cursor.className = "an-tour-cursor";
   cursor.innerHTML = `<svg viewBox="0 0 24 24" width="26" height="26"><path d="M4 2l15 11-6.5 1.2 3.8 6.8-2.6 1.4-3.8-6.9L5 20z" fill="#fff" stroke="#111" stroke-width="1.4" stroke-linejoin="round"/></svg>`;
   caption.className = "an-tour-caption";
-  document.body.append(cursor, caption);
+  floated(cursor, "point"); floated(caption, "point");
 
   let run = 0, ended = false, finish;
   const done = new Promise((r) => { finish = r; });

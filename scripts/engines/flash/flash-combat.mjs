@@ -6,6 +6,7 @@
 import { STARTER_FLASHES, MOMENT_EVENTS, flashesOn, validateFlashes, validateFlash, dedupeFlashes, remapFlashDefaults, chooseFlash, FLASH_EVENTS, manualPrompts } from "./flash-model.mjs";
 import { createFlash } from "./flash-render.mjs";
 import { pickFlash } from "./flash-picker.mjs";
+import { floated } from "../../ui/float-panel.mjs";
 import { hpState, isKillTransition } from "../../systems/hp-state.mjs";
 
 export const FLASH_SETTING = "flashScreens", FLASH_DEFAULTS = "flashDefaults", FLASH_TRACKER = "flashTrackerMenus";
@@ -118,7 +119,7 @@ export function flashScreens(host) {
     showing?.stop();
     const layer = document.createElement("div");
     layer.className = "an-flash-overlay";
-    document.body.append(layer);
+    floated(layer, "cover");
     const valid = validateFlash(screen);
     const run = createFlash(layer, valid, { resolveMedia: host.resolveMedia, vars: v, playSound });
     showing = run;

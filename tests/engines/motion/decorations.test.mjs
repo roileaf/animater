@@ -32,6 +32,8 @@ test('a blurred shadow layer with nothing in it, nothing on it, or nothing near 
   assert.match(main, /decorations\.tick\(seconds, viewNow\(\)\);/);
   const decor = readFileSync(new URL('../../../scripts/engines/motion/decorations.mjs', import.meta.url), 'utf8');
   assert.match(decor, /layer\.renderable = shadowLayerShown\(\{ count: layer\.children\.length, alpha: layer\.alpha, box: r\.box \}, view, margin\)/);
+  // And the floor's own three, which carry the blur: drawn only while a region standing on them still has something to show.
+  assert.match(decor, /for \(const f of floors\.values\(\)\) \{ f\.contact\.renderable = floorLayerShown\(f\.contact\);/);
   assert.match(decor, /show\(r\.contact, near\); show\(r\.castLayer, cast\); show\(r\.lampLayer, lamp\);/,
     'all three of a region’s blurred layers, each with its own reach');
 });
@@ -214,6 +216,140 @@ test('a lamp keeps its id when another decoration is laid beside it', async () =
 // Two: the drawing. A stroke syncs ten times a second, and every sync used to throw the whole region away and build it
 // again - every sprite and every shadow - which measured 12 to 18 ms in a region of a few hundred. A stroke that is only
 // adding to what it has laid now draws the new dabs alone.
+test('a shadow is blurred in two passes at half size, since a shadow has no edge to keep', async () => {
+  const { softBlur, SHADOW_BLUR } = await import('../../../scripts/engines/motion/decorations.mjs');
+  class BlurFilter { constructor(strength) { this.strength = strength; this.quality = 4; this.resolution = 1; } }
+  const f = softBlur({ BlurFilter }, 5);
+  assert.equal(f.strength, 5, 'as soft as it ever was');
+  assert.deepEqual([f.quality, f.resolution], [2, 0.5]);
+  assert.deepEqual({ ...SHADOW_BLUR }, { quality: 2, resolution: 0.5 });
+  // Four passes at full size is what a sharp edge needs; two at half is about an eighth of the work.
+  const cost = (q, r) => q * r * r;
+  assert.ok(cost(2, 0.5) <= cost(4, 1) / 8);
+  // A filter that will not be told stays a filter: the blur is still made.
+  class Stubborn { constructor(s) { this.strength = s; } set quality(v) { throw new Error('no'); } }
+  assert.equal(softBlur({ BlurFilter: Stubborn }, 3).strength, 3);
+});
+
+test('a settled region’s foot shadows are drawn once into a picture, and made again when it changes', async () => {
+  const { createDecorations } = await import('../../../scripts/engines/motion/decorations.mjs');
+  const { decorSettings } = await import('../../../scripts/engines/motion/decor-regions.mjs');
+  let drawn = 0;
+  class Container {
+    constructor() { this.children = []; this.alpha = 1; this.visible = true; this.renderable = true; this.filters = null; }
+    addChild(c) { this.children.push(c); c.parent = this; return c; }
+    addChildAt(c, i) { this.children.splice(i, 0, c); c.parent = this; return c; }
+    getChildIndex(c) { return this.children.indexOf(c); }
+    removeChild(c) { this.children = this.children.filter((k) => k !== c); }
+    destroy() {}
+  }
+  class Sprite extends Container {
+    constructor(texture) { super(); this.texture = texture; this.anchor = { set() {} }; this.rotation = 0;
+      this.position = { x: 0, y: 0, set(x, y) { this.x = x; this.y = y; } }; this.scale = { x: 1, y: 1, set(x, y) { this.x = x; this.y = y ?? x; } }; }
+  }
+  class Matrix { translate(x, y) { this.t = [x, y]; return this; } scale(x, y) { this.s = [x, y]; return this; } }
+  class BlurFilter { constructor(s) { this.strength = s; this.quality = 4; this.resolution = 1; } }
+  const ctx = new Proxy({}, { get: (_, k) => (k === 'canvas' ? null : k === 'createLinearGradient' || k === 'createRadialGradient' || k === 'createPattern' ? () => ({ addColorStop() {} }) : k === 'measureText' ? () => ({ width: 0 }) : () => {}), set: () => true });
+  const make = (w, h) => ({ width: w, height: h, getContext: () => ctx });
+  const stage = new Container(), layer = () => stage;
+  const PIXI = { Container, Sprite, Matrix, BlurFilter, Texture: { from: (c) => ({ width: c?.width ?? 8, height: c?.height ?? 8 }) },
+    RenderTexture: { create: ({ width, height }) => ({ width, height, destroy() {} }) } };
+  const seen = [];
+  const deco = createDecorations({ PIXI, shadows: layer, ground: layer, above: layer, grid: () => 100, make,
+    render: (object, texture, transform) => { drawn++; seen.push({ children: object.children.length, alpha: object.alpha, transform }); } });
+  const bush = (i) => ({ kind: 'bush', x: 200 + i * 200, y: 200, size: 1, turn: 0, seed: i + 1, flip: false });
+  const base = decorSettings({ on: true, where: 'surface', seed: 3, density: 0, kinds: {}, brushed: [] });
+  const spec = (live, list) => ({ id: 'R1', live, look: {}, areas: [[0, 0, 1000, 0, 1000, 1000, 0, 1000]], settings: { ...base, brushed: list } });
+
+  // While a stroke is still painting, nothing is baked: the picture would be stale by the next dab.
+  // (The snow over a settled region is baked the same way and through the same renderer; the feet are the pictures
+  // drawn through a matrix, since those are the ones laid over the map where the shadows already stand.)
+  const feetBakes = () => seen.filter((s) => s.transform);
+  deco.sync([spec(true, [bush(0), bush(1)])]);
+  assert.equal(drawn, 0, 'not while it is still being painted');
+
+  // Settled, the feet are drawn once, at their full strength, and the live layer is left out of the frame.
+  deco.sync([spec(false, [bush(0), bush(1), bush(2)])]);
+  assert.equal(feetBakes().length, 1, 'one picture for the region, however many decorations stand in it');
+  assert.ok(feetBakes()[0].children >= 3, 'every foot in it');
+  assert.equal(feetBakes()[0].alpha, 1, 'drawn at full strength; the picture is shown at the layer’s');
+  // The picture is laid down in the floor's blurred layer, where the region's own container stands: the merged layer
+  // blurs it and lays it on at its own strength, exactly as it did the sprites it stands for.
+  const floorFeet = () => stage.children.find((c) => c.filters && c.alpha === 0.5);
+  const quads = () => floorFeet().children.filter((c) => c instanceof Sprite && c.texture?.destroy);
+  assert.equal(quads().length, 1, 'one quad laid down');
+  assert.equal(quads()[0].alpha, 1, 'the picture is the shadows themselves; the floor says how dark they lie');
+  const feet = floorFeet().children.find((c) => c.children.length >= 3);
+  assert.equal(feet.visible, false, 'and the sprites are not drawn at all any more');
+
+  // One more dab and the picture is of a region that no longer exists, so it goes; the live layer comes back.
+  deco.sync([spec(true, [bush(0), bush(1), bush(2), bush(3)])]);
+  assert.equal(quads().length, 0, 'the stale picture is taken away');
+  assert.equal(feet.visible, true, 'the shadows are drawn live again while the stroke goes on');
+  // And made afresh when the stroke ends.
+  deco.sync([spec(false, [bush(0), bush(1), bush(2), bush(3)])]);
+  assert.equal(feetBakes().length, 2);
+  assert.equal(quads().length, 1);
+});
+
+test('every region on a floor shares one blur, and its shadows stop stacking darker', async () => {
+  const { createDecorations, floorLayerShown } = await import('../../../scripts/engines/motion/decorations.mjs');
+  const { decorSettings } = await import('../../../scripts/engines/motion/decor-regions.mjs');
+  // What the merge is for: two strokes laid over each other went into two layers at half strength each, so the ground
+  // where they met was darkened twice (0.5 over 0.5 is 0.75). One layer for the floor lays that dark on once.
+  assert.equal(floorLayerShown({ alpha: 0.5, children: [{ renderable: true, children: [1] }] }), true);
+  assert.equal(floorLayerShown({ alpha: 0.5, children: [{ renderable: false, children: [1] }, { renderable: true, children: [] }] }), false,
+    'every region of it either off the screen or empty: the blur is a pass for nothing');
+  assert.equal(floorLayerShown({ alpha: 0, children: [{ renderable: true, children: [1] }] }), false, 'no sun on the cast shadows');
+  assert.equal(floorLayerShown({ alpha: 0.5, children: [{ renderable: true, isSprite: true, children: [] }] }), true, 'a baked picture is something to draw');
+  assert.equal(floorLayerShown(null), false);
+
+  let killed = 0;
+  class Container {
+    constructor() { this.children = []; this.alpha = 1; this.visible = true; this.renderable = true; this.filters = null; this.destroyed = false; }
+    addChild(c) { this.children.push(c); c.parent = this; return c; }
+    removeChild(c) { this.children = this.children.filter((k) => k !== c); }
+    destroy() { killed++; this.destroyed = true; }
+  }
+  class Sprite extends Container { constructor(texture) { super(); this.texture = texture; this.anchor = { set() {} }; this.rotation = 0; this.position = { x: 0, y: 0, set(x, y) { this.x = x; this.y = y; } }; this.scale = { x: 1, y: 1, set(x, y) { this.x = x; this.y = y ?? x; } }; } }
+  class BlurFilter { constructor(s) { this.strength = s; this.quality = 4; this.resolution = 1; } }
+  const ctx = new Proxy({}, { get: (_, k) => (k === 'canvas' ? null : k === 'createLinearGradient' || k === 'createRadialGradient' || k === 'createPattern' ? () => ({ addColorStop() {} }) : k === 'measureText' ? () => ({ width: 0 }) : () => {}), set: () => true });
+  const make = (w, h) => ({ width: w, height: h, getContext: () => ctx });
+  // The ground, and a raised floor tile with a shadow container of its own.
+  const ground = new Container(), tile = new Container();
+  const shadows = (spec) => (spec?.plane ? tile : ground);
+  const PIXI = { Container, Sprite, BlurFilter, Texture: { from: (c) => ({ width: c?.width ?? 8, height: c?.height ?? 8 }) } };
+  const spare = new Container(), deco = createDecorations({ PIXI, shadows, ground: () => spare, above: () => spare, grid: () => 100, make });
+  const bush = (i) => ({ kind: 'bush', x: 200 + i * 60, y: 200, size: 1, turn: 0, seed: i + 1, flip: false });
+  const base = decorSettings({ on: true, where: 'surface', seed: 3, density: 0, kinds: {}, brushed: [] });
+  const region = (id, list, plane) => ({ id, live: false, look: {}, areas: [[0, 0, 1000, 0, 1000, 1000, 0, 1000]], settings: { ...base, brushed: list }, ...(plane ? { plane } : {}) });
+
+  deco.sync([region('A', [bush(0), bush(1)]), region('B', [bush(2), bush(3)])]);
+  assert.equal(ground.children.length, 3, 'three layers for the whole floor, not three for each of the two strokes');
+  const [feet, cast, lamp] = ground.children;
+  assert.ok(feet.filters?.length && cast.filters?.length && lamp.filters?.length, 'the blur is here, once');
+  assert.equal(feet.alpha, 0.5, 'and so is the strength the dark at the feet is laid on at');
+  assert.equal(feet.children.length, 2, 'both strokes draw their feet into it, at their own full strength');
+  assert.ok(feet.children.every((c) => c.alpha === 1 && !c.filters), 'a stroke of its own carries neither');
+  assert.equal(cast.children.length, 2);
+  assert.ok(feet.children[0].children.length >= 2, 'with the shadows themselves inside');
+
+  // A region on a raised floor tile keeps its own: merging it into the ground's would drop its shadows off the tile.
+  deco.sync([region('A', [bush(0), bush(1)]), region('B', [bush(2), bush(3)]), region('C', [bush(4)], { id: { kind: 'tile', tileId: 't1' } })]);
+  assert.equal(ground.children.length, 3, 'the ground still has its three');
+  assert.equal(tile.children.length, 3, 'and the tile three of its own');
+  assert.equal(tile.children[0].children.length, 1);
+
+  // The last stroke off a floor takes its blurs with it; a floor still being stood on keeps them.
+  killed = 0;
+  deco.sync([region('A', [bush(0), bush(1)])]);
+  assert.equal(ground.children.length, 3, 'a floor one stroke still stands on keeps its layers');
+  assert.equal(ground.children[0].children.length, 1, 'with only that stroke left in them');
+  assert.equal(tile.children.length, 0, 'the tile’s went with the only region that drew on it');
+  deco.clear();
+  assert.equal(ground.children.length, 0, 'and the ground’s when the scene closes');
+});
+
 test('a dab draws itself, and leaves the region it lands in standing', async () => {
   const { createDecorations } = await import('../../../scripts/engines/motion/decorations.mjs');
   const { decorSettings } = await import('../../../scripts/engines/motion/decor-regions.mjs');

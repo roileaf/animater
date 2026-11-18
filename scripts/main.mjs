@@ -259,6 +259,7 @@ import { STRIKE_LIGHT_SQUARES, openingStrike, strikePlace, strikeAngle as strike
 import { ARRIVALS, ARRIVAL_MS, arrivalHere, arrivalAt, arrivalShake, arrivalFlash, arrivalWords } from "./engines/motion/scene-arrival.mjs";
 import { MOMENTS, WHERES, TETHERS, SWAYS, momentCall, momentsLeft, momentsWithout, momentRunning, momentAudience, momentMacro, momentNeeds, momentStyleKeys, momentSound, MOMENT_SOUNDS, presetCalls, presetFrom, presetsAll, screenFrom, thingSway, tetherPath } from "./engines/camera/screen-moments.mjs";
 import { momentsPanelHtml, momentsPanelMode, momentsPresetOptions, momentsReadout } from "./ui/moments-panel.mjs";
+import { floated } from "./ui/float-panel.mjs";
 import { fallWayHere, landedFlash, nearestLights, stormGloom, weatherOf, cloudCover, cloudLook, skyNeedsBuilding, heatOf, surfacesOf, riverCurrent, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, fxClouds, skyBuildKey } from "./engines/motion/sky-light.mjs";
 import { weatherScene, WEATHERS, sceneWeatherId, weatherLabel, SCENE_WEATHER_PREFIX } from "./engines/motion/sky-weather.mjs";
 import { forecastWeather, forecastDays, BLOCK_HOURS } from "./engines/motion/weather-forecast.mjs";
@@ -567,7 +568,7 @@ const killCamVignette = (() => {
       + "backdrop-filter:saturate(0.4);-webkit-backdrop-filter:saturate(0.4);";
     // Right over the canvas, under Foundry's interface.
     const board = document.getElementById("board");
-    if (board) board.after(el); else document.body.append(el);
+    floated(el, "cover", (node) => { if (board) board.after(node); else document.body.append(node); });
     return el;
   };
   return {
@@ -2595,7 +2596,7 @@ const decorLights = createDecorLights({
   centre: () => (canvas?.stage ? { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y } : null),
   max: DECOR_LIGHTS_MOST,
 });
-const decorations = createDecorations({ PIXI: globalThis.PIXI, flat: decorDrawRoot("decorFlat"), shadows: decorDrawRoot("decorShadows"), ground: decorDrawRoot("decorations"), above: decorDrawRoot("decorCrowns"), grid: () => canvas.grid?.size ?? 100, render: (object, renderTexture) => canvas.app.renderer.render(object, { renderTexture, clear: true }) });
+const decorations = createDecorations({ PIXI: globalThis.PIXI, flat: decorDrawRoot("decorFlat"), shadows: decorDrawRoot("decorShadows"), ground: decorDrawRoot("decorations"), above: decorDrawRoot("decorCrowns"), grid: () => canvas.grid?.size ?? 100, render: (object, renderTexture, transform = null) => canvas.app.renderer.render(object, { renderTexture, clear: true, ...(transform ? { transform } : {}) }) });
 // (Past the cap on lit decorations, those nearest the middle of the view are lit: chosen again a moment after the view moves, not
 // only when the decorations are drawn again, so panning away never leaves the wrong lamps lit. The audit's finding.)
 let decorPanTimer = null;
@@ -7928,7 +7929,7 @@ function momentFilters() {
     <filter id="animater-split"><feOffset in="SourceGraphic" dx="0" dy="0" result="r"/><feColorMatrix in="r" type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" result="rr"/><feOffset in="SourceGraphic" dx="0" dy="0" result="b"/><feColorMatrix in="b" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="bb"/><feBlend in="SourceGraphic" in2="rr" mode="screen" result="one"/><feBlend in="one" in2="bb" mode="screen"/></filter>
     <filter id="animater-smear"><feGaussianBlur in="SourceGraphic" stdDeviation="0 0"/></filter>
   </defs>`;
-  document.body.append(svg);
+  floated(svg, "cover");
 }
 const momentSplitAt = (amount) => {
   const f = document.getElementById(MOMENT_FILTER_ID)?.querySelector("#animater-split");
@@ -7949,7 +7950,7 @@ const momentLayerMake = () => {
   const el = document.createElement("div");
   el.className = "animater-moments";
   el.innerHTML = `<svg class="an-links" aria-hidden="true"></svg>`;
-  document.body.append(el);
+  floated(el, "cover");
   momentLayer = el;
   return el;
 };
@@ -8251,7 +8252,7 @@ function openMomentsPanel() {
   const styles = { ...Object.fromEntries(Object.entries(TETHERS).map(([k, v]) => [k, { ...v, forKind: "tether" }])),
     ...Object.fromEntries(Object.entries(SWAYS).map(([k, v]) => [k, { ...v, forKind: "sway" }])) };
   box.innerHTML = momentsPanelHtml({ moments: MOMENTS, wheres: WHERES, styles, presets: presetsAll(momentPresetsKept()), sounds: MOMENT_SOUNDS });
-  document.body.append(box);
+  floated(box, "panel");
   momentsPanel = box;
   // Only what the chosen mode can do is offered (ui/moments-panel.mjs); the rest is hidden, not greyed.
   const rows = () => momentsPanelMode(box, momentPanelPick("where") ?? "screen");
@@ -8442,7 +8443,7 @@ function playArrival(scene) {
   const box = document.createElement("div");
   box.className = "animater-arrival";
   box.innerHTML = `<div class="an-veil"></div><div class="an-flash"></div>${words?.name ? `<div class="an-card"><div class="an-name"></div><div class="an-under"></div></div>` : ""}`;
-  document.body.append(box);
+  floated(box, "cover");
   arrivalBox = box;
   const veil = box.querySelector(".an-veil"), flash = box.querySelector(".an-flash"), card = box.querySelector(".an-card");
   if (card) { card.querySelector(".an-name").textContent = words.name; card.querySelector(".an-under").textContent = words.under; }
@@ -18515,7 +18516,7 @@ const handoutShow = ({ app, root, chosen, seedText, art, caption }) => {
     el.append(sheet);
     const put = handoutAdd(el, "animater-handout-put");
     put.textContent = "click anywhere to put it down";
-    document.body.append(el);
+    floated(el, "stage");
     try { root?.classList?.add("animater-handout-instead"); } catch { /* no window to hide */ }
     el.addEventListener("click", () => handoutStageDown());
     // The dark comes on with a forced reflow and not inside a frame: a screen that is not painting runs no frames at
@@ -18818,7 +18819,7 @@ const bleedLayerMake = () => {
   const el = document.createElement("div");
   el.id = BLEED_ID;
   el.innerHTML = `<div class="animater-bleed-tunnel"></div><div class="animater-bleed-edge"></div>`;
-  document.body.append(el);
+  floated(el, "cover");
   bleedLayer = el;
   return el;
 };
