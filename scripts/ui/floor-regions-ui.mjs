@@ -1740,10 +1740,10 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
     }
 
     // Every ticked area teaches the memory its floor and look, keyed by its region so a later save replaces it.
-    async learnFrom(picked, plan, createdDocs) {
-      if (this.plane?.role === "overhead") return;
+    async learnFrom(picked, plan, createdDocs, { detect = this.detect, plane = this.plane, rejected = this.rejected } = {}) {
+      if (plane?.role === "overhead") return;
       if (!hooks.memory?.save) return;
-      const { detect } = this, sceneId = detect.scene?.id ?? "";
+      const sceneId = detect.scene?.id ?? "";
       const byId = new Map(detect.proposals.map((p) => [p.id, p]));
       const regionOf = new Map((plan.sources ?? []).map((id, i) => [id, createdDocs?.[i]?.id]));
       const entries = [];
@@ -1755,7 +1755,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       // Areas marked by themselves that the GM removed or left unticked: what not to mark.
       const ticked = new Set(picked.filter((row) => row.checked).map((row) => row.id));
       const kept = new Set(detect.proposals.map((p) => p.id));
-      for (const area of [...(this.rejected ?? []).filter((p) => !kept.has(p.id)), ...detect.proposals.filter((p) => p.auto && !p.regionId && !ticked.has(p.id))]) {
+      for (const area of [...(rejected ?? []).filter((p) => !kept.has(p.id)), ...detect.proposals.filter((p) => p.auto && !p.regionId && !ticked.has(p.id))]) {
         const sig = area.sig ?? areaSignature(detect.rgba, detect.width, detect.height, area.pixels);
         if (sig) entries.push({ key: `${sceneId}:${NONE_FLOOR}:${sig.join(",")}`, sig, floor: NONE_FLOOR, look: {} });
       }
@@ -2278,6 +2278,57 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       }
     }
 
+    async commitPicture(plan, picked, context) {
+      let createdDocs = [];
+      const outcome = await commitFloorPlan(plan, { scene: context.detect.scene, notify: hooks.notify, created: (docs) => { createdDocs = docs; } });
+      if (!outcome.cancelled && outcome.created + outcome.updated > 0) await this.learnFrom(picked, plan, createdDocs, context).catch((error) => console.warn("Animater floor memory:", error));
+      return { ...outcome, docs: createdDocs };
+    }
+
+    // The regions just written are saved regions now: their rows say so and are unticked, so a later save never writes them twice.
+    markPictureSaved(plan, picked, docs) {
+      const regionOf = new Map((plan.sources ?? []).map((id, i) => [id, docs?.[i]]));
+      for (const proposal of this.detect.proposals) {
+        const doc = regionOf.get(proposal.id);
+        if (doc?.id) { proposal.regionId = doc.id; proposal.name = doc.name ?? proposal.name; proposal.geometryChanged = false; }
+      }
+      const saved = new Set(picked.filter((row) => row.checked).map((row) => row.id));
+      this.paintPicture(picked.map((row) => ({ ...row, checked: row.checked && !saved.has(row.id) })), this.element?.querySelector ? sharedChoices(this.element) : null);
+    }
+
+    // The pictures the GM edited and left, with the plan each one would save. Rows still waiting on a floor are left out.
+    otherPicturePlans() {
+      const plans = [];
+      for (const [key, draft] of this.drafts ?? []) {
+        const picture = (this.pictures ?? []).find((item) => item.key === key);
+        const plane = picture?.plane ?? null;
+        if (!draft.detect || !plane) continue;
+        const picked = (draft.choices ?? []).filter((row) => plane.role === "overhead" || row.floor !== NO_FLOOR);
+        const { detect } = draft;
+        const plan = planFloorCreate({ proposals: detect.proposals, picked, sceneRect: detect.sceneRect, imageWidth: detect.width, imageHeight: detect.height, levelId: detect.levelId, regions: detect.scene.regions, plane });
+        if (plan.creates.length + plan.updates.length) plans.push({ key, label: picture.label, draft, picked, plan, plane });
+      }
+      return plans;
+    }
+
+    // After a save the other pictures with ticked areas are offered: save them too, review them first, or close without them.
+    // Returns true when the GM chose to review, which leaves the window open on the first of them.
+    async saveOtherPictures() {
+      const others = this.otherPicturePlans();
+      if (!others.length) return false;
+      const many = others.length > 1, names = others.map((other) => other.label).join(", ");
+      const choice = await hooks.choose?.(`Experimental. ${many ? `${others.length} other pictures have` : "Another picture has"} areas ticked to save and not saved yet (${names}).`, [["save", `Save ${many ? "them" : "it"} too`], ["review", "Review first"], ["discard", "Close without saving"]]);
+      if (choice === "review") return true;
+      if (choice !== "save") return false;
+      let created = 0, updated = 0;
+      for (const { draft, picked, plan, plane } of others) {
+        const outcome = await this.commitPicture(plan, picked, { detect: draft.detect, plane, rejected: draft.rejected });
+        created += outcome.created; updated += outcome.updated;
+      }
+      if (created + updated) hooks.notify?.(`${created ? `Created ${created} more region${created === 1 ? "" : "s"}.` : ""}${updated ? ` Updated ${updated} more saved region${updated === 1 ? "" : "s"}.` : ""}`.trim());
+      return false;
+    }
+
     async create() {
       if (this.saving) return;
       this.saving = true;
@@ -2299,11 +2350,16 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
           regions: detect.scene.regions,
           plane: this.plane ?? null,
         });
-        let createdDocs = [];
-        const outcome = await commitFloorPlan(plan, { scene: detect.scene, notify: hooks.notify, created: (docs) => { createdDocs = docs; } });
-        if (!outcome.cancelled && outcome.created + outcome.updated > 0) await this.learnFrom(picked, plan, createdDocs).catch((error) => console.warn("Animater floor memory:", error));
+        const outcome = await this.commitPicture(plan, picked, { detect, plane: this.plane, rejected: this.rejected });
         if (!outcome.cancelled && outcome.created + outcome.updated > 0) {
           hooks.notify?.(`${outcome.created ? `Created ${outcome.created} region${outcome.created === 1 ? "" : "s"}.` : ""}${outcome.updated ? ` Updated ${outcome.updated} saved region${outcome.updated === 1 ? "" : "s"}.` : ""}`.trim());
+          const first = this.otherPicturePlans()[0];
+          if (await this.saveOtherPictures()) {
+            this.markPictureSaved(plan, picked, outcome.docs);
+            await this.showPicture(first.key);
+            hooks.notify?.("Saved. Review this picture, then save it.");
+            return;
+          }
           await this.close({ force: true });
         }
       } catch (error) {
@@ -2352,6 +2408,12 @@ async function openOnce({
     window: { title: "Experimental floor regions" },
     content: `<p>${content}</p>`,
   }),
+  choose = (content, options) => globalThis.foundry?.applications?.api?.DialogV2.wait?.({
+    window: { title: "Experimental floor regions" },
+    content: `<p>${content}</p>`,
+    buttons: options.map(([action, label], i) => ({ action, label, default: i === 0 })),
+    rejectClose: false,
+  }),
   load = loadMapRgba,
   detect = detectWater,
   select = selectColourAt,
@@ -2393,7 +2455,7 @@ async function openOnce({
   const result = detect(loaded.rgba, loaded.width, loaded.height);
   const saved = savedAreaProposals(scene?.regions, { levelId, sceneRect, width: loaded.width, height: loaded.height, plane: map });
   const proposals = assembleProposals(saved, result.proposals ?? [], loaded.width, loaded.height);
-  const Window = floorRegionsWindow(Application, { notify, warn, select, confirm, smart, smartCached, tile, snapshot, memory, load, detect, view });
+  const Window = floorRegionsWindow(Application, { notify, warn, select, confirm, choose, smart, smartCached, tile, snapshot, memory, load, detect, view });
   const app = new Window();
   app.pictures = pictures;
   app.plane = map;

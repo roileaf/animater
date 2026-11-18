@@ -341,3 +341,47 @@ test("opening warns about a turned tile only when it has regions", async () => {
   assert.equal((await warned([])).length, 0);
   assert.equal((await warned([bound])).length, 1);
 });
+
+test("after a save, the other pictures' ticked areas are offered: save, review, or close without", async () => {
+  const created = [];
+  const scene = { id: "scene", regions: [], createEmbeddedDocuments: async (_type, docs) => { created.push(...docs); return docs.map((_, i) => ({ id: `new-${created.length}-${i}` })); }, updateEmbeddedDocuments: async () => [] };
+  const asks = [], notes = [];
+  class Quiet { async render() {} async close() {} }
+  const square = (n) => ({ id: "area-1", share: 1, vertices: 4, loops: [{ hole: false, points: [0, 0, n, 0, n, n, 0, n] }], pixels: new Int32Array([0]) });
+  let answer = "discard";
+  const { app } = await openFloorRegions({
+    src: "map.png", scene, sceneRect, levelId, tiles: [deckDoc], memory: null, autoMark: false, view: null,
+    Application: Quiet, notify: (m) => notes.push(m), warn() {}, choose: async (m, options) => { asks.push({ m, options }); return answer; },
+    detect: () => ({ proposals: [square(2)], reason: "" }),
+    load: async () => ({ ok: true, rgba: new Uint8ClampedArray(16), width: 2, height: 2 }),
+  });
+  await app.showPicture("tile:deck");
+  app.drafts.get(`map:${levelId}`).choices = [row("area-1", "grass")];
+  assert.equal(app.otherPicturePlans().length, 1);
+  assert.equal(await app.saveOtherPictures(), false);
+  assert.match(asks[0].m, /Map/);
+  assert.deepEqual(asks[0].options.map(([key]) => key), ["save", "review", "discard"]);
+  assert.equal(created.length, 0);
+  answer = "review";
+  assert.equal(await app.saveOtherPictures(), true);
+  assert.equal(created.length, 0);
+  answer = "save";
+  assert.equal(await app.saveOtherPictures(), false);
+  assert.equal(created.length, 1);
+  assert.match(notes.at(-1), /Created 1 more region/);
+});
+
+test("reviewing marks the saved regions as saved and unticked, so they are not written twice", async () => {
+  const scene = { id: "scene", regions: [], createEmbeddedDocuments: async (_type, docs) => docs.map((d, i) => ({ id: `new-${i}`, name: d.name })), updateEmbeddedDocuments: async () => [] };
+  class Quiet { async render() {} async close() {} }
+  const { app } = await openFloorRegions({
+    src: "map.png", scene, sceneRect, levelId, tiles: [deckDoc], memory: null, autoMark: false, view: null,
+    Application: Quiet, notify() {}, warn() {},
+    detect: () => ({ proposals: [{ id: "area-1", share: 1, vertices: 4, loops: [{ hole: false, points: [0, 0, 2, 0, 2, 2, 0, 2] }], pixels: new Int32Array([0]) }], reason: "" }),
+    load: async () => ({ ok: true, rgba: new Uint8ClampedArray(16), width: 2, height: 2 }),
+  });
+  const picked = [row("area-1", "grass")];
+  const plan = planFloorCreate({ proposals: app.detect.proposals, picked, sceneRect, imageWidth: 2, imageHeight: 2, levelId, regions: [], plane: app.plane });
+  app.markPictureSaved(plan, picked, [{ id: "made", name: "Grass 1" }]);
+  assert.equal(app.detect.proposals[0].regionId, "made");
+});
