@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.5.4
+
+- **No freeze on the first hit in Firefox.** The first time a creature took damage in a session, Firefox on Windows could hold the whole map still for over a second as the hit landed: an Electric Arc's static froze for 1.3 seconds. The look a hit puts on the token (Electrocuted, Burning, Frostbitten and the rest) needs its shaders compiled, and most browsers do that in the background ahead of time. Firefox cannot, so it compiled them on the spot, mid-animation. Now, in a browser like that, they are compiled in the quiet moments just after a scene loads, one at a time with frames between them, so the first hit plays as smoothly as the tenth.
+
 ## 4.5.3
 
 - **Decorated maps draw faster.** A map's decorations cast three layers of soft shadow, and each layer is a blur the card pays for whether anything in it shows or not. Now a layer is only drawn when there is something in it, there is light on it, and it is near enough the screen to be seen — so an empty one, a cast layer at night or underground, and a corner of the map you are not looking at all cost nothing. On one busy farm map that took the frame rate from 26.8 to 59.8, and the work per frame from 576 passes to 54. Shadows come back on their own as you pan toward them.
