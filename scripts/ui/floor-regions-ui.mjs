@@ -944,6 +944,10 @@ function untickedGeometryEdits(proposals, picked) {
   return (proposals ?? []).filter((proposal) => proposal.geometryChanged && !checked.get(proposal.id));
 }
 
+function unsavedPicturesMessage(labels) {
+  return `Experimental. ${labels.length === 1 ? `${labels[0]} has` : `${labels.join(", ")} have`} areas ticked to save and not saved yet. Close and discard them?`;
+}
+
 function untickedGeometryMessage(count) {
   return `Experimental. ${count === 1 ? "An unticked area has outline edits" : `${count} unticked areas have outline edits`} that will be discarded. Tick ${count === 1 ? "it" : "them"} to save the outline, or continue to discard.`;
 }
@@ -1582,6 +1586,10 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
     }
 
     async close(options = {}) {
+      if (!options.force && this.detect) {
+        const pending = this.unsavedPictures();
+        if (pending.length && !(await hooks.confirm?.(unsavedPicturesMessage(pending)))) return this;
+      }
       if (!options.force && this.detect && this.element) {
         const lost = untickedGeometryEdits(this.detect.proposals, choicesFromElement(this.element));
         if (lost.length && !(await hooks.confirm?.(untickedGeometryMessage(lost.length)))) return this;
@@ -2330,6 +2338,24 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
         if (plan.creates.length + plan.updates.length + floorless.length) plans.push({ key, label: picture.label, draft, picked, plan, plane, needsFloor: floorless.length });
       }
       return plans;
+    }
+
+    // The labels of every picture, this one included, with ticked areas that closing would lose.
+    unsavedPictures() {
+      const labels = [];
+      try {
+        const { detect } = this;
+        if (this.element?.querySelectorAll) {
+          const picked = choicesFromElement(this.element);
+          const floorless = this.plane?.role === "overhead" ? [] : picked.filter((row) => row.checked && row.floor === NO_FLOOR);
+          const plan = planFloorCreate({ proposals: detect.proposals, picked: picked.filter((row) => !floorless.includes(row)), sceneRect: detect.sceneRect, imageWidth: detect.width, imageHeight: detect.height, levelId: detect.levelId, regions: detect.scene.regions, plane: this.plane ?? null });
+          if (plan.creates.length + plan.updates.length + floorless.length) labels.push((this.pictures ?? []).find((item) => item.key === this.planeKey)?.label ?? "This picture");
+        }
+        for (const other of this.otherPicturePlans()) labels.push(other.label);
+      } catch (error) {
+        console.warn("Animater floor regions:", error);
+      }
+      return labels;
     }
 
     // After a save the other pictures with ticked areas are offered: save them too, review them first, or close without them.

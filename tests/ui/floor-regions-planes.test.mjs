@@ -447,3 +447,27 @@ test("a ticked area with no floor on another picture keeps the window open, and 
   assert.equal(await app.saveOtherPictures(), "tile:deck");
   assert.equal(regions.length, 1);
 });
+
+test("closing the window asks first when a picture has ticked areas that would be lost", async () => {
+  const scene = { id: "scene", regions: [], createEmbeddedDocuments: async (_t, docs) => docs, updateEmbeddedDocuments: async () => [] };
+  const asks = [];
+  let closed = 0;
+  class Quiet { async render() {} async close() { closed += 1; } }
+  let answer = false;
+  const { app } = await openFloorRegions({
+    src: "map.png", scene, sceneRect, levelId, tiles: [deckDoc], memory: null, autoMark: false, view: null,
+    Application: Quiet, notify() {}, warn() {}, confirm: async (m) => { asks.push(m); return answer; },
+    detect: () => ({ proposals: [{ id: "area-1", share: 1, vertices: 4, loops: [{ hole: false, points: [0, 0, 2, 0, 2, 2, 0, 2] }], pixels: new Int32Array([0]) }], reason: "" }),
+    load: async () => ({ ok: true, rgba: new Uint8ClampedArray(16), width: 2, height: 2 }),
+  });
+  await app.showPicture("tile:deck");
+  app.drafts.get(`map:${levelId}`).choices = [row("area-1", "grass")];
+  assert.equal(await app.close(), app);
+  assert.equal(asks.length, 1);
+  assert.match(asks[0], /Map/);
+  assert.equal(closed, 0);
+  app.drafts.get(`map:${levelId}`).choices = [];
+  await app.close();
+  assert.equal(asks.length, 1);
+  assert.equal(closed, 1);
+});
