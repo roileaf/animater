@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.5.3
+
+- **Decorated maps draw faster.** A map's decorations cast three layers of soft shadow, and each layer is a blur the card pays for whether anything in it shows or not. Now a layer is only drawn when there is something in it, there is light on it, and it is near enough the screen to be seen — so an empty one, a cast layer at night or underground, and a corner of the map you are not looking at all cost nothing. On one busy farm map that took the frame rate from 26.8 to 59.8, and the work per frame from 576 passes to 54. Shadows come back on their own as you pan toward them.
+
 ## 4.5.2
 
 - **A rat has one tail.** Rats on a map had a second tail behind them, far too long for the rat it trailed from. A rat's tail is drawn as it runs, swinging behind it, so the rat's own picture underneath is a rat without one — and the painted rat has its tail in the picture already. Laying the painted rat over the frame squeezed it to about half size to make room for a tail the frame did not have, and then the drawn tail went on top of the painted one. The painted rat is now matched body to body, so it is the size a rat has always been, and it keeps the one tail it was painted with.
