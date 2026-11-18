@@ -103,6 +103,29 @@ export const CLOTH_SHADER_SOURCES = Object.freeze([[CLOTH_VERT, CLOTH_FRAG]]);
 export const turnOf = (d) => (d.fixed || DECOR_KINDS[d.kind]?.flat || DECOR_KINDS[d.kind]?.tree || FREE_TURN.has(d.kind) ? d.turn : d.turn * 0.4);
 /** How far a decoration's shadow reaches from it (pure): `height` in squares, `length` the sun's shadow length per unit of height. */
 export const shadowReach = (height, length, grid) => Math.max(0, height * length * grid * 0.5);
+
+/**
+ * Whether a region's blurred shadow layer is worth drawing (pure). Every one of them is a blur, and a blur is a pass
+ * over the screen whether or not anything comes of it: a layer with nothing in it, or one turned right down (no sun on
+ * the cast shadows, say), costs that pass for nothing at all. One whose shadows lie further than `margin` outside the
+ * view costs it for something nobody can see. `box` is where the layer's shadows are on the map and `view` what is on
+ * the screen, both { x, y, w, h }; a layer comes back on its own as the view nears it again. Told no view, or no box,
+ * a layer with something in it is drawn: a rule that cannot see must not hide anything.
+ */
+export function shadowLayerShown({ count = 0, alpha = 1, box = null } = {}, view = null, margin = 300) {
+  if (!(count > 0) || !(alpha > 0.004)) return false;
+  if (!view || !box) return true;
+  const m = Math.max(0, Number(margin) || 0);
+  return box.x - m < view.x + view.w && box.x + box.w + m > view.x
+    && box.y - m < view.y + view.h && box.y + box.h + m > view.y;
+}
+/** A region's box grown to hold one more decoration's shadows (pure): `reach` how far round it they can fall. */
+export function boxWith(box, { x, y }, reach) {
+  const x0 = x - reach, y0 = y - reach, x1 = x + reach, y1 = y + reach;
+  if (!box) return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  const ax = Math.min(box.x, x0), ay = Math.min(box.y, y0), bx = Math.max(box.x + box.w, x1), by = Math.max(box.y + box.h, y1);
+  return { x: ax, y: ay, w: bx - ax, h: by - ay };
+}
 /** How tall a decoration stands, in squares (pure): its kind's height, scaled by how big it was painted against the kind's own size,
  *  and by its Height (`tall`, 0.3 to 3: the brush's and its region's together). */
 export const decorHeight = (d) => {
@@ -279,6 +302,9 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
       const holder = new PIXI.Container(), inner = new PIXI.Container(), sil = place(new PIXI.Sprite(pic.shadow), d, pic, scale); sil.position.set(0, 0); sil.rotation = 0; sil.tint = 0x06070c;
       inner.addChild(sil); holder.addChild(inner); holder.decor = d; holder.inner = inner; holder.baseScale = sil.scale.x; holder.texture = pic.shadow; cast.addChild(holder); r.shadowSprites.push(holder);
       const caster = { d, pic, scale, height: decorHeight(d), shadows: [] }; r.casters.push(caster);
+      // Where this region's shadows are, kept as they are drawn, for the layers that can be left undrawn off screen.
+      // (It only ever grows: one taken away leaves the box as it was, which can keep a layer drawn but never hide one.)
+      r.box = boxWith(r.box, d, d.size * g * 0.7); r.tall = Math.max(r.tall ?? 0, decorHeight(d));
       mine.inShadows.push(foot, holder); mine.caster = caster;
     }
     if (role === 'tree') {
@@ -354,7 +380,7 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
         if (had) dropRegion(had);
         at = spec;
         const { placements, shown } = decorShown(spec, g), where = spec.settings?.where ?? 'surface';
-        const r = { key, restKey, brushedRef: fresh, brushedCount: fresh.length, placements: [...placements], shown: [...shown], where, look: spec.look, prop: spec.settings?.prop, sprites: [], shadowSprites: [], crowns: [], cloth: [], castLayer: null, contact: null, drawn: [], pictures: new Set() };
+        const r = { key, restKey, brushedRef: fresh, brushedCount: fresh.length, placements: [...placements], shown: [...shown], where, look: spec.look, prop: spec.settings?.prop, sprites: [], shadowSprites: [], crowns: [], cloth: [], castLayer: null, contact: null, drawn: [], pictures: new Set(), box: null, tall: 0 };
         // Shadows: the soft dark at each standing one's foot whatever the light, then the cast ones in a layer of their own (one alpha for all, so overlaps never stack darker).
         const contact = new PIXI.Container(), cast = new PIXI.Container(), Alpha = PIXI.AlphaFilter ?? PIXI.filters?.AlphaFilter;
         if (PIXI.BlurFilter) { contact.filters = [new PIXI.BlurFilter(g * 0.05)]; cast.filters = [new PIXI.BlurFilter(g * 0.015), ...(Alpha ? [new Alpha(1)] : [])]; }
@@ -403,7 +429,18 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
     /** The wind now: strength 0-1, blowing toward angle (radians). Awnings, tents and washing stir in it (not underground). */
     wind({ strength = 0, angle = 0 } = {}) { air = { strength: Math.max(0, Math.min(1, Number(strength) || 0)), angle: Number(angle) || 0 }; },
     creatures(list = []) { const g = grid(); for (const r of regions.values()) for (const c of r.crowns) open.set(c, crownOpen(c.decor, list, g)); },
-    tick(seconds) {
+    // `view` what is on the screen now ({ x, y, w, h } on the map), for the shadow layers that need not be drawn.
+    tick(seconds, view = null) {
+      // The blurred shadow layers. Each region has three — the dark at each foot, the cast shadows, the lamps' — and
+      // each is a blur, which costs a pass over the screen whether anything in it shows or not. A region with nothing
+      // standing in it, a cast layer with no sun on it, and a region well off the side of the screen are all passes
+      // paid for nothing, and on a full map there are dozens of them. Each comes back by itself as the view nears it.
+      const g = grid();
+      for (const r of regions.values()) {
+        const near = g * 0.5, cast = near + shadowReach(r.tall ?? 1, sun?.length ?? 0, g), lamp = Math.max(cast, near + g * 2);
+        const show = (layer, margin) => { if (layer) layer.renderable = shadowLayerShown({ count: layer.children.length, alpha: layer.alpha, box: r.box }, view, margin); };
+        show(r.contact, near); show(r.castLayer, cast); show(r.lampLayer, lamp);
+      }
       // A crown eases open over a creature and closes again after it has gone (a third of a second either way).
       const rate = Math.min(1, seconds * 3);
       for (const r of regions.values()) for (const c of r.crowns) { const want = 1 - 0.75 * (open.get(c) ?? 0); c.alpha += (want - c.alpha) * rate; }

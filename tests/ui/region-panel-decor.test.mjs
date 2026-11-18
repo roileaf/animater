@@ -107,7 +107,8 @@ test('decorations feed the other engines: canopy trees, moving water, the cavern
   assert.match(main, /\[\.\.\.tree, \.\.\.decorations\.trees\(\)\]/);
   assert.match(main, /for \(const pool of decorations\.water\(\)\)/);
   assert.match(main, /decor = decorations\.cavern\(\)/);
-  assert.match(main, /decorations\.creatures\(tokensOnFloor\(\)\); decorations\.wind\(.*?\}\); decorations\.tick\(seconds\)/);
+  // (The tick is handed what is on the screen too, for the shadow layers it can leave undrawn — decorations.test.mjs.)
+  assert.match(main, /decorations\.creatures\(tokensOnFloor\(\)\); decorations\.wind\(.*?\}\); decorations\.tick\(seconds, viewNow\(\)\)/);
 });
 
 test('a ghost of the next dab follows the brush, changes with the bar, and a click lays exactly it', () => {

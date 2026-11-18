@@ -8688,7 +8688,7 @@ function skyTick() {
   swayTick();
   heightsWeatherAt += seconds; if (heightsWeatherAt >= 1) { heightsWeatherAt = 0; const hw = heightsWeather(), hk = `${hw.wet}|${hw.snow}`; if (hk !== heightsWeatherKey) { heightsWeatherKey = hk; heightShadowsSoon(); } }
   if (decorations.busy) {
-    decorations.creatures(tokensOnFloor()); decorations.wind({ strength: undergroundScene() ? 0 : skyWindNow, angle: skyWindAngle }); decorations.tick(seconds);
+    decorations.creatures(tokensOnFloor()); decorations.wind({ strength: undergroundScene() ? 0 : skyWindNow, angle: skyWindAngle }); decorations.tick(seconds, viewNow());
     // The lights' shadows of them, a few times a second (lights move with the creatures carrying them), as strong as each light is against the sky.
     decorWeatherAt += seconds; if (decorWeatherAt >= 1) { decorWeatherAt = 0; const key = decorWeatherNow(); if (key !== decorWeatherKey) { decorWeatherKey = key; try { syncDecorations(); } catch { /* not built yet */ } } }
     decorLampsAt += seconds; if (decorLampsAt >= 0.15) { decorLampsAt = 0; try { decorations.lamps(shadowsOffHere() ? [] : floorLightSources()); } catch { /* no lights now */ } }
