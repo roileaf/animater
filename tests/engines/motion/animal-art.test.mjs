@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
-import { ART_GROUPS, drawnBox, bodyRun, fitOf, restyle, setAnimalSheet, loadAnimalArt, keyLightOf, nearestLamps, litPIXI, setAnimalLight, animalLightNow } from '../../../scripts/engines/motion/animal-art.mjs';
+import { ART_GROUPS, drawnBox, bodyRun, fitOf, padFor, restyle, setAnimalSheet, loadAnimalArt, keyLightOf, nearestLamps, litPIXI, setAnimalLight, animalLightNow } from '../../../scripts/engines/motion/animal-art.mjs';
 
 // Roi, looking at a wagon on a one-square token: "why so small lol". The picture holds a wagon and the horse pulling
 // it, nearly seven metres of rig; fitting all of that into the token squeezed the wagon itself down to a toy. The
@@ -22,6 +22,45 @@ test('the body of a drawn thing is its widest run, so a wagon is found and its h
   const cart = new Uint8ClampedArray(w * h * 4);
   for (let y = 10; y <= 16; y++) for (let x = 2; x <= 7; x++) cart[(y * w + x) * 4 + 3] = 255;
   assert.deepEqual(bodyRun(cart, w, h), { x: 2, y: 10, w: 6, h: 7 });
+});
+
+// J-P, on Discord, with a picture of it: "why does the rats have this bizarre too long double tail?". A rat's tail is
+// drawn live over its frame (vermin.mjs), so the engine's own frame is a rat without one — but the baked painted rat
+// has its tail in the picture. Matched end to end, the painted rat was squeezed until its tail fitted the length of a
+// rat with no tail, leaving a third-sized rat under a full-length drawn tail: two tails, one of them enormous.
+test('a baked animal whose tail the engine draws itself is matched body to body, not end to end', () => {
+  // A rat lying on its side facing right: body tall, tail a thin line trailing off behind it.
+  const w = 24, h = 10;
+  const rat = (tail) => { const d = new Uint8ClampedArray(w * h * 4);
+    for (let y = 3; y <= 7; y++) for (let x = 10; x <= 19; x++) d[(y * w + x) * 4 + 3] = 255;   // the body, 10 long
+    if (tail) for (let x = 0; x <= 9; x++) d[(5 * w + x) * 4 + 3] = 255;                        // the tail, 10 more
+    return d; };
+  const bare = rat(false), whole = rat(true);
+  assert.deepEqual(bodyRun(whole, w, h, { across: true }), { x: 10, y: 3, w: 10, h: 5 }, 'the body, without its tail');
+  assert.deepEqual(bodyRun(bare, w, h, { across: true }), bodyRun(whole, w, h, { across: true }), 'with or without one');
+  assert.equal(bodyRun(new Uint8ClampedArray(w * h * 4), w, h, { across: true }), null);
+  // Measured across, the two bodies are the same size, as they should be. Measured end to end, the painted rat is
+  // halved to make room for a tail the engine's frame does not have.
+  const body = fitOf(bodyRun(bare, w, h, { across: true }), bodyRun(whole, w, h, { across: true }), true);
+  const ends = fitOf(drawnBox(bare, w, h), drawnBox(whole, w, h), true);
+  assert.equal(body.scale, 1);
+  assert.equal(ends.scale, 0.5, 'what the rats on J-P’s map were doing');
+  // Fitted that way the picture can reach past the engine's own frame, so it is given room on both sides at once: the
+  // middle of the frame is what every engine anchors and turns its sprite on, and it must not move.
+  const pad = padFor({ x: 0, y: 2, w: 20, h: 6 }, { scale: 2, dx: -8, dy: 0 }, { width: 24, height: 10 });
+  // The picture runs from -8 to 32 across a frame 24 wide: 20 each way from the middle, where the frame itself has 12.
+  assert.deepEqual(pad, { x: 8, y: 6 }, 'eight more each side, and the middle stays the middle');
+  assert.equal(24 + pad.x * 2, 40, 'and the room is exactly what the picture needs, no more');
+  assert.deepEqual(padFor({ x: 10, y: 3, w: 4, h: 4 }, { scale: 1, dx: 0, dy: 0 }, { width: 24, height: 10 }), { x: 0, y: 0 }, 'one that already fits is left alone');
+  assert.deepEqual(padFor(null, { scale: 1, dx: 0, dy: 0 }, { width: 24, height: 10 }), { x: 0, y: 0 });
+  // And the frame says which it wants: the baked map marks the rat 'b', the bat its wingspan.
+  const map = JSON.parse(readFileSync(new URL('../../../assets/animals/vermin.json', import.meta.url), 'utf8'));
+  for (const [path, f] of Object.entries(map.frames)) assert.equal(f.fit, path.startsWith('rat/') ? 'b' : 'w', path);
+  // The drawn tail is not laid over a painted rat that already has one.
+  const vermin = readFileSync(new URL('../../../scripts/engines/motion/vermin.mjs', import.meta.url), 'utf8');
+  assert.match(vermin, /ratPainted = out\?\.\[0\] !== own\[0\]/);
+  assert.match(vermin, /t\.visible = show && !ratPainted;/);
+  assert.match(vermin, /if \(!ratPainted\) drawRatTail\(/);
 });
 
 test('the animals are lit from where the sun stands, the moon more softly, the painted top left with neither', () => {

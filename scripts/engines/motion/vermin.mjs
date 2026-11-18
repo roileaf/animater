@@ -219,7 +219,9 @@ export function createVermin({ PIXI, root, batsRoot = root, restyle = null }) {
   const frames = (w, h, n, paint) => Array.from({ length: n }, (_, i) => { const c = document.createElement('canvas'); c.width = w; c.height = h; paint(c.getContext('2d'), i); return PIXI.Texture.from(c); });
   // in the painted look where it has been baked (animal-art.mjs `restyle`, given by main), else as drawn here
   const styled = (set, prefix) => (restyle ? restyle('vermin', set, prefix) : set);
-  const ratFrames = () => (ratTex ??= styled(frames(RAT_W, RAT_H, RAT_FRAMES, (ctx, i) => drawRat(ctx, i / RAT_FRAMES)), 'rat'));
+  // The painted rat carries its own tail, so the drawn one is not laid over it (one rat, one tail).
+  let ratPainted = false;
+  const ratFrames = () => (ratTex ??= (() => { const own = frames(RAT_W, RAT_H, RAT_FRAMES, (ctx, i) => drawRat(ctx, i / RAT_FRAMES)), out = styled(own, 'rat'); ratPainted = out?.[0] !== own[0]; return out; })());
   const batFrames = () => (batTex ??= styled(frames(BAT_W, BAT_H, BAT_SPANS.length, (ctx, i) => drawBat(ctx, BAT_SPANS[i])), 'bat'));
   const sprite = (tex, parent) => { const sp = new PIXI.Sprite(tex); sp.anchor.set(0.5); sp.eventMode = 'none'; parent.addChild(sp); return sp; };
   // Each one carries its own pictures, so the animal HUD knows it by them (animal-orders.mjs).
@@ -277,7 +279,7 @@ export function createVermin({ PIXI, root, batsRoot = root, restyle = null }) {
         // Its feet step with how far it runs.
         n.stride = ((r.stride ?? 0) + (n.speed * dt) / (grid * 0.22)) % 1; n.big = r.big ?? 1; n.shade = r.shade ?? 0xffffff;
         const { body, tail: t, shadow } = n, show = seen(n.x, n.y);
-        body.visible = t.visible = show;
+        body.visible = show; t.visible = show && !ratPainted;
         const cast = show ? shadowFrom(light(n.x, n.y), n, { grid }) : null;
         shadow.visible = !!cast;
         if (show) {
@@ -289,7 +291,7 @@ export function createVermin({ PIXI, root, batsRoot = root, restyle = null }) {
           body.position.set(n.x, n.y); body.rotation = n.angle; body.scale.set(k * 0.5 * n.big); body.tint = n.shade;
           // Its shadow on the floor, away from the nearest light.
           if (cast) { shadow.texture = body.texture; shadow.position.set(cast.x, cast.y); shadow.rotation = n.angle; shadow.scale.set(k * 0.5 * n.big * cast.scale); shadow.alpha = cast.alpha; }
-          drawRatTail(t, n, k, time, i);
+          if (!ratPainted) drawRatTail(t, n, k, time, i);
         }
         return n;
       });

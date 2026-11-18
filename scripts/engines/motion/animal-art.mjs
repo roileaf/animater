@@ -47,26 +47,30 @@ export function drawnBox(data, w, h, cut = 32) {
 // (Measured off the baked wagon: its bed runs 74-76 pixels wide at the axles and narrows to 56 between them, while the
 // horse ahead of it never passes 36. Three fifths of the widest keeps the whole bed in one run and leaves the horse out,
 // with room on both sides of the line.)
-export function bodyRun(data, w, h, { cut = 32, of = 0.6 } = {}) {
-  const wide = new Array(h).fill(0);
-  for (let y = 0; y < h; y++) {
-    let x0 = -1, x1 = -1;
-    for (let x = 0; x < w; x++) if (data[(y * w + x) * 4 + 3] > cut) { if (x0 < 0) x0 = x; x1 = x; }
-    wide[y] = x0 < 0 ? 0 : x1 - x0 + 1;
+// (`across` measures the picture the other way round, column by column, for a thing drawn lying on its side: a rat
+// faces right, so its body is the long run of tall columns and its tail the thin ones trailing off behind it.)
+export function bodyRun(data, w, h, { cut = 32, of = 0.6, across = false } = {}) {
+  const n = across ? w : h, m = across ? h : w;
+  const at = (i, j) => (across ? j * w + i : i * w + j) * 4 + 3;
+  const wide = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    let a = -1, b = -1;
+    for (let j = 0; j < m; j++) if (data[at(i, j)] > cut) { if (a < 0) a = j; b = j; }
+    wide[i] = a < 0 ? 0 : b - a + 1;
   }
   const most = Math.max(...wide);
   if (!most) return null;
   // The longest unbroken run of rows that are near the widest: a wheel's gap must not cut the wagon in two.
   const want = most * of;
   let best = null, from = -1;
-  for (let y = 0; y <= h; y++) {
-    if (y < h && wide[y] >= want) { if (from < 0) from = y; continue; }
-    if (from >= 0) { if (!best || y - from > best.h) best = { y: from, h: y - from }; from = -1; }
+  for (let i = 0; i <= n; i++) {
+    if (i < n && wide[i] >= want) { if (from < 0) from = i; continue; }
+    if (from >= 0) { if (!best || i - from > best.n) best = { i: from, n: i - from }; from = -1; }
   }
   if (!best) return null;
-  let x0 = w, x1 = -1;
-  for (let y = best.y; y < best.y + best.h; y++) for (let x = 0; x < w; x++) if (data[(y * w + x) * 4 + 3] > cut) { if (x < x0) x0 = x; if (x > x1) x1 = x; }
-  return { x: x0, y: best.y, w: x1 - x0 + 1, h: best.h };
+  let a0 = m, a1 = -1;
+  for (let i = best.i; i < best.i + best.n; i++) for (let j = 0; j < m; j++) if (data[at(i, j)] > cut) { if (j < a0) a0 = j; if (j > a1) a1 = j; }
+  return across ? { x: best.i, y: a0, w: best.n, h: a1 - a0 + 1 } : { x: a0, y: best.i, w: a1 - a0 + 1, h: best.n };
 }
 
 /**
@@ -79,6 +83,20 @@ export function fitOf(own, baked, across = false) {
   const scale = across ? own.w / baked.w : own.h / baked.h;
   if (!(scale > 0) || !Number.isFinite(scale)) return null;
   return { scale, dx: own.x + own.w / 2 - (baked.x + baked.w / 2) * scale, dy: own.y + own.h / 2 - (baked.y + baked.h / 2) * scale };
+}
+
+/**
+ * How much room a fitted baked picture needs past the engine's own frame (pure): `baked` the drawn bounds of the baked
+ * cell, `fit` from fitOf, `own` the engine frame's size. The same on each side, so the middle of the frame — what the
+ * engines anchor and turn their sprites on — stays where it was. { x, y }, whole pixels, 0 where it already fits.
+ */
+export function padFor(baked, fit, own) {
+  if (!baked || !fit || !(own?.width > 0) || !(own?.height > 0)) return { x: 0, y: 0 };
+  const side = (from, len, d, size) => {
+    const a = from * fit.scale + d, b = (from + len) * fit.scale + d, half = size / 2;
+    return Math.max(0, Math.ceil(Math.max(half - a, b - half) - half));
+  };
+  return { x: side(baked.x, baked.w, fit.dx, own.width), y: side(baked.y, baked.h, fit.dy, own.height) };
 }
 
 // One cell of a sheet (the colours, or at `ncell` which way they face) on a canvas the colours' size, turned to face as
@@ -151,7 +169,15 @@ export function restyle(PIXI, group, set, prefix = '') {
   if (!sheet || !set || typeof document === 'undefined') return set;
   const { map, img, normals } = sheet, cell = map.cell, leaves = leavesOf(set, prefix), fits = new Map();
   const cellCanvas = (f, from = img, size = cell) => cellOf(map, f, from, size);
-  const boxOf = (c) => { const x = c.getContext('2d', { willReadFrequently: true }); return drawnBox(x.getImageData(0, 0, c.width, c.height).data, c.width, c.height); };
+  const dataOf = (c) => c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, c.width, c.height).data;
+  const boxOf = (c) => drawnBox(dataOf(c), c.width, c.height);
+  // 'b': matched body to body, for an animal whose engine frame leaves part of it to be drawn live. A rat's tail is in
+  // the baked picture but not in the engine's frame, so matching the two end to end would squeeze a rat with a tail into
+  // the length of one without, leaving a painted rat a third its size under a full-length drawn tail.
+  // (Half the widest, not the three fifths a wagon wants: measured off the two rat pictures, half keeps the head with
+  // the body in both of them and leaves the tail out of both, and holds steady from 0.4 to 0.55. At three fifths the
+  // painted rat's head drops out of the run while the drawn rat's stays in, and the two stop being the same measure.)
+  const bodyOf = (c) => bodyRun(dataOf(c), c.width, c.height, { across: true, of: 0.5 });
   // A family's fit, from its reference frame: the engine's drawing of it against the baked picture of it.
   const fitFor = (f) => {
     if (fits.has(f.ref)) return fits.get(f.ref);
@@ -159,9 +185,16 @@ export function restyle(PIXI, group, set, prefix = '') {
     let fit = null;
     // matched along its length (across, for one turned on its side), or a flyer by its wingspan (fit 'w')
     const across = refFrame.fit === 'w' || (!!refFrame.rot && Math.abs(Math.sin(refFrame.rot)) > 0.5);
-    try { if (own?.getContext) fit = fitOf(boxOf(own), boxOf(cellCanvas(refFrame)), across); } catch { fit = null; }
+    const measure = refFrame.fit === 'b' ? bodyOf : boxOf;
+    try { if (own?.getContext) fit = fitOf(measure(own), measure(cellCanvas(refFrame)), across); } catch { fit = null; }
     fits.set(f.ref, fit);
     return fit;
+  };
+  // Only a frame fitted body to body can come out longer than the engine's own; every other frame is matched end to end
+  // and fits inside it by construction, so it is left exactly as it was.
+  const padOf = (f, fit, src) => {
+    if ((map.frames[f.ref] ?? f).fit !== 'b') return { x: 0, y: 0 };
+    try { return padFor(boxOf(cellCanvas(f)), fit, src); } catch { return { x: 0, y: 0 }; }
   };
   return rebuild(set, prefix, (path, tex) => {
     const f = map.frames[path], src = sourceOf(tex);
@@ -172,9 +205,13 @@ export function restyle(PIXI, group, set, prefix = '') {
       // Drawn at SHARP times the engine's own frame and given to PIXI at that resolution: the same size on the map (every
       // scale the engine works out holds), but sharp when the map is shown bigger than its pictures, as on a fine grid.
       const R = SHARP[group] ?? 2;
-      const laid = (from, size) => { const out = document.createElement('canvas'); out.width = Math.round(src.width * R); out.height = Math.round(src.height * R);
+      // Room for whatever the fitted picture carries past the engine's own frame (a painted rat's tail, where the frame
+      // under it is a rat without one). The same on both sides, so the middle of the frame — what every engine anchors
+      // and turns its sprite on — does not move, and the scale the engine works out still means what it did.
+      const pad = padOf(f, fit, src);
+      const laid = (from, size) => { const out = document.createElement('canvas'); out.width = Math.round((src.width + pad.x * 2) * R); out.height = Math.round((src.height + pad.y * 2) * R);
         const x = out.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
-        x.setTransform(fit.scale * R, 0, 0, fit.scale * R, fit.dx * R, fit.dy * R); x.drawImage(cellCanvas(f, from, size), 0, 0); return out; };
+        x.setTransform(fit.scale * R, 0, 0, fit.scale * R, (fit.dx + pad.x) * R, (fit.dy + pad.y) * R); x.drawImage(cellCanvas(f, from, size), 0, 0); return out; };
       const look = PIXI.Texture.from(laid(img, cell), { resolution: R });
       // which way its surface faces, laid the same, for the lit sprite (LitSprite) to shade it by the light where it is
       if (normals && map.ncell) { look.animaterNormal = PIXI.Texture.from(laid(normals, map.ncell), { resolution: R }); look.animaterTurn = f.rot ?? 0; }
