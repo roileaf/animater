@@ -1492,6 +1492,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
         const target = event.target, inside = fromWindow || this.element?.contains?.(target) || target === this.element;
         const page = openWindow === this && (!target?.closest || target === globalThis.document?.body || target === globalThis.document?.documentElement || !!target.closest("#board"));
         if (!inside && !page) return;
+        if (this.saving) { event.preventDefault?.(); event.stopPropagation?.(); return; }
         if (target?.closest?.("textarea, input[type=text], input[type=number], input:not([type])")) return;
         if (!this.history?.length && !inside) return;
         event.animaterUndo = true;
@@ -1511,7 +1512,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       this.element.addEventListener("mouseleave", () => this.setHighlight(""));
       this.element.addEventListener("change", (event) => {
         if (event.target.closest?.("[data-plane]")) {
-          if (this.pictureBusy || this.smartBusy) {
+          if (this.pictureBusy || this.smartBusy || this.saving) {
             const select = this.element.querySelector("[data-plane]");
             if (select) select.value = this.planeKey;
             return;
@@ -2289,12 +2290,13 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       return { ...outcome, docs: createdDocs };
     }
 
-    // The regions just written are saved regions now: their rows say so and are unticked, so a later save never writes them twice.
-    markPictureSaved(plan, picked, docs) {
+    // The regions just written are saved regions now: each ticked proposal takes its region's id and the choices it was saved
+    // with as its baseline, and is unticked, so a later save never writes it twice. Returns the choices with those rows unticked.
+    applySaved(detect, plan, picked, docs) {
       const regionOf = new Map((plan.sources ?? []).map((id, i) => [id, docs?.[i]]));
       const rows = new Map(picked.map((row) => [row.id, row]));
       const saved = new Set(picked.filter((row) => row.checked).map((row) => row.id));
-      for (const proposal of this.detect.proposals) {
+      for (const proposal of detect.proposals) {
         const doc = regionOf.get(proposal.id);
         if (doc?.id) { proposal.regionId = doc.id; proposal.name = doc.name ?? proposal.name; }
         const row = rows.get(proposal.id);
@@ -2303,42 +2305,57 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
         const { id, checked, ...choices } = row;
         proposal.savedChoices = { ...proposal.savedChoices, ...choices, overhead: proposal.overhead === true, stepsOwn: proposal.savedChoices?.floor === row.floor ? proposal.savedChoices?.stepsOwn ?? null : null };
       }
-      this.paintPicture(picked.map((row) => ({ ...row, checked: row.checked && !saved.has(row.id) })), this.element?.querySelector ? sharedChoices(this.element) : null);
+      return (picked ?? []).map((row) => ({ ...row, checked: row.checked && !saved.has(row.id) }));
     }
 
-    // The pictures the GM edited and left, with the plan each one would save. Rows still waiting on a floor are left out.
+    // Undo cannot cross a save: it would put back a proposal that has no region id.
+    markPictureSaved(plan, picked, docs) {
+      const choices = this.applySaved(this.detect, plan, picked, docs);
+      this.history = [];
+      this.paintPicture(choices, this.element?.querySelector ? sharedChoices(this.element) : null);
+    }
+
+    // The pictures the GM edited and left, with the plan each one would save. Ticked rows still waiting on a floor are
+    // not saved: `needsFloor` counts them, and a picture with only those is listed too, so closing never drops them quietly.
     otherPicturePlans() {
       const plans = [];
       for (const [key, draft] of this.drafts ?? []) {
         const picture = (this.pictures ?? []).find((item) => item.key === key);
         const plane = picture?.plane ?? null;
         if (!draft.detect || !plane) continue;
-        const picked = (draft.choices ?? []).filter((row) => plane.role === "overhead" || row.floor !== NO_FLOOR);
+        const floorless = plane.role === "overhead" ? [] : (draft.choices ?? []).filter((row) => row.checked && row.floor === NO_FLOOR);
+        const picked = (draft.choices ?? []).filter((row) => !floorless.includes(row));
         const { detect } = draft;
         const plan = planFloorCreate({ proposals: detect.proposals, picked, sceneRect: detect.sceneRect, imageWidth: detect.width, imageHeight: detect.height, levelId: detect.levelId, regions: detect.scene.regions, plane });
-        if (plan.creates.length + plan.updates.length) plans.push({ key, label: picture.label, draft, picked, plan, plane });
+        if (plan.creates.length + plan.updates.length + floorless.length) plans.push({ key, label: picture.label, draft, picked, plan, plane, needsFloor: floorless.length });
       }
       return plans;
     }
 
     // After a save the other pictures with ticked areas are offered: save them too, review them first, or close without them.
-    // Returns true when the GM chose to review, which leaves the window open on the first of them.
+    // Returns the key of the picture to show when the window stays open (the GM chose to review, or an area there still
+    // needs a floor), else null.
     async saveOtherPictures() {
       const others = this.otherPicturePlans();
-      if (!others.length) return false;
-      const many = others.length > 1, names = others.map((other) => other.label).join(", ");
+      if (!others.length) return null;
+      const many = others.length > 1, names = others.map((other) => other.label + (other.needsFloor ? ` (${other.needsFloor} need${other.needsFloor === 1 ? "s" : ""} a floor)` : "")).join(", ");
       const choice = await hooks.choose?.(`Experimental. ${many ? `${others.length} other pictures have` : "Another picture has"} areas ticked to save and not saved yet (${names}).`, [["save", `Save ${many ? "them" : "it"} too`], ["review", "Review first"], ["discard", "Close without saving"]]);
-      if (choice === "review") return true;
-      if (choice !== "save") return false;
-      let created = 0, updated = 0;
+      if (choice === "review") return others[0].key;
+      if (choice !== "save") return null;
+      let created = 0, updated = 0, stay = null;
       for (const { key } of others) {
         const next = this.otherPicturePlans().find((other) => other.key === key);
         if (!next) continue;
-        const outcome = await this.commitPicture(next.plan, next.picked, { detect: next.draft.detect, plane: next.plane, rejected: next.draft.rejected });
-        created += outcome.created; updated += outcome.updated;
+        if (next.plan.creates.length + next.plan.updates.length) {
+          const outcome = await this.commitPicture(next.plan, next.picked, { detect: next.draft.detect, plane: next.plane, rejected: next.draft.rejected });
+          created += outcome.created; updated += outcome.updated;
+          if (outcome.created + outcome.updated > 0) { next.draft.choices = this.applySaved(next.draft.detect, next.plan, next.picked, outcome.docs); next.draft.history = []; }
+        }
+        if (next.needsFloor && !stay) stay = key;
       }
       if (created + updated) hooks.notify?.(`${created ? `Created ${created} more region${created === 1 ? "" : "s"}.` : ""}${updated ? ` Updated ${updated} more saved region${updated === 1 ? "" : "s"}.` : ""}`.trim());
-      return false;
+      if (stay) hooks.notify?.("Pick a floor for the ticked areas here that Auto didn't know, then save.");
+      return stay;
     }
 
     async create() {
@@ -2365,10 +2382,10 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
         const outcome = await this.commitPicture(plan, picked, { detect, plane: this.plane, rejected: this.rejected });
         if (!outcome.cancelled && outcome.created + outcome.updated > 0) {
           hooks.notify?.(`${outcome.created ? `Created ${outcome.created} region${outcome.created === 1 ? "" : "s"}.` : ""}${outcome.updated ? ` Updated ${outcome.updated} saved region${outcome.updated === 1 ? "" : "s"}.` : ""}`.trim());
-          const first = this.otherPicturePlans()[0];
           this.markPictureSaved(plan, picked, outcome.docs);
-          if (await this.saveOtherPictures()) {
-            await this.showPicture(first.key);
+          const stay = await this.saveOtherPictures();
+          if (stay) {
+            await this.showPicture(stay);
             hooks.notify?.("Saved. Review this picture, then save it.");
             return;
           }
