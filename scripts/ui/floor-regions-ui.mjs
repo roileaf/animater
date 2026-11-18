@@ -2303,7 +2303,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
         if (!saved.has(proposal.id) || !proposal.regionId || !row) continue;
         proposal.geometryChanged = false;
         const { id, checked, ...choices } = row;
-        proposal.savedChoices = { ...proposal.savedChoices, ...choices, overhead: proposal.overhead === true, stepsOwn: proposal.savedChoices?.floor === row.floor ? proposal.savedChoices?.stepsOwn ?? null : null };
+        proposal.savedChoices = { ...proposal.savedChoices, ...choices, flowTo: flowDefault(row.waterKind, row.flowTo), current: currentDefault(row.waterKind, row.current), overhead: proposal.overhead === true, stepsOwn: proposal.savedChoices?.floor === row.floor ? proposal.savedChoices?.stepsOwn ?? null : null };
       }
       return (picked ?? []).map((row) => ({ ...row, checked: row.checked && !saved.has(row.id) }));
     }
@@ -2340,8 +2340,8 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       if (!others.length) return null;
       const many = others.length > 1, names = others.map((other) => other.label + (other.needsFloor ? ` (${other.needsFloor} need${other.needsFloor === 1 ? "s" : ""} a floor)` : "")).join(", ");
       const choice = await hooks.choose?.(`Experimental. ${many ? `${others.length} other pictures have` : "Another picture has"} areas ticked to save and not saved yet (${names}).`, [["save", `Save ${many ? "them" : "it"} too`], ["review", "Review first"], ["discard", "Close without saving"]]);
-      if (choice === "review") return others[0].key;
-      if (choice !== "save") return null;
+      if (choice === "discard") return null;
+      if (choice !== "save") return others[0].key;
       let created = 0, updated = 0, stay = null;
       for (const { key } of others) {
         const next = this.otherPicturePlans().find((other) => other.key === key);
@@ -2361,6 +2361,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
     async create() {
       if (this.saving) return;
       this.saving = true;
+      let wrote = false;
       this.updateSummary();
       try {
         const { detect } = this;
@@ -2383,6 +2384,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
         if (!outcome.cancelled && outcome.created + outcome.updated > 0) {
           hooks.notify?.(`${outcome.created ? `Created ${outcome.created} region${outcome.created === 1 ? "" : "s"}.` : ""}${outcome.updated ? ` Updated ${outcome.updated} saved region${outcome.updated === 1 ? "" : "s"}.` : ""}`.trim());
           this.markPictureSaved(plan, picked, outcome.docs);
+          wrote = true;
           const stay = await this.saveOtherPictures();
           if (stay) {
             await this.showPicture(stay);
@@ -2394,7 +2396,7 @@ export function floorRegionsWindow(ApplicationV2, hooks = {}) {
       } catch (error) {
         const detail = typeof error?.message === "string" && /Reopen the generator/.test(error.message)
           ? `Experimental. ${error.message}`
-          : "Experimental. The regions could not be saved.";
+          : wrote ? "Experimental. This picture was saved. The other pictures could not be saved." : "Experimental. The regions could not be saved.";
         hooks.warn?.(detail);
         console.warn("Animater floor regions:", error);
       } finally {

@@ -364,6 +364,8 @@ test("after a save, the other pictures' ticked areas are offered: save, review, 
   assert.equal(created.length, 0);
   answer = "review";
   assert.equal(await app.saveOtherPictures(), `map:${levelId}`);
+  answer = null;
+  assert.equal(await app.saveOtherPictures(), `map:${levelId}`);
   assert.equal(created.length, 0);
   answer = "save";
   assert.equal(await app.saveOtherPictures(), null);
