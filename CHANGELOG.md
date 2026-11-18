@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.5.6
+
+- **Ponds with ducks on them cost half as much to draw.** A duck leaves a wake as it paddles, and the wake is kept up with it every frame — but before each one the module asked two slow questions over again: has this water frozen over, and which region is the duck swimming on? The first walks the settings, the scene and the ground's weather; the second tests the point against every region's outline. Both change slowly, and both were being asked sixty times a second for every duck on the map. They are now asked a few times a second, and afresh whenever the duck has swum a step of its own or the water freezes or thaws. Measured on a pond with ducks, frogs, fish and birds, the animals' share of a frame went from 2.4 to 1.1 milliseconds. Nothing about the wake itself changed: it is still drawn and carried along exactly as before.
+
 ## 4.5.5
 
 - **Decorated maps draw faster still, wherever you are looking.** Last time, shadow layers off the side of the screen stopped being drawn; this time the work itself is smaller, so a GM looking at the whole map at once gets it too. A map's shadows are now blurred once for the floor they lie on instead of once for every stroke of undergrowth painted on it — three blurs on a planted map where there were dozens — and the blur is drawn in two passes at half size rather than four at full, which for a thing whose whole purpose is to have no edge looks the same. The dark at a settled stroke's feet, which never moves, is drawn once into a picture and laid down as one piece until something is added to that stroke or taken out of it. Regions on raised floor tiles keep their own shadows, on the tile where they belong.

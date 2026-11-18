@@ -6713,9 +6713,30 @@ const groundWalls = () => {
 const closedOf = (cols, rows, cell, area, roofed) => closedGround({ cols, rows, cell, area, walls: groundWalls(), roofed });
 const waterFrozenNow = () => frozenWaterOn() && groundOf().now.ice > 0.5;
 // The pond's creatures only ripple open water: not a bank they fly over, nor water frozen over, by the cold or by a step.
+// A paddling duck drives its wake every frame (the wake is a lasting one, moved along, not a ring a frame), and this
+// asked every region on the map whether that spot was water each time: a point tested against polygon after polygon,
+// sixty times a second for every duck. The answer is kept per creature while it is a step of its own from where it was
+// asked, so a duck crossing a pond pays for it a few times a second instead. Kept by its own sprite, so it goes when
+// the creature does; and a pond freezing over or thawing is asked afresh.
+// Whether the water is frozen over is asked of the settings, the scene and the ground's weather; a duck asked it anew
+// for every wake, every frame. It changes with the cold, which is to say slowly, so it is read a few times a second.
+const waterUnder = new WeakMap(), WATER_LOOK = { again: 400, step: 0.2, cold: 300 };
+let frozenAsked = 0, frozenWas = false;
+const frozenNowish = () => {
+  const now = performance.now();
+  if (now - frozenAsked > WATER_LOOK.cold) { frozenAsked = now; frozenWas = waterFrozenNow(); }
+  return frozenWas;
+};
 const pondRipple = (x, y, ...rest) => {
-  const elevation = canvas.level?.elevation?.base ?? 0, frozen = waterFrozenNow();
+  const key = rest[3] ?? null, at = { x, y }, frozen = frozenNowish();
+  const kept = key && typeof key === "object" ? waterUnder.get(key) : null, now = performance.now();
+  if (kept && kept.frozen === frozen && now - kept.at < WATER_LOOK.again && !rippleDue(kept, at, (canvas.grid?.size ?? 100) * WATER_LOOK.step)) {
+    if (kept.open) rippleWater(x, y, ...rest);
+    return;
+  }
+  const elevation = canvas.level?.elevation?.base ?? 0;
   const open = regionsHere().some((doc) => { try { return regionFloor({ name: doc.name, flag: floorFlagOf(doc) }) === "water" && !(frozen && !doc.flags?.[ID]?.noFreeze) && doc.testPoint({ x, y, elevation }); } catch { return false; } });
+  if (key && typeof key === "object") waterUnder.set(key, { x, y, at: now, open, frozen });
   if (open) rippleWater(x, y, ...rest);
 };
 // `own`: the ground of a region's own animals, kept in by the region, so under a roof, behind walls and on any dry floor.

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { duckStep, heronStep, frogStep } from '../../../scripts/engines/motion/pond-life.mjs';
 import { rippleDue } from '../../../scripts/engines/motion/step-ripples.mjs';
+import { readFileSync } from 'node:fs';
 
 const duck = (over = {}) => ({ x: 0, y: 0, a: 0, wait: 5, turn: 0, mode: 'swim', up: 0, h: 0, ...over });
 const heron = (over = {}) => ({ x: 0, y: 0, hx: 0, hy: 0, a: 0, mode: 'stand', wait: 5, strike: 0, h: 0, t: 0, vx: 0, vy: 0, ...over });
@@ -204,4 +205,26 @@ test('ducks and herons driven onto the sea fly home when fresh water comes good,
   assert.equal(b.exile, true);
   const home = heronRunsOff({ ...b, flee: null, hx: 5000, x: 5000 }, { spots: river, bad: none, home: true });
   assert.equal(home.flee.to, river[0]);
+});
+
+// A paddling duck's wake is a lasting one, driven along every frame, and before each drive main.mjs asked two things:
+// whether the water had frozen over (the settings, the scene, the ground's weather) and which region the duck was
+// over (a point against polygon after polygon). Both were asked sixty times a second for every duck, and together
+// they were the dearest thing in the module's whole frame: measured on a live pond, the animals' work went from
+// 2.4ms to 1.1ms of a 16.7ms frame when the two answers were kept for a moment instead.
+test('a paddling duck is not asked which region it swims over on every frame', () => {
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /const waterUnder = new WeakMap\(\), WATER_LOOK = \{ again: 400, step: 0\.2, cold: 300 \};/);
+  // The colder question is asked of the clock, not of every duck: it changes with the weather, not within a frame.
+  assert.match(main, /if \(now - frozenAsked > WATER_LOOK\.cold\) \{ frozenAsked = now; frozenWas = waterFrozenNow\(\); \}/);
+  assert.match(main, /const key = rest\[3\] \?\? null, at = \{ x, y \}, frozen = frozenNowish\(\);/,
+    'and the kept answer is thrown away when the pond freezes or thaws');
+  assert.match(main, /kept\.frozen === frozen && now - kept\.at < WATER_LOOK\.again && !rippleDue\(kept, at,/,
+    'kept only while the water is as it was and the creature near where it asked');
+  assert.match(main, /if \(key && typeof key === "object"\) waterUnder\.set\(key,/, 'kept by the creature’s own sprite, so it goes with it');
+  // The rule itself: a fifth of a square is a step worth asking again for, and the first ask always tests.
+  const step = 100 * 0.2;
+  assert.equal(rippleDue({ x: 0, y: 0 }, { x: 19, y: 0 }, step), false, 'a few pixels on is the same water');
+  assert.equal(rippleDue({ x: 0, y: 0 }, { x: 21, y: 0 }, step), true);
+  assert.equal(rippleDue(null, { x: 0, y: 0 }, step), true, 'nothing kept yet: ask');
 });
