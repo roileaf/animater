@@ -91,6 +91,6 @@ export function buildDndNpcActions(rows,{version,actors}={}){
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
  const source=await nativeNpcSources(process.argv.find(a=>a.startsWith('--system='))?.slice(9));
  const result=buildDndNpcActions(source.rows,source);
- await fs.writeFile(path.join(root,'data/dnd5e-npc-actions.mjs'),`// Generated from native D&D5e Actor packs; no source descriptions.\nexport const DND_NPC_ACTION_SOURCE=${JSON.stringify(result.source)};\nexport const DND_NPC_ACTIONS=${JSON.stringify(result.actions,null,1)};\n`);
+ await fs.writeFile(path.join(root,'data/dnd5e-npc-actions.mjs'),`// Generated from native D&D5e Actor packs; no source descriptions.\nexport const DND_NPC_ACTION_SOURCE=${JSON.stringify(result.source)};\nexport const DND_NPC_ACTIONS=[\n${result.actions.map((action)=>JSON.stringify(action)).join(",\n")}\n];\n`);
  console.log(result.source);
 }
