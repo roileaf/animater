@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fireSize, smokeRate, smokeDue, smokePuff, createFireSmoke, SMOKE_CAP } from '../../../scripts/engines/motion/fire-smoke.mjs';
+import { fireSize, smokeRate, smokeDue, smokePuff, createFireSmoke, SMOKE_CAP, SMOKE_COLOURS, smokeRamp } from '../../../scripts/engines/motion/fire-smoke.mjs';
 import { particleState } from '../../../scripts/engines/motion/movement-feel.mjs';
 
 test('a fire\'s size comes from its light: a candle small, a bonfire big, within bounds', () => {
@@ -66,4 +66,35 @@ test('a hearth under a roof smokes out of its chimney, carried downwind; a carri
   const plain = smokePuff({ key: 'h', x: 0, y: 0, size: 1 }, { grid: 100, n: 1 }), pale = smokePuff(plume, { grid: 100, n: 1 });
   assert.ok(pale.color > plain.color && pale.alpha > plain.alpha, 'paler and fuller, to read against the roof');
   assert.ok(smokePuff(plume, { grid: 100, n: 1 }).vx > smokePuff({ key: 'h', x: 0, y: 0, size: 1 }, { grid: 100, n: 1 }).vx, 'leaning downwind');
+});
+
+test('a fire smokes the colour it was given, grey when it was given none', () => {
+  const fire = { key: 'k', x: 0, y: 0, size: 1 };
+  const grey = smokePuff(fire, { grid: 100, n: 2 });
+  assert.equal(smokePuff({ ...fire, smokeColor: '' }, { grid: 100, n: 2 }).color, grey.color, 'no colour is the grey it always was');
+  assert.equal(smokePuff({ ...fire, smokeColor: 'nonsense' }, { grid: 100, n: 2 }).color, grey.color, 'a colour this version does not know is grey, not a crash');
+  assert.equal(smokePuff({ ...fire, smokeColor: null }, { grid: 100, n: 2 }).color, grey.color, 'a light saved before the colour existed');
+  for (const key of Object.keys(SMOKE_COLOURS)) {
+    if (!key) continue;
+    const puff = smokePuff({ ...fire, smokeColor: key }, { grid: 100, n: 2 });
+    assert.notEqual(puff.color, grey.color, `${key} does not smoke grey`);
+    assert.ok(SMOKE_COLOURS[key].dark.includes(puff.color), `${key} draws from its own tones`);
+    assert.deepEqual(smokePuff({ ...fire, smokeColor: key }, { grid: 100, n: 2 }), puff, 'the same puff every time');
+  }
+});
+
+test('every smoke colour has four tones, a paler set for the chimney, and none of them is flat', () => {
+  const lum = (c) => (((c >> 16) & 255) * 2 + ((c >> 8) & 255) * 3 + (c & 255)) / 6;
+  for (const [key, ramp] of Object.entries(SMOKE_COLOURS)) {
+    assert.equal(ramp.dark.length, 4, `${key} has four tones in the room`);
+    assert.equal(ramp.pale.length, 4, `${key} has four tones above the roof`);
+    assert.ok(ramp.name && ramp.about, `${key} says what it is`);
+    assert.ok(new Set(ramp.dark).size === 4 && new Set(ramp.pale).size === 4, `${key} varies, rather than reading as one blob`);
+    const dark = ramp.dark.map(lum), pale = ramp.pale.map(lum);
+    assert.ok(Math.max(...pale) > Math.max(...dark), `${key} is paler out of the chimney, to read against the shingles`);
+    assert.ok(Math.min(...dark) > 20 && Math.max(...pale) < 250, `${key} is never flat black or flat white, which read as a hole`);
+  }
+  assert.deepEqual(smokeRamp('green', true), SMOKE_COLOURS.green.pale);
+  assert.deepEqual(smokeRamp('green'), SMOKE_COLOURS.green.dark);
+  assert.deepEqual(smokeRamp(undefined, true), SMOKE_COLOURS[''].pale, 'a fire with no colour still smokes');
 });

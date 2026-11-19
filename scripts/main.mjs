@@ -327,7 +327,7 @@ import { drawLadder, drawRope, drawBridge, drawPost } from "./engines/regions/he
 import { DECOR_KINDS, stampDecor, paintDecor } from "./engines/motion/decor-paint.mjs";
 import { seasonOf, mistOf, firefliesOf, leavesOf, createGroundWeather, fallingOf, settlingTemperature, seasonGround, groundInputs, groundStep, groundMoved, iceHours } from "./engines/motion/ambient-life.mjs";
 import { isFireLight, hazesLight, sparksLight, smokesLight, fireHazeTag, hazeAbove } from "./engines/distortion/fire-haze.mjs";
-import { createFireSmoke, fireSize, SMOKE_FIRES, chimneyOf, chimneyPlume } from "./engines/motion/fire-smoke.mjs";
+import { createFireSmoke, fireSize, SMOKE_FIRES, chimneyOf, chimneyPlume, SMOKE_COLOURS } from "./engines/motion/fire-smoke.mjs";
 import { createHeldTorches, torchPose, torchSide } from "./engines/motion/held-torch.mjs";
 import { createLightOrbs, orbPose, heldLightKind, isOrbEffect, orbCount, drawnLightIcons } from "./engines/motion/light-orb.mjs";
 import { createHeldLanterns, lanternPose } from "./engines/motion/held-lantern.mjs";
@@ -5800,11 +5800,12 @@ const setFlamesAsk = async () => {
     ${select("fireKind", "Fire", [keep, ["", "Auto: one flame"], ["torch", "Torch or candle: one flame"], ["lantern", "Lantern: one flame, quieter"], ["brazier", "Brazier or fire bowl: a bed of flames"], ["bonfire", "Campfire or bonfire: a big bed of flames"], ["pot", "Cooking pot: a bed of flames, bubbling"]])}
     ${select("flameSize", "Flame size", [keep, ["", "As its light (100%)"], ["0.4", "Tiny (40%): a candle"], ["0.6", "Small (60%)"], ["0.8", "A little smaller (80%)"], ["1.25", "A little bigger (125%)"], ["1.5", "Big (150%)"], ["2", "Huge (200%)"]])}
     ${select("moths", "Moths", [keep, ["", "Auto (fire lights underground)"], ["true", "On (any map)"], ["false", "Off"]])}
-    ${[["fireSound", "Sound"], ["soot", "Soot"], ["smoke", "Smoke"], ["heatHaze", "Heat haze"], ["sparks", "Sparks"], ["chimney", "Chimney smoke"]].map(([k, label]) => select(k, label, [keep, ["", "Auto (fire lights)"], ["true", "On"], ["false", "Off"]])).join("")}`;
+    ${[["fireSound", "Sound"], ["soot", "Soot"], ["smoke", "Smoke"], ["heatHaze", "Heat haze"], ["sparks", "Sparks"], ["chimney", "Chimney smoke"]].map(([k, label]) => select(k, label, [keep, ["", "Auto (fire lights)"], ["true", "On"], ["false", "Off"]])).join("")}
+    ${select("smokeColor", "Smoke colour", [keep, ...Object.entries(SMOKE_COLOURS).map(([key, c]) => [key, `${c.name}: ${c.about}`])])}`;
   flamesAsking = true;
   try {
     const picked = await foundry.applications.api.DialogV2.prompt({ window: { title: "Flames (Animater)" }, content,
-      ok: { label: "Apply", callback: (event, button) => Object.fromEntries(["flame", "fireKind", "flameSize", "moths", "fireSound", "soot", "smoke", "heatHaze", "sparks", "chimney"].map((k) => [k, button.form.elements[k].value])) } });
+      ok: { label: "Apply", callback: (event, button) => Object.fromEntries(["flame", "fireKind", "flameSize", "moths", "fireSound", "soot", "smoke", "heatHaze", "sparks", "chimney", "smokeColor"].map((k) => [k, button.form.elements[k].value])) } });
     const change = Object.fromEntries(Object.entries(picked ?? {}).filter(([, v]) => v !== "keep").map(([k, v]) => [`flags.${ID}.${k}`, v]));
     if (!Object.keys(change).length) return;
     await canvas.scene.updateEmbeddedDocuments("AmbientLight", lights.map((l) => ({ _id: l.id, ...change })));
@@ -9902,7 +9903,9 @@ const smokeFiresNow = () => {
     }
     // A chimney's smoke shows above the roof whether or not the fire inside can be seen.
     const blown = chimney ? null : windOnFire(key, at.x, at.y).drift;
-    return { key, size, visible: chimney ? !roofGone : visible, torch, chimney, shape: token ? null : source.shape?.points ?? null, ...at, ...(blown && (blown.x || blown.y) ? { drift: blown } : {}) };
+    // What this fire's smoke is made of ("Smoke colour" on the light): grey unless it has been given one.
+    const smokeColor = source.object?.document?.flags?.[ID]?.smokeColor ?? null;
+    return { key, size, visible: chimney ? !roofGone : visible, torch, chimney, smokeColor, shape: token ? null : source.shape?.points ?? null, ...at, ...(blown && (blown.x || blown.y) ? { drift: blown } : {}) };
   });
 };
 let smokeFrame = [];
@@ -16231,6 +16234,7 @@ Hooks.on("renderAmbientLightConfig", (app, html) => {
     ${autoOnOff("sparks", "Sparks", "Sparks and embers rising from this light (\"Sparks from fires\").")}
     ${autoOnOff("fireSound", "Sound", "This fire heard close by (\"Fire sounds\"): crackling, or a pot bubbling, by its Fire kind.")}
     ${autoOnOff("chimney", "Chimney smoke", "A hearth in a room smokes from the roof above it while the roof is drawn (Auto). On: always smokes above the roofs (a forge). Off: never.", "A hearth in a room")}
+    ${buttons("smokeColor", "Smoke colour", Object.entries(SMOKE_COLOURS).map(([key, c]) => [key, c.name, c.about]), SMOKE_COLOURS[flags.smokeColor] ? flags.smokeColor : "", "What this fire's smoke is made of. It colours both the smoke in the room and the plume out of its chimney, which is the paler of the two.")}
     ${smokeLightFieldHTML({ on: flags[SMOKE_LIGHT_FLAG] === true })}
     <p class="hint">Auto follows the light's animation: a torch, flame, fire, candle or flicker light is a fire. Each switch is its own: turning Heat haze off leaves the flame, smoke and sparks. Hover a name or a button for more.</p>`;
   // A click sets the hidden field and tells the form, so Foundry's live preview of the light follows.
