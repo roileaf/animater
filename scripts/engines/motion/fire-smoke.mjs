@@ -63,6 +63,20 @@ export function smokeDue(key, fromMs, toMs, size = 1) {
   return Math.max(0, Math.floor(toMs * rate + p) - Math.floor(fromMs * rate + p));
 }
 
+// A fire's sideways wander at its `n`th puff, as a number about -1 to 1: a smooth line drawn through fresh random
+// values set every `span` puffs (eased between them, so the column bends rather than kinks). Every value is seeded from
+// the fire's own key and the step it belongs to, so the wander never comes back round to where it was — where a single
+// sine over the puff number had the plume trace the same S every 25 puffs, two and a half seconds, and a bonfire's
+// every one and a half.
+export function smokeWander(key, n, span) {
+  const i = Math.floor(n / span), t = n / span - i;
+  const a = rng(`${key}:sway:${i}`)(), b = rng(`${key}:sway:${i + 1}`)();
+  return (a + (b - a) * (t * t * (3 - 2 * t))) * 2 - 1;
+}
+// Two wanders at once, a long slow one and a shorter one over it, the way a real column leans away and then shrugs
+// within the lean. Their steps do not divide into one another, so neither lines up with the other twice the same way.
+const smokeLean = (key, n) => smokeWander(key, n, 9.3) * 0.17 + smokeWander(key, n, 3.1) * 0.07;
+
 // The `n`th puff of a fire { key, x, y, size, drift?, reach? }: a small soft grey disc just above the flame that rises steadily,
 // drifts a little to one side, widens and fades over a few seconds. `drift` ({ x, y }, in rises): the wind carrying it
 // off (a chimney's plume above the roofs leans downwind); `pale`: a chimney's paler, fuller smoke; `smokeColor`: which
@@ -70,8 +84,8 @@ export function smokeDue(key, fromMs, toMs, size = 1) {
 export function smokePuff(fire, { grid = 100, n = 0 } = {}) {
   const random = rng(`${fire.key}:${n}:smoke`), size = Math.min(2.5, Math.max(0.3, Number(fire.size) || 1));
   const unit = grid * Math.sqrt(size), rise = grid * (0.55 + random() * 0.25) * Math.sqrt(size);
-  // A slow sideways lean that changes puff to puff, so the column sways.
-  const lean = Math.sin(n * 0.25 + phase(fire.key) * 6.28) * 0.2 + (random() - 0.5) * 0.08;
+  // A slow sideways lean that changes puff to puff, so the column sways, and a small dice on top of it.
+  const lean = smokeLean(fire.key, n) + (random() - 0.5) * 0.08;
   const life = Math.round((2400 + random() * 1000) * Math.min(1.5, 0.8 + 0.3 * size));
   // A wall in its way (`reach`, wall-reach.mjs): it goes no further than the wall, however long it lasts.
   let vx = (lean + (Number(fire.drift?.x) || 0)) * rise, vy = (-1 + (Number(fire.drift?.y) || 0)) * rise;

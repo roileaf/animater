@@ -68,6 +68,23 @@ test('a hearth under a roof smokes out of its chimney, carried downwind; a carri
   assert.ok(smokePuff(plume, { grid: 100, n: 1 }).vx > smokePuff({ key: 'h', x: 0, y: 0, size: 1 }, { grid: 100, n: 1 }).vx, 'leaning downwind');
 });
 
+test('the column never traces the same sway twice: no repeat at any lag', () => {
+  // How alike a fire's sideways lean is to itself `lag` puffs later. A sine over the puff number came back round
+  // every 25 puffs — two and a half seconds of smoke, and the loop was plain to see on a map.
+  const vx = Array.from({ length: 400 }, (_, i) => smokePuff({ key: 'hearth', x: 0, y: 0, size: 1 }, { grid: 100, n: i + 1 }).vx);
+  const mean = vx.reduce((a, b) => a + b, 0) / vx.length, dev = vx.map((v) => v - mean);
+  const norm = dev.reduce((a, b) => a + b * b, 0);
+  const alike = (lag) => dev.slice(0, dev.length - lag).reduce((a, v, i) => a + v * dev[i + lag], 0) / norm;
+  // Neighbouring puffs are alike, which is what makes it a column rather than a scatter; past the length of the longer
+  // wander (about nine puffs) the likeness has to stay down, instead of climbing back towards 1 as the sine's did.
+  let worst = { lag: 0, r: 0 };
+  for (let lag = 12; lag <= 120; lag++) { const r = alike(lag); if (r > worst.r) worst = { lag, r }; }
+  assert.ok(worst.r < 0.35, `no lag brings the sway back: worst was ${worst.lag} puffs at ${worst.r.toFixed(2)}`);
+  assert.ok(alike(1) > 0.5 && alike(10) < 0.25, 'it bends smoothly puff to puff, and has forgotten itself ten puffs later');
+  const other = Array.from({ length: 40 }, (_, i) => smokePuff({ key: 'brazier', x: 0, y: 0, size: 1 }, { grid: 100, n: i + 1 }).vx);
+  assert.notDeepEqual(other, vx.slice(0, 40), 'and two fires do not sway alike');
+});
+
 test('a fire smokes the colour it was given, grey when it was given none', () => {
   const fire = { key: 'k', x: 0, y: 0, size: 1 };
   const grey = smokePuff(fire, { grid: 100, n: 2 });
