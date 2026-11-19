@@ -79,7 +79,7 @@ test('main plays them: a Fire sounds setting with its volume, a Sound switch and
   assert.match(main, /\["lantern", "Lantern", /);
   assert.match(main, /if \(kind !== "torch" && kind !== "lantern"\) continue;/, 'held torches and lanterns are heard');
   const ui = readFileSync(new URL('../../../scripts/ui/settings-window.mjs', import.meta.url), 'utf8');
-  assert.match(ui, /\{ world: "fireSounds", local: "fireSoundsLocal", extras: \["fireVolume", "heldFireSounds"\] \}/);
+  assert.match(ui, /world: "fireSounds", local: "fireSoundsLocal", extras: \["fireVolume", "heldFireSounds"\] \}/);
 });
 
 // Sherp: "Is there a way to remove torch/fire sounds for held torches? The sound gets a little repetitive when its being held for a long period."

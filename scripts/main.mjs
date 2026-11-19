@@ -6077,6 +6077,29 @@ const openAnimalsPanel = () => {
   void animalsPanelApp.render({ force: true });
 };
 const toolShown = (key) => { try { return game.settings.get(ID, key) !== false; } catch { return true; } };
+// Map making — the painting brush and the floor regions window — is for building a map, not for playing on one. A
+// world that has never built one is not shown the tools for it (see mapMakingSeen below); a world that has keeps them.
+const mapMakingOn = () => { try { return game.settings.get(ID, "mapMaking") !== false; } catch { return true; } };
+// Has this world ever built a map with them: a region painted with the brush, or one the floor regions window made.
+const mapMakingSeen = () => (game.scenes?.contents ?? []).some((scene) => [...(scene.regions ?? [])].some((region) => {
+  const own = region.flags?.[ID];
+  return !!(own?.decor || own?.floor);
+}));
+// Decided once per world, by the first GM in, and never again: the switch is the GM's from then on. A world that has
+// built a map keeps the tools; any other starts without them, and is told once where they went.
+Hooks.once("ready", async () => {
+  if (!game.user?.isGM || game.users?.activeGM?.isSelf !== true) return;
+  try {
+    if (game.settings.get(ID, "mapMakingAsked") === true) return;
+    const built = mapMakingSeen(), scenes = (game.scenes?.contents ?? []).length;
+    await game.settings.set(ID, "mapMakingAsked", true);
+    if (built) return;
+    await game.settings.set(ID, "mapMaking", false);
+    ui.controls?.render({ reset: true });
+    // A brand new world has nothing to miss; a world with scenes might have been about to paint one.
+    if (scenes) ui.notifications?.info("Animater: the map painting and floor region tools are off in this world, since nothing here was made with them. Animater settings → Interface & performance → Map making tools switches them back on.");
+  } catch (error) { console.warn("Animater | map making tools", error); }
+});
 Hooks.on("renderTokenConfig", (app, html) => {
   const root = html instanceof HTMLElement ? html : html?.[0];
   if (!root || root.querySelector(`[name="flags.${ID}.${CARRIER_KIND}"]`)) return;
@@ -6118,6 +6141,36 @@ Hooks.on("getSceneControlButtons", (controls) => {
     if (Array.isArray(tools)) tools.push(tool); else tools[tool.name] = tool;
   } catch { /* another layout of the controls */ }
 });
+// Six buttons on the bar for things a GM reaches for now and then — the blood on the floor, and tidying a scene up
+// after a fight — are two buttons and a question. Each still has its own "show this button" setting, which now says
+// whether it is offered inside its palette, so a GM who turned one off never sees it either way.
+const PALETTES = Object.freeze({
+  blood: { name: "animaterBlood", title: "Blood: splat it, clear it, or bake what is on the floor into the scene", dialog: "Blood (Animater)", icon: "fa-solid fa-droplet", intro: "The blood on this scene's floor.", actions: [
+    { key: "toolSplatBlood", label: "Splat blood", icon: "fa-solid fa-droplet", hint: "fresh blood on the ground around the selected tokens, kept with the scene", run: () => void splatBloodHere() },
+    { key: "toolClearBlood", label: "Clear blood", icon: "fa-solid fa-droplet-slash", hint: "wipe the blood off the floor, on every screen", run: () => clearBloodEverywhere() },
+    { key: "toolBakeBlood", label: "Bake into the scene", icon: "fa-solid fa-stamp", hint: "turn the blood on the floor into a tile the scene keeps", run: () => void bakeBloodHere() },
+  ] },
+  tidy: { name: "animaterTidy", title: "Tidy up: clear rubble and ground marks, or put broken props back", dialog: "Tidy up (Animater)", icon: "fa-solid fa-broom", intro: "What a fight left on this scene.", actions: [
+    { key: "toolClearRubble", label: "Clear rubble", icon: "fa-solid fa-broom", hint: "take away every cave-in's rubble and the burrow holes", run: () => clearRubbleAsk() },
+    { key: "toolClearGroundMarks", label: "Clear ground marks", icon: "fa-solid fa-shoe-prints", hint: "wipe every ground mark from the floor, on every screen", run: () => clearGroundMarksApi() },
+    { key: "toolRepairProps", label: "Repair broken props", icon: "fa-solid fa-hammer", hint: "put every broken prop, decoration, door, window and breached wall in this scene back", run: () => repairPropsAsk() },
+  ] },
+});
+const paletteShown = (palette) => palette.actions.some((action) => toolShown(action.key));
+let paletteOpen = false;
+const openPalette = async (palette) => {
+  if (paletteOpen) return;
+  const offered = palette.actions.filter((action) => toolShown(action.key));
+  if (!offered.length) return;
+  paletteOpen = true;
+  try {
+    // Each one says what it does, as its button on the bar used to: the palette is where that sentence lives now.
+    const said = offered.map((action) => `<li><b>${action.label}</b> — ${action.hint}</li>`).join("");
+    const picked = await foundry.applications.api.DialogV2.wait({ window: { title: palette.dialog }, content: `<p>${palette.intro}</p><ul>${said}</ul>`, rejectClose: false,
+      buttons: offered.map((action) => ({ action: action.key, label: action.label, icon: action.icon })) });
+    await offered.find((action) => action.key === picked)?.run();
+  } catch (error) { console.warn("Animater | palette", error); } finally { paletteOpen = false; }
+};
 Hooks.on("getSceneControlButtons", (controls) => {
   try {
     if (!game.user?.isGM) return;
@@ -6127,28 +6180,20 @@ Hooks.on("getSceneControlButtons", (controls) => {
     const add = (tool) => { tools[tool.name] = tool; };
     controls.animater = { name: "animater", title: "Animater", icon: "animater-a-icon", layer: "tokens", order: 50, activeTool: "select", tools,
       onChange: (event, active) => { if (!active || canvas.tokens?.active) return; canvas.tokens?.activate(); void ui.controls?.activate({ control: "animater", tool: "select" }); } };
-    add({ name: "animaterDecorate", title: "Map painting: paint floors, decorations and heights onto the map", icon: "fa-solid fa-paintbrush", order: order - 1, button: true, visible: toolShown("toolDecorate"),
+    add({ name: "animaterDecorate", title: "Map painting: paint floors, decorations and heights onto the map", icon: "fa-solid fa-paintbrush", order: order - 1, button: true, visible: toolShown("toolDecorate") && mapMakingOn(),
       onChange: () => (decorBrushing ? stopDecorBrush() : startDecorBrush()) });
     add({ name: "animaterCaveIn", title: "Cave-in: click where the ceiling comes down", icon: "fa-solid fa-person-falling-burst", order, button: true, visible: toolShown("toolCaveIn"),
       onChange: () => aimCaveIn() });
     add({ name: "animaterEnergyBlast", title: "Energy blast: pick a kind, click where it goes off", icon: "fa-solid fa-explosion", order: order + 3, button: true, visible: toolShown("toolEnergyBlast"),
       onChange: () => askBlast() });
-    add({ name: "animaterClearRubble", title: "Clear rubble: take away every cave-in's rubble and the burrow holes", icon: "fa-solid fa-broom", order: order + 1, button: true, visible: toolShown("toolClearRubble"),
-      onChange: () => clearRubbleAsk() });
-    add({ name: "animaterRepairProps", title: "Repair broken props: put every broken prop, decoration, door, window and breached wall in this scene back", icon: "fa-solid fa-hammer", order: order + 1.5, button: true, visible: toolShown("toolRepairProps"),
-      onChange: () => repairPropsAsk() });
+    add({ name: PALETTES.tidy.name, title: PALETTES.tidy.title, icon: PALETTES.tidy.icon, order: order + 1, button: true, visible: paletteShown(PALETTES.tidy),
+      onChange: () => void openPalette(PALETTES.tidy) });
     add({ name: "animaterBreachWall", title: "Breach wall: click on a wall marked breakable to smash a gap in it there", icon: "fa-solid fa-block-brick", order: order + 1.6, button: true, visible: toolShown("toolBreachWall"),
       onChange: () => aimBreach() });
     add({ name: "animaterMoments", title: "Moments: call a shudder, a pulse, a grey world — on every screen, changing nothing", icon: "fa-solid fa-wand-sparkles", order: order + 1.8, button: true, visible: toolShown("toolMoments"),
       onChange: () => openMomentsPanel() });
-    add({ name: "animaterClearBlood", title: "Clear blood: wipe the blood off the floor, on every screen", icon: "fa-solid fa-droplet-slash", order: order + 2, button: true, visible: toolShown("toolClearBlood"),
-      onChange: () => clearBloodEverywhere() });
-    add({ name: "animaterSplatBlood", title: "Splat blood: fresh blood on the ground around the selected tokens, kept with the scene", icon: "fa-solid fa-droplet", order: order + 2.25, button: true, visible: toolShown("toolSplatBlood"),
-      onChange: () => void splatBloodHere() });
-    add({ name: "animaterBakeBlood", title: "Bake blood: turn the blood on the floor into a tile the scene keeps", icon: "fa-solid fa-stamp", order: order + 2.5, button: true, visible: toolShown("toolBakeBlood"),
-      onChange: () => void bakeBloodHere() });
-    add({ name: "animaterClearGroundMarks", title: "Clear ground marks: wipe every ground mark from the floor, on every screen", icon: "fa-solid fa-shoe-prints", order: order + 2.75, button: true, visible: toolShown("toolClearGroundMarks"),
-      onChange: () => clearGroundMarksApi() });
+    add({ name: PALETTES.blood.name, title: PALETTES.blood.title, icon: PALETTES.blood.icon, order: order + 2, button: true, visible: paletteShown(PALETTES.blood),
+      onChange: () => void openPalette(PALETTES.blood) });
     add({ name: "animaterAnimals", title: "Animals: how much life this scene has, and put animals down by hand", icon: "fa-solid fa-paw", order: order + 3.6, button: true, visible: toolShown("toolAnimals"),
       onChange: () => openAnimalsPanel() });
     add({ name: "animaterWeather", title: "Weather: choose it and tune how it looks on this scene", icon: "fa-solid fa-cloud-sun-rain", order: order + 3.5, button: true, visible: toolShown("toolWeather"),
@@ -6156,7 +6201,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
     add({ name: "animaterWeatherAll", title: "Weather for all scenes: a scene's own settings come first", icon: "fa-solid fa-earth-americas", order: order + 3.6, button: true, visible: toolShown("toolWeather"),
       onChange: () => openAllWeatherPanel() });
     add({ name: "animaterFloorRegions", title: "Floor regions (Experimental): propose water and other floor regions from this level's map", icon: "fa-solid fa-draw-polygon", order: order + 3.55, button: true,
-      visible: toolShown("toolDetectWater") && game.settings.get(ID, "experimentalWaterRegions") === true,
+      visible: toolShown("toolDetectWater") && mapMakingOn() && game.settings.get(ID, "experimentalWaterRegions") === true,
       onChange: () => { void openFloorRegionsTool(); } });
     add({ name: "animaterClouds", title: "Clouds over the map: on or off, for everyone", icon: "fa-solid fa-cloud", order: order + 4, toggle: true, visible: toolShown("toolClouds"), active: game.settings.get(ID, "weatherClouds") !== false,
       onChange: (event, active) => { void game.settings.set(ID, "weatherClouds", active === true); } });
@@ -13946,10 +13991,13 @@ async function offerImmersion() {
   if (!canvas?.ready) return void Hooks.once("canvasReady", () => { setTimeout(() => void offerImmersion().catch((e) => console.warn("Animater immersion:", e.message)), 1500); });
   if (game.user.isGM && !(game.users.activeGM?.isSelf ?? true)) return;
   if (!game.user.isGM && hotSetting("immersionForPlayers") !== true) return;
-  const key = game.user.isGM ? "immersionSeen" : "immersionSeenLocal", arrived = newFeatures(IMMERSION_FEATURES, hotSetting(key)), fresh = game.user.isGM ? arrived : stillToChoose(arrived, { has: (name) => game.settings.settings.has(`${ID}.${name}`), locks: settingLocks(), id: ID });
+  const key = game.user.isGM ? "immersionSeen" : "immersionSeenLocal", seen = hotSetting(key), arrived = newFeatures(IMMERSION_FEATURES, seen), fresh = game.user.isGM ? arrived : stillToChoose(arrived, { has: (name) => game.settings.settings.has(`${ID}.${name}`), locks: settingLocks(), id: ID });
   if (!fresh.length) return;
+  // Nothing seen yet is a first install, not an update: the whole list arrives at once, which is the question this
+  // GM cannot answer yet. The window then leads with the starts and the list is what they change afterwards.
+  const first = game.user.isGM && !(seen ?? []).length;
   await game.settings.set(ID, key, IMMERSION_FEATURES.map((f) => f.id));
-  const Window = immersionMenuWindow(), win = new Window({ only: fresh.map((f) => f.id) });
+  const Window = immersionMenuWindow(), win = new Window({ only: fresh.map((f) => f.id), first });
   win.prepare();
   if (win.features.length) win.render({ force: true });
 }
@@ -14529,18 +14577,23 @@ Hooks.once("init", () => {
   registerSetting('showControlButton',{name:'Show Animater scene control button',
     hint:'Shows the Animater button in the Animater controls (for players, in the Token controls). Turn off to hide it; Alt+Shift+A still opens Animater.',
     scope:'client',config:true,type:Boolean,default:true,onChange:()=>ui.controls?.render({reset:true})});
+  registerSetting("mapMaking", { name: "Map making tools",
+    hint: "The Map painting brush and the Floor regions window in the Animater controls: for drawing floors, decorations and regions onto a map. Off, their buttons are not there; everything already painted stays exactly as it is, and the settings for it keep working. A world that has built a map with them keeps them on.",
+    scope: "world", config: true, type: Boolean, default: true, onChange: () => ui.controls?.render({ reset: true }) });
+  // Whether the decision below has been made in this world. Not a choice anyone makes: it keeps it from being remade.
+  registerSetting("mapMakingAsked", { name: "Map making tools decided", scope: "world", config: false, type: Boolean, default: false });
   for (const [key,name,hint] of [
     ['toolCaveIn','Show the Cave-in button','In the Animater controls. Hidden, a Region can still bring a ceiling down.'],
     ['toolEnergyBlast','Show the Energy Blast button','In the Animater controls.'],
     ['toolDecorate','Show the Map painting button','In the Animater controls: a brush for painting floors (water, grass, stone…) and decorations (rocks, trees, crates…) onto the map. A region\'s Decorations section can still scatter decorations.'],
-    ['toolClearRubble','Show the Clear rubble button','In the Animater controls.'],
-    ['toolRepairProps','Show the Repair broken props button','In the Animater controls, for the GM: unhides every broken prop in the scene and puts its walls, doors, windows and decorations back, as the scene configuration\'s Repair button does.'],
+    ['toolClearRubble','Show the Clear rubble button','In the Animater controls, under Tidy up.'],
+    ['toolRepairProps','Show the Repair broken props button','In the Animater controls, under Tidy up, for the GM: unhides every broken prop in the scene and puts its walls, doors, windows and decorations back, as the scene configuration\'s Repair button does.'],
     ['toolBreachWall','Show the Breach wall button','In the Animater controls, for the GM: click on a wall marked Breakable wall: Yes to breach it there at once.'],
     ['toolMoments','Show the Moments button','In the Animater controls, for the GM: a panel that calls a shudder, a colour over everything, a grey world or a view that will not settle, on every screen at once. It changes nothing in the world and it all stops.'],
-    ['toolClearBlood','Show the Clear blood button','In the Animater controls. Blood still fades by itself.'],
-    ['toolSplatBlood','Show the Splat blood button','In the Animater controls, for the GM: old blood on the ground around the selected tokens, kept with the scene until Clear blood.'],
-    ['toolBakeBlood','Show the Bake blood button','In the Animater controls, for the GM: the blood on the floor becomes one tile the scene keeps, saved in the world\'s files.'],
-    ['toolClearGroundMarks','Show the Clear ground marks button','In the Animater controls, for the GM. Marks still fade by themselves.'],
+    ['toolClearBlood','Show the Clear blood button','In the Animater controls, under Blood. Blood still fades by itself.'],
+    ['toolSplatBlood','Show the Splat blood button','In the Animater controls, under Blood, for the GM: old blood on the ground around the selected tokens, kept with the scene until Clear blood.'],
+    ['toolBakeBlood','Show the Bake blood button','In the Animater controls, under Blood, for the GM: the blood on the floor becomes one tile the scene keeps, saved in the world\'s files.'],
+    ['toolClearGroundMarks','Show the Clear ground marks button','In the Animater controls, under Tidy up, for the GM. Marks still fade by themselves.'],
     ['toolAnimals','Show the Animals button','In the Animater controls: choose how many of each animal a scene has, and put them down by hand.'],
     ['toolWeather','Show the Weather button','In the Animater controls: choose the scene\'s weather and tune its amount, size, speed, colour, fog, lightning, wind and clouds.'],
     ['toolDetectWater','Show the Floor regions button','In the Animater controls: propose water and other floor regions from this level\'s map (experimental).'],

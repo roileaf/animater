@@ -18,7 +18,8 @@ test('the amounts run from none to twice the usual, the usual by default', () =>
 
 test("the Splat and Bake buttons are the GM's, and can be hidden", () => {
   const rows = SETTINGS_TABS.flatMap((t) => t.rows);
-  for (const key of ['toolSplatBlood', 'toolBakeBlood']) { assert.equal(rows.find((r) => r.local === key)?.gmOnly, true); assert.ok(main.includes(`toolShown("${key}")`)); assert.ok(main.includes(`['${key}',`)); }
+  // Both sit under the Blood button now; the setting still decides whether that list offers them.
+  for (const key of ['toolSplatBlood', 'toolBakeBlood']) { assert.equal(rows.find((r) => r.local === key)?.gmOnly, true); assert.ok(main.includes(`key: "${key}"`)); assert.ok(main.includes(`['${key}',`)); }
   assert.match(main, /const splatBloodHere = async \(\) => \{\s*if \(!game\.user\?\.isGM/);
   assert.match(main, /const bakeBloodHere = async \(\) => \{\s*if \(!game\.user\?\.isGM/);
 });

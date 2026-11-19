@@ -436,21 +436,29 @@ test("PF2e bootstrap: GM-only settings, source-token safety, effect/region hooks
   assert.equal(controls.animater.layer, "tokens");
   assert.equal(controls.animater.activeTool, "select");
   assert.equal(controls.animater.tools.select.control, true, "Foundry only lets a tool with this select tokens");
-  for (const tool of ["animaterCaveIn", "animaterEnergyBlast", "animaterClearRubble", "animaterClearBlood", "animaterSplatBlood", "animaterBakeBlood", "animaterClearGroundMarks", "animaterClouds"]) assert.ok(controls.animater.tools[tool], tool);
+  // Blood and tidying up are one button each now, each opening its own short list (PALETTES in main.mjs).
+  for (const tool of ["animaterCaveIn", "animaterEnergyBlast", "animaterTidy", "animaterBlood", "animaterClouds"]) assert.ok(controls.animater.tools[tool], tool);
   assert.deepEqual(Object.keys(controls.tokens.tools), []);
-  // Task 21: Repair broken props beside Clear rubble, a GM button with its own show setting.
-  const repair = controls.animater.tools.animaterRepairProps;
-  assert.ok(repair, "Repair broken props button");
-  assert.equal(repair.icon, "fa-solid fa-hammer");
-  assert.equal(repair.button, true);
-  assert.equal(repair.visible, true);
-  assert.equal(typeof repair.onChange, "function");
-  assert.ok(Math.abs(repair.order - controls.animater.tools.animaterClearRubble.order) <= 1, "beside Clear rubble");
+  // Task 21: Repair broken props beside Clear rubble, a GM action with its own show setting. Both are under the
+  // Tidy up button now, which is there while any of its three is shown.
+  const tidy = controls.animater.tools.animaterTidy;
+  assert.ok(tidy, "Tidy up button");
+  assert.equal(tidy.icon, "fa-solid fa-broom");
+  assert.equal(tidy.button, true);
+  assert.equal(tidy.visible, true);
+  assert.equal(typeof tidy.onChange, "function");
+  assert.ok(Math.abs(tidy.order - controls.animater.tools.animaterBlood.order) <= 1, "beside the other after-the-fight button");
+  // Turning one of the three off leaves the button: the other two are still there to offer.
   await f.settings.set("toolRepairProps", false);
   const noRepair = { tokens: { tools: {} } };
   await f.fire("getSceneControlButtons", noRepair);
-  assert.equal(noRepair.animater.tools.animaterRepairProps.visible, false);
-  await f.settings.set("toolRepairProps", true);
+  assert.equal(noRepair.animater.tools.animaterTidy.visible, true);
+  // Turning all three off takes the button away, since it would open an empty list.
+  for (const key of ["toolClearRubble", "toolClearGroundMarks"]) await f.settings.set(key, false);
+  const noTidy = { tokens: { tools: {} } };
+  await f.fire("getSceneControlButtons", noTidy);
+  assert.equal(noTidy.animater.tools.animaterTidy.visible, false);
+  for (const key of ["toolRepairProps", "toolClearRubble", "toolClearGroundMarks"]) await f.settings.set(key, true);
   // Task 21 (D1): a Wall Configuration save carries both groups' Material; the shown group's is the one kept.
   const doorSave = { flags: { animater: { breakWall: { material: "metal", windowMaterial: "glass", forceOpen: true } } } };
   await f.fire("preUpdateWall", { door: 1 }, doorSave);

@@ -65,90 +65,96 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "mapDistortion", local: "mapDistortionLocal", extras: ["shockwaveReach"], quality: FULL_ONLY },
   ] },
   { id: "floor", label: "Floor & world", icon: "fa-solid fa-mountain-sun", rows: [
-    { menu: "immersionMenu" },
-    { world: "immersionForPlayers" },
-    { world: "groundMarks", local: "groundMarksLocal", extras: ["groundMarkMinutes"] },
-    { world: "elementReactions", local: "elementReactionsLocal" },
-    { world: "marksChangeFloor" },
-    { world: "movementFeel", local: "movementFeelLocal", extras: ["movementFootprintSandSeconds", "movementFootprintMudSeconds", "movementFootprintSnowSeconds", "movementFootprintDirtSeconds", "movementFootprintGrassSeconds", "movementFootprintStoneSeconds", "movementFootprintWoodSeconds", "movementFootprintWaterSeconds", "movementFootprintIceSeconds", "swimWakeSeconds", "underwaterBubbleSeconds", "underwaterLooks", "underwaterOpacity", "swimOutOnLand", "burrowTrailSeconds", "burrowTrailDepth", "movementStealth", "burrowHoles", "burrowHolesStay", "burrowSink", "stepKickAmount", "trackedPrints", "bloodTrail", "bloodDrops", "floorBloodSeconds", "floorBloodForever", "floorBloodAmount", "bloodDripAmount", "woundBloodAmount", "bloodWashes", "bloodInWater", "bloodFootprints", "weatherOnGround", "walkedPathHighlight", "flightDust", "dripAfterSwimming"] },
-    { world: "groundShadows", local: "groundShadowsLocal" },
-    { world: "shadowsOverTokens", local: "shadowsOverTokensLocal" },
-    { world: "shadowShapes", local: "shadowShapesLocal" },
-    { world: "lightShadows", local: "lightShadowsLocal" },
-    { world: "wallShadows", local: "wallShadowsLocal", extras: ["wallShadowHeight"] },
-    { world: "windowLight", local: "windowLightLocal" },
-    { world: "canopyLight", local: "canopyLightLocal" },
-    { world: "roofLight", local: "roofLightLocal" },
-    { world: "cloudShadows", local: "cloudShadowsLocal" },
-    { world: "surfaceGlints", local: "surfaceGlintsLocal" },
-    { world: "heatShimmer", local: "heatShimmerLocal" },
-    { world: "lightningFlashes", local: "lightningFlashesLocal", extras: ["lightningFlashStrength"] },
-    { world: "fallingLeaves", local: "fallingLeavesLocal" },
-    { world: "morningMist", local: "morningMistLocal" },
-    { world: "wetGround", local: "wetGroundLocal", extras: ["wetMinutes"] },
-    { world: "snowCover", local: "snowCoverLocal" },
-    { world: "tileSnow", local: "tileSnowLocal" },
-    { world: "frozenWater", local: "frozenWaterLocal", extras: ["iceHoursLeast", "iceHoursMost"] },
-    { world: "treeSway", local: "treeSwayLocal" },
-    { world: "seasonGround", local: "seasonGroundLocal" },
-    { world: "rainbows", local: "rainbowsLocal" },
-    { world: "weatherLight", local: "weatherLightLocal", extras: ["cloudDarkness", "stormSceneDarkness"] },
-    { world: "weatherOnMap", local: "weatherOnMapLocal", extras: ["weatherFallsDown"] },
-    { world: "weatherClouds", local: "weatherCloudsLocal" },
-    { world: "lampEmbers", local: "lampEmbersLocal" },
-    { world: "lampMotes", local: "lampMotesLocal" },
-    { world: "ceilingDust", local: "ceilingDustLocal" },
-    { world: "vermin", local: "verminLocal" },
-    { world: "verminSounds", local: "verminSoundsLocal" },
-    { world: "doorBurst", local: "doorBurstLocal" },
-    { local: "wildlifeLocal" },
-    { world: "wildlifeSounds", local: "wildlifeSoundsLocal" },
-    { world: "riverSounds", local: "riverSoundsLocal", extras: ["riverVolume"] },
-    { world: "fireSounds", local: "fireSoundsLocal", extras: ["fireVolume", "heldFireSounds"] },
-    { world: "weatherSounds", local: "weatherSoundsLocal", extras: ["weatherVolume", "thunderPanning"] },
-    { world: "drips", local: "dripsLocal" },
-    { world: "drafts", local: "draftsLocal" },
-    { world: "torchDraft", local: "torchDraftLocal" },
-    { world: "caveMist", local: "caveMistLocal" },
-    { world: "caveFungus", local: "caveFungusLocal" },
-    { world: "caveCrystals", local: "caveCrystalsLocal" },
-    { world: "caveLava", local: "caveLavaLocal" },
-    { world: "caveWebs", local: "caveWebsLocal" },
-    { world: "caveWet", local: "caveWetLocal" },
-    { world: "caveSteam", local: "caveSteamLocal" },
-    { world: "caveFoul", local: "caveFoulLocal" },
-    { world: "caveSoot", local: "caveSootLocal" },
-    { world: "caveEyes", local: "caveEyesLocal" },
-    { world: "caveMoths", local: "caveMothsLocal" },
-    { world: "cavePebbles", local: "cavePebblesLocal" },
-    { world: "caveRubble", local: "caveRubbleLocal" },
-    { world: "energyBlast", local: "energyBlastLocal", extras: ["blastReactions", "blastReactionSeconds", "blastPush"] },
-    { world: "caveSkylight", local: "caveSkylightLocal" },
-    { world: "lightFlames", local: "lightFlamesLocal" },
-    { world: "roomSmoke", local: "roomSmokeLocal" },
-    { local: "firefliesLocal" },
-    { world: "rainRings", local: "rainRingsLocal" },
-    { world: "windowGlow", local: "windowGlowLocal" },
-    { local: "dawnChorusLocal" },
-    { world: "windFlames", local: "windFlamesLocal" },
-    { world: "oldTracks", local: "oldTracksLocal" },
-    { world: "stuckShots", local: "stuckShotsLocal" },
-    { local: "carrionLocal" },
-    { world: "townLife", local: "townLifeLocal" },
-    { world: "tavernMurmur", local: "tavernMurmurLocal" },
-    { world: "coast", local: "coastLocal" },
-    { world: "waterfalls", local: "waterfallsLocal", extras: ["waterfallVolume"] },
-    { world: "waterMirror", local: "waterMirrorLocal", extras: ["waterMirrorRings"] },
-    { world: "movingWater", local: "movingWaterLocal" },
-    { world: "shipRocking", local: "shipRockingLocal" },
-    { world: "regionSteps", local: "regionStepsLocal" },
-    { menu: "sunMenu" },
-    { world: "sunColor", local: "sunColorLocal", extras: ["sunColorStrength", "timeOfDayColor", "darknessBySun", "moonLight"] },
-    { local: "movementGmPerception", gmOnly: true },
-    { world: "quietSneaking" },
-    { world: "projectileWalls" },
-    { world: "dispelShatter", local: "dispelShatterLocal" },
-    { world: "experimentalWaterRegions" },
+    // Eighty-odd rows in one list is a scroll, not a choice. The `section` on each row heads the run it belongs to,
+    // so the tab reads as eight short lists, none of them longer than a screen or two. It is written on every row,
+    // not only the first of a run: a row left out here (a system, a module, a GM-only setting) must not take its
+    // heading with it. The runs are what a GM is looking for when they come here — the ground underfoot, the light
+    // and shadow on it, the weather over it, the water, what a cave has, what a room has, what lives around it, and
+    // what breaks on it — not how the code is laid out.
+    { section: "Ground & movement", menu: "immersionMenu" },
+    { section: "Ground & movement", world: "immersionForPlayers" },
+    { section: "Ground & movement", world: "groundMarks", local: "groundMarksLocal", extras: ["groundMarkMinutes"] },
+    { section: "Ground & movement", world: "elementReactions", local: "elementReactionsLocal" },
+    { section: "Ground & movement", world: "marksChangeFloor" },
+    { section: "Ground & movement", world: "movementFeel", local: "movementFeelLocal", extras: ["movementFootprintSandSeconds", "movementFootprintMudSeconds", "movementFootprintSnowSeconds", "movementFootprintDirtSeconds", "movementFootprintGrassSeconds", "movementFootprintStoneSeconds", "movementFootprintWoodSeconds", "movementFootprintWaterSeconds", "movementFootprintIceSeconds", "swimWakeSeconds", "underwaterBubbleSeconds", "underwaterLooks", "underwaterOpacity", "swimOutOnLand", "burrowTrailSeconds", "burrowTrailDepth", "movementStealth", "burrowHoles", "burrowHolesStay", "burrowSink", "stepKickAmount", "trackedPrints", "bloodTrail", "bloodDrops", "floorBloodSeconds", "floorBloodForever", "floorBloodAmount", "bloodDripAmount", "woundBloodAmount", "bloodWashes", "bloodInWater", "bloodFootprints", "weatherOnGround", "walkedPathHighlight", "flightDust", "dripAfterSwimming"] },
+    { section: "Ground & movement", local: "movementGmPerception", gmOnly: true },
+    { section: "Ground & movement", world: "quietSneaking" },
+    { section: "Ground & movement", world: "oldTracks", local: "oldTracksLocal" },
+    { section: "Ground & movement", world: "regionSteps", local: "regionStepsLocal" },
+    { section: "Ground & movement", world: "experimentalWaterRegions" },
+    { section: "Shadows & sunlight", world: "groundShadows", local: "groundShadowsLocal" },
+    { section: "Shadows & sunlight", world: "shadowsOverTokens", local: "shadowsOverTokensLocal" },
+    { section: "Shadows & sunlight", world: "shadowShapes", local: "shadowShapesLocal" },
+    { section: "Shadows & sunlight", world: "lightShadows", local: "lightShadowsLocal" },
+    { section: "Shadows & sunlight", world: "wallShadows", local: "wallShadowsLocal", extras: ["wallShadowHeight"] },
+    { section: "Shadows & sunlight", world: "windowLight", local: "windowLightLocal" },
+    { section: "Shadows & sunlight", world: "canopyLight", local: "canopyLightLocal" },
+    { section: "Shadows & sunlight", world: "roofLight", local: "roofLightLocal" },
+    { section: "Shadows & sunlight", world: "cloudShadows", local: "cloudShadowsLocal" },
+    { section: "Shadows & sunlight", world: "surfaceGlints", local: "surfaceGlintsLocal" },
+    { section: "Shadows & sunlight", world: "heatShimmer", local: "heatShimmerLocal" },
+    { section: "Shadows & sunlight", world: "windowGlow", local: "windowGlowLocal" },
+    { section: "Shadows & sunlight", world: "lightFlames", local: "lightFlamesLocal" },
+    { section: "Shadows & sunlight", world: "windFlames", local: "windFlamesLocal" },
+    { section: "Shadows & sunlight", menu: "sunMenu" },
+    { section: "Shadows & sunlight", world: "sunColor", local: "sunColorLocal", extras: ["sunColorStrength", "timeOfDayColor", "darknessBySun", "moonLight"] },
+    { section: "Weather & seasons", world: "lightningFlashes", local: "lightningFlashesLocal", extras: ["lightningFlashStrength"] },
+    { section: "Weather & seasons", world: "fallingLeaves", local: "fallingLeavesLocal" },
+    { section: "Weather & seasons", world: "morningMist", local: "morningMistLocal" },
+    { section: "Weather & seasons", world: "wetGround", local: "wetGroundLocal", extras: ["wetMinutes", "dryHours"] },
+    { section: "Weather & seasons", world: "snowCover", local: "snowCoverLocal", extras: ["thawHours"] },
+    { section: "Weather & seasons", world: "tileSnow", local: "tileSnowLocal" },
+    { section: "Weather & seasons", world: "frozenWater", local: "frozenWaterLocal", extras: ["iceHoursLeast", "iceHoursMost"] },
+    { section: "Weather & seasons", world: "treeSway", local: "treeSwayLocal" },
+    { section: "Weather & seasons", world: "seasonGround", local: "seasonGroundLocal" },
+    { section: "Weather & seasons", world: "rainbows", local: "rainbowsLocal" },
+    { section: "Weather & seasons", world: "weatherLight", local: "weatherLightLocal", extras: ["cloudDarkness", "stormSceneDarkness"] },
+    { section: "Weather & seasons", world: "weatherOnMap", local: "weatherOnMapLocal", extras: ["weatherFallsDown", "weatherFade"] },
+    { section: "Weather & seasons", world: "weatherClouds", local: "weatherCloudsLocal" },
+    { section: "Weather & seasons", world: "weatherSounds", local: "weatherSoundsLocal", extras: ["weatherVolume", "thunderPanning"] },
+    { section: "Weather & seasons", world: "rainRings", local: "rainRingsLocal" },
+    { section: "Water & shore", world: "coast", local: "coastLocal" },
+    { section: "Water & shore", world: "waterfalls", local: "waterfallsLocal", extras: ["waterfallVolume"] },
+    { section: "Water & shore", world: "waterMirror", local: "waterMirrorLocal", extras: ["waterMirrorRings"] },
+    { section: "Water & shore", world: "movingWater", local: "movingWaterLocal" },
+    { section: "Water & shore", world: "shipRocking", local: "shipRockingLocal" },
+    { section: "Water & shore", world: "riverSounds", local: "riverSoundsLocal", extras: ["riverVolume"] },
+    { section: "Caves", world: "caveMist", local: "caveMistLocal" },
+    { section: "Caves", world: "caveFungus", local: "caveFungusLocal" },
+    { section: "Caves", world: "caveCrystals", local: "caveCrystalsLocal" },
+    { section: "Caves", world: "caveLava", local: "caveLavaLocal" },
+    { section: "Caves", world: "caveWebs", local: "caveWebsLocal" },
+    { section: "Caves", world: "caveWet", local: "caveWetLocal" },
+    { section: "Caves", world: "caveSteam", local: "caveSteamLocal" },
+    { section: "Caves", world: "caveFoul", local: "caveFoulLocal" },
+    { section: "Caves", world: "caveSoot", local: "caveSootLocal" },
+    { section: "Caves", world: "caveEyes", local: "caveEyesLocal" },
+    { section: "Caves", world: "caveMoths", local: "caveMothsLocal" },
+    { section: "Caves", world: "cavePebbles", local: "cavePebblesLocal" },
+    { section: "Caves", world: "caveRubble", local: "caveRubbleLocal" },
+    { section: "Caves", world: "caveSkylight", local: "caveSkylightLocal" },
+    { section: "Indoors & air", world: "lampEmbers", local: "lampEmbersLocal" },
+    { section: "Indoors & air", world: "lampMotes", local: "lampMotesLocal" },
+    { section: "Indoors & air", world: "ceilingDust", local: "ceilingDustLocal" },
+    { section: "Indoors & air", world: "drips", local: "dripsLocal" },
+    { section: "Indoors & air", world: "drafts", local: "draftsLocal" },
+    { section: "Indoors & air", world: "torchDraft", local: "torchDraftLocal" },
+    { section: "Indoors & air", world: "roomSmoke", local: "roomSmokeLocal" },
+    { section: "Indoors & air", world: "fireSounds", local: "fireSoundsLocal", extras: ["fireVolume", "heldFireSounds"] },
+    { section: "Life around the map", world: "vermin", local: "verminLocal" },
+    { section: "Life around the map", world: "verminSounds", local: "verminSoundsLocal" },
+    { section: "Life around the map", local: "wildlifeLocal" },
+    { section: "Life around the map", world: "wildlifeSounds", local: "wildlifeSoundsLocal" },
+    { section: "Life around the map", local: "firefliesLocal" },
+    { section: "Life around the map", local: "dawnChorusLocal" },
+    { section: "Life around the map", local: "carrionLocal" },
+    { section: "Life around the map", world: "townLife", local: "townLifeLocal" },
+    { section: "Life around the map", world: "tavernMurmur", local: "tavernMurmurLocal" },
+    { section: "Impacts & breakage", world: "energyBlast", local: "energyBlastLocal", extras: ["blastReactions", "blastReactionSeconds", "blastPush", "blastBreaks"] },
+    { section: "Impacts & breakage", world: "doorBurst", local: "doorBurstLocal" },
+    { section: "Impacts & breakage", world: "projectileWalls" },
+    { section: "Impacts & breakage", world: "dispelShatter", local: "dispelShatterLocal" },
+    { section: "Impacts & breakage", world: "stuckShots", local: "stuckShotsLocal" },
   ] },
   { id: "sound", label: "Sound", icon: "fa-solid fa-volume-high", rows: [
     { world: "animaterSounds", local: "animaterSoundsLocal" },
@@ -173,6 +179,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "lensEffects", local: "lensEffectsLocal" },
     { world: "lensReach" },
     { world: "lensWho", local: "lensWhoLocal" },
+    { world: "bloodOnPortraits" },
     { world: "lensDuration", local: "lensDurationLocal" },
     { menu: "bloodColorsMenu" },
     { local: "flashTrackerMenus", gmOnly: true },
@@ -194,6 +201,7 @@ export const SETTINGS_TABS = Object.freeze([
   ] },
   { id: "interface", label: "Interface & performance", icon: "fa-solid fa-gauge-high", rows: [
     { local: "showControlButton" },
+    { world: "mapMaking" },
     { local: "toolCaveIn" },
     { local: "toolEnergyBlast" },
     { local: "toolDecorate" },
@@ -206,10 +214,16 @@ export const SETTINGS_TABS = Object.freeze([
     { local: "toolClearGroundMarks", gmOnly: true },
     { local: "toolClouds" },
     { local: "toolFlames" },
-    { world: "carriers" },
+    { world: "carriers", extras: ["carrierVolume"] },
     { local: "toolCarry" },
     { local: "tuckDuringPlayback" },
     { local: "hoverExplain" },
+    { world: "playerAccess" },
+    { world: "windowIcons" },
+    { local: "regionPanelOpens", gmOnly: true },
+    { world: "sceneArrival", local: "sceneArrivalLocal" },
+    { world: "handoutArrival", local: "handoutArrivalLocal" },
+    { world: "interfaceBleed", local: "interfaceBleedLocal", extras: ["interfaceBleedStrength", "bleedChatReadable", "bleedEdge", "bleedGlass", "bleedDrain", "bleedBeat", "bleedTunnel", "bleedShudder"] },
     { local: "sequencerSpeedups", extras: ["sequencerSpeedupRefresh"] },
   ] },
   { id: "integrations", label: "Integrations", icon: "fa-solid fa-puzzle-piece", rows: [
@@ -256,7 +270,7 @@ export function settingsModel({ id = "animater", registry, get, menus = new Map(
       if (row.menu) {
         const menu = menus.get(`${id}.${row.menu}`);
         if (!menu || (menu.restricted && !isGM)) continue;
-        rows.push({ id: row.menu, menu: row.menu, name: String(menu.name ?? ""), hint: String(menu.hint ?? ""), label: String(menu.label ?? menu.name ?? ""), icon: menu.icon ?? "", world: null, local: null, extras: [], worldOff: false });
+        rows.push({ id: row.menu, menu: row.menu, section: row.section ?? null, name: String(menu.name ?? ""), hint: String(menu.hint ?? ""), label: String(menu.label ?? menu.name ?? ""), icon: menu.icon ?? "", world: null, local: null, extras: [], worldOff: false });
         continue;
       }
       const worldC = control(row.world), localC = control(row.local);
@@ -266,7 +280,7 @@ export function settingsModel({ id = "animater", registry, get, menus = new Map(
       const extras = (row.extras ?? []).filter((key) => row.extrasWhen?.[key]?.(read) ?? true).map(control).filter(mine);
       if (!world && !local && !extras.length) continue;
       rows.push({
-        id: row.world ?? row.local, name: lead.name, hint: lead.hint, world, local, extras, preview: row.preview ?? null,
+        id: row.world ?? row.local, section: row.section ?? null, name: lead.name, hint: lead.hint, world, local, extras, preview: row.preview ?? null,
         // A player whose GM turned the feature off for everyone: their own switch changes nothing for now.
         worldOff: !isGM && !!local && (worldC?.value === false || (worldC?.kind === "select" && worldC.value === "off")),
         // This screen's animation quality never draws it, whatever the switches say.
@@ -369,7 +383,10 @@ export function settingsWindowHTML(model, { active } = {}) {
   const current = model.tabs.some((t) => t.id === active) ? active : model.tabs[0]?.id;
   const nav = model.tabs.map((t) => `<button type="button" class="an-set-tab${t.id === current ? " active" : ""}" data-tab-button="${esc(t.id)}"><i class="${esc(t.icon)}"></i> ${esc(t.label)}</button>`).join("");
   const resetTab = (t) => `<button type="button" class="an-set-reset-tab" data-reset-tab="${esc(t.id)}" title="Put this tab's settings back to their defaults"><i class="fa-solid fa-rotate-left"></i> Reset this tab</button>`;
-  const panels = model.tabs.map((t) => `<section class="an-set-panel${t.id === current ? " active" : ""}" data-panel="${esc(t.id)}"><header class="an-set-panel-head"><h3>${esc(t.label)}</h3>${resetTab(t)}</header>${t.rows.map((r) => rowHTML(r, t.id)).join("")}</section>`).join("");
+  // A heading before each run of rows that share a section, so a long tab reads as several short lists. The heading
+  // is drawn from the rows that are actually here, so one left out for this system or user takes no heading with it.
+  const inner = (t) => t.rows.map((r, i) => `${r.section && r.section !== t.rows[i - 1]?.section ? `<h4 class="an-set-section" data-section="${esc(r.section)}" data-section-tab="${esc(t.id)}">${esc(r.section)}</h4>` : ""}${rowHTML(r, t.id)}`).join("");
+  const panels = model.tabs.map((t) => `<section class="an-set-panel${t.id === current ? " active" : ""}" data-panel="${esc(t.id)}"><header class="an-set-panel-head"><h3>${esc(t.label)}</h3>${resetTab(t)}</header>${inner(t)}</section>`).join("");
   const note = model.isGM ? "Everyone: the whole world (GM only). My screen: what you see on this device." : "These settings change only what you see and hear on this device.";
   return `<div class="an-root an-settings">
 <header class="an-set-top"><input type="search" class="an-set-search" placeholder="Search Animater settings" aria-label="Search Animater settings"><p class="an-set-note">${esc(note)}</p></header>
@@ -446,6 +463,12 @@ export function settingsWindow(ApplicationV2, {
       root.classList.toggle("an-set-searching", !!this.query.trim());
       root.classList.toggle("an-set-search-tab", !!this.searchTab);
       for (const row of root.querySelectorAll("[data-row]")) row.hidden = !hits.has(`${row.dataset.tab}:${row.dataset.row}`);
+      // A section heading goes with its rows: a search that matches none of them leaves no heading behind.
+      for (const head of root.querySelectorAll("[data-section]")) {
+        let next = head.nextElementSibling, any = false;
+        while (next && !next.hasAttribute?.("data-section")) { if (next.hasAttribute?.("data-row") && !next.hidden) { any = true; break; } next = next.nextElementSibling; }
+        head.hidden = !any;
+      }
       for (const panel of root.querySelectorAll("[data-panel]")) panel.classList.toggle("an-set-has-hits", shown.has(panel.dataset.panel));
       const empty = root.querySelector(".an-set-empty");
       if (empty) empty.hidden = shown.size > 0;

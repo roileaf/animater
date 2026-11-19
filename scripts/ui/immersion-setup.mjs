@@ -24,6 +24,44 @@ export const IMMERSION_FEATURES = Object.freeze([
   { id: "blood", name: "Blood and impact", short: "For tables that want it", about: "Blood on the floor and on the screen, camera shake, wounded looks and dramatic deaths. Turn this off for a gentler game.", keys: ["lensBlood", "lensEffects", "bloodTrail", "cameraShake", "killCam", "mapDistortion", "woundedLooks", "dramaticDeaths"] },
 ]);
 
+// A way in for a GM who has just installed this and does not know which seventeen of these they want: four starts,
+// each a set of the features above. A start only ticks the boxes — the list below it then shows exactly what the GM
+// is about to have, and nothing is written until Save, so a start can be tried, looked at and changed or abandoned.
+// `mapMaking` is the world switch for the painting brush and the floor regions window (main.mjs): a table that is
+// not building maps is not given the tools for it.
+export const SETUP_PROFILES = Object.freeze([
+  { id: "animations", name: "Animations", about: "Creatures that breathe and leave footprints, light and shadow, fire and lamplight. The map stays as the artist drew it.", features: ["creatures", "feet", "light", "fire"], mapMaking: false, tools: ["toolFlames", "toolCarry"] },
+  { id: "drama", name: "Combat drama", about: "What a fight leaves behind: blood, the camera shaking, wounded looks, arrows left in the wall. Not for every table.", features: ["creatures", "feet", "blood", "aftermath"], mapMaking: false, tools: ["toolCaveIn", "toolEnergyBlast", "toolBreachWall", "toolMoments", "toolClearBlood", "toolSplatBlood", "toolBakeBlood", "toolClearRubble", "toolRepairProps", "toolClearGroundMarks"] },
+  { id: "maps", name: "Map making", about: "The world at work — weather, caves, shores, wildlife, sounds — and the brush and floor region tools to build it with.", features: ["outdoors", "vermin", "light", "weather", "fire", "windflames", "feet", "creatures", "caves", "sound", "tavern", "aftermath", "shores", "dayshift", "town", "tracks"], mapMaking: true, tools: ["toolDecorate", "toolDetectWater", "toolWeather", "toolClouds", "toolAnimals", "toolFlames", "toolCarry", "toolClearGroundMarks"] },
+  { id: "everything", name: "Everything", about: "All of it, blood and all. What the module does when nothing is held back.", features: null, mapMaking: true, tools: null },
+]);
+// What a start, or several together, tick (pure): every feature on this screen's list, on or off. A table that wants
+// its creatures to move *and* its fights to leave blood presses both, and gets the two sets added together;
+// `features: null` (Everything) means all of them. With none pressed, `fallback` — what the world already has.
+export function profileChoices(profiles, features, fallback = null) {
+  const picked = Array.isArray(profiles) ? profiles : [profiles].filter(Boolean);
+  if (!picked.length) return new Map(fallback ?? (features ?? []).map((feature) => [feature.id, false]));
+  const wanted = new Set();
+  let all = false;
+  for (const profile of picked) {
+    if (!profile.features) all = true;
+    else for (const id of profile.features) wanted.add(id);
+  }
+  return new Map((features ?? []).map((feature) => [feature.id, all || wanted.has(feature.id)]));
+}
+// Whether the map making tools are asked for: by any of the starts pressed.
+export const profilesWantMapMaking = (profiles) => (profiles ?? []).some((profile) => profile?.mapMaking === true);
+// Which buttons belong on the controls bar for the starts pressed (pure): a start brings its own tools and leaves
+// the rest off, so a table that chose Animations is not handed a brush, a weather panel and a cave-in. `tools: null`
+// (Everything) keeps the lot. These are each screen's own switches — the same ones in Interface & performance — so
+// a GM who wants a button back has it a tick away.
+export function profileToolWrites(profiles, toolKeys) {
+  const picked = profiles ?? [];
+  const everything = picked.some((profile) => !profile?.tools);
+  const wanted = new Set(picked.flatMap((profile) => profile?.tools ?? []));
+  return new Map((toolKeys ?? []).map((key) => [key, everything || wanted.has(key)]));
+}
+
 const LOCAL_NAMES = Object.freeze({ roomAcoustics: "roomReverbLocal" });
 const localOf = (key) => LOCAL_NAMES[key] ?? `${key}Local`;
 
@@ -83,14 +121,18 @@ export const stillToChoose = (features, { has, locks = {}, id = "animater" }) =>
 const esc = (text) => String(text).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 // The window's content (pure).
-export function immersionHTML({ features, choices, selected, isGM, note = "", sceneValues = new Map(), sceneName = "" }) {
+export function immersionHTML({ features, choices, selected, isGM, note = "", sceneValues = new Map(), sceneName = "", profile = null, first = false }) {
   // The GM's switch for the open scene, in the row that is open; saved with the rest.
   const sceneSwitch = (feature) => {
     if (!isGM || !feature.scene || !sceneName) return "";
     const value = sceneValues.get(feature.id) ?? "";
     return `<label class="an-imm-scene">On ${esc(sceneName)}: <select data-scene="${esc(feature.id)}">${feature.scene.options.map(([v, l]) => `<option value="${esc(v)}"${v === value ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`;
   };
-  const intro = isGM
+  // The first time, the list is seventeen things a GM has no reason to have an opinion about yet: the starts answer
+  // it for them, and the list becomes what they change afterwards rather than what they must read first.
+  const intro = isGM && first
+    ? "<b>Animater does a great deal, and no table wants all of it.</b> Pick a start below — it ticks a set for you — then change anything you like. Click a feature to see it on this scene, on your screen only. Nothing is saved until Save, and you can change all of it later in Animater settings."
+    : isGM
     ? "<b>Not every table wants all of this, so choose what you like.</b> Click one to see it on this scene, on your screen only. Nothing is saved until you choose below. You can change this any time in Animater settings."
     : "<b>Choose what plays on your screen.</b> Your GM has these on for the table. Click one to see it on this scene. Turning one off changes only what you see and hear.";
   const rows = features.map((feature) => {
@@ -101,14 +143,19 @@ export function immersionHTML({ features, choices, selected, isGM, note = "", sc
 </div>`;
   }).join("");
   const on = features.filter((feature) => choices.get(feature.id)).length;
-  return `<div class="an-imm"><p class="an-imm-intro">${intro}</p><div class="an-imm-list">${rows}</div>
+  // Only the GM is offered a start: these set the table's switches, and a player's screen is their own business.
+  // Press one, or several: they add together, and pressing a pressed one takes it back out again.
+  const pressed = new Set(Array.isArray(profile) ? profile : [profile].filter(Boolean));
+  const starts = isGM ? `<div class="an-imm-starts"><span>Start from</span>${SETUP_PROFILES.map((p) => `<button type="button" data-profile="${esc(p.id)}" class="${pressed.has(p.id) ? "on" : ""}" aria-pressed="${pressed.has(p.id)}" title="${esc(p.about)}">${esc(p.name)}</button>`).join("")}</div>` : "";
+  return `<div class="an-imm"><p class="an-imm-intro">${intro}</p>${starts}<div class="an-imm-list">${rows}</div>
 <footer class="an-imm-foot"><button type="button" data-all="on">Use all</button><button type="button" data-all="off">Use none</button><span class="an-imm-count">${on} of ${features.length} on</span><button type="button" class="an-imm-save" data-save>Save my choices</button></footer></div>`;
 }
 
 /**
  * The window class. Options: `id` the module; `settings()` game.settings; `isGM()`; `demo(featureId)` shows a feature on the canvas, returning { note, undo };
  * `preview(values)` makes these setting values count on this screen without saving them (null: none); `reloadConfirm(options)`; `scene()` the open scene document, whose switches are saved with the rest.
- * Open it with `new Window({ only: [ids] })` to ask about those features alone.
+ * Open it with `new Window({ only: [ids] })` to ask about those features alone, and `{ first: true }` the first time
+ * this world has been asked anything, where the starts answer the question instead of the list asking it.
  */
 export function immersionWindow(ApplicationV2, {
   id, settings = () => globalThis.game.settings, isGM = () => globalThis.game.user?.isGM === true,
@@ -135,7 +182,7 @@ export function immersionWindow(ApplicationV2, {
       this.sceneBefore = new Map(this.features.filter((feature) => feature.scene).map((feature) => [feature.id, sceneValue(feature, flags)]));
       this.sceneNow = new Map(this.sceneBefore);
     }
-    async _renderHTML() { this.prepare(); return immersionHTML({ features: this.features, choices: this.choices, selected: this.selected, isGM: isGM(), note: this.note, sceneValues: this.sceneNow, sceneName: scene()?.name ?? "" }); }
+    async _renderHTML() { this.prepare(); return immersionHTML({ features: this.features, choices: this.choices, selected: this.selected, isGM: isGM(), note: this.note, sceneValues: this.sceneNow, sceneName: scene()?.name ?? "", profile: this.profiles ?? null, first: this.options.first === true }); }
     _replaceHTML(html, content) {
       const top = content.querySelector(".an-imm-list")?.scrollTop ?? 0;
       content.innerHTML = html;
@@ -153,6 +200,8 @@ export function immersionWindow(ApplicationV2, {
       if (this._wired) return;
       this._wired = true;
       this.element.addEventListener("click", (event) => {
+        const start = event.target.closest?.("[data-profile]");
+        if (start) return void this.startFrom(start.dataset.profile);
         const all = event.target.closest?.("[data-all]");
         if (all) return void this.finish(new Map(this.features.map((feature) => [feature.id, all.dataset.all === "on"])));
         if (event.target.closest?.("[data-save]")) return void this.finish(this.choices);
@@ -165,9 +214,33 @@ export function immersionWindow(ApplicationV2, {
         if (chosen) { this.sceneNow.set(chosen.dataset.scene, chosen.value); return; }
         const tick = event.target.closest?.("[data-tick]"); if (!tick) return;
         this.choices.set(tick.dataset.tick, tick.checked);
+        // Changed by hand: this is no longer one of the starts, so Save leaves the switches and the bar alone.
+        this.profiles = null;
         this.previewNow();
         this.select(tick.dataset.tick);
       });
+    }
+    // A start ticks the boxes and shows itself on this screen. It writes nothing: the list is the GM's to change,
+    // and Save is what saves. The starts add together — a table can want its creatures to move and its fights to
+    // leave blood — and pressing a pressed one takes it back out, down to what the world had before any of them.
+    startFrom(profileId) {
+      const profile = SETUP_PROFILES.find((p) => p.id === profileId);
+      if (!profile || !isGM()) return;
+      this.stop();
+      const pressed = new Set(this.profiles ?? []);
+      if (pressed.has(profile.id)) pressed.delete(profile.id); else pressed.add(profile.id);
+      this.profiles = [...pressed];
+      const picked = SETUP_PROFILES.filter((p) => pressed.has(p.id));
+      this.choices = profileChoices(picked, this.features, this.before);
+      this.selected = null;
+      this.note = "";
+      this.previewNow();
+      const on = [...this.choices.values()].filter(Boolean).length;
+      const named = picked.map((p) => p.name).join(" and ");
+      globalThis.ui?.notifications?.info(picked.length
+        ? `Animater: ${named} — ${on} of ${this.features.length} ticked, the map making tools ${profilesWantMapMaking(picked) ? "on" : "off"}, and the controls bar trimmed to match on Save. Nothing is saved until you press Save my choices.`
+        : "Animater: back to what this world had. Nothing has been saved.");
+      this.render();
     }
     previewNow() { preview(choiceWrites(this.features, this.before, this.choices, this.context())); }
     stop() { try { this.undo?.(); } catch { /* it was only an example */ } this.undo = null; }
@@ -188,6 +261,17 @@ export function immersionWindow(ApplicationV2, {
         if (s.get(id, key) === value) continue;
         await s.set(id, key, value);
         reload ||= s.settings.get(`${id}.${key}`)?.requiresReload === true;
+      }
+      // The starts also say whether this table builds maps — any one of them asking for the tools is enough. The
+      // switch is written only when a start was pressed, so a GM who ticked boxes by hand keeps whatever they had.
+      const pressed = SETUP_PROFILES.filter((p) => (this.profiles ?? []).includes(p.id));
+      const wantsMaps = profilesWantMapMaking(pressed);
+      if (pressed.length && isGM() && s.settings.get(`${id}.mapMaking`) && s.get(id, "mapMaking") !== wantsMaps) await s.set(id, "mapMaking", wantsMaps);
+      // And the controls bar is trimmed to the starts pressed: every button switch this module registers, on if one
+      // of them brings it, off if none does.
+      if (pressed.length && isGM()) {
+        const keys = [...(s.settings?.keys?.() ?? [])].filter((full) => full.startsWith(`${id}.tool`)).map((full) => full.slice(id.length + 1));
+        for (const [key, want] of profileToolWrites(pressed, keys)) if (s.get(id, key) !== want) await s.set(id, key, want);
       }
       const place = isGM() ? scene() : null, changes = place ? sceneWrites(this.features, this.sceneBefore, this.sceneNow, id) : {};
       if (Object.keys(changes).length) await place.update(changes);

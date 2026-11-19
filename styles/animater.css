@@ -3268,6 +3268,10 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-settings .an-set-reset-tab { flex: none; width: auto; min-height: 0; margin-top: 6px; padding: 2px 8px; font-size: 11px; }
 .animater-settings .an-set-foot { flex: none; display: flex; justify-content: flex-end; padding: 8px 14px; border-top: 1px solid var(--an-line); background: var(--an-panel); }
 .animater-settings .an-set-foot button { flex: none; width: auto; }
+/* A run of rows under its own heading, so a long tab reads as several short lists. It sticks to the top of the
+   scroll while its rows pass under it, which is how you know where you are eighty rows down. */
+.animater-settings .an-set-section { position: sticky; top: 0; z-index: 1; margin: 16px 0 0; padding: 6px 0 4px; border-bottom: 1px solid var(--an-line); background: var(--an-bg); box-shadow: 0 6px 6px -6px rgba(0, 0, 0, 0.55); color: var(--an-text); font-size: 12px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; }
+.animater-settings .an-set-section[hidden] { display: none; }
 /* The text keeps a readable width: controls that leave it less than 280px drop under it, at the right. */
 .animater-settings .an-set-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 16px; padding: 10px 0; border-bottom: 1px solid var(--an-line); }
 .animater-settings .an-set-text { flex: 1 1 280px; min-width: 0; }
@@ -3666,6 +3670,11 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .animater-immersion .window-content { padding: 0; }
 .an-imm { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .an-imm-intro { margin: 0; padding: 10px 12px; font-size: 13px; line-height: 1.4; border-bottom: 1px solid var(--color-border-light-tertiary, #4a4438); }
+/* The four starts, above the list they tick. The one last pressed is marked, until a box is changed by hand. */
+.an-imm-starts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--color-border-light-tertiary, #4a4438); }
+.an-imm-starts span { font-size: 12px; opacity: 0.75; }
+.animater .an-imm-starts button { flex: none; width: auto; min-height: 0; padding: 3px 10px; font-size: 12px; }
+.animater .an-imm-starts button.on { border-color: var(--an-accent, #b29aff); color: var(--an-accent, #b29aff); }
 .an-imm-list { flex: 1; min-height: 0; overflow-y: auto; }
 .an-imm-row { border-bottom: 1px solid var(--color-border-light-tertiary, #4a4438); cursor: pointer; }
 .an-imm-row:hover { background: rgba(255, 255, 255, 0.04); }
