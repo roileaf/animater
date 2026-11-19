@@ -1263,7 +1263,9 @@ const containsPlane = (region, point) => {
 };
 // Footsteps ask once per grid cell, so planes and region views are kept until a tile, region, scene or viewed level changes.
 let floorCache = null;
-const forgetPlanes = () => { floorCache = null; };
+// Counted up whenever the floor's reading is dropped, so anything keeping a floor it asked for knows when to ask again.
+let floorGen = 0;
+const forgetPlanes = () => { floorCache = null; floorGen++; };
 const floorCacheHere = () => {
   const level = canvas?.level?.id ?? "";
   if (floorCache?.level !== level) floorCache = { level, planes: null, views: null };
@@ -7128,6 +7130,47 @@ const mirrorLamps = () => {
   }
   return out;
 };
+// Which tokens the mirror asks the floor about. Whether a token is dry only tells the mirror whether it is wading, and that is
+// only read of a token standing in the water itself (water-mirror.mjs mirrorsOf), while the floor's reading walks every region's
+// shapes — so a token out on the land is taken as dry without asking, by its own water's outline. What is asked is kept a second
+// per place: the mirror looks twenty times a second and the ground under a standing token does not change that fast.
+let mirrorAreasFor = null, mirrorBoxes = [];
+const mirrorWaterBoxes = () => {
+  if (mirrorAreasFor?.calm === calmWater && mirrorAreasFor?.rough === glintWater) return mirrorBoxes;
+  mirrorAreasFor = { calm: calmWater, rough: glintWater };
+  mirrorBoxes = [];
+  for (const area of [...calmWater, ...glintWater]) {
+    if (!(area?.length >= 6)) continue;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < area.length; i += 2) {
+      if (area[i] < x0) x0 = area[i]; if (area[i] > x1) x1 = area[i];
+      if (area[i + 1] < y0) y0 = area[i + 1]; if (area[i + 1] > y1) y1 = area[i + 1];
+    }
+    mirrorBoxes.push({ x0, y0, x1, y1, area });
+  }
+  return mirrorBoxes;
+};
+const mirrorOverWater = (point) => {
+  for (const box of mirrorWaterBoxes()) {
+    if (point.x < box.x0 || point.x > box.x1 || point.y < box.y0 || point.y > box.y1) continue;
+    if (pointInPolygon(point, box.area)) return true;
+  }
+  return false;
+};
+const mirrorDry = new Map();
+const forgetMirrorDry = () => { mirrorDry.clear(); mirrorAreasFor = null; mirrorBoxes = []; };
+const mirrorDryOf = (token) => {
+  const centre = token.center;
+  if (!mirrorOverWater(centre)) return true;
+  const elevation = Number(token.document?.elevation ?? 0);
+  const key = `${Math.round(centre.x)},${Math.round(centre.y)},${elevation},${floorGen}`;
+  const now = performance.now(), was = mirrorDry.get(token.id);
+  if (was && was.key === key && now - was.at < 1000) return was.dry;
+  let dry = false;
+  try { dry = movementFeelFloor(centre, token.document) !== "water"; } catch { dry = false; }
+  mirrorDry.set(token.id, { key, at: now, dry });
+  return dry;
+};
 const tickWater = (seconds) => {
   const now = performance.now(), view = viewNow(), frozen = frozenWaterOn() && groundOf().now.ice > 0.5;
   if (now - waterLookAt > 1000) {
@@ -7157,7 +7200,7 @@ const tickWater = (seconds) => {
     const tokens = (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.mesh && !t.mesh.destroyed && t.mesh.texture?.valid).map((t) => {
       let pic = null; if (rings) { try { pic = mirrorRings.of(t); } catch { pic = null; } if (pic) ringed.add(t.id); }
       const worn = wornLook(t); if (worn) { const off = wornOffset(t, worn); pic = { texture: worn.texture, x: t.mesh.position.x + off.ox, y: t.mesh.position.y + off.oy, w: Math.abs(worn.width), h: Math.abs(worn.height) }; }
-      return { id: t.id, texture: pic?.texture ?? t.mesh.texture, x: pic?.x ?? t.mesh.position.x, y: pic?.y ?? t.mesh.position.y, liveX: t.mesh.position.x, liveY: t.mesh.position.y, live: t.mesh.position, dry: (() => { try { return movementFeelFloor(t.center, t.document) !== "water"; } catch { return false; } })(), w: pic?.w ?? t.w, h: pic?.h ?? t.h, rotation: mirrorTokenTurn(t.document), alpha: t.mesh.alpha };
+      return { id: t.id, texture: pic?.texture ?? t.mesh.texture, x: pic?.x ?? t.mesh.position.x, y: pic?.y ?? t.mesh.position.y, liveX: t.mesh.position.x, liveY: t.mesh.position.y, live: t.mesh.position, dry: mirrorDryOf(t), w: pic?.w ?? t.w, h: pic?.h ?? t.h, rotation: mirrorTokenTurn(t.document), alpha: t.mesh.alpha };
     });
     mirrorRings.keep(ringed);
     const moonOut = sunNow?.moon && Number(sunNow.strength) > 0.05;
@@ -7168,7 +7211,7 @@ const tickWater = (seconds) => {
   if (waterfalls.busy) waterfalls.tick(seconds, { view });
   if (waterMirror.busy) waterMirror.tick(seconds, { view, wind: skyWindNow });
 };
-Hooks.on("canvasTearDown", () => { coast.clear(); beachLife.clear(); waterfalls.clear(); waterMirror.clear(); waterKey = null; calmWater = []; glintWater = []; });
+Hooks.on("canvasTearDown", () => { coast.clear(); beachLife.clear(); waterfalls.clear(); waterMirror.clear(); waterKey = null; calmWater = []; glintWater = []; forgetMirrorDry(); });
 // Town life (engines/motion/town-life.mjs): only the town's animals the GM asks for in a scene's Animals panel (Town). Its streets are any open ground, stone too, not water and not in a room.
 const townLife = createTownLife({ PIXI: animalPIXI, restyle: animalLook, floor: floorLayer("townLife", 659), sky: lowFlierRoot, high: highSkyOf });
 let townKey = null, townOpen = null, townPreview = null;
