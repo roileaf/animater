@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.6.1
+
+- **A fire smokes the colour it was given.** Every fire sent up the same grey, which is right for wood and oil and wrong for everything a table puts on a fire on purpose. A light now has a Smoke colour of its own, beside its other Animater fire switches: Grey, White (steam, a cooking pot), Black (pitch, a forge), Brown (damp wood, a smokehouse), Green (poison, a witch's fire), Purple (arcane, a summoning), Yellow (sulphur, alchemy), Red (embers, a blood rite) and Blue (cold fire, a spirit flame). Each is four hand-picked tones rather than one flat tint, as the grey already was, so a plume keeps its variation instead of reading as a single blob — the darker set rises in the room, a paler set out of the chimney, where it has the sky and the shingles behind it. The colour carries to both of a fire's plumes, and the Flames dialog under the lighting controls sets it on the selected lights or on every light in the scene. A light that has not been given one smokes exactly the grey it always did.
+
 ## 4.6.0
 
 - **One question instead of seventeen, the first time.** A new world was shown every immersion feature at once and asked to choose among them — a fair question for somebody who knows the module, no question at all for somebody who has just installed it. Choose your immersion now opens with four starts: Animations, Combat drama, Map making, Everything. A start ticks a set for you, and they add together, so a table that wants its creatures to move and its fights to leave blood presses both; pressing a pressed one takes it back out again, down to what the world had before. A start writes nothing by itself — the list underneath shows exactly what you would get, and Save is still what saves. After an update the window asks what it always asked: what has newly arrived.
