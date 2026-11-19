@@ -274,7 +274,7 @@ import { cleanTune, rainbowAim, tuneAdds, tuneFalling, tunedRainbow, tuneWeather
 import { weatherPanel } from "./ui/weather-panel.mjs";
 import { createLampAir, fireSparksOf } from "./engines/motion/lamp-air.mjs";
 import { createCeilingDust } from "./engines/motion/ceiling-dust.mjs";
-import { createVermin, creatureAmount, creatureSize, SIZE_RANGE, sizePercent } from "./engines/motion/vermin.mjs";
+import { createVermin, creatureAmount, creatureSize, SIZE_RANGE, sizePercent, ratHolesAt } from "./engines/motion/vermin.mjs";
 import { createUndergroundLife, sootSpots, ventsIn, wetRuns, mothHome } from "./engines/motion/underground-life.mjs";
 import { reachAround, wallSide, hazeFit, clipToSide } from "./engines/motion/wall-reach.mjs";
 import { undergroundSound, heardFrom, earsFor, critterVoices } from "./engines/motion/underground-sounds.mjs";
@@ -6695,6 +6695,8 @@ const nearestLamp = (x, y) => {
   if (!best || (Array.isArray(best.shape) && best.shape.length >= 6 && !pointInPolygon({ x, y }, best.shape))) return null;
   return { x: best.x, y: best.y, strength: Math.min(1, strength * 1.6), color: best.color };
 };
+// The scene's walls as plain ends, for the rat holes gnawed through them (vermin.mjs ratHolesAt).
+const ratWalls = () => (canvas.walls?.placeables ?? []).map((w) => { const [x1, y1, x2, y2] = w.document.c; return { x1, y1, x2, y2 }; });
 const ratSpots = () => {
   const grid = canvas.grid.size, spots = [];
   const floor = (pt) => !lampLights.length || lampLights.some((l) => Array.isArray(l.shape) && l.shape.length >= 6 && pointInPolygon(pt, l.shape));
@@ -7405,7 +7407,10 @@ const rebuildLife = () => {
     if (changed) { verminKey = key; vermin.clear(); critterCalls.settle(); for (const p of placedList(animalFlagsNow().placedAnimals)) if (PLACED_IN.dark.includes(p.kind)) placedShown.delete(p.id); }
     if (changed && wanted) {
       const spots = ratSpots().filter((p) => !keptOut("rats", p) && !keptOut("bats", p));
-      vermin.populate({ spots, count: exactOr(many, "rats", Math.round(Math.min(14, Math.max(4, Math.round(spots.length / 20))) * many.rats)), lit: litForRats, grid, bats: exactOr(many, "bats", Math.round(3 * many.bats)), area: { x: b.x, y: b.y, w: b.width, h: b.height }, blocked: batBlocks, allowed: (p) => !keptOut("bats", p), size: many.ratsSize, batSize: many.batsSize });
+      // The holes they come and go by: a handful of the scene's long walls, in the dark, away from anywhere rats are
+      // kept out of. Without them a rat spends the whole scene in the room it woke up in.
+      const holes = ratHolesAt(ratWalls(), { grid, lit: litForRats, count: Math.max(3, Math.min(8, Math.round(spots.length / 30))) }).filter((h) => !keptOut("rats", h));
+      vermin.populate({ spots, holes, count: exactOr(many, "rats", Math.round(Math.min(14, Math.max(4, Math.round(spots.length / 20))) * many.rats)), lit: litForRats, grid, bats: exactOr(many, "bats", Math.round(3 * many.bats)), area: { x: b.x, y: b.y, w: b.width, h: b.height }, blocked: batBlocks, allowed: (p) => !keptOut("bats", p), size: many.ratsSize, batSize: many.batsSize });
     }
     if (dripsOn()) {
       const areas = [];
@@ -13931,8 +13936,9 @@ const IMMERSION_DEMOS = {
   vermin: () => {
     const b = canvas.dimensions.sceneRect, spots = ratSpots();
     if (!spots?.length) return { note: "No walls for rats to run along here. Try it on an indoor or underground scene." };
-    vermin.populate({ spots, count: 10, lit: litForRats, grid: canvas.grid.size, bats: 3, area: { x: b.x, y: b.y, w: b.width, h: b.height } });
-    return { note: `${vermin.count} rats are out along the walls of this scene, and bats overhead.`, undo: () => { verminKey = null; vermin.clear(); } };
+    const holes = ratHolesAt(ratWalls(), { grid: canvas.grid.size, lit: litForRats, count: 6 });
+    vermin.populate({ spots, holes, count: 10, lit: litForRats, grid: canvas.grid.size, bats: 3, area: { x: b.x, y: b.y, w: b.width, h: b.height } });
+    return { note: `${vermin.count} rats are out along the walls of this scene, and bats overhead.${holes.length ? ` ${holes.length} rat holes are gnawed through the walls: watch one go in and come up somewhere else.` : ""}`, undo: () => { verminKey = null; vermin.clear(); } };
   },
   light: () => ({ note: undergroundScene() ? "Nothing here: there is no sun underground. Try it on an outdoor scene." : "Look at the creatures, walls and roofs in view: their shadows fall from the sun at this scene's hour." }),
   weather: () => {
@@ -15021,7 +15027,7 @@ Hooks.once("init", () => {
   };
   skyPair("drafts", "draftsLocal", "Drafts", "In an underground scene (or one with a region marked as open to the outside), the air flows through every open door toward the way out: dust streams with it, sparks are carried along, smoke drains out. Opening a door sends a gust that settles into a steady draft; a sealed room's air stands still.");
   skyPair("roomSmoke", "roomSmokeLocal", "Smoke in the air", "In an underground scene, the fires' smoke gathers in their rooms in slow rolling layers, lit by the fires, never through a wall or a shut door, and streams out through the open doors along the draft toward the way out.");
-  skyPair("vermin", "verminLocal", "Rats and bats", "In an underground scene (Scene configuration → Animater: underground, or cave or hall acoustics), rats scurry along the walls, keeping out of the light and scattering from anyone who comes close, and a few bats flit high overhead.");
+  skyPair("vermin", "verminLocal", "Rats and bats", "In an underground scene (Scene configuration → Animater: underground, or cave or hall acoustics), rats scurry along the walls, keeping out of the light and scattering from anyone who comes close, and a few bats flit high overhead. A few walls are gnawed through: a rat that has been in one room a while slips into a hole and comes up out of another, somewhere else on the map.");
   skyPair("drips", "dripsLocal", "Dripping water", "Where a region is marked as dripping (the region's right-click panel → Drips), water drips into dark, glistening puddles, each drop sending out a ring.");
   skyPair("torchDraft", "torchDraftLocal", "Flames in the draft", "Where the air moves (\"Drafts\"), the flames of fire lights lean with it and flicker harder; when a door opens on their way out they gutter for a few seconds, then settle.");
   skyPair("caveMist", "caveMistLocal", "Cavern mist", "Where a region is marked as mist (the region's right-click panel → Cave), low mist hugs the floor and drifts; walking through parts it, the trail closing slowly behind.");
@@ -17274,7 +17280,7 @@ Hooks.once("ready", () => {
       chimneyPuffs: () => chimneySmoke.size,
       // Shake dust down from the ceiling at a point, as a heavy step would (weight 4 Large – 8 Gargantuan).
       // Rats and bats now in this scene, and drips over an area (flat x, y pairs), whatever the scene says.
-      verminHere: (count = 10) => { const b = canvas.dimensions.sceneRect; vermin.populate({ spots: ratSpots(), count, lit: litForRats, grid: canvas.grid.size, bats: 3, area: { x: b.x, y: b.y, w: b.width, h: b.height } }); return vermin.count; },
+      verminHere: (count = 10) => { const b = canvas.dimensions.sceneRect; const holes = ratHolesAt(ratWalls(), { grid: canvas.grid.size, lit: litForRats, count: 6 }); vermin.populate({ spots: ratSpots(), holes, count, lit: litForRats, grid: canvas.grid.size, bats: 3, area: { x: b.x, y: b.y, w: b.width, h: b.height } }); return vermin.count; },
       // A cavern feature in a box on this screen only ({ kind: "lava" | "mist" | "fungus-blue" | "crystals-rose" | "webs" ..., x, y, w, h }); none: clear.
       // The ceiling coming down here for everyone (GM; kept with the scene), or all the rubble cleared.
       caveIn: (x, y, radius) => bringCeilingDown({ x, y, radius }),
@@ -17282,7 +17288,7 @@ Hooks.once("ready", () => {
       // A pebble kicked from here toward a heading (radians), on this screen only.
       // What the underground's life has to go on: eye spots, crawler paths, what it shows near the view now.
       town: () => ({ level: townLevel(), on: outdoorOn("townLife"), world: hotSetting("townLife"), screen: hotSetting("townLifeLocal"), quality: localQuality(), underground: undergroundScene(), day: wildDay(), night: wildNight(), sun: !!sunNow, counts: townLife.counts }),
-      underground: () => ({ wanted: underWanted, vermin: vermin.count, keepOut: Object.fromEntries(Object.entries(keepOut).map(([k, v]) => [k, v.length])), spots: underSpots.length, firstSpot: underSpots[0] ?? null, crawl: underCrawl.length, air: !!airField, foul: foulPolygons.length, look: underLook ? { eyes: underLook.eyes?.length ?? 0, moths: underLook.moths?.length ?? 0, crawl: underLook.crawl?.length ?? 0 } : null }),
+      underground: () => ({ wanted: underWanted, vermin: vermin.count, ratHoles: vermin.state.holes, ratsUnderFloor: vermin.state.rats.filter((r) => r.under > 0).length, keepOut: Object.fromEntries(Object.entries(keepOut).map(([k, v]) => [k, v.length])), spots: underSpots.length, firstSpot: underSpots[0] ?? null, crawl: underCrawl.length, air: !!airField, foul: foulPolygons.length, look: underLook ? { eyes: underLook.eyes?.length ?? 0, moths: underLook.moths?.length ?? 0, crawl: underLook.crawl?.length ?? 0 } : null }),
       // Where eyes may glint, and eyes showing now rather than after their wait (previews).
       // Blood on the floor without a hit (a preview): hit marks there, or a wounded creature's stride.
       floorLooks: { count: () => floorLooks.count, busy: () => floorLooks.busy, sync: syncFloorLooks, textures: () => floorTextures.count, moving: () => floorMotion.count, tileImage: (floor, style) => floorTextures.tileImage(floor, style) },

@@ -23,7 +23,8 @@ export const creatureSize = (v, all = 100) => Math.min(4, Math.max(0.05, (sizePe
 export function ratStep(rat, { dt = 1 / 60, grid = 100, lit = () => 0, near = [], blocked = () => false, random = Math.random } = {}) {
   const r = { ...rat };
   r.wait -= dt;
-  if (r.chasing && Number.isFinite(r.tx)) return ratTold(r, { dt, grid, blocked, random });
+  // Told where to go, or making for a hole in the wall: it goes, and nothing on the way turns it back.
+  if ((r.chasing || r.toHole) && Number.isFinite(r.tx)) return ratTold(r, { dt, grid, blocked, random });
   const threat = near.find((c) => Math.hypot(c.x - r.x, c.y - r.y) < grid * 2);
   if (threat) {
     // Its way out is chosen and kept a moment: away if it can, else along the wall, else past whoever scared it. With no way
@@ -105,6 +106,70 @@ export function ratsAt(spots = [], { count = 8, lit = () => 0, random = Math.ran
   return out;
 }
 
+// ---- Rat holes -------------------------------------------------------------------------------------------------------
+// A rat turns at every wall, so a rat that starts in a room stays in it for as long as the scene is open. A rat hole is
+// a gnawed gap at the foot of a wall: one that has been in the same room a while makes for the nearest one, slips in,
+// and comes up out of a hole somewhere else on the map a few seconds later.
+// How long a rat goes between errands, in seconds, and how long it is out of sight under the floor.
+export const HOLE_EVERY = 12, HOLE_UNDER = [1.5, 5];
+
+// Where the walls are gnawed through (pure): `walls` [{ x1, y1, x2, y2 }], `lit(x, y)` how lit a spot is, `share` how
+// many of the long walls have a hole. Which wall, and where along it, is decided from the wall's own ends, so a scene
+// has the same holes every time it is opened and nothing has to be saved on it. A hole needs the dark on at least one
+// side — a gap in a wall a torch is standing against is a gap everyone would see a rat use.
+export function ratHolesAt(walls = [], { grid = 100, count = 5, lit = () => 0, share = 0.4 } = {}) {
+  const out = [];
+  for (const w of walls ?? []) {
+    if (out.length >= count) break;
+    const x1 = Number(w?.x1), y1 = Number(w?.y1), x2 = Number(w?.x2), y2 = Number(w?.y2);
+    if (![x1, y1, x2, y2].every(Number.isFinite)) continue;
+    const len = Math.hypot(x2 - x1, y2 - y1);
+    if (len < grid * 1.5) continue;
+    if (hash(x1 + x2, y1 + y2) > share) continue;
+    const t = 0.3 + hash(x1 - y2, y1 - x2) * 0.4;
+    const x = x1 + (x2 - x1) * t, y = y1 + (y2 - y1) * t;
+    const nx = -(y2 - y1) / len, ny = (x2 - x1) / len, off = grid * 0.4;
+    if (lit(x + nx * off, y + ny * off) > 0.5 && lit(x - nx * off, y - ny * off) > 0.5) continue;
+    // Two holes a step apart are one hole with a bad drawing.
+    if (out.some((h) => Math.hypot(h.x - x, h.y - y) < grid * 2)) continue;
+    out.push({ id: `${Math.round(x)},${Math.round(y)}`, x, y, angle: Math.atan2(y2 - y1, x2 - x1), nx, ny });
+  }
+  return out;
+}
+
+// The hole a rat makes for (pure): the nearest it could walk to without a wall in the way, within `reach` squares.
+// Null where there is none — it carries on in the room it is in, as it always did.
+export function holeFor(rat, holes = [], { grid = 100, blocked = () => false, reach = 14 } = {}) {
+  let best = null;
+  for (const h of holes ?? []) {
+    const d = Math.hypot(h.x - rat.x, h.y - rat.y);
+    if (d > grid * reach || (best && d >= best.d)) continue;
+    if (blocked({ x: rat.x, y: rat.y }, { x: h.x, y: h.y })) continue;
+    best = { h, d };
+  }
+  return best?.h ?? null;
+}
+
+// The hole it comes up out of (pure): one of the four furthest from the one it went in by, so it usually surfaces in
+// another room instead of popping straight back out where it started. The only hole on the map is its own.
+export function holeOut(hole, holes = [], random = Math.random) {
+  const others = (holes ?? []).filter((h) => h && h.id !== hole?.id);
+  if (!others.length) return hole ?? null;
+  const far = others.slice().sort((a, b) => Math.hypot(b.x - hole.x, b.y - hole.y) - Math.hypot(a.x - hole.x, a.y - hole.y));
+  const pick = far.slice(0, Math.min(4, far.length));
+  return pick[Math.floor(random() * pick.length)] ?? pick[0];
+}
+
+// Where a rat stands as it comes out (pure): a step out from the wall on the darker of its two sides, facing away
+// from it, so it arrives nose-first into the room rather than sideways along the wall.
+export function holeMouth(hole, { grid = 100, lit = () => 0 } = {}) {
+  const off = grid * 0.35;
+  const a = { x: hole.x + hole.nx * off, y: hole.y + hole.ny * off };
+  const b = { x: hole.x - hole.nx * off, y: hole.y - hole.ny * off };
+  const at = lit(a.x, a.y) <= lit(b.x, b.y) ? a : b;
+  return { x: at.x, y: at.y, angle: Math.atan2(at.y - hole.y, at.x - hole.x) };
+}
+
 // ---- Drawing ---------------------------------------------------------------------------------------------------------
 // Where a creature's shadow falls from a light (pure): `from` { x, y, strength 0–1 } the light, `at` the creature, `high`
 // how far above the floor it is (squares; a rat 0, a bat high in the air). Away from the light: a rat's just beside it,
@@ -132,6 +197,43 @@ export function drawRatTail(t, n, k, time, i) {
   for (let s = 0; s < 10; s++) { t.lineStyle((1.9 - 1.5 * (s / 10)) * k, 0x8a6d66, 0.95); t.moveTo(...pts[s]); t.lineTo(...pts[s + 1]); }
 }
 const hash = (x, y) => { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s); };
+// A rat hole as a picture, drawn once: a gnawed arch of dark at the foot of the wall, an ink line round it as the
+// painted maps have, the plaster broken a shade lighter at its rim, and crumbs of it fallen at the mouth. Drawn along
+// +x, as the wall runs, with the arch standing on the wall and the crumbs on the room's side.
+const HOLE_W = 64, HOLE_H = 44;
+export function drawRatHole(ctx) {
+  const cx = HOLE_W / 2, base = HOLE_H * 0.58, w = HOLE_W * 0.34, h = HOLE_H * 0.3;
+  ctx.clearRect(0, 0, HOLE_W, HOLE_H);
+  // Gnawed, not drilled: the left side bitten wider and lower than the right, and the top flat where it broke through.
+  const mouth = () => {
+    ctx.beginPath();
+    ctx.moveTo(cx - w, base + h * 0.1);
+    ctx.quadraticCurveTo(cx - w * 0.98, base - h * 0.8, cx - w * 0.3, base - h);
+    ctx.quadraticCurveTo(cx + w * 0.3, base - h * 1.1, cx + w * 0.78, base - h * 0.5);
+    ctx.quadraticCurveTo(cx + w * 0.95, base - h * 0.15, cx + w * 0.86, base);
+    ctx.closePath();
+  };
+  mouth();
+  ctx.fillStyle = '#17110d';
+  ctx.fill();
+  ctx.strokeStyle = '#0b0806';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  // The plaster broken back a shade lighter, over the top left where the light falls, not all the way round.
+  ctx.strokeStyle = 'rgba(190,172,142,0.35)';
+  ctx.lineWidth = 1.3;
+  ctx.beginPath();
+  ctx.moveTo(cx - w * 0.92, base - h * 0.25);
+  ctx.quadraticCurveTo(cx - w * 0.75, base - h * 0.95, cx - w * 0.1, base - h * 0.95);
+  ctx.stroke();
+  // Crumbs of it fallen at the mouth: small, and close in, the way a drift of plaster lies.
+  ctx.fillStyle = 'rgba(176,156,126,0.45)';
+  for (const [dx, dy, r] of [[-1.08, 0.04, 0.016], [-0.6, 0.09, 0.011], [0.18, 0.11, 0.014], [0.78, 0.06, 0.01], [1.05, 0.1, 0.012]]) {
+    ctx.beginPath();
+    ctx.arc(cx + dx * w, base + dy * HOLE_H, r * HOLE_W, 0, TAU);
+    ctx.fill();
+  }
+}
 
 // One rat frame: its four feet at `step` (0–1 of a stride), then its body over them.
 function drawRat(ctx, step) {
@@ -216,6 +318,7 @@ function drawBat(ctx, span) {
  */
 export function createVermin({ PIXI, root, batsRoot = root, restyle = null }) {
   let rats = [], bats = [], grid = 100, size = 1, batSize = 1, time = 0, frame = 0, ratTex = null, batTex = null;
+  let holes = [], holeTex = null, holeArt = [];
   const frames = (w, h, n, paint) => Array.from({ length: n }, (_, i) => { const c = document.createElement('canvas'); c.width = w; c.height = h; paint(c.getContext('2d'), i); return PIXI.Texture.from(c); });
   // in the painted look where it has been baked (animal-art.mjs `restyle`, given by main), else as drawn here
   const styled = (set, prefix) => (restyle ? restyle('vermin', set, prefix) : set);
@@ -226,7 +329,23 @@ export function createVermin({ PIXI, root, batsRoot = root, restyle = null }) {
   const sprite = (tex, parent) => { const sp = new PIXI.Sprite(tex); sp.anchor.set(0.5); sp.eventMode = 'none'; parent.addChild(sp); return sp; };
   // Each one carries its own pictures, so the animal HUD knows it by them (animal-orders.mjs).
   const gone = (o) => { for (const s of [o.body, o.tail, o.shadow]) { try { s?.destroy(); } catch { /* gone */ } } };
-  const drop = () => { for (const o of [...rats, ...bats]) gone(o); rats = []; bats = []; };
+  const holeFrames = () => (holeTex ??= styled(frames(HOLE_W, HOLE_H, 1, (ctx) => drawRatHole(ctx)), 'ratHole'));
+  // The holes are laid down before the rats, so a rat crossing one runs over it rather than under it.
+  const layHoles = (list, lit = () => 0) => {
+    for (const sp of holeArt) { try { sp.destroy(); } catch { /* gone */ } }
+    holes = list ?? []; holeArt = [];
+    if (!holes.length) return;
+    const tex = holeFrames()[0], off = grid * 0.4;
+    for (const h of holes) {
+      const sp = sprite(tex, root());
+      // The arch is drawn opening away from the wall's own side; it is turned to open on the darker of the two, which
+      // is the room a rat would come out into rather than the rock behind it.
+      const flip = lit(h.x + h.nx * off, h.y + h.ny * off) <= lit(h.x - h.nx * off, h.y - h.ny * off);
+      sp.position.set(h.x, h.y); sp.rotation = h.angle + (flip ? Math.PI : 0); sp.scale.set((grid / 100) * 0.55);
+      holeArt.push(sp);
+    }
+  };
+  const drop = () => { for (const o of [...rats, ...bats]) gone(o); rats = []; bats = []; layHoles([]); };
   // One rat, its own: a little bigger or smaller, a little browner or greyer. The tail first, then the body over its root.
   const newRat = (at, random = Math.random, placed) => {
     const shadow = sprite(ratFrames()[0], root()); shadow.tint = 0x000000;
@@ -254,9 +373,10 @@ export function createVermin({ PIXI, root, batsRoot = root, restyle = null }) {
     },
     // The map's squares, for ones put down by hand on a scene with none of their own (no populate here).
     sized(g) { if (Number(g) > 0) grid = Number(g); },
-    populate({ spots = [], count = 8, lit = () => 0, grid: g = 100, bats: batCount = 0, area = null, blocked = () => false, allowed = () => true, size: big = 1, batSize: wide = 1 } = {}) {
+    populate({ spots = [], count = 8, lit = () => 0, grid: g = 100, bats: batCount = 0, area = null, blocked = () => false, allowed = () => true, size: big = 1, batSize: wide = 1, holes: holeList = [] } = {}) {
       drop(); grid = g; size = Number(big) > 0 ? Number(big) : 1; batSize = Number(wide) > 0 ? Number(wide) : 1;
-      rats = ratsAt(spots, { count, lit }).map((r) => Object.assign(newRat(r), r));
+      layHoles(holeList, lit);
+      rats = ratsAt(spots, { count, lit }).map((r) => Object.assign(newRat(r), r, { restless: Math.random() * HOLE_EVERY }));
       // Each bat starts out in a room near one of the spots (inside the walls), not over the rock; without spots, anywhere
       // in `area` it may be.
       const home = () => spots.length ? spots[Math.floor(Math.random() * spots.length)] : area && { x: area.x + area.w * (0.2 + 0.6 * Math.random()), y: area.y + area.h * (0.2 + 0.6 * Math.random()) };
@@ -275,7 +395,39 @@ export function createVermin({ PIXI, root, batsRoot = root, restyle = null }) {
       rats = rats.map((was, i) => {
         // Its HUD open: it stays put.
         if (handles.held(was)) return was;
-        const r = told('rat', was), n = ratStep(r, { dt, grid, lit, near: r.chasing ? [] : near, blocked });
+        // Down a hole: out of sight under the floor until it comes up out of another one, somewhere else on the map.
+        if (was.under > 0) {
+          const u = { ...was, under: was.under - dt };
+          if (u.under > 0) { u.body.visible = false; u.tail.visible = false; u.shadow.visible = false; return u; }
+          const mouth = holeMouth(u.outHole ?? holes[0] ?? { x: u.x, y: u.y, nx: 1, ny: 0 }, { grid, lit });
+          sound('ratSkitter', mouth, false);
+          return { ...u, under: 0, outHole: null, toHole: null, tx: undefined, ty: undefined, round: null,
+            x: mouth.x, y: mouth.y, angle: mouth.angle, speed: grid * 2, wait: 0.3, restless: 0 };
+        }
+        const r = told('rat', was);
+        // Told where to go by a GM: that comes before any errand of its own.
+        if (r.chasing) { r.toHole = null; r.restless = 0; }
+        else if (holes.length && !r.toHole) {
+          r.restless = (r.restless ?? 0) + dt;
+          if (r.restless > HOLE_EVERY) {
+            const h = holeFor(r, holes, { grid, blocked });
+            // Nothing it could walk to: it carries on in this room and asks again in a while, not every frame.
+            r.restless = h ? 0 : HOLE_EVERY * 0.5;
+            if (h) { r.toHole = h.id; r.tx = h.x; r.ty = h.y; r.round = null; }
+          }
+        }
+        const n = ratStep(r, { dt, grid, lit, near: r.chasing || r.toHole ? [] : near, blocked });
+        // At the hole: in it goes, and it comes up out of one of the furthest from it.
+        if (n.toHole && Math.hypot(n.tx - n.x, n.ty - n.y) < grid * 0.2) {
+          const went = holes.find((h) => h.id === n.toHole) ?? null;
+          n.under = HOLE_UNDER[0] + Math.random() * (HOLE_UNDER[1] - HOLE_UNDER[0]);
+          n.outHole = went ? holeOut(went, holes) : null;
+          n.toHole = null; n.speed = 0;
+          if (went) sound('ratSqueak', went, false);
+          n.body.visible = false; n.tail.visible = false; n.shadow.visible = false;
+          n.stride = r.stride ?? 0; n.big = r.big ?? 1; n.shade = r.shade ?? 0xffffff;
+          return n;
+        }
         // Its feet step with how far it runs.
         n.stride = ((r.stride ?? 0) + (n.speed * dt) / (grid * 0.22)) % 1; n.big = r.big ?? 1; n.shade = r.shade ?? 0xffffff;
         const { body, tail: t, shadow } = n, show = seen(n.x, n.y);
@@ -317,5 +469,8 @@ export function createVermin({ PIXI, root, batsRoot = root, restyle = null }) {
     },
     clear: drop,
     get count() { return rats.length + bats.length; },
+    // What the rats are up to: how many holes this scene has, and for each rat where it is and whether it is under the
+    // floor between two of them. For the scene audit (Animater's debug dump) and the tests.
+    get state() { return { holes: holes.length, rats: rats.map((r) => ({ x: r.x, y: r.y, under: r.under ?? 0, shown: r.body?.visible !== false })) }; },
   };
 }
