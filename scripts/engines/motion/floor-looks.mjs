@@ -777,6 +777,37 @@ const BREATHING = Object.freeze({ steam: [0.9, 0.72], misty: [0.35, 0.8], hot: [
 // The floors that move in the wind.
 export const swaysInWind = (floor) => floor === 'grass';
 
+/**
+ * One floor's own pattern, as flat pixels, for showing it somewhere that is not the map — the brush bar's swatches.
+ * Roi: "floors still show colors instead of [swatches]". It is the same shader the map paints with, baked small, so
+ * a swatch is the floor rather than somebody's idea of what the floor looks like.
+ *
+ * The shader is compiled over the frames that follow, as everywhere else here, so this gives back null until it is
+ * ready and the caller is expected to ask again. Flat and unlit: no sun, no lights, no wet — a swatch is a sample
+ * of the stuff, not a picture of a place.
+ */
+export function floorTilePixels(PIXI, renderer, floor, style = '', side = 128) {
+  const r = renderer;
+  if (!PIXI?.Program?.from || !r?.gl) return null;
+  const program = programsFor(PIXI, r).get(tileFrag(floor, style, false));
+  if (!program) return null; // still being compiled; ask again next frame
+  const gl = r.gl, target = gl.createTexture(), frame = gl.createFramebuffer(), data = new Uint8Array(side * side * 4);
+  try {
+    gl.bindTexture(gl.TEXTURE_2D, target);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, side, side, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, frame);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, target, 0);
+    // The painters work in a 1024 square whatever the picture's size, so a swatch is a quarter of one: close
+    // enough to see the boards or the flagstones, not so close it is one stone filling the tile.
+    drawPlain(gl, program, { x: 0, y: 0, w: 256, h: 256 }, side, side);
+    gl.readPixels(0, 0, side, side, gl.RGBA, gl.UNSIGNED_BYTE, data);
+    return data;
+  } catch { return null; }
+  finally {
+    try { gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.deleteFramebuffer(frame); gl.deleteTexture(target); handBack(r); } catch { /* the canvas went away */ }
+  }
+}
+
 // Blades standing on painted grass, each rooted where it stands. All the bending happens here on the graphics card, so a whole
 // field is one draw: the wind's gusts cross the field, and each blade answers at its own pace, by its own stiffness.
 const BLADE_SHARED = `precision highp float;

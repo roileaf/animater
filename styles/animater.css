@@ -4197,6 +4197,12 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .an-map-paint .an-db-range b { min-width: 28px; font-weight: 400; color: #a89a82; }
 .an-map-paint .an-mp-tick { display: inline-flex; align-items: center; gap: 5px; }
 .an-map-paint .an-mp-tick input { accent-color: #c8a24a; margin: 0; }
+/* The colour a wall or a roof is painted in: its label, the swatch to pick with, and None, all on one line like
+   the segmented choices beside it. Without this the label fell back to an inline box and the three stacked up. */
+.an-map-paint .an-mp-tint { display: inline-flex; align-items: center; gap: 5px; }
+.an-map-paint .an-mp-tint input[type="color"] { width: 30px; height: 21px; padding: 0; margin: 0; background: #3a3127; border: 1px solid #5a4b3a; border-radius: 4px; cursor: pointer; }
+.an-map-paint .an-mp-tint input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+.an-map-paint .an-mp-tint input[type="color"]::-webkit-color-swatch { border: none; border-radius: 2px; }
 .an-map-paint .an-mp-more { margin-left: auto; background: none; border: 0; color: #c8a24a; }
 .an-map-paint .an-mp-extra { margin: 8px 0 0; padding-top: 8px; border-top: 1px dashed #3d342a; }
 .an-map-paint .an-mp-extra[hidden] { display: none; }

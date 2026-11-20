@@ -1939,7 +1939,7 @@ const defaultCanvas = (w, h) => { if (typeof OffscreenCanvas !== 'undefined') re
 // The maps' painting kit, so anything else drawn in the same hand is drawn with the same tools rather than a second
 // set that drifts from it: carrier-paint.mjs paints the wagons with these. Roi, comparing a carrier with the
 // decorations beside it: "everything should have the same design system".
-export const PAINT_KIT = Object.freeze({ painted, inked, softShadow, boxAt, blob, trace, poly, line, wander, woodEnd, pick, shade, centre, reach, INK, INKD, defaultCanvas });
+export const PAINT_KIT = Object.freeze({ painted, inked, softShadow, boxAt, blob, trace, poly, line, wander, woodEnd, pick, shade, mix, noise, seeded, centre, reach, INK, INKD, defaultCanvas });
 
 // Where each decoration of a region goes: seeded scatter by kind and density over the region's bounds, kept inside the shape and
 // apart from each other. inside(x, y) answers whether a point is in the region. Returns [{ kind, x, y, size, turn, seed, flip }].

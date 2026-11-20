@@ -277,6 +277,19 @@ import { createCeilingDust } from "./engines/motion/ceiling-dust.mjs";
 import { createVermin, creatureAmount, creatureSize, SIZE_RANGE, sizePercent, ratHolesAt } from "./engines/motion/vermin.mjs";
 import { createUndergroundLife, sootSpots, ventsIn, wetRuns, mothHome } from "./engines/motion/underground-life.mjs";
 import { reachAround, wallSide, hazeFit, clipToSide } from "./engines/motion/wall-reach.mjs";
+import { createPaintedWalls } from "./engines/motion/painted-walls.mjs";
+import { createPaintedDoors } from "./engines/motion/painted-doors.mjs";
+import { DOOR_KINDS, doorFor, doorwaySpan } from "./engines/motion/door-paint.mjs";
+import { createPaintedWindows } from "./engines/motion/painted-windows.mjs";
+import { createPaintedRoofs } from "./engines/motion/painted-roofs.mjs";
+import { roomAt, roofsOf, roofLook, under as underRoof } from "./engines/motion/roof-looks.mjs";
+import { roofOpenings } from "./engines/motion/roof-sight.mjs";
+import { dressingOf, dressingKey, handDressing, DRESSING_COLOURS_MOST, DRESSING_PLAIN } from "./engines/motion/holiday-dressing.mjs";
+import { createPaintedDressing } from "./engines/motion/painted-dressing.mjs";
+import { ROOF_IDS, ROOF_FORM_IDS, roofFor, formFits, roofShape, ROOF_OVERHANG } from "./engines/motion/roof-paint.mjs";
+import { WINDOW_ART, WINDOW_CHOICES, windowFor } from "./engines/motion/window-paint.mjs";
+import { wallRuns, wallLook, wallDoors, wallWindows, alongStretch } from "./engines/motion/wall-looks.mjs";
+import { WALL_MATERIAL_CHOICES, WALL_MATERIAL_IDS, WALL_THICK, WALL_LIFT, smoothRun, litFrom } from "./engines/motion/wall-paint.mjs";
 import { undergroundSound, heardFrom, earsFor, critterVoices } from "./engines/motion/underground-sounds.mjs";
 import { perchesFrom } from "./engines/motion/perch-hops.mjs";
 import { weatherShelter, crossesWall, takeCover, createWildlife, wildSound, WILD_GAPS, closedGround, balancedLife, keepsOut } from "./engines/motion/wildlife.mjs";
@@ -1372,6 +1385,8 @@ let skyOpenRegions = [], skyOpenAreas = [];
 const openToSkyAt = (point, elevation = 0) => skyOpenRegions.some((region) => { try { return region.testPoint({ x: point.x, y: point.y, elevation }); } catch { return false; } });
 const shelteredAt = (point, elevation = 0) => {
   try {
+    // Under a painted roof is under cover: the creature standing there is out of the rain, as the floor is.
+    if (!openToSkyAt(point, elevation) && roofsOf(canvas?.scene?.flags?.[ID] ?? {}, { grid: canvas?.grid?.size ?? 100 }).some((r) => underRoof(r.room, point.x, point.y))) return true;
     return weatherSheltered(point, { elevation, regions: regionsHere(), planes: planesHere(), contains: containsPlane, openToSky: openToSkyAt(point, elevation) });
   } catch { return false; }
 };
@@ -1553,6 +1568,10 @@ const refreshSun = () => {
     // open to the sky (the caverns' skylights).
     sunNow = undergroundScene() ? null : skySunNow;
   } catch { sunNow = DEFAULT_SUN; skySunNow = DEFAULT_SUN; }
+  // The painted walls and roofs are lit by this, and they are pictures: they have to be painted again when it has
+  // really moved. The sun is also worked out after the canvas is ready, so the first paint of a scene happens with
+  // no sun at all and this is what comes back for it.
+  try { wallsFollowSun(); } catch { /* nothing painted yet */ }
 };
 // Dawn, dusk and moonlit nights colour the map (sun.mjs sunGlow) in scenes whose sun follows the time of day: one
 // translucent veil over the lit scene (over the darkness a calendar module sets, which would drown it underneath), at
@@ -1847,13 +1866,30 @@ const landedOpenings = () => {
     return Object.assign(p.map((v, i) => v + (i % 2 ? s[1] : s[0])), { soft: p.soft, window: p.window });
   });
 };
-const indoorPolygons = () => indoorPolygonsOf(regionsHere(), (region) => {
+// A room with a roof over it is indoors, whatever the regions say. Before this, a GM who had roofed a house still
+// had to draw a region inside it to keep the sky out, and nobody does (Roi: "rain is pouring indoors..").
+const roofedRooms = () => {
+  try {
+    const grid = canvas?.grid?.size ?? 100;
+    const out = [];
+    for (const roof of roofsOf(canvas?.scene?.flags?.[ID] ?? {}, { grid })) {
+      const r = roof?.room;
+      if (!r || !(r.w > 0) || !(r.h > 0)) continue;
+      // The room, not the roof: a roof hangs past its walls, and the rain stops at the wall.
+      const area = [r.x, r.y, r.x + r.w, r.y, r.x + r.w, r.y + r.h, r.x, r.y + r.h];
+      area.soft = 0; // a roof has an edge; it does not fade
+      out.push(area);
+    }
+    return out;
+  } catch { return []; }
+};
+const indoorPolygons = () => [...indoorPolygonsOf(regionsHere(), (region) => {
   // Each with how far the weather fades in at its edge.
   const soft = indoorEdgeOf(region.flags?.[ID]);
   const areas = [];
   for (const area of regionAreas(region)) { area.soft = soft; areas.push(area); }
   return areas;
-});
+}), ...roofedRooms()];
 const rebuildWallShadows = () => {
   wallShadowTimer = null;
   try {
@@ -2685,6 +2721,8 @@ const startDecorBrush = (doc = null) => {
   state.bar = openBrushBar({ onClose: () => stopDecorBrush(), onChange: () => { draw(); if ((floorsOn() || (heightsOn() && brushChoices().heightMode === "raise")) && modelOn()) void loadSam(); refreshHeights(); refreshStatus(); }, region, thumb,
     onTab: () => { if (floorsOn() || heightsOn()) void readMap(); if (!floorsOn()) hideHover(); refreshHeights(); draw(); refreshStatus(); },
     sceneTicks: { get: () => ({ walls: heightsSceneOn("walls"), shadows: heightsSceneOn("shadows"), topdown: cliffsTopDown() }), set: (key, on) => void canvas.scene?.update(key === "topdown" ? { [`flags.${ID}.cliffView`]: on ? "topdown" : "side" } : { [`flags.${ID}.${key === "walls" ? "cliffWalls" : "heightShadows"}`]: on }) },
+    // The feast the GM has called on this scene, with no calendar behind it.
+    sceneHoliday: { get: () => canvas.scene?.flags?.[ID]?.holiday ?? null, set: (said) => void canvas.scene?.update({ [`flags.${ID}.holiday`]: { on: said?.on === true, colours: (said?.colours ?? []).slice(0, DRESSING_COLOURS_MOST) } }) },
     onUndo: () => { if (!state.down) void undoDecorStep().then(refreshStatus); }, onRedo: () => { if (!state.down) void redoDecorStep().then(refreshStatus); },
     onReadMap: game.settings.get(ID, "experimentalWaterRegions") === true ? () => { stopDecorBrush(); void openFloorRegionsTool(); } : null });
   const sizeNow = () => brushChoices().size;
@@ -3107,6 +3145,9 @@ const startDecorBrush = (doc = null) => {
   const draw = () => {
     ring.clear();
     const floors = floorsOn(); fl.overlay.visible = floors;
+    // Walls have no brush and lay no decoration: the ring and the ghost would both be lying about what a drag does.
+    if (wallsOn()) { ghost.visible = false; wl.overlay.visible = true; if (!state.down) wallsHover(); return; }
+    wl.overlay.visible = false;
     if (heightsOn()) {
       ghost.visible = false;
       // (Raise is a brush: its ring, in the raised ground's colour.)
@@ -3165,10 +3206,463 @@ const startDecorBrush = (doc = null) => {
     if (decorBrushing === state) Object.assign(state, { id: null, doc: null, brushed: [], erased: [], circles: [], fresh: null });
   };
   // (A right-drag pans the map as ever; only a right-click that stays put stops the brush.)
+  // Walls (engines/motion/wall-paint.mjs): a drag lays a run of Foundry's own walls — which is what the vision and the
+  // movement need — each carrying the material that paints it. Nothing of a map's existing walls is touched: Animater
+  // paints only what was drawn here. Shift-click takes a painted wall away again.
+  const wl = state.walls = { points: null, round: null, move: null, rubbing: false, rubbed: new Set(), gone: [], overlay: new PIXI.Graphics() };
+  wl.overlay.eventMode = "none"; top.addChild(wl.overlay);
+  const wallsOn = () => brushChoices().tab === "walls";
+  // To the nearest grid corner, which is where a wall belongs; the grid's own answer where Foundry gives one.
+  const wallSnap = (p) => {
+    try {
+      const mode = CONST?.GRID_SNAPPING_MODES?.VERTEX;
+      if (mode && canvas.grid?.getSnappedPoint) { const s = canvas.grid.getSnappedPoint(p, { mode, resolution: 1 }); if (Number.isFinite(s?.x)) return { x: s.x, y: s.y }; }
+    } catch { /* an older grid, or a kind that has no corners */ }
+    const g = grid(), r = canvas.dimensions?.sceneRect ?? { x: 0, y: 0 };
+    return { x: r.x + Math.round((p.x - r.x) / g) * g, y: r.y + Math.round((p.y - r.y) / g) * g };
+  };
+  const wallsSame = (a, b) => a && b && Math.hypot(a.x - b.x, a.y - b.y) < 1;
+  // The painted wall under the pointer, if any: only ones drawn here, never a wall the map came with.
+  const wallsUnder = (p) => {
+    // About the wall's own width, not half a square: on a 200px grid half a square was 100px, so rubbing out near a
+    // corner took the wall round the corner with it and left the room full of gaps.
+    const reach = grid() * Math.max(WALL_THICK, 0.12);
+    let best = null;
+    for (const w of canvas.walls?.placeables ?? []) {
+      if (!WALL_MATERIAL_IDS.includes(w.document.flags?.[ID]?.material)) continue;
+      // One already rubbed out this stroke: its placeable is still on the canvas for a frame or two after its
+      // document has gone, and asking Foundry to delete it again is what shouted "Wall ... does not exist!".
+      if (wl.rubbed.has(w.id) || !w.document.parent?.walls?.get(w.id)) continue;
+      const [x1, y1, x2, y2] = w.document.c, dx = x2 - x1, dy = y2 - y1, len2 = dx * dx + dy * dy || 1;
+      const t = Math.max(0, Math.min(1, ((p.x - x1) * dx + (p.y - y1) * dy) / len2));
+      const away = Math.hypot(p.x - (x1 + dx * t), p.y - (y1 + dy * t));
+      if (away <= reach && (!best || away < best.away)) best = { doc: w.document, away };
+    }
+    return best?.doc ?? null;
+  };
+  // Erase is a mode of its own on the bar, with Shift as the shortcut either way round: a GM should be able to see
+  // that the next drag takes walls away, not have to remember it.
+  const wallsErasing = (shift) => (brushChoices().wallMode === "erase") !== (shift === true);
+  // Rubbing out is a drag, so the same wall comes under the pointer many times over: each is remembered, and asked
+  // to go only once. A delete that fails because somebody else got there first is not worth shouting about.
+  const wallsRub = (p) => {
+    const had = wallsUnder(p);
+    if (!had) return false;
+    wl.rubbed.add(had.id);
+    wl.gone.push(had.toObject());
+    void Promise.resolve(had.delete()).catch(() => { /* already gone */ });
+    return true;
+  };
+  // A doorway is cut, not drawn: the wall under the click is split, and the middle of it becomes a door of Foundry's
+  // own with the leaf's kind on it. The stone either side carries on exactly as it was, which is why a doorway reads
+  // as a gap in a wall rather than as something laid over one.
+  // A window set into an opening. One that opens and closes is left as the wall has it — window-state.mjs shapes its
+  // edge from its own flags, as it always has. One that never closes is an opening in the stone, so sight goes
+  // through it; an arrow slit is deep enough that sound does not.
+  const windowDoc = (c, keep, choice) => {
+    const kind = WINDOW_ART[choice.windowKind] ? choice.windowKind : windowFor(keep.material);
+    const flags = { ...keep, window: kind, windowOpen: false, windowSlats: false, windowWalk: choice.windowWalk === true, swing: choice.swing === "out" ? "out" : "in" };
+    const doc = { c, flags: { [ID]: flags } };
+    // (0 is NONE: it lets that sense through. The named constants are a deprecated proxy that warns on every read,
+    // so the numbers are used here as engines/motion/window-state.mjs uses them.)
+    if (!WINDOW_ART[kind].opens) {
+      doc.sight = 0;
+      if (kind !== "arrowWindow") doc.sound = 0;
+    }
+    return doc;
+  };
+  // What is in an opening is changed by clicking it, rather than being refused: a door becomes another kind of door,
+  // or a window, and the other way about. The stone either side is not touched — only what hangs in the gap.
+  const wallsFillOpening = async (found, as, choice) => {
+    const own = found.flags?.[ID] ?? {}, was = found.toObject();
+    const NORMAL = 20, swing = choice.swing === "out" ? "out" : "in";
+    // Taking a flag away: v14 wants a ForcedDeletion, and warns on the old `-=` spelling. Older cores only know `-=`.
+    const forget = (...fields) => Object.fromEntries(fields.map((f) => {
+      const Gone = foundry?.data?.operators?.ForcedDeletion;
+      return Gone ? [`flags.${ID}.${f}`, new Gone()] : [`flags.${ID}.-=${f}`, null];
+    }));
+    let change;
+    if (as === "window") {
+      const kind = WINDOW_ART[choice.windowKind] ? choice.windowKind : windowFor(own.material);
+      const opens = WINDOW_ART[kind].opens;
+      // (0 is NONE, 20 NORMAL. A window that closes is left as the wall has it — window-state.mjs shapes its edge.)
+      change = {
+        door: 0, ds: 0, sight: opens ? NORMAL : 0, sound: opens || kind === "arrowWindow" ? NORMAL : 0,
+        [`flags.${ID}.window`]: kind, [`flags.${ID}.windowOpen`]: false, [`flags.${ID}.windowSlats`]: false,
+        [`flags.${ID}.windowWalk`]: choice.windowWalk === true, [`flags.${ID}.swing`]: swing,
+        ...forget("door", "hinge"),
+      };
+    } else {
+      change = {
+        door: 1, ds: 0, sight: NORMAL, sound: NORMAL,
+        [`flags.${ID}.door`]: DOOR_KINDS[choice.doorKind] ? choice.doorKind : doorFor(own.material),
+        [`flags.${ID}.hinge`]: choice.doorFlip ? "far" : "near", [`flags.${ID}.swing`]: swing,
+        ...forget("window", "windowOpen", "windowSlats", "windowWalk"),
+      };
+    }
+    try {
+      await found.update(change);
+      rememberDecorStep({ kind: "walls", made: [found.toObject()], gone: [was] });
+    } catch (err) { ui.notifications?.warn("Animater: that opening could not be changed."); console.warn("Animater | opening", err); }
+  };
+  const wallsCutDoor = async (p, as = "door") => {
+    const thing = as === "window" ? "window" : "doorway";
+    const found = wallsUnder(p);
+    if (!found) { ui.notifications?.info(`Animater: click a painted wall to cut a ${thing} in it.`); return; }
+    if (Number(found.door) > 0 || found.flags?.[ID]?.window) { await wallsFillOpening(found, as, brushChoices()); return; }
+    const g = grid(), choice = brushChoices();
+    const own = found.flags?.[ID] ?? {}, material = own.material;
+    const kind = DOOR_KINDS[choice.doorKind] ? choice.doorKind : doorFor(material);
+    // A GM draws a wall a square at a time, so the wall clicked on is usually one square long. The opening is cut
+    // from the whole straight stretch it belongs to, not from that one square, or the bar could ask for three
+    // squares and get one (Roi: "this is NOT 3 squares wide").
+    const stretch = alongStretch(paintWallList(), found.id);
+    if (!stretch) { ui.notifications?.info(`Animater: click a painted wall to cut a ${thing} in it.`); return; }
+    const { a: head, d, length: len, parts } = stretch;
+    // As wide as the bar asks for, but never wider than the wall it is cut from.
+    const wide = Math.min(len * 0.9, g * (choice.doorWide ?? 1));
+    // Where along the wall: under the click, then slid so it sits wholly inside the wall it is cut from.
+    const t = Math.max(wide / 2, Math.min(len - wide / 2, ((p.x - head[0]) * d[0] + (p.y - head[1]) * d[1])));
+    // A stub too short to be a wall is not dropped — dropping it left a hole in the room (Roi: "why is there a whole
+    // in the wall it's supposed to be a complete room"). The doorway is slid flush to that end instead, so the stone
+    // either side always reaches the corner it is meant to reach.
+    const cut = doorwaySpan(len, t, wide);
+    const at = (k) => [Math.round(head[0] + d[0] * k), Math.round(head[1] + d[1] * k)];
+    const a = at(cut.from), b = at(cut.to);
+    const keep = { ...own };
+    const docs = [as === "window" ? windowDoc([...a, ...b], keep, choice) : { c: [...a, ...b], door: 1, ds: 0, flags: { [ID]: { ...keep, door: kind, hinge: choice.doorFlip ? "far" : "near", swing: choice.swing === "out" ? "out" : "in" } } }];
+    // Every wall the opening reaches into goes, and whatever is left of each at either end comes back as its own
+    // wall, keeping that wall's own material and years.
+    const gone = [];
+    const SCRAP = 1; // a leftover shorter than this is not a wall, it is a rounding error
+    for (const part of parts) {
+      if (part.to <= cut.from + SCRAP || part.from >= cut.to - SCRAP) continue;
+      const doc = canvas.scene?.walls?.get(part.id);
+      if (!doc) continue;
+      gone.push(doc);
+      const mine = { ...(doc.flags?.[ID] ?? {}) };
+      if (part.from < cut.from - SCRAP) docs.push({ c: [...at(part.from), ...a], flags: { [ID]: mine } });
+      if (part.to > cut.to + SCRAP) docs.push({ c: [...b, ...at(part.to)], flags: { [ID]: mine } });
+    }
+    if (!gone.length) gone.push(found);
+    try {
+      const was = gone.map((doc) => doc.toObject());
+      const made = await canvas.scene?.createEmbeddedDocuments("Wall", docs);
+      await canvas.scene?.deleteEmbeddedDocuments("Wall", gone.map((doc) => doc.id));
+      if (made?.length) rememberDecorStep({ kind: "walls", made: made.map((d) => d.toObject()), gone: was });
+    } catch (err) { ui.notifications?.warn(`Animater: that ${thing} could not be cut.`); console.warn("Animater | opening", err); }
+  };
+  // A roof is laid over a room, not drawn: the click says which room, and the walls say where that room ends. A
+  // click on a roof already there takes it off again.
+  const roofHere = (p) => {
+    const grid = canvas?.grid?.size ?? 100;
+    return roofsOf(canvas?.scene?.flags?.[ID] ?? {}, { grid }).find((r) => underRoof(r.room, p.x, p.y)) ?? null;
+  };
+  // The room under a point, worked out at most once a square: walking a room is cheap, doing it sixty times a
+  // second over every wall on the map is not.
+  let roomSeen = { key: "", room: null };
+  const roomUnder = (p) => {
+    const g = grid(), key = `${Math.floor(p.x / g)},${Math.floor(p.y / g)}:${canvas.walls?.placeables?.length ?? 0}`;
+    if (key === roomSeen.key) return roomSeen.room;
+    const rect = canvas.dimensions?.sceneRect;
+    const room = roomAt(p, (canvas.walls?.placeables ?? []).map((w) => ({ c: w.document.c })), {
+      grid: g, most: 900,
+      bounds: rect ? { x: rect.x, y: rect.y, w: rect.width, h: rect.height } : null,
+    });
+    roomSeen = { key, room };
+    return room;
+  };
+  // A whole building: the room under the click, the painted walls that close it in — doorways and windows among
+  // them, since those are walls too — and the roof over it. Foundry's own Walls layer moves walls and nothing else,
+  // and a roof is a box kept in the scene's flags, so moving a house that way left its roof behind (Roi: "how do we
+  // move a whole building somewhere else?").
+  const buildingAt = (p) => {
+    const room = roomUnder(p);
+    if (!room) return null;
+    const g = grid(), edge = g * 0.6;
+    const round = { x: room.x - edge, y: room.y - edge, w: room.w + edge * 2, h: room.h + edge * 2 };
+    const walls = (canvas.walls?.placeables ?? [])
+      .filter((w) => WALL_MATERIAL_IDS.includes(w.document.flags?.[ID]?.material))
+      .filter((w) => underRoof(round, (w.document.c[0] + w.document.c[2]) / 2, (w.document.c[1] + w.document.c[3]) / 2))
+      .map((w) => w.document);
+    if (!walls.length) return null;
+    // Whichever roofs stand over this room: a roof is kept by its box, and the one over this room is the one whose
+    // middle is in it.
+    const roofs = (canvas.scene?.flags?.[ID]?.roofs ?? []).filter((r) => Number.isFinite(r?.x)
+      && underRoof(round, r.x + r.w / 2, r.y + r.h / 2));
+    return { room, walls, roofs };
+  };
+  // What the building would look like once it had been moved: its walls and its roof, drawn where they would land.
+  const buildingShow = (move) => {
+    wl.overlay.clear();
+    if (!move) return;
+    const [dx, dy] = move.by;
+    wl.overlay.lineStyle({ width: Math.max(2, grid() * 0.08), color: 0xf3e4c4, alpha: 0.85, cap: "round" });
+    for (const w of move.building.walls) {
+      const [ax, ay, bx, by] = w.c;
+      wl.overlay.moveTo(ax + dx, ay + dy); wl.overlay.lineTo(bx + dx, by + dy);
+    }
+    for (const r of move.building.roofs) {
+      wl.overlay.lineStyle(2, 0xf3e4c4, 0.6);
+      wl.overlay.drawRect(r.x + dx, r.y + dy, r.w, r.h);
+    }
+  };
+  const buildingMove = async (move) => {
+    const here = canvas?.scene;
+    const [dx, dy] = move?.by ?? [0, 0];
+    if (!here || (!dx && !dy)) return;
+    const walls = move.building.walls.filter((w) => here.walls.get(w.id));
+    const updates = walls.map((w) => ({ _id: w.id, c: [w.c[0] + dx, w.c[1] + dy, w.c[2] + dx, w.c[3] + dy] }));
+    const was = (here.flags?.[ID]?.roofs ?? []);
+    const moved = new Set(move.building.roofs.map((r) => r.id));
+    const roofs = was.map((r) => (moved.has(r.id) ? { ...r, x: r.x + dx, y: r.y + dy } : r));
+    try {
+      // Where everything stood, and where it stands now: taken back, each goes back to exactly where it was, rather
+      // than being stepped back by the same distance. A step is a sum, and sums go wrong when something else has
+      // moved in between.
+      const step = {
+        kind: "moved",
+        walls: walls.map((w, i) => ({ id: w.id, was: [...w.c], now: [...updates[i].c] })),
+        roofs: [...moved].map((id) => { const r = was.find((x) => x.id === id); return { id, was: [r.x, r.y], now: [r.x + dx, r.y + dy] }; }),
+      };
+      if (updates.length) await here.updateEmbeddedDocuments("Wall", updates);
+      if (moved.size) await here.update({ [`flags.${ID}.roofs`]: roofs });
+      rememberDecorStep(step);
+    } catch (err) { ui.notifications?.warn("Animater: that building could not be moved."); console.warn("Animater | move", err); }
+  };
+  const roofLay = async (p) => {
+    const here = canvas?.scene;
+    if (!here) return;
+    const was = roofsOf(here.flags?.[ID] ?? {}, { grid: canvas?.grid?.size ?? 100 });
+    const had = was.find((r) => underRoof(r.room, p.x, p.y));
+    if (had) {
+      // Take it off again.
+      await here.update({ [`flags.${ID}.roofs`]: (here.flags?.[ID]?.roofs ?? []).filter((r) => (r?.id ?? "") !== had.id) });
+      return;
+    }
+    const grid = canvas.grid?.size ?? 100;
+    const found = roomUnder(p);
+    if (!found) { ui.notifications?.info("Animater: that is not a room — the walls there do not close it in."); return; }
+    const choice = brushChoices();
+    // What the walls of that room are made of, so a roof can match them.
+    const near = (canvas.walls?.placeables ?? []).filter((w) => WALL_MATERIAL_IDS.includes(w.document.flags?.[ID]?.material))
+      .filter((w) => underRoof({ ...found, x: found.x - grid, y: found.y - grid, w: found.w + grid * 2, h: found.h + grid * 2 }, (w.document.c[0] + w.document.c[2]) / 2, (w.document.c[1] + w.document.c[3]) / 2));
+    // Whether the room is round, asked of the walls rather than of the squares it covers. A tower two squares
+    // across fills every square of its own box, so counting squares called it a box and refused it a cone; the
+    // walls round it are a ring of short legs, most of them lying across the grid rather than along it.
+    const legs = near.map((w) => w.document.c).filter(([ax, ay, bx, by]) => Math.hypot(bx - ax, by - ay) > 1);
+    const askew = legs.filter(([ax, ay, bx, by]) => Math.abs(bx - ax) > 1 && Math.abs(by - ay) > 1).length;
+    const round = legs.length >= 8 && askew >= legs.length * 0.5;
+    // A round room's squares are not its size. The floor of a tower 3 squares across only fills the 2x2 of squares
+    // its circle wholly covers, so a roof laid on that box stopped short of its own walls (Roi: "shouldnt the roof
+    // pass the wall?"). Where the walls are a ring, the ring is what the roof is measured against.
+    let box = { x: found.x, y: found.y, w: found.w, h: found.h };
+    if (round) {
+      // The ring itself, not whatever else stands nearby: its legs all lie the same distance from the middle of the
+      // room, so the ones that do not are another building's walls and have no say in how far this roof reaches.
+      const cx = found.x + found.w / 2, cy = found.y + found.h / 2;
+      const outFrom = ([ax, ay, bx, by]) => Math.hypot((ax + bx) / 2 - cx, (ay + by) / 2 - cy);
+      const askewLegs = legs.filter(([ax, ay, bx, by]) => Math.abs(bx - ax) > 1 && Math.abs(by - ay) > 1);
+      const sorted = askewLegs.map(outFrom).sort((a, b) => a - b);
+      const usual = sorted[Math.floor(sorted.length / 2)] || 0;
+      const ring = usual > 0 ? legs.filter((l) => Math.abs(outFrom(l) - usual) <= usual * 0.25) : [];
+      const xs = ring.flatMap(([ax, , bx]) => [ax, bx]), ys = ring.flatMap(([, ay, , by]) => [ay, by]);
+      if (xs.length) {
+        const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+        if (x1 > x0 && y1 > y0) box = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+      }
+    }
+    const room = { ...found, ...box, round };
+    // A cone is a circle, so it only covers a room that is actually round — a tower, a mill. On a square or an
+    // oblong one its corners are left open to the sky. The roof still goes on, it just takes the shape that fits,
+    // and says so.
+    if (choice.roofForm && !formFits(choice.roofForm, room, { grid })) {
+      ui.notifications?.info("Animater: a conical roof only fits a round room, so this one takes the shape that does.");
+    }
+    const material = near[0]?.document?.flags?.[ID]?.material ?? "fieldstone";
+    const roof = {
+      id: foundry?.utils?.randomID?.() ?? `roof${Date.now()}`,
+      x: Math.round(room.x), y: Math.round(room.y), w: Math.round(room.w), h: Math.round(room.h),
+      kind: ROOF_IDS.includes(choice.roofKind) ? choice.roofKind : roofFor(material),
+      form: ROOF_FORM_IDS.includes(choice.roofForm) ? choice.roofForm : undefined,
+      age: Math.max(0, Math.min(1, Number(choice.roofAge) || 0)),
+      chimney: choice.roofChimney === "brick" || choice.roofChimney === "stone" ? choice.roofChimney : null,
+      dressed: choice.roofDressed === true,
+      tint: choice.roofTint || null,
+      // What this building hangs out is its own, kept with it like its chimney and its colour — not a live
+      // setting on the bar, which was both the same for every building and forgotten on reload.
+      hangs: choice.dressingKind || "garlands",
+      material,
+      // Only the box is kept, and a round room's box is a square one's box, so whether the room was round is
+      // remembered here: it is the one thing a cone needs and the box cannot say.
+      round: formFits("cone", room, { grid }),
+    };
+    try { await here.update({ [`flags.${ID}.roofs`]: [...(here.flags?.[ID]?.roofs ?? []), roof] }); }
+    catch (err) { ui.notifications?.warn("Animater: that roof could not be laid."); console.warn("Animater | roof", err); }
+  };
+  // A round room, laid as a ring of walls. A wall drawn by hand snaps to the grid's corners, so a circle could only
+  // ever be stepped out of right angles, and a conical roof — which wants a room that is actually round — had
+  // nothing to sit on (Roi: "i cant manage to put a circle wall to use conical roof"). Here the centre is a corner
+  // and the drag is the radius; the ring itself is laid off the grid, which is what makes it round.
+  const roundRoom = (middle, p) => {
+    const g = grid(), far = Math.hypot(p.x - middle.x, p.y - middle.y);
+    // In half squares, so the room it closes in is a tidy size, and never smaller than one square across.
+    const r = Math.max(g * 0.5, Math.round(far / (g * 0.5)) * g * 0.5);
+    // Enough sides that it reads as a circle, each still long enough to be a wall of its own.
+    const sides = Math.max(8, Math.min(24, Math.round((2 * Math.PI * r) / (g * 0.75))));
+    const points = [];
+    for (let i = 0; i < sides; i++) {
+      const a = (i / sides) * Math.PI * 2 - Math.PI / 2;
+      points.push({ x: Math.round(middle.x + Math.cos(a) * r), y: Math.round(middle.y + Math.sin(a) * r) });
+    }
+    points.push({ ...points[0] }); // closed: the last leg comes back to the first corner
+    return points;
+  };
+  const wallsDown = (p, shift) => {
+    const mode = brushChoices().wallMode;
+    if (mode === "roof" && !shift) { void roofLay(p).then(refreshStatus); return; }
+    if (mode === "round" && !shift) { wl.round = wallSnap(p); wl.points = roundRoom(wl.round, p); wallsShow(); return; }
+    if (mode === "move" && !shift) {
+      // On a wall, that wall alone; inside a room, the whole building (Roi: "we should be able to also just move
+      // a walls").
+      const one = wallsUnder(p);
+      const building = one ? { room: null, walls: [one], roofs: [] } : buildingAt(p);
+      if (!building) { ui.notifications?.info("Animater: click a painted wall to move it, or inside a building to move the whole of it."); return; }
+      wl.move = { building, from: wallSnap(p), by: [0, 0] };
+      buildingShow(wl.move);
+      return;
+    }
+    if ((mode === "door" || mode === "window") && !shift) { void wallsCutDoor(p, mode).then(refreshStatus); return; }
+    if (wallsErasing(shift)) { wl.rubbing = true; wl.rubbed.clear(); wl.gone = []; wallsRub(p); return; }
+    wl.points = [wallSnap(p)];
+    wallsShow();
+  };
+  const wallsMove = (p) => {
+    if (wl.rubbing) { wallsRub(p); return; }
+    if (wl.move) { const to = wallSnap(p); wl.move.by = [to.x - wl.move.from.x, to.y - wl.move.from.y]; buildingShow(wl.move); return; }
+    if (wl.round) { wl.points = roundRoom(wl.round, p); wallsShow(); return; }
+    const s = wallSnap(p);
+    if (wallsSame(s, wl.points.at(-1))) return;
+    // Back over the last corner takes that leg off again, so a wrong turn is undone without letting go.
+    if (wl.points.length > 1 && wallsSame(s, wl.points.at(-2))) wl.points.pop();
+    else wl.points.push(s);
+    wallsShow();
+  };
+  // Hovering: the corner a drag would start from, or, when rubbing out, the wall that would go.
+  const wallsHover = () => {
+    wl.overlay.clear();
+    const p = state.at;
+    if (!p) return;
+    const mode = brushChoices().wallMode;
+    if (mode === "roof" && !state.erasing) {
+      // The roof that is there, or the room a roof would cover. Finding a room means walking its squares, so it is
+      // worked out once a square rather than once a mouse move — it was once a move, and the page stopped answering.
+      const had = roofHere(p);
+      const box = had?.room ?? roomUnder(p);
+      if (!box) return;
+      wl.overlay.lineStyle(2, had ? 0xff7a64 : 0xf3e4c4, 0.9);
+      wl.overlay.beginFill(had ? 0xff7a64 : 0xf3e4c4, 0.1);
+      wl.overlay.drawRect(box.x, box.y, box.w, box.h);
+      wl.overlay.endFill();
+      return;
+    }
+    if (mode === "move" && !state.erasing) {
+      // What a drag would pick up: the one wall under the pointer, or, between walls, the whole building — its
+      // walls and the roof that would travel with them.
+      const one = wallsUnder(p);
+      const building = one ? { walls: [one], roofs: [] } : buildingAt(p);
+      if (!building) return;
+      wl.overlay.lineStyle({ width: Math.max(2, grid() * 0.08), color: 0xf3e4c4, alpha: 0.6, cap: "round" });
+      for (const w of building.walls) { wl.overlay.moveTo(w.c[0], w.c[1]); wl.overlay.lineTo(w.c[2], w.c[3]); }
+      for (const r of building.roofs) { wl.overlay.lineStyle(2, 0xf3e4c4, 0.4); wl.overlay.drawRect(r.x, r.y, r.w, r.h); }
+      return;
+    }
+    if ((mode === "door" || mode === "window") && !state.erasing) {
+      const had = wallsUnder(p);
+      if (!had) return;
+      // An opening already there would be filled with something else, so it is marked whole rather than part-way.
+      if (Number(had.door) > 0 || had.flags?.[ID]?.window) {
+        const [ax, ay, bx, by] = had.c;
+        wl.overlay.lineStyle({ width: Math.max(3, grid() * 0.34), color: 0xf3e4c4, alpha: 0.4, cap: "butt" });
+        wl.overlay.moveTo(ax, ay); wl.overlay.lineTo(bx, by);
+        return;
+      }
+      // Where the opening would be cut, marked on the straight stretch it would be cut from — the same stretch the
+      // cut itself uses, so what is shown is what is got.
+      const stretch = alongStretch(paintWallList(), had.id);
+      if (!stretch) return;
+      const { a: head, d, length: len } = stretch;
+      const g = grid(), wide = Math.min(len * 0.9, g * (brushChoices().doorWide ?? 1));
+      const t = Math.max(wide / 2, Math.min(len - wide / 2, (p.x - head[0]) * d[0] + (p.y - head[1]) * d[1]));
+      // A painted wall is drawn as a wall seen from a little to one side, so its picture sits lifted off the line the
+      // wall really runs along. The mark is lifted the same way, or it points at bare ground beside the stone.
+      const up = sunLit() ?? [-0.62, -0.78], lift = g * WALL_LIFT;
+      wl.overlay.lineStyle({ width: Math.max(3, g * 0.34), color: 0xf3e4c4, alpha: 0.5, cap: "butt" });
+      wl.overlay.moveTo(head[0] + d[0] * (t - wide / 2) + up[0] * lift, head[1] + d[1] * (t - wide / 2) + up[1] * lift);
+      wl.overlay.lineTo(head[0] + d[0] * (t + wide / 2) + up[0] * lift, head[1] + d[1] * (t + wide / 2) + up[1] * lift);
+      return;
+    }
+    if (wallsErasing(state.erasing)) {
+      const had = wallsUnder(p);
+      if (!had) return;
+      const [x1, y1, x2, y2] = had.c;
+      wl.overlay.lineStyle({ width: Math.max(3, grid() * 0.1), color: 0xff7a64, alpha: 0.85, cap: "round" });
+      wl.overlay.moveTo(x1, y1); wl.overlay.lineTo(x2, y2);
+      return;
+    }
+    const s = wallSnap(p), r = Math.max(3, grid() * 0.07);
+    wl.overlay.lineStyle(2, 0xf3e4c4, 0.9);
+    wl.overlay.drawCircle(s.x, s.y, r);
+  };
+  // The run as it goes: a band as thick as the wall will be drawn, in its own colour.
+  // The corners a drag has been through, bent into a curve when the bar asks for one.
+  const wallsPath = (points) => {
+    const choice = brushChoices();
+    if (!choice.wallCurve || points.length < 3) return points.map((p) => [p.x, p.y]);
+    return smoothRun(points, Math.max(8, grid() * 0.25));
+  };
+  const wallsShow = () => {
+    wl.overlay.clear();
+    const points = wl.points;
+    if (!points?.length) return;
+    const choice = brushChoices(), colour = Number.parseInt((WALL_MATERIAL_CHOICES.find((c) => c.id === choice.wallMaterial)?.base ?? "#6c6a62").slice(1), 16);
+    const thick = Math.max(2, (choice.wallWidth ?? WALL_THICK) * 2 * grid()), path = wallsPath(points);
+    wl.overlay.lineStyle({ width: thick, color: colour, alpha: 0.75, cap: "round", join: "round" });
+    wl.overlay.moveTo(path[0][0], path[0][1]);
+    for (const p of path.slice(1)) wl.overlay.lineTo(p[0], p[1]);
+    if (path.length === 1) { wl.overlay.lineStyle(0); wl.overlay.beginFill(colour, 0.6); wl.overlay.drawCircle(path[0][0], path[0][1], thick * 0.5); wl.overlay.endFill(); }
+    // The corners themselves, so a curve shows what it was drawn through. A ring has nothing to show that way: it is
+    // the circle that is being drawn, not the corners it happens to be made of.
+    if (wl.round) { wl.overlay.lineStyle(2, 0xf3e4c4, 0.8); wl.overlay.drawCircle(wl.round.x, wl.round.y, Math.max(2, grid() * 0.05)); return; }
+    wl.overlay.lineStyle(2, 0xf3e4c4, 0.8);
+    for (const p of points) wl.overlay.drawCircle(p.x, p.y, Math.max(2, grid() * 0.04));
+  };
+  // Letting go lays them: one Foundry wall a leg, each with its material and its years on it.
+  const wallsLay = async (points, ring = false) => {
+    if (!Array.isArray(points) || points.length < 2) return;
+    // A ring is already the shape it is meant to be: curving it again, or throwing away its shorter legs, would
+    // leave a round room with a gap in it.
+    const choice = brushChoices(), path = ring ? points.map((p) => [p.x, p.y]) : wallsPath(points), least = ring ? 2 : choice.wallCurve ? 2 : grid() * 0.4;
+    const docs = [];
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = path[i], b = path[i + 1];
+      if (Math.hypot(b[0] - a[0], b[1] - a[1]) < least) continue;
+      // The colour it is painted in is kept on the wall, like its years and its thickness: the walls already up
+      // keep the colour they were drawn in when the GM picks another.
+      docs.push({ c: [Math.round(a[0]), Math.round(a[1]), Math.round(b[0]), Math.round(b[1])], flags: { [ID]: { material: choice.wallMaterial, age: choice.wallAge ?? 0, thick: choice.wallWidth ?? WALL_THICK, ...(choice.wallTint ? { tint: choice.wallTint } : {}) } } });
+    }
+    if (!docs.length) return;
+    try {
+      const made = await canvas.scene?.createEmbeddedDocuments("Wall", docs);
+      if (made?.length) rememberDecorStep(wallStepOf(made, []));
+    } catch (err) { ui.notifications?.warn("Animater: those walls could not be laid."); console.warn("Animater | walls", err); }
+  };
+
   // (Heard on the window before Foundry's canvas hears them, and kept from it while painting, so a stroke never draws
   // Foundry's drag-select box or selects what it passes over.)
   const down = (e) => {
     if (e.target !== view) return; if (e.button === 2) { state.rightAt = { x: e.clientX, y: e.clientY }; return; } if (e.button !== 0) return; e.stopImmediatePropagation(); e.preventDefault(); const p = at(e);
+    if (wallsOn()) { wallsDown(p, e.shiftKey); state.down = !!wl.points || !!wl.move || wl.rubbing; state.erasing = e.shiftKey; draw(); return; }
     if (heightsOn()) { if (!heightsDown(p, e.shiftKey, e.altKey)) return; state.down = true; state.erasing = e.shiftKey; state.last = p; draw(); floorDab(p); return; }
     if (floorsOn()) { if (!floorBegin(p, e.shiftKey)) return; state.down = true; state.erasing = e.shiftKey; state.last = p; draw(); floorDab(p); return; }
     begin(p); state.down = true; state.erasing = e.shiftKey; state.last = p; draw(); dab(p, e.shiftKey, true);
@@ -3179,13 +3673,20 @@ const startDecorBrush = (doc = null) => {
     if (!state.down && e.target !== view) { hideHover(); if (state.at) { state.at = null; draw(); } return; } const p = at(e); state.at = p; if (!state.down) state.erasing = e.shiftKey; draw();
     if (hz.drag) { e.stopImmediatePropagation(); hz.drag.ramp.b = p; refreshHeights(); return; }
     if (hz.open) { e.stopImmediatePropagation(); const last = hz.open.circles.at(-1); if (Math.hypot(p.x - last.x, p.y - last.y) >= hz.open.r * 0.5) { hz.open.circles.push({ x: Math.round(p.x), y: Math.round(p.y), r: Math.round(hz.open.r) }); refreshHeights(); } return; }
+    if (wallsOn()) { if (state.down && (wl.points || wl.move || wl.rubbing)) { e.stopImmediatePropagation(); wallsMove(p); } else hideHover(); return; }
     if (!state.down && heightsOn()) { hideHover(); heightsHover(p); return; }
     if (!state.down) { if (floorsOn() && fl.map && !e.shiftKey) hoverFloor(p); else hideHover(); return; } e.stopImmediatePropagation();
     // A floor stroke dabs every third of the ring, filling the gaps between, so a quick drag paints a band, not beads.
     if (fl.stroke) { const step = sizeNow() * grid() / 6, dist = Math.hypot(p.x - state.last.x, p.y - state.last.y); if (dist < step) return; for (let s = step; s <= dist; s += step) floorDab({ x: state.last.x + ((p.x - state.last.x) * s) / dist, y: state.last.y + ((p.y - state.last.y) * s) / dist }); state.last = p; return; }
     if (Math.hypot(p.x - state.last.x, p.y - state.last.y) > sizeNow() * grid() * 0.35) { state.last = p; dab(p, e.shiftKey); }
   };
-  const up = (e) => { if (hz.open) { e.stopImmediatePropagation(); state.down = false; const open = hz.open; hz.open = null; void saveOpenEdges(open); return; } if (hz.drag) { e.stopImmediatePropagation(); state.down = false; const drag = hz.drag; hz.drag = null; void layRamp(drag); return; } if (!state.down) return; e.stopImmediatePropagation(); state.down = false; draw(); if (fl.stroke) void floorFinish(); else void finish().then(refreshStatus); };
+  const up = (e) => { if (wl.rubbing) { e.stopImmediatePropagation(); state.down = false; wl.rubbing = false;
+      // One stroke, one step: a drag that rubbed out a dozen walls is taken back in one go.
+      if (wl.gone.length) { rememberDecorStep({ kind: "walls", made: [], gone: wl.gone }); wl.gone = []; }
+      refreshStatus(); return; }
+    if (wl.move) { e.stopImmediatePropagation(); state.down = false; const move = wl.move; wl.move = null; wl.overlay.clear(); void buildingMove(move).then(refreshStatus); return; }
+    if (wl.points) { e.stopImmediatePropagation(); state.down = false; const run = wl.points, ring = !!wl.round; wl.points = null; wl.round = null; wl.overlay.clear(); void wallsLay(run, ring).then(refreshStatus); return; }
+    if (hz.open) { e.stopImmediatePropagation(); state.down = false; const open = hz.open; hz.open = null; void saveOpenEdges(open); return; } if (hz.drag) { e.stopImmediatePropagation(); state.down = false; const drag = hz.drag; hz.drag = null; void layRamp(drag); return; } if (!state.down) return; e.stopImmediatePropagation(); state.down = false; draw(); if (fl.stroke) void floorFinish(); else void finish().then(refreshStatus); };
   const key = (e) => {
     if (e.target?.closest?.("input, textarea")) return;
     // Ctrl+Z takes back the last stroke, Ctrl+Shift+Z or Ctrl+Y puts it back (Foundry's own undo waits while the brush is out).
@@ -3257,16 +3758,46 @@ Hooks.on("preUpdateRegion", (doc, change) => { if (!change?.shapes) return; try 
 // (A decoration break or repair write moves no trunk: trees never break.)
 for (const hook of ["createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options, ...more) => { if (quietSave(first, changes, options)) return; const userId = [changes, options, ...more].at(-1); if (first?.parent === canvas?.scene) trunkWallsSoon(userId === game.user?.id); });
 Hooks.on("canvasReady", () => { trunkWallsSoon(); });
-const stopDecorBrush = () => { const s = decorBrushing; decorBrushing = null; if (s) { s.stop?.(); syncDecorations(); } };
+const stopDecorBrush = () => { const s = decorBrushing; decorBrushing = null; if (s) { s.stop?.(); syncDecorations(); } lifeAfterPaint(); };
+/** Is a GM drawing walls at this moment? (The living world holds still while they are.) */
+const paintingWalls = () => { try { return !!decorBrushing && brushChoices().tab === "walls"; } catch { return false; } };
 // The brush's strokes, to take back and put back (this screen, this scene, the last 30): a stroke into a region (what it held
 // before and after) or one that made a new region (taken back, the region goes; put back, it is made again).
 const decorSteps = { undo: [], redo: [] };
 const rememberDecorStep = (step) => { decorSteps.undo.push(step); if (decorSteps.undo.length > 30) decorSteps.undo.shift(); decorSteps.redo = []; };
 const decorRegion = (id) => canvas.scene?.regions?.get(id) ?? null;
+// A stroke of the Walls tab, taken back and put back: what it made, and what it took away to make it. Both sides are
+// kept whole, with their ids, so a doorway undone puts the one wall back exactly as it was and redone cuts it again.
+const wallStepOf = (made, gone) => ({ kind: "walls", made: made.map((d) => d.toObject()), gone: gone.map((d) => d.toObject()) });
+const wallsBack = async (drop, make) => {
+  const here = canvas?.scene;
+  if (!here) return;
+  const ids = drop.map((w) => w._id).filter((id) => here.walls.get(id));
+  if (ids.length) await here.deleteEmbeddedDocuments("Wall", ids);
+  const missing = make.filter((w) => !here.walls.get(w._id));
+  if (missing.length) await here.createEmbeddedDocuments("Wall", missing, { keepId: true });
+};
+const undoWallStep = (step) => wallsBack(step.made, step.gone);
+const redoWallStep = (step) => wallsBack(step.gone, step.made);
+// A building carried somewhere else: its walls went by the same step, and so did the roofs over it. Taken back, both
+// go the other way; put back, they go again.
+const moveStepTo = async (step, which) => {
+  const here = canvas?.scene;
+  if (!here) return;
+  const updates = (step.walls ?? []).filter((w) => here.walls.get(w.id)).map((w) => ({ _id: w.id, c: [...w[which]] }));
+  if (updates.length) await here.updateEmbeddedDocuments("Wall", updates);
+  const spots = new Map((step.roofs ?? []).map((r) => [r.id, r[which]]));
+  if (spots.size) {
+    const roofs = (here.flags?.[ID]?.roofs ?? []).map((r) => (spots.has(r.id) ? { ...r, x: spots.get(r.id)[0], y: spots.get(r.id)[1] } : r));
+    await here.update({ [`flags.${ID}.roofs`]: roofs });
+  }
+};
 const undoDecorStep = async () => {
   const step = decorSteps.undo.pop(); if (!step) { ui.notifications?.info?.("No brush stroke to take back."); return; }
   try {
-    if (step.kind === "floor") await undoFloorStep(step);
+    if (step.kind === "walls") await undoWallStep(step);
+    else if (step.kind === "moved") await moveStepTo(step, "was");
+    else if (step.kind === "floor") await undoFloorStep(step);
     else if (step.kind === "open") { for (const c of step.changed) await decorRegion(c.id)?.update({ [`flags.${ID}.openEdges`]: c.before }); }
     else if (step.kind === "height") await decorRegion(step.id)?.update({ [`flags.${ID}.height`]: step.before, ...(/^Raised\b/.test(decorRegion(step.id)?.name ?? "") ? { name: heightName(step.before, heightUnits()) } : {}) });
     else if (step.kind === "edit") await decorRegion(step.id)?.update({ flags: { [ID]: { decor: step.before } } }, { render: false });
@@ -3277,7 +3808,9 @@ const undoDecorStep = async () => {
 const redoDecorStep = async () => {
   const step = decorSteps.redo.pop(); if (!step) return;
   try {
-    if (step.kind === "floor") await redoFloorStep(step);
+    if (step.kind === "walls") await redoWallStep(step);
+    else if (step.kind === "moved") await moveStepTo(step, "now");
+    else if (step.kind === "floor") await redoFloorStep(step);
     else if (step.kind === "open") { for (const c of step.changed) await decorRegion(c.id)?.update({ [`flags.${ID}.openEdges`]: c.after }); }
     else if (step.kind === "height") await decorRegion(step.id)?.update({ [`flags.${ID}.height`]: step.after, ...(/^Raised\b/.test(decorRegion(step.id)?.name ?? "") ? { name: heightName(step.after, heightUnits()) } : {}) });
     else if (step.kind === "edit") await decorRegion(step.id)?.update({ flags: { [ID]: { decor: step.after } } }, { render: false });
@@ -6181,7 +6714,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
     const add = (tool) => { tools[tool.name] = tool; };
     controls.animater = { name: "animater", title: "Animater", icon: "animater-a-icon", layer: "tokens", order: 50, activeTool: "select", tools,
       onChange: (event, active) => { if (!active || canvas.tokens?.active) return; canvas.tokens?.activate(); void ui.controls?.activate({ control: "animater", tool: "select" }); } };
-    add({ name: "animaterDecorate", title: "Map painting: paint floors, decorations and heights onto the map", icon: "fa-solid fa-paintbrush", order: order - 1, button: true, visible: toolShown("toolDecorate") && mapMakingOn(),
+    add({ name: "animaterDecorate", title: "Map painting: paint floors, decorations, walls and heights onto themap", icon: "fa-solid fa-paintbrush", order: order - 1, button: true, visible: toolShown("toolDecorate") && mapMakingOn(),
       onChange: () => (decorBrushing ? stopDecorBrush() : startDecorBrush()) });
     add({ name: "animaterCaveIn", title: "Cave-in: click where the ceiling comes down", icon: "fa-solid fa-person-falling-burst", order, button: true, visible: toolShown("toolCaveIn"),
       onChange: () => aimCaveIn() });
@@ -6867,7 +7400,12 @@ const kinds = (many, ...names) => names.flatMap((k) => [many[k], many[`${k}Size`
 const wildKeyOf = () => {
   const many = sceneCreatures(), floors = [];
   for (const r of regionsHere()) { const flag = floorFlagOf(r), overWater = r.flags?.[ID]?.overWater === true; if (overWater || regionFloor({ name: r.name, flag })) floors.push([r.id, overWater, flag ?? "", unfitForLife(r.flags?.[ID]), noLifeOnWater(r.flags?.[ID]), waterKindOf(r.flags?.[ID]) === "sea" || !!r.flags?.[ID]?.sea, r.flags?.[ID]?.seaBeach === "off", regionAreas(r)]); }
-  return { all: JSON.stringify([canvas.scene?.id, canvas.level?.id, wildHere(), sceneFloorNow(), canvas.scene?.flags?.[ID]?.acoustics ?? "", indoorPolygons().length, kinds(many, "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls", "wolves", "squirrels", "snakes", "crows", "hawks", "herons", "gulls"), many.chosen, many.exact]), regions: JSON.stringify([["rabbits", "songbirds", "crows", "hawk", "owl", "fish", "frogs", "ducks", "herons", "gulls", "deer", "foxes", "wolves", "squirrels", "snakes", "butterflies", "dragonflies", "fireflies"].map((k) => keepOut[k] ?? []), floors, waterFrozenNow()]), walls: JSON.stringify(groundWalls().map((w) => [w.x1, w.y1, w.x2, w.y2])) };
+  // How many rooms the walls make is a thing the WALLS say, so it belongs in the walls' key and not in `all`. It was
+  // in `all`, and so a wall that closed a room threw the whole living world away and made it again — every animal on
+  // the map somewhere new (Roi, laying walls on an outdoor map: "everytime i paint a wall all the animals
+  // re-generate why?"). In the walls' key it takes the gentle path below instead: the ones that have been walled in
+  // are set down on open ground, and nobody else is touched.
+  return { all: JSON.stringify([canvas.scene?.id, canvas.level?.id, wildHere(), sceneFloorNow(), canvas.scene?.flags?.[ID]?.acoustics ?? "", kinds(many, "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls", "wolves", "squirrels", "snakes", "crows", "hawks", "herons", "gulls"), many.chosen, many.exact]), regions: JSON.stringify([["rabbits", "songbirds", "crows", "hawk", "owl", "fish", "frogs", "ducks", "herons", "gulls", "deer", "foxes", "wolves", "squirrels", "snakes", "butterflies", "dragonflies", "fireflies"].map((k) => keepOut[k] ?? []), floors, waterFrozenNow()]), walls: JSON.stringify([indoorPolygons().length, groundWalls().map((w) => [w.x1, w.y1, w.x2, w.y2])]) };
 };
 // A region redrawn: the ones out there stay and make their own way to where they may now be, unless it changes how much ground
 // or water the map has by a good part.
@@ -7433,8 +7971,17 @@ const rebuildLife = () => {
   try { rebuildWater(); } catch (e) { console.warn("Animater water:", e); coast.clear(); beachLife.clear(); waterfalls.clear(); waterMirror.clear(); waterKey = null; calmWater = []; glintWater = []; }
   try { rebuildCavern(); } catch { cavern.clear(); webs.clear(); }
 };
-for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged", "createWall", "deleteWall"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) lifeSoon(); });
-Hooks.on("updateWall", (wall, change) => { if (change && ("c" in change || "move" in change || "door" in change)) lifeSoon(); });
+// Walls say where the creatures can be, so a wall laid or taken away sends the living world round again. While a GM
+// is drawing walls that is every stroke, and the animals were jumping to new places each time (Roi, laying a wall:
+// "everytime i paint a wall all the animals re-generate why?"). So it waits: the paint is remembered, and the world
+// is sent round once, when the brush is put down.
+let lifeAfterPainting = false;
+const lifeWallChange = () => { if (paintingWalls()) { lifeAfterPainting = true; return; } lifeSoon(); };
+/** The living world has been left alone while the walls were drawn; catch it up. */
+const lifeAfterPaint = () => { if (!lifeAfterPainting) return; lifeAfterPainting = false; lifeSoon(); };
+for (const hook of ["canvasReady", "createRegion", "updateRegion", "deleteRegion", "updateScene", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) lifeSoon(); });
+for (const hook of ["createWall", "deleteWall"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) lifeWallChange(); });
+Hooks.on("updateWall", (wall, change) => { if (change && ("c" in change || "move" in change || "door" in change)) lifeWallChange(); });
 // A drop landing in a pool near the view plips (a few a second at most, however many fall).
 let dripHeardAt = 0;
 const dripLanded = (d) => {
@@ -7980,7 +8527,7 @@ const lookSky = () => {
     // (A scene's own weather says how cloudy it is, whatever the clock's sky.)
     skyCoverNow = noneHere ? 0 : weatherPreview?.clouds ?? tune.cover ?? Math.max(cloudCover(sky), sceneOwn ? cloudCover(skyClear(sceneOwn)) : 0);
     floorWeather = { clouds: weatherPreview?.clouds ?? cloudCover(sky), wet: wetOn() ? ground.wet : 0, ice: frozenWaterOn() ? ground.ice : 0 };
-    skyWindNow = windNow; skyWords = `${drawnId ?? ""} ${calendaria?.id ?? ""} ${weatherWordOf(canvas?.scene) ?? ""}${tuneWords(tune, windNow)}`;
+    skyWindNow = windNow; skySeen = true; skyWords = `${drawnId ?? ""} ${calendaria?.id ?? ""} ${weatherWordOf(canvas?.scene) ?? ""}${tuneWords(tune, windNow)}`;
     // Clouds drawn: they cast their own shadows, so the deck's stand down. As many as the sky has: none in a clear one, unless Cloud cover asks.
     // (Underground, only their shadows, through what is open to the sky.)
     const cloudsBelow = !noneHere && undergroundScene() && (skyOpenAreas?.length ?? 0) > 0 && bothSettingsOn("weatherClouds");
@@ -8038,6 +8585,9 @@ const lookSky = () => {
 // The weather Animater draws now (sky-weather.mjs weatherScene), for the heat over the whole map.
 let drawnNow = null;
 let skyCoverNow = 0, floorWeather = null, skyHeat = 0, skyStorm = 0, skyOpen = 1, skyWindAngle = 0, skyFalling = { rain: 0, snow: 0 }, skyWindNow = 0, skyWords = "";
+// Whether the sky has been worked out at all yet. The wind everything outdoors blows in is the sky's, not the
+// scene's own: the Weather panel's wind is mixed in there and nowhere else.
+let skySeen = false;
 let skyBuiltKey = null;
 // Moments (engines/camera/screen-moments.mjs): the effects Animater already draws, called by hand. Everything else
 // here reads the game and acts on it, which leaves one gap — the GM who needs the floor to shudder because the thing
@@ -15033,6 +15583,7 @@ Hooks.once("init", () => {
   skyPair("drafts", "draftsLocal", "Drafts", "In an underground scene (or one with a region marked as open to the outside), the air flows through every open door toward the way out: dust streams with it, sparks are carried along, smoke drains out. Opening a door sends a gust that settles into a steady draft; a sealed room's air stands still.");
   skyPair("roomSmoke", "roomSmokeLocal", "Smoke in the air", "In an underground scene, the fires' smoke gathers in their rooms in slow rolling layers, lit by the fires, never through a wall or a shut door, and streams out through the open doors along the draft toward the way out.");
   skyPair("vermin", "verminLocal", "Rats and bats", "In an underground scene (Scene configuration → Animater: underground, or cave or hall acoustics), rats scurry along the walls, keeping out of the light and scattering from anyone who comes close, and a few bats flit high overhead. A few walls are gnawed through: a rat that has been in one room a while slips into a hole and comes up out of another, somewhere else on the map.");
+  skyPair("paintedWalls", "paintedWallsLocal", "Painted walls", "On a map set to it (Scene configuration → Animater → Paint this map's walls), Animater paints the walls the map already has for its vision — dressed stone, fieldstone, brick, timber, palisade, adobe, hewn or living rock — in the same hand as its decorations, with moss along the foot the light misses, snow on the side it comes from, soot, and the tops beginning to go once they are old enough. Walls that meet are painted as one run, so a corner has no seam, and a doorway is the gap the stone leaves.", "");
   skyPair("drips", "dripsLocal", "Dripping water", "Where a region is marked as dripping (the region's right-click panel → Drips), water drips into dark, glistening puddles, each drop sending out a ring.");
   skyPair("torchDraft", "torchDraftLocal", "Flames in the draft", "Where the air moves (\"Drafts\"), the flames of fire lights lean with it and flicker harder; when a door opens on their way out they gutter for a few seconds, then settle.");
   skyPair("caveMist", "caveMistLocal", "Cavern mist", "Where a region is marked as mist (the region's right-click panel → Cave), low mist hugs the floor and drifts; walking through parts it, the trail closing slowly behind.");
@@ -16081,6 +16632,378 @@ Hooks.on("renderSceneConfig", (app, html) => {
   noShadows.innerHTML = `<label>No shadows on this map</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.noShadows"${app.document?.flags?.[ID]?.noShadows === true ? " checked" : ""}></div><p class="hint">The sun and moon still light this map, but walls, roofs, trees, creatures and animals cast no shadow from them. For a map that paints its own shadows. "No sun" above takes the light away as well. Shadows from lamps and a raised floor's own stay.</p>`;
   tab.append(noShadows);
 });
+// ---- Painted walls -------------------------------------------------------------------------------------------------
+// A map's walls painted instead of bought: engines/motion/wall-paint.mjs paints a run in the decorations' own hand,
+// wall-looks.mjs chains the scene's loose segments into runs and says what each is made of, and
+// engines/motion/painted-walls.mjs lays the pictures on the map a few at a time.
+//
+// A wall is painted because it was drawn with a material (the Map painting bar's Walls tab, or Wall configuration →
+// Animater painted wall), and for no other reason: nothing a map arrived with is ever painted over.
+const paintedWallsOn = () => bothSettingsOn("paintedWalls");
+const paintedWallRoot = floorLayer("paintedWalls"), paintedDoorRoot = floorLayer("paintedDoors");
+const paintedWalls = createPaintedWalls({ PIXI: globalThis.PIXI, root: paintedWallRoot, grid: () => canvas?.grid?.size ?? 100 });
+const paintedDoors = createPaintedDoors({ PIXI: globalThis.PIXI, root: paintedDoorRoot, grid: () => canvas?.grid?.size ?? 100 });
+const paintedWindows = createPaintedWindows({ PIXI: globalThis.PIXI, root: paintedDoorRoot, grid: () => canvas?.grid?.size ?? 100 });
+const paintedRoofRoot = floorLayer("paintedRoofs");
+const paintedRoofs = createPaintedRoofs({ PIXI: globalThis.PIXI, root: paintedRoofRoot, grid: () => canvas?.grid?.size ?? 100 });
+const paintedDressingRoot = floorLayer("paintedDressing");
+const paintedDressingShade = floorLayer("paintedDressingShade");
+const paintedDressing = createPaintedDressing({ PIXI: globalThis.PIXI, root: paintedDressingRoot, shadeRoot: paintedDressingShade, grid: () => canvas?.grid?.size ?? 100 });
+// The scene's walls as the engine wants them: plain records, its own flags and nothing of Foundry's.
+const paintWallList = () => (canvas?.walls?.placeables ?? []).map((w) => ({ id: w.id, c: w.document.c, door: w.document.door, ds: w.document.ds, move: w.document.move, animater: w.document.flags?.[ID] ?? null }));
+const paintWallScene = () => ({ underground: undergroundScene() });
+let paintedWallsDirty = false, paintedWallsWere = false, paintedWallsSaw = null, paintedWallsFrom = "", paintedWallsTold = false;
+// What the walls on this map amount to, in a word. canvasReady can arrive before the walls are on the canvas, and a
+// rebuild then finds nothing and sets the flag down again — so the map stayed bare until something else happened to
+// change a wall. The tick watches this instead of trusting one pulse, and catches up by itself.
+const paintedWallsNow = () => `${canvas?.scene?.id ?? ""}:${canvas?.walls?.placeables?.length ?? -1}`;
+// Which way the sun is coming from, so a roof and the ground it stands on agree about it. Roi: "i noticed the sun
+// doesnt really affect the roof" — and it did not: the painters lit everything from the top left whatever the hour.
+// The pictures are painted once and kept, so the sun goes into their keys rounded to a step. A sun creeping across
+// the sky must not repaint every building on every tick; a sun that has really moved must. Underground there is no
+// sun at all, and the painters keep their own fixed light.
+const SUN_STEP = 12; // degrees of sky worth a repaint
+// What the sky is doing to the roofs: the snow lying on the ground is lying on them too, and rain that darkens the
+// one darkens the other. Rounded, because a roof is a picture and must not be painted again for a hundredth of a
+// degree of wet.
+const roofWeatherNow = () => {
+  const ground = canvas?.scene?.flags?.[ID]?.ground ?? {};
+  const much = (v) => Math.round(Math.max(0, Math.min(1, Number(v) || 0)) * 5) / 5;
+  return { snow: much(ground.snow), wet: much(ground.wet) };
+};
+// Everything about a roof's picture that is not the roof itself: the sun it stands in and the weather on it. The
+// layer knows a roof by its key, so whoever asks it about one — to fade it, to open it — has to spell it the same
+// way, and there are three places that do.
+const roofSuffix = () => { const w = roofWeatherNow(); return `${sunKey()}:w${Math.round(w.snow * 5)}${Math.round(w.wet * 5)}${dressingKey(dressingNow())}`; };
+// The feast day the calendar says it is, if any. Calendaria works out which festival is on — the records count
+// their months from zero while the conditions beside them count from one, so asking it is both shorter and right —
+// and this only turns its answer into a colour. Nothing is hung up on an ordinary day, or with no calendar at all.
+const dressingNow = () => {
+  try {
+    // A feast called by hand wins: the GM saying "today is a holiday" is worth more than any calendar, and a world
+    // with no calendar module has nothing else to go on.
+    const byHand = handDressing(canvas?.scene?.flags?.[ID]?.holiday);
+    if (byHand) return byHand;
+    const api = globalThis.CALENDARIA?.api;
+    const today = api?.getCurrentFestival?.();
+    if (!today?.name) return null;
+    // More than one feast can fall on a day. The calendar names one of them; the rest are the ones in its own
+    // records standing on the same day as that one. Found this way rather than by working the date out again:
+    // the records count their months from zero and the clock counts from one, and the calendar has already done
+    // the sum correctly once.
+    const kept = globalThis.CALENDARIA?.api?.getActiveCalendar?.()?.festivals ?? {};
+    const sameDay = Object.entries(kept)
+      .filter(([, f]) => f?.month === today.month && f?.dayOfMonth === today.dayOfMonth)
+      .map(([key, f]) => ({ ...f, festivalKey: key }));
+    return dressingOf(sameDay.length ? sameDay : today);
+  } catch { return null; }
+};
+const sunLit = () => (sunNow ? litFrom(sunNow.angle) : null);
+const sunKey = () => (sunNow ? `:s${Math.round((Number(sunNow.angle) || 0) / SUN_STEP)}` : "");
+// Called whenever the sun is worked out again: a step across the sky is worth repainting for, anything less is not.
+let wallsSunKey = null;
+const wallsFollowSun = () => {
+  // The whole of what the sky is doing to a roof, the feast day included: the clock moving on is how a building
+  // learns that today is a festival and puts its garlands up, or that it is over and takes them down.
+  const now = roofSuffix();
+  if (now === wallsSunKey) return;
+  wallsSunKey = now;
+  paintedWallsDirty = true;
+  paintedWallsSoon();
+};
+const rebuildPaintedWalls = () => {
+  paintedWallsDirty = false;
+  if (!paintedWallsOn()) { paintedWalls.drop(); paintedDoors.drop(); paintedWindows.drop(); paintedRoofs.drop(); paintedDressing.drop(); return; }
+  const said = paintWallScene(), season = seasonNow(), walls = paintWallList();
+  const lit = sunLit(), litKey = sunKey();
+  const runs = wallRuns(walls, said).map((run) => ({ ...run, key: `${run.key}${litKey}`, look: { ...wallLook({ ...said, age: run.age }, { season }), lit } }));
+  paintedWallsSaw = { walls: walls.length, runs: runs.length, season, said };
+  paintedWallsFrom = paintedWallsNow();
+  paintedWalls.populate({ runs, look: { ...wallLook(said, { season }), lit } });
+  paintedDoors.populate({ doors: wallDoors(walls).map((d) => ({ ...d, key: `${d.key}${litKey}`, lit })) });
+  paintedWindows.populate({ windows: wallWindows(walls) });
+  // Roofs are the scene's own, not walls: it keeps them, and each takes the year as its own age says.
+  const grid = canvas?.grid?.size ?? 100;
+  const roofs = roofsOf(canvas?.scene?.flags?.[ID] ?? {}, { grid });
+  // The weather a roof is standing out in, taken from the same ground the floors are painted from rather than from
+  // a flag of its own: the snow that is lying, and how wet it all is. Roi, looking at bare slate over snowy ground:
+  // "i dont see weather integration on the roofs at all" — it was reading a flag that has never existed.
+  const weather = roofWeatherNow();
+  const sky = { ...(canvas?.scene?.flags?.[ID] ?? {}), ...weather };
+  // The weather belongs in the key as much as the sun does: a roof is a picture, and a picture of a bare roof does
+  // not become a snowy one by being left alone.
+  const skyKey = roofSuffix();
+  paintedRoofs.populate({
+    roofs: roofs.map((r) => ({ ...r, key: `${r.key}${skyKey}`, look: { ...roofLook(sky, { season, age: r.age }), lit, dressing: dressingNow()?.colour ?? null } })),
+    look: { ...roofLook(sky, { season }), lit },
+  });
+  // What the dressed buildings hang out, off the eave ring of each roof. Not part of the roof's own picture: it
+  // swings in the wind and lights up at dusk, and that picture is painted once and kept.
+  const feast = dressingNow();
+  paintedDressing.populate({
+    colour: feast?.colour ?? null,
+    colours: feast?.colours ?? null,
+    roofs: roofs.filter((r) => r.dressed).map((r) => ({
+      key: r.key,
+      dressed: true,
+      kind: r.hangs,
+      ring: roofShape(r.form, r.room.x, r.room.y, r.room.w, r.room.h, grid * ROOF_OVERHANG, r.high)?.eave ?? [],
+    })),
+  });
+  paintedWallsDrain();
+};
+// Painting a few at a time keeps a big map from holding the frame. It hung off the canvas ticker, and on this table
+// that callback never fired at all — the runs sat in the queue and the map stayed bare. A clock of its own owes
+// nothing to the canvas: it paints a handful, stops when the queue is empty, and starts again when there is more.
+let paintedWallsDraining = null;
+const paintedWallsDrain = () => {
+  if (paintedWallsDraining) return;
+  const tick = () => {
+    paintedWallsDraining = null;
+    let left = 0;
+    try {
+      left = paintedWalls.step(3) + paintedDoors.step(0.05, 3) + paintedWindows.step(0.05, 3) + paintedRoofs.step(0.05, 2);
+      // Painting is not the only thing that needs a tick: a door swinging, a window opening and a roof fading all
+      // move a little each time. Stopping the moment the queue was empty left them frozen half way — or, for a
+      // roof, never started at all.
+      left += paintedDoors.state.swinging + paintedWindows.state.moving + paintedRoofs.state.fading;
+      // Bunting never settles: it stirs in still air and swings in a wind, so while a building is dressed this
+      // clock keeps running. It is a few hundred lines a tick, which is nothing — the reason the roof itself is
+      // baked and this is not.
+      try {
+        // The wind the sky is actually blowing, which is where the Weather panel's own wind lands — the scene's
+        // weather alone never hears it, so bunting hung in a gale stirred as if it were calm (Roi: "i changed the
+        // wind in the weather panel but it doesnt move with the wind").
+        const w = weatherNow();
+        paintedDressing.weather({ wind: skySeen ? skyWindNow : w.wind, windAngle: skySeen ? skyWindAngle : w.windAngle, sun: sunNow, ...roofWeatherNow() });
+        left += paintedDressing.step(0.05);
+        garlandLightsTick();
+      } catch { /* no weather yet */ }
+    } catch (err) { if (!paintedWallsTold) { paintedWallsTold = true; console.warn("Animater | painted walls", err); } return; }
+    if (left > 0) paintedWallsDraining = setTimeout(tick, 30);
+  };
+  paintedWallsDraining = setTimeout(tick, 0);
+};
+// Painting is done a couple of runs a frame: a keep with three hundred segments fills in over a second or two
+// instead of holding the frame while every one of them is drawn.
+let paintedWallsTicks = 0;
+const paintedWallsTick = () => {
+  paintedWallsTicks++;
+  const on = paintedWallsOn();
+  if (on !== paintedWallsWere) { paintedWallsWere = on; paintedWallsDirty = true; }
+  if (on && paintedWallsNow() !== paintedWallsFrom) paintedWallsDirty = true;
+  // A throw in here would otherwise be swallowed by the ticker and the walls would simply never appear, which is
+  // exactly what happened: said once, then left alone.
+  if (paintedWallsDirty) {
+    try { rebuildPaintedWalls(); }
+    catch (err) { if (!paintedWallsTold) { paintedWallsTold = true; console.warn("Animater | painted walls", err); } }
+  }
+  paintedWalls.step();
+  // A door swings rather than snapping, so the leaves want the frame's own time.
+  paintedDoors.step(Math.min(0.1, (canvas?.app?.ticker?.deltaMS ?? 16) / 1000));
+  paintedWindows.step(Math.min(0.1, (canvas?.app?.ticker?.deltaMS ?? 16) / 1000));
+};
+// Rebuild when something says to, from a clock of our own rather than the canvas ticker (see paintedWallsDrain).
+const paintedWallsCatchUp = () => {
+  const on = paintedWallsOn();
+  if (on !== paintedWallsWere) { paintedWallsWere = on; paintedWallsDirty = true; }
+  if (on && paintedWallsNow() !== paintedWallsFrom) paintedWallsDirty = true;
+  // The sky a roof is painted under — the sun, the weather, the feast day — may not be known yet when the canvas
+  // is first ready. A calendar still loading has no festival to give, so the first paint of a scene is an ordinary
+  // day whatever the date; this is where a building finds out it is wrong and puts its garlands up.
+  if (on) { try { wallsFollowSun(); } catch { /* nothing painted yet */ } }
+  if (!paintedWallsDirty) return;
+  try { rebuildPaintedWalls(); }
+  catch (err) { if (!paintedWallsTold) { paintedWallsTold = true; console.warn("Animater | painted walls", err); } }
+};
+let paintedWallsSoonTimer = null;
+const paintedWallsSoon = () => { clearTimeout(paintedWallsSoonTimer); paintedWallsSoonTimer = setTimeout(() => { paintedWallsSoonTimer = null; paintedWallsCatchUp(); }, 120); };
+// canvasReady can arrive before the walls are on the canvas, so it is asked again a moment later as well.
+Hooks.on("canvasReady", () => {
+  paintedWallsDirty = true;
+  try { canvas.app.ticker.add(paintedWallsTick); } catch { /* the clock below does the work anyway */ }
+  paintedWallsSoon();
+  for (const wait of [400, 1200, 2500]) setTimeout(paintedWallsCatchUp, wait);
+});
+Hooks.on("canvasTearDown", () => { try { canvas?.app?.ticker?.remove(paintedWallsTick); } catch { /* gone with the canvas */ } paintedWalls.drop(); paintedDoors.drop(); paintedWindows.drop(); paintedRoofs.drop(); paintedDressing.drop(); garlandLightsOut(); });
+// A roof fades while one of your own creatures is under it, and comes back when they leave. Yours, not everyone's:
+// a player should not see a roof lift off a house the party has not gone into.
+const roofsCovering = () => {
+  const mine = (canvas?.tokens?.placeables ?? []).filter((t) => t.isOwner && !t.document.hidden);
+  if (!mine.length) return [];
+  const roofs = roofsOf(canvas?.scene?.flags?.[ID] ?? {}, { grid: canvas?.grid?.size ?? 100 });
+  // The same key the layer laid them under, sun and all.
+  return roofs.filter((r) => mine.some((t) => underRoof(r.room, t.center?.x ?? t.x, t.center?.y ?? t.y))).map((r) => `${r.key}${roofSuffix()}`);
+};
+// Roi: "can we show the insides based on the sight polygon?" — so instead of the lid coming off the whole house,
+// each roof opens where your own creatures can actually see. Foundry works the sweep out for walls and doors
+// already, and one costs a tenth of a millisecond, so this is cheap enough to redo whenever anybody moves.
+const sightFrom = (point) => {
+  try {
+    const Backend = CONFIG?.Canvas?.polygonBackends?.sight;
+    const poly = Backend?.create({ x: point.x, y: point.y }, { type: "sight" });
+    const pts = poly?.points;
+    return Array.isArray(pts) ? pts : (pts?.length ? [...pts] : null);
+  } catch { return null; }
+};
+const roofsOpening = () => {
+  const open = new Map();
+  const mine = (canvas?.tokens?.placeables ?? []).filter((t) => t.isOwner && !t.document.hidden);
+  if (!mine.length) return open;
+  const grid = canvas?.grid?.size ?? 100;
+  const roofs = roofsOf(canvas?.scene?.flags?.[ID] ?? {}, { grid });
+  if (!roofs.length) return open;
+  // Out past the walls, not short of them. Cut to the inside of the room, the opening showed the floor and left the
+  // stone the room is made of hidden under the roof, so a player standing in a house could not see its walls (Roi:
+  // "with our indoor vision polygon methods players cant see the actual walls"). It still stops short of the eaves,
+  // which hang a good deal further out, so the roof keeps an edge rather than being bitten into.
+  const inset = -grid * 0.22;
+  // Every creature of yours, not only the ones indoors. Roi: "from the outside looking with open door i still cant
+  // see the insides" — and quite right: standing in the doorway you can see the hall, so the hall should be open.
+  // Which part of it opens is the sweep's business, and it stops at the walls either way.
+  const sights = [];
+  for (const t of mine) { const s = sightFrom({ x: t.center?.x ?? t.x, y: t.center?.y ?? t.y }); if (s) sights.push(s); }
+  if (!sights.length) return open;
+  for (const roof of roofs) {
+    const holes = roofOpenings(roof.room, sights, { inset });
+    if (holes.length) open.set(`${roof.key}${roofSuffix()}`, holes);
+  }
+  return open;
+};
+// Real light off the garlands. The lanterns painted their own halo, which made them look lit without lighting
+// anything (Roi: "still no actual lights on the garlands"). These are light sources of Foundry's own, made at run
+// time and never written to the scene: they light the street, throw shadows off the walls and go out at dawn. Not
+// one per lantern — a string of a dozen would be a dozen sweeps of the walls — but every few along the run.
+// One light per lantern, small (Roi: "just put a small light on every garland lamp"). A lantern throws light about
+// as far as it hangs from the eave, so a light that size is cheap: it is kept from sweeping the walls, which is
+// what a light's real cost is, because at this size there is nothing between it and the ground it lights.
+const GARLAND_LIGHTS_MOST = 160, GARLAND_REACH = 0.62, GARLAND_LIGHT = 0.55;
+// The light is the lantern's own and hangs where the lantern hangs (Roi: "the light should come from the lanter,
+// just not render on the roof"). What keeps it off the slates is the roof line itself: while a building is lit, its
+// eave is an edge that stops light, drawn a little inside the roof's own edge so the lanterns hanging on it are
+// outside. It stops light and nothing else — nobody's sight, movement or hearing knows it is there.
+// A touch BEYOND the roof's own edge, not inside it: a light fades out softly rather than stopping at a line, so a
+// ring drawn inside the slates left a lit band along every eave (Roi: "still seee light on the roof"). The lanterns
+// hang about fifteen pixels further out than this, so they stay on the bright side of it.
+const EAVE_STEP = -0.08, LIGHT_BLOCKS = 20; // CONST.WALL_SENSE_TYPES.NORMAL
+const garlandEdges = new Map();
+const eaveEdgesOut = () => {
+  if (!garlandEdges.size) return;
+  for (const id of garlandEdges.keys()) { try { canvas?.edges?.delete(id); } catch { /* gone with the canvas */ } }
+  garlandEdges.clear();
+};
+const eaveEdgesNow = (grid) => {
+  const Edge = foundry?.canvas?.geometry?.edges?.Edge;
+  const eaves = paintedDressing?.eaves ?? [];
+  if (!Edge || !canvas?.edges || !eaves.length) { eaveEdgesOut(); return false; }
+  const inset = grid * EAVE_STEP, keep = new Set();
+  let changed = false, n = 0;
+  for (const { ring, middle } of eaves) {
+    if (!Array.isArray(ring) || ring.length < 3) continue;
+    // Pulled toward the middle of the building, so the roof line is inside and the lanterns on it are out.
+    const pull = (p) => { const dx = middle[0] - p[0], dy = middle[1] - p[1], l = Math.hypot(dx, dy) || 1; return [p[0] + (dx / l) * inset, p[1] + (dy / l) * inset]; };
+    for (let i = 0; i < ring.length; i++) {
+      const a = pull(ring[i]), b = pull(ring[(i + 1) % ring.length]);
+      const id = `animater.eave.${n++}`;
+      keep.add(id);
+      const was = garlandEdges.get(id);
+      // Asked of the canvas, not only of this note of it: an edge taken away elsewhere has to be laid again.
+      if (was && canvas.edges.has(id) && Math.abs(was[0] - a[0]) < 0.5 && Math.abs(was[1] - a[1]) < 0.5 && Math.abs(was[2] - b[0]) < 0.5 && Math.abs(was[3] - b[1]) < 0.5) continue;
+      try {
+        // Laid as a wall, because a sweep only looks at the kinds of edge it has been told about and a kind of our
+        // own was quietly skipped — it blocked nothing at all. It is a wall that stops light and nothing else:
+        // sight, movement and sound all pass through it as if it were not there.
+        canvas.edges.set(id, new Edge({ x: a[0], y: a[1] }, { x: b[0], y: b[1] }, { id, type: "wall", light: LIGHT_BLOCKS, darkness: 0, move: 0, sight: 0, sound: 0 }));
+        garlandEdges.set(id, [a[0], a[1], b[0], b[1]]);
+        changed = true;
+      } catch { /* a version with no edges of its own to lend */ }
+    }
+  }
+  for (const id of [...garlandEdges.keys()]) {
+    if (keep.has(id)) continue;
+    try { canvas.edges.delete(id); } catch { /* gone */ }
+    garlandEdges.delete(id);
+    changed = true;
+  }
+  return changed;
+};
+const garlandLights = new Map();
+const garlandLightsOut = () => {
+  if (!garlandLights.size) return;
+  for (const src of garlandLights.values()) { try { src.destroy(); } catch { /* gone with the canvas */ } }
+  garlandLights.clear();
+  eaveEdgesOut();
+  try { canvas?.perception?.update({ refreshLighting: true }); } catch { /* not drawn */ }
+};
+const garlandLightsNow = () => {
+  const Cls = foundry?.canvas?.sources?.PointLightSource;
+  const lamps = paintedDressing?.lamps ?? [];
+  if (!Cls || !canvas?.ready || !lamps.length) { garlandLightsOut(); return; }
+  const want = lamps.slice(0, GARLAND_LIGHTS_MOST);
+  const grid = canvas.grid?.size ?? 100, reach = grid * GARLAND_REACH;
+  // The roof line first: a light worked out before its eave was there would have swept past it.
+  eaveEdgesNow(grid);
+  const keep = new Set();
+  for (const [i, lamp] of want.entries()) {
+    const id = `animater.garland.${i}`;
+    keep.add(id);
+    let src = garlandLights.get(id);
+    if (!src) { src = new Cls({ sourceId: id }); garlandLights.set(id, src); }
+    try {
+      src.initialize({
+        x: lamp.x, y: lamp.y, elevation: 0, dim: reach, bright: reach * 0.3,
+        color: lamp.colour, alpha: GARLAND_LIGHT * Math.max(0, Math.min(1, lamp.glow)),
+        // It shines all round, as a lantern does, and the eave edge is what keeps it off the roof.
+        angle: 360, rotation: 0,
+        animation: { type: "none" }, walls: true, vision: false, disabled: false,
+      });
+      // A source only lights anything once it is attached to the scene's own collection.
+      src.add();
+    } catch { garlandLights.delete(id); try { src.destroy(); } catch { /* gone */ } }
+  }
+  for (const [id, src] of [...garlandLights]) {
+    if (keep.has(id)) continue;
+    garlandLights.delete(id);
+    try { src.destroy(); } catch { /* gone with the canvas */ }
+  }
+  try { canvas.perception.update({ refreshLighting: true }); } catch { /* not drawn */ }
+};
+// Lanterns swing, so their lights would too — but a light is a sweep of every wall near it, and sixty of those a
+// second is a scene that stops answering. They are put where the lanterns are a few times a second instead.
+let garlandLightsAt = 0;
+const garlandLightsTick = () => {
+  const now = performance.now();
+  if (now - garlandLightsAt < 400) return;
+  garlandLightsAt = now;
+  try { garlandLightsNow(); } catch (err) { console.warn("Animater | garland lights", err); }
+};
+Hooks.on("canvasTearDown", () => { garlandLights.clear(); garlandEdges.clear(); });
+let roofCoverTimer = null;
+const roofCoverSoon = () => {
+  if (roofCoverTimer) return;
+  roofCoverTimer = setTimeout(() => {
+    roofCoverTimer = null;
+    try { paintedRoofs.cover(roofsCovering()); paintedRoofs.open(roofsOpening()); paintedWallsDrain(); }
+    catch (err) { if (!paintedWallsTold) { paintedWallsTold = true; console.warn("Animater | roofs", err); } }
+  }, 60);
+};
+for (const hook of ["canvasReady", "controlToken", "updateToken", "createToken", "deleteToken", "refreshToken"]) Hooks.on(hook, () => { roofCoverSoon(); });
+for (const hook of ["createWall", "updateWall", "deleteWall"]) Hooks.on(hook, (doc) => { if (doc?.parent?.id === canvas?.scene?.id) { paintedWallsDirty = true; paintedWallsSoon(); } });
+Hooks.on("updateScene", (doc) => { if (doc?.id === canvas?.scene?.id) { paintedWallsDirty = true; paintedWallsSoon(); } });
+
+// Wall configuration: what this one wall is made of. A wall drawn with the Map painting bar's Walls tab arrives with
+// one; this is where it is changed afterwards, or taken away again.
+Hooks.on("renderWallConfig", (app, html) => {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root || root.querySelector(`[name="flags.${ID}.material"]`)) return;
+  const own = (app.document ?? app.object)?.flags?.[ID] ?? {}, set = document.createElement("fieldset");
+  const options = [["", "Not painted"], ...WALL_MATERIAL_CHOICES.map((c) => [c.id, `${c.label}: ${c.about}`])]
+    .map(([v, label]) => `<option value="${v}"${(own.material ?? "") === v ? " selected" : ""}>${label}</option>`).join("");
+  set.innerHTML = `<legend>Animater painted wall</legend>
+    <div class="form-group"><label>Made of</label><div class="form-fields"><select name="flags.${ID}.material">${options}</select></div><p class="hint">What this wall is painted as. Not painted leaves it as Foundry drew it — nothing of a map's own walls is painted over. Walls of one material that meet are painted as one run, so a corner has no seam; two materials never join, and a doorway is the gap the stone leaves.</p></div>`;
+  appendWallSection(root, set);
+});
+
 // Wall configuration: how tall this wall stands for its shadow in the sun (walls cast shadows in sunlight), its top and
 // bottom in the scene's units; empty for the level's ceiling or the world's height. Left to the Wall Height module's own
 // fields when it is on.
@@ -17288,6 +18211,9 @@ Hooks.once("ready", () => {
       verminHere: (count = 10) => { const b = canvas.dimensions.sceneRect; const holes = ratHolesAt(ratWalls(), { grid: canvas.grid.size, lit: litForRats, count: 6 }); vermin.populate({ spots: ratSpots(), holes, count, lit: litForRats, grid: canvas.grid.size, bats: 3, area: { x: b.x, y: b.y, w: b.width, h: b.height } }); return vermin.count; },
       // A cavern feature in a box on this screen only ({ kind: "lava" | "mist" | "fungus-blue" | "crystals-rose" | "webs" ..., x, y, w, h }); none: clear.
       // The ceiling coming down here for everyone (GM; kept with the scene), or all the rubble cleared.
+      // The painted walls, their doorways and their windows: whether they are drawn at all, and what is on the map.
+      paintedWalls: () => ({ on: paintedWallsOn(), dirty: paintedWallsDirty, were: paintedWallsWere, ticks: paintedWallsTicks, saw: paintedWallsSaw, walls: paintedWalls.state, doors: paintedDoors.state, windows: paintedWindows.state, roofs: paintedRoofs.state, chimneys: paintedRoofs.chimneys, dressing: paintedDressing.state, garlandLights: garlandLights.size }),
+      repaintWalls: () => { rebuildPaintedWalls(); return { on: paintedWallsOn(), saw: paintedWallsSaw }; },
       caveIn: (x, y, radius) => bringCeilingDown({ x, y, radius }),
       clearRubble: () => clearRubble(),
       // A pebble kicked from here toward a heading (radians), on this screen only.

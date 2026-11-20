@@ -221,6 +221,15 @@ test('water takes the GM\'s time to freeze, each scene its own; snow on the grou
   ground.update({ now: 36 * 3600 + 600, ...warm });
   assert.equal(kept.snow, 0);
   assert.ok(kept.ice > 0.49 && kept.ice < 0.51, 'and the ice half way out in 12 hours');
+  // Said how long it should take, and it takes that long instead of the quick fixed pace. "Snow clears in (game
+  // hours)" is a setting with a default and a hint that nothing ever reached: the ice pace always has a number,
+  // and any number there used to switch snow to twenty minutes whatever the GM had asked for.
+  let told = { wet: 0, snow: 1, ice: 0, at: 0 };
+  const slow = createGroundWeather({ load: () => told, save: (s) => { told = s; }, pace: () => 24, thawHours: () => 34 });
+  slow.update({ now: 600, ...warm });
+  assert.ok(told.snow > 0.9, `ten minutes barely touches a cover the GM gave hours: ${told.snow.toFixed(3)}`);
+  slow.update({ now: 20 * 3600, ...warm });
+  assert.ok(told.snow < 0.5, 'and most of a day takes most of it');
   const a = iceHours('scene-a'), b = iceHours('scene-b-other');
   for (const h of [a, b]) assert.ok(h >= 24 && h <= 48, String(h));
   assert.equal(iceHours('scene-a'), a, 'always the same for a scene');

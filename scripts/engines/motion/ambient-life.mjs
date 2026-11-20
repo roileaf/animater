@@ -127,8 +127,15 @@ export function createGroundWeather({ load = () => null, save = () => {}, pace =
       if (rain > 0.05) { const minutes = Number(wetMinutes()); state.wet = clamp01(state.wet + hours * clamp01(rain) * (minutes > 0 ? 60 / minutes : 2 / WETS_HOURS)); }
       else state.wet = clamp01(state.wet - hours * dryingRate({ sun, temperature, rain, snow }, { sunnyHours: dryHours() }) / DRIES_HOURS / 2);
       const stays = warm === null || warm <= 2, timed = Number(pace()) > 0, way = timed ? hours / Number(pace()) : null;
+      const told = Number(thawHours()) > 0;
       if (snow > 0.05 && stays) state.snow = clamp01(state.snow + hours * snowLiesRate({ snow, temperature, pace: pace() }));
-      else if (warm === null ? snow <= 0.05 && sun > 0.3 : warm > 0) state.snow = clamp01(state.snow - (timed ? hours / SNOW_GOES_HOURS : hours * meltRate({ temperature, sun }, { thawHours: thawHours() })));
+      // A GM who has said how long snow takes to clear has said it. The quick fixed pace is for a world that has
+      // not: it goes in twenty minutes so the table sees a thaw while they are sitting at it, the way the ice
+      // takes the GM's hours because a frozen lake is ground you can walk on. But the pace that switched snow to
+      // those twenty minutes was the *ice* pace, and that one always has a number, so "Snow clears in (game
+      // hours)" was never once reached — a setting with a default and a hint and nothing behind it (Roi: "why 20
+      // minutes world time removes all snow?"). Said, it wins; unsaid, the quick pace stands.
+      else if (warm === null ? snow <= 0.05 && sun > 0.3 : warm > 0) state.snow = clamp01(state.snow - (timed && !told ? hours / SNOW_GOES_HOURS : hours * meltRate({ temperature, sun }, { thawHours: thawHours() })));
       const cold = air !== null && Number.isFinite(Number(air)) ? Number(air) : null;
       if (cold !== null ? cold <= -3 : state.snow >= 0.6) state.ice = clamp01(state.ice + (way ?? hours * (cold !== null ? 0.25 + clamp01((-3 - cold) / 12) : 0.15) / FREEZES_HOURS * 4));
       else if (cold !== null ? cold > 1 : state.snow <= 0.05 && sun > 0.3) state.ice = clamp01(state.ice - (way ?? hours * (cold !== null ? 1 + clamp01((cold - 1) / 8) : 0.5) * (1 + clamp01(sun)) / THAWS_HOURS / 2));
