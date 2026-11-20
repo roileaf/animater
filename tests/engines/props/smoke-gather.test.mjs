@@ -239,7 +239,7 @@ test("the gathering refuses to be built without its helpers, naming what is miss
 });
 
 test("the real call site in main.mjs supplies every one of them", () => {
-  const main = readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8");
+  const main = `${readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8")}\n${readFileSync(new URL("../../../scripts/shell/smoke.mjs", import.meta.url), "utf8")}`;
   const call = main.slice(main.indexOf("const smokeShapeOf = "), main.indexOf("// One round of smoke on one scene"));
   assert.ok(call.length, "the call site is where it was");
   for (const name of ["polygons:", "shafts:", "sides:", "walls:", "inside:", "crosses:", "cache:", "geo,"]) assert.ok(call.includes(name), name);
@@ -357,7 +357,7 @@ test("handing Foundry the frozen constant throws, exactly as it did in the real 
 });
 
 test("every document call in main.mjs takes a fresh note, and none takes the constant", () => {
-  const main = readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8");
+  const main = `${readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8")}\n${readFileSync(new URL("../../../scripts/shell/smoke.mjs", import.meta.url), "utf8")}`;
   // The constant is never handed to a document call; the maker always is.
   for (const call of ["update(", "createEmbeddedDocuments(", "updateEmbeddedDocuments(", "deleteEmbeddedDocuments("]) {
     for (const line of main.split(/\r?\n/)) {
@@ -429,8 +429,8 @@ test("a cells write that fails is SAID, not only traced, and said once for the s
 });
 
 test("main.mjs hands every smoke write failure to the alarm, and traces none of them away", () => {
-  const main = readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8");
-  const from = main.indexOf("// ---- The smoke a fire fills"), to = main.indexOf("// The ticker: every scene with both switches on");
+  const main = `${readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8")}\n${readFileSync(new URL("../../../scripts/shell/smoke.mjs", import.meta.url), "utf8")}`;
+  const from = main.indexOf("// ---- The smoke a fire fills"), to = main.indexOf("// ---- What the room smoke looks like");
   const round = main.slice(from, to);
   assert.ok(from >= 0 && to > from);
   // The cells write, the clear and its region: each failure goes to the GM's one alarm.
@@ -455,7 +455,7 @@ test("main.mjs hands every smoke write failure to the alarm, and traces none of 
 test("a flame in thick smoke is not drawn, and both flame paths ask", () => {
   // Sliced, not matched against the whole file: main.mjs is well over a megabyte and a failed match on it prints
   // the lot.
-  const main = readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8");
+  const main = `${readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8")}\n${readFileSync(new URL("../../../scripts/shell/smoke.mjs", import.meta.url), "utf8")}`;
   const near = (mark, span = 600) => { const at = main.indexOf(mark); assert.ok(at > 0, `${mark} is where it was`); return main.slice(at, at + span); };
   assert.match(near("const fireSeenHere ="), /!inThickSmoke\(at\)/, "the fire lights' own test");
   assert.match(near("torch = { key, x, y,"), /!inThickSmoke\(\{ x, y \}\)/, "and a held torch, which has no seen() of its own");

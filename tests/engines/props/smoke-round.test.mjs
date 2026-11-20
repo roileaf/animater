@@ -309,7 +309,7 @@ test("the round's own write back is not a scene edit; a real one is", () => {
 });
 
 // ---- The two guards that really are about main.mjs's own text. ----
-const main = readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8");
+const main = `${readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8")}\n${readFileSync(new URL("../../../scripts/shell/smoke.mjs", import.meta.url), "utf8")}`;
 
 test("the smoke runs on the fire's own round: there is still only the one interval", () => {
   assert.equal([...main.matchAll(/setInterval\(fireTick/g)].length, 1);
@@ -335,7 +335,7 @@ test("the room sizes survive the round's own write and go on a real scene edit",
 // their own flag, and the level they name. (The project's actual guard on loose region reads,
 // tests/core/viewed-regions.test.mjs, bans a loop over canvas?.scene?.regions and is untouched by any of this.)
 test("the smoke picks regions by their flag and their level, never by whether a client is looking", () => {
-  const from = main.indexOf("// ---- The smoke a fire fills"), to = main.indexOf("// The ticker: every scene with both switches on");
+  const from = main.indexOf("// ---- The smoke a fire fills"), to = main.indexOf("// ---- What the room smoke looks like");
   const smoke = main.slice(from, to);
   assert.ok(from >= 0 && to > from);
   assert.doesNotMatch(smoke, /viewedRegions\(/, "a drawing helper has no business on a scene nobody is looking at");
@@ -536,13 +536,13 @@ test("main.mjs wires its four call sites to the pure decisions, and to nothing e
   assert.match(quench, /await afterFireRound\(scene\);/, "the quench waits on the one mechanism");
   assert.doesNotMatch(quench, /fireRunning\.has/, "and keeps no poll of its own");
   // Only the active GM writes, every `-=` goes through withDeletes, and no smoke write keeps a clock or a coin.
-  const clear = main.slice(main.indexOf("async function clearSmokeNow"), main.indexOf("// The ticker: every scene with both switches on"));
+  const clear = main.slice(main.indexOf("async function clearSmokeNow"), main.indexOf("// ---- What the room smoke looks like"));
   assert.match(clear, /game\.users\?\.activeGM\?\.isSelf !== true\) return;/);
   assert.match(clear, /withDeletes\(plan\.fields, propDel\(\)\)/);
   // It holds the scene while it writes, so no round can start under it, and lets it go however it ends.
   assert.match(clear, /fireRunning\.add\(scene\.id\);[\s\S]{0,40}try \{/);
   assert.match(clear, /\} finally \{ fireRunning\.delete\(scene\.id\); \}/);
-  const smoke = main.slice(main.indexOf("// ---- The smoke a fire fills"), main.indexOf("// The ticker: every scene with both switches on"));
+  const smoke = main.slice(main.indexOf("// ---- The smoke a fire fills"), main.indexOf("// ---- What the room smoke looks like"));
   assert.doesNotMatch(smoke, /Math\.random\(|Date\.now\(/);
   assert.doesNotMatch(smoke, /sceneOpenings\(/, "the drafts' list is a different list for a different job");
 });

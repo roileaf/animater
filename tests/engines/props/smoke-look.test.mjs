@@ -772,8 +772,8 @@ test("the scene's switch and the light's are two distinct names, and neither is 
 // ABSENCES or COUNTS in a file, which no pure test can see: that the drawing block contains no write call, that there
 // is no THIRD place asking the haze question its own way, and that main.mjs declares no marker of its own.
 test("main.mjs's own wiring: no write in the drawing, no third haze site, no second marker", () => {
-  const main = readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8");
-  const looks = main.slice(main.indexOf("// ---- What the room smoke looks like"), main.indexOf("// A region repainted, reshaped or moved"));
+  const main = `${readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8")}\n${readFileSync(new URL("../../../scripts/shell/smoke.mjs", import.meta.url), "utf8")}`;
+  const looks = main.slice(main.indexOf("// ---- What the room smoke looks like"), main.length);
   assert.ok(looks.length > 200, "the drawing block is where this expects it");
   for (const write of ["update(", "updateEmbeddedDocuments", "createEmbeddedDocuments", "deleteEmbeddedDocuments", "setFlag", "unsetFlag"]) {
     assert.ok(!looks.includes(write), `the drawing must not ${write}`);
