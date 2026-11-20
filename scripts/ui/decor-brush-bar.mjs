@@ -226,7 +226,7 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
     redoEl = iconBtn('fa-solid fa-rotate-right', 'Redo (Ctrl+Shift+Z)', status.redo, () => onRedo());
     head.append(undoEl, redoEl);
     const close = el('button', 'an-db-close an-mp-icon'); close.type = 'button'; close.setAttribute('aria-label', 'Close'); close.title = 'Close (Esc)'; close.innerHTML = '<i class="fa-solid fa-xmark"></i>'; close.addEventListener('click', () => { api.close(); onClose(); }); head.append(close);
-    const body = el('div', 'an-mp-body');
+    const body = el('div', walls ? 'an-mp-body an-mp-onwalls' : 'an-mp-body');
     const slider = (label, bounds, key, step, unit = '', fmt = (v) => `${v}${unit}`) => { const box = el('label', 'an-db-range'), s = el('input'), shown = el('b', '', fmt(remembered[key])); s.type = 'range'; s.min = String(bounds.min); s.max = String(bounds.max); s.step = String(step); s.value = String(remembered[key]); s.addEventListener('input', () => { remembered[key] = Number(s.value); shown.textContent = fmt(Number(s.value)); onChange(); });
       // The wheel over a slider moves it a step.
       s.addEventListener('wheel', (e) => { e.preventDefault(); const v = Math.min(bounds.max, Math.max(bounds.min, Number(s.value) + (e.deltaY < 0 ? step : -step))); s.value = String(Math.round(v * 100) / 100); s.dispatchEvent(new Event('input')); }, { passive: false });
@@ -254,6 +254,9 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
       const now = said();
       const box = el('div', 'an-mp-tint an-mp-holiday');
       box.title = 'Today is a feast day, whatever the calendar says — or with no calendar at all. Buildings set to dress for holidays hang out garlands, lanterns or banners in these colours. Kept on this scene.';
+      // Everything else on this bar is a brush setting, kept for whoever is painting. This one is the scene's: it is
+      // what day it is for everybody looking at the map, so it says so rather than sitting among them unmarked.
+      box.append(el('span', 'an-mp-scene', 'This scene'));
       const tickBox = el('label', 'an-mp-tick'), input = el('input'); input.type = 'checkbox'; input.checked = now.on; input.dataset.holidayOn = 'on';
       input.addEventListener('change', () => { sceneHoliday.set({ ...said(), on: input.checked }); draw(); onChange(); });
       tickBox.append(input, el('span', '', 'Holiday today'));
@@ -287,6 +290,9 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
       for (const [key, text] of options) { const b = el('button', key === value ? 'an-db-on' : '', text); b.type = 'button'; b.dataset[data] = String(key); b.setAttribute('aria-pressed', String(key === value)); b.addEventListener('click', () => { save(key); draw(); onChange(); }); box.append(b); }
       return box; };
     const grid = el('div', 'an-db-chips an-mp-grid');
+    // What the tiles are for comes before the tiles. Drawing a wall and cutting a window show quite different tiles,
+    // and the mode that decides which was underneath them — so the tiles had to be read to work out the mode.
+    const modes = el('div', 'an-mp-modes');
     const row = el('div', 'an-db-row an-mp-row'), extra = el('div', 'an-db-row an-db-props an-mp-extra');
     const edgeButtons = () => { const edges = el('div', 'an-db-seg an-mp-edges'); edges.append(el('span', '', 'Edges'));
       for (const [key, label, tip] of EDGE_CHOICES) { const b = el('button', remembered.edges === key ? 'an-db-on' : '', label); b.type = 'button'; b.dataset.edges = key; b.title = tip; b.setAttribute('aria-pressed', String(remembered.edges === key)); b.addEventListener('click', () => { remembered.edges = key; remembered.edgesChosen = true; draw(); onChange(); }); edges.append(b); }
@@ -319,7 +325,7 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
         const sw = el('span', 'an-mp-swatch'); showSwatch(sw, id ? roofSwatch(id) : null, base); t.append(sw, el('span', '', label));
         t.addEventListener('click', () => { remembered.roofKind = id; draw(); onChange(); }); grid.append(t);
       }
-      row.append(seg('', WALL_MODES, remembered.wallMode, (v) => { remembered.wallMode = v; }, 'wallMode'));
+      modes.append(seg('', WALL_MODES, remembered.wallMode, (v) => { remembered.wallMode = v; }, 'wallMode'));
       row.append(seg('Shape', [['', 'To fit'], ...ROOF_FORM_CHOICES.map((f) => [f.id, f.label])], remembered.roofForm, (v) => { remembered.roofForm = v; }, 'roofForm'));
       row.append(slider('Years on it', WALL_AGE, 'roofAge', WALL_AGE.step, '', (v) => (v < 0.05 ? 'new' : v < 0.5 ? 'weathered' : v < 0.85 ? 'old' : 'falling in')));
       extra.append(seg('Chimney', [['', 'None'], ['brick', 'Brick'], ['stone', 'Stone']], remembered.roofChimney, (v) => { remembered.roofChimney = v; }, 'roofChimney'));
@@ -336,7 +342,7 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
         const sw = el('span', 'an-mp-swatch'); showSwatch(sw, id ? windowSwatch(id) : null, opens ? '#8aa6b4' : '#6e6c64'); t.append(sw, el('span', '', label));
         t.addEventListener('click', () => { remembered.windowKind = id; draw(); onChange(); }); grid.append(t);
       }
-      row.append(seg('', WALL_MODES, remembered.wallMode, (v) => { remembered.wallMode = v; }, 'wallMode'));
+      modes.append(seg('', WALL_MODES, remembered.wallMode, (v) => { remembered.wallMode = v; }, 'wallMode'));
       row.append(slider('Wide', DOOR_WIDE, 'doorWide', DOOR_WIDE.step, '', (v) => (v === 1 ? 'one square' : `${Math.round(v * 100) / 100} squares`)));
       row.append(seg('Opens', [['in', 'Inside'], ['out', 'Outside']], remembered.swing, (v) => { remembered.swing = v; }, 'swing'));
       row.append(tick('Can be climbed through', 'windowWalk', 'Opened, this window may be climbed through. Shut, nobody passes it either way.'));
@@ -348,7 +354,7 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
         const sw = el('span', 'an-mp-swatch'); showSwatch(sw, id ? doorSwatch(id) : null, base); t.append(sw, el('span', '', label));
         t.addEventListener('click', () => { remembered.doorKind = id; draw(); onChange(); }); grid.append(t);
       }
-      row.append(seg('', WALL_MODES, remembered.wallMode, (v) => { remembered.wallMode = v; }, 'wallMode'));
+      modes.append(seg('', WALL_MODES, remembered.wallMode, (v) => { remembered.wallMode = v; }, 'wallMode'));
       row.append(slider('Wide', DOOR_WIDE, 'doorWide', DOOR_WIDE.step, '', (v) => (v === 1 ? 'one square' : `${Math.round(v * 100) / 100} squares`)));
       row.append(seg('Opens', [['in', 'Inside'], ['out', 'Outside']], remembered.swing, (v) => { remembered.swing = v; }, 'swing'));
       row.append(tick('Hinge the far end', 'doorFlip', 'The door hangs on the other end of the opening. Which end it hangs on and which way it opens are two different things.'));
@@ -361,7 +367,7 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
         const sw = el('span', 'an-mp-swatch'); showSwatch(sw, wallSwatch(id), base); t.append(sw, el('span', '', label));
         t.addEventListener('click', () => { remembered.wallMaterial = id; draw(); onChange(); }); grid.append(t);
       }
-      row.append(seg('', WALL_MODES, remembered.wallMode, (v) => { remembered.wallMode = v; }, 'wallMode'));
+      modes.append(seg('', WALL_MODES, remembered.wallMode, (v) => { remembered.wallMode = v; }, 'wallMode'));
       row.append(slider('Thick', WALL_WIDTH, 'wallWidth', WALL_WIDTH.step, '', (v) => `${Math.round(v * 100) / 100} sq`));
       row.append(slider('Years on it', WALL_AGE, 'wallAge', WALL_AGE.step, '', (v) => (v < 0.05 ? 'kept' : v < 0.5 ? 'lived in' : v < 0.85 ? 'abandoned' : 'ruined')));
       row.append(tick('Curved', 'wallCurve', 'The run bends through the corners you drag instead of turning at them: a round tower, an apse, a cave mouth. The walls themselves become short chords along the curve, so sight and movement follow it exactly.'));
@@ -447,7 +453,7 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
     const more = el('button', 'an-mp-more', remembered.more ? 'Less ▴' : 'More ▾'); more.type = 'button'; more.setAttribute('aria-expanded', String(!!remembered.more));
     more.addEventListener('click', () => { remembered.more = !remembered.more; draw(); });
     row.append(more); extra.hidden = !remembered.more;
-    body.append(grid, row, extra);
+    body.append(modes, grid, row, extra);
     const keys = el('div', 'an-db-hint an-mp-keys', walls ? (remembered.wallMode === 'roof'
       ? 'Click inside a room the walls close in: a roof goes over it, with its ridge along the room · Click a roof to take it off · It fades while somebody is under it · 1 / 2 / 3 / 4: tabs'
       : remembered.wallMode === 'window'

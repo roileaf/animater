@@ -4196,7 +4196,23 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .an-map-paint .an-mp-row { margin: 8px 0 0; gap: 16px; }
 .an-map-paint .an-db-range b { min-width: 28px; font-weight: 400; color: #a89a82; }
 .an-map-paint .an-mp-tick { display: inline-flex; align-items: center; gap: 5px; }
-.an-map-paint .an-mp-tick input { accent-color: #c8a24a; margin: 0; }
+/* A box that says whether it is ticked. The browser's own, tinted, was a dark square either way on this panel: on a
+   bar where every other choice shows itself as a lit pill, five settings could not be read at all. */
+.an-map-paint .an-mp-tick input[type="checkbox"] { appearance: none; -webkit-appearance: none; width: 15px; height: 15px; margin: 0; border: 1px solid #6b5a42; border-radius: 4px; background: #241d15; display: inline-grid; place-content: center; cursor: pointer; }
+.an-map-paint .an-mp-tick input[type="checkbox"]::after { content: ""; width: 9px; height: 9px; transform: scale(0); background: #2a2116; clip-path: polygon(14% 46%, 0 60%, 40% 100%, 100% 20%, 86% 7%, 38% 71%); transition: transform 90ms ease-out; }
+.an-map-paint .an-mp-tick input[type="checkbox"]:checked { background: #c8a24a; border-color: #e0bd6a; }
+.an-map-paint .an-mp-tick input[type="checkbox"]:checked::after { transform: scale(1); }
+.an-map-paint .an-mp-tick input[type="checkbox"]:focus-visible { outline: 2px solid #e0bd6a; outline-offset: 1px; }
+/* The modes a tab paints in, above the tiles they choose between: what is being done, then what it is done with. */
+.an-map-paint .an-mp-modes { display: flex; gap: 2px; margin: 0 0 7px; }
+.an-map-paint .an-mp-modes:empty { display: none; }
+/* On the Walls tab the tiles keep their height whatever the mode, so the controls under them stay where they were:
+   windows have thirteen kinds and doorways seven, and the whole panel used to jump as you switched. */
+.an-map-paint .an-mp-onwalls .an-mp-grid { height: 124px; align-content: start; }
+/* A setting that belongs to the scene rather than to the brush, marked as such: everything else here is remembered
+   for whoever is painting, this one is what day it is for everybody looking at the map. */
+.an-map-paint .an-mp-scene { order: -1; margin-right: 2px; padding: 1px 6px; border-radius: 9px; border: 1px solid #4a3f30; background: #241d15; color: #9b8a6d; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
+.an-map-paint .an-mp-holiday { padding-left: 10px; border-left: 1px solid #4a3f30; }
 /* The colour a wall or a roof is painted in: its label, the swatch to pick with, and None, all on one line like
    the segmented choices beside it. Without this the label fell back to an inline box and the three stacked up. */
 .an-map-paint .an-mp-tint { display: inline-flex; align-items: center; gap: 5px; }
