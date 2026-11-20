@@ -25,6 +25,15 @@ export const WALL_AGE = Object.freeze({ min: 0, max: 1, usual: 0, step: 0.05 });
 export const DOOR_WIDE = Object.freeze({ min: 0.5, max: 3, usual: 1, step: 0.25 });
 /** What a drag on the Walls tab does: lay stone, cut a doorway, set a window in, or rub out. */
 const WALL_MODES = Object.freeze([['draw', 'Draw'], ['round', 'Round room'], ['door', 'Doorway'], ['window', 'Window'], ['roof', 'Roof'], ['move', 'Move building'], ['erase', 'Erase']]);
+// What the wheel moves on the Walls tab, where there is no brush to size: the number the mode is mostly about, and
+// the one behind it. A doorway is mostly how wide it is, a wall how thick, a roof how long it has stood.
+const WALL_WHEEL = Object.freeze({
+  draw: { main: ['wallWidth', WALL_WIDTH], second: ['wallAge', WALL_AGE] },
+  round: { main: ['wallWidth', WALL_WIDTH], second: ['wallAge', WALL_AGE] },
+  door: { main: ['doorWide', DOOR_WIDE] },
+  window: { main: ['doorWide', DOOR_WIDE] },
+  roof: { main: ['roofAge', WALL_AGE] },
+});
 
 // The swatches are painted by the painters themselves, so a GM picks a wall by looking at the wall rather than at a
 // rectangle of its colour (Roi: "lets show actual walls designs and floor designs instead of just colored
@@ -466,8 +475,8 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
       ? 'Drag from the middle of the room outwards: a ring of walls, as round as a tower · Drag further for a wider one · A room this round takes a conical roof · 1 / 2 / 3 / 4: tabs'
       : remembered.wallMode === 'erase'
       ? 'Click or drag over a painted wall: it goes · Only walls painted here — never the map’s own · Shift: draw instead · 1 / 2 / 3 / 4: tabs'
-      : `Drag along the map: a wall${remembered.wallCurve ? ', bending through your corners' : ', turning where you turn'} · Drag back over a corner to take that leg off · Shift: rub out · 1 / 2 / 3 / 4: tabs`) : heights ? (remembered.heightMode === 'ramp' ? (remembered.crossKind === 'bridge' ? 'Drag from one raised part to another: a bridge as wide as the brush' : `Drag up across a raised edge: a ${remembered.crossKind}${remembered.crossKind === 'ramp' ? ' as wide as the brush' : ''}`) + ' · Shift-click removes one · 1 / 2 / 3: tabs · Saved as you go' : 'Drag: raise the ground · Wheel over it: higher or lower · Shift-drag rubs out · Alt-drag along an edge: open it (Alt+Shift closes) · 1 / 2 / 3: tabs') : `Drag to paint · Shift-drag rubs out${floors ? (remembered.floor === 'cavern' ? ' the picked growth' : ' the picked floor') : ''} · Ctrl+wheel: brush size · 1 / 2 / 3: tabs · Saved as you paint`);
-    keys.title = heights ? 'Ctrl+Z undo · Ctrl+Shift+Z redo · Esc stops' : floors ? 'Ctrl+wheel: size · Alt+wheel: how alike · Ctrl+Z undo · Ctrl+Shift+Z redo · Esc stops' : 'Ctrl+wheel: size · Shift+wheel: rotate · Ctrl+Shift+wheel: density · Alt+wheel: decoration size · Ctrl+Z undo · Esc stops';
+      : `Drag along the map: a wall${remembered.wallCurve ? ', bending through your corners' : ', turning where you turn'} · Drag back over a corner to take that leg off · Shift: rub out · Ctrl+wheel: how thick · 1 / 2 / 3 / 4: tabs`) : heights ? (remembered.heightMode === 'ramp' ? (remembered.crossKind === 'bridge' ? 'Drag from one raised part to another: a bridge as wide as the brush' : `Drag up across a raised edge: a ${remembered.crossKind}${remembered.crossKind === 'ramp' ? ' as wide as the brush' : ''}`) + ' · Shift-click removes one · 1 / 2 / 3: tabs · Saved as you go' : 'Drag: raise the ground · Wheel over it: higher or lower · Shift-drag rubs out · Alt-drag along an edge: open it (Alt+Shift closes) · 1 / 2 / 3: tabs') : `Drag to paint · Shift-drag rubs out${floors ? (remembered.floor === 'cavern' ? ' the picked growth' : ' the picked floor') : ''} · Ctrl+wheel: brush size · 1 / 2 / 3: tabs · Saved as you paint`);
+    keys.title = walls ? 'Ctrl+wheel: the number this mode is about (how wide, how thick, how old) · Shift+wheel: the years on it · Ctrl+Z undo · Ctrl+Shift+Z redo · Esc stops' : heights ? 'Ctrl+Z undo · Ctrl+Shift+Z redo · Esc stops' : floors ? 'Ctrl+wheel: size · Alt+wheel: how alike · Ctrl+Z undo · Ctrl+Shift+Z redo · Esc stops' : 'Ctrl+wheel: size · Shift+wheel: rotate · Ctrl+Shift+wheel: density · Alt+wheel: decoration size · Ctrl+Z undo · Esc stops';
     bar.append(head, body, keys);
     if (typing) { const s = bar.querySelector('.an-db-search'); s?.focus(); s?.setSelectionRange(s.value.length, s.value.length); }
   };
@@ -478,6 +487,22 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
     setScale: (v) => { remembered.scale = Math.min(BRUSH_SCALE.max, Math.max(BRUSH_SCALE.min, Math.round(v * 10) / 10)); draw(); },
     setEdges: (v) => { remembered.edges = EDGE_CHOICES.some(([k]) => k === v) ? v : 'colour'; draw(); },
     setTol: (v) => { remembered.tol = Math.min(BRUSH_TOL.max, Math.max(BRUSH_TOL.min, Math.round(v))); draw(); },
+    /**
+     * A step of the number the Walls tab's mode is mostly about — a wider doorway, a thicker wall, an older roof —
+     * without letting go of the map to reach the slider. `which` is 'main' or 'second'; answers whether it took it,
+     * so a mode with nothing to move leaves the wheel to the map.
+     */
+    nudge: (which, dir) => {
+      if (lock || remembered.tab !== 'walls') return false;
+      const pick = WALL_WHEEL[remembered.wallMode]?.[which];
+      if (!pick) return false;
+      const [key, bounds] = pick;
+      const now = Number(remembered[key] ?? bounds.usual) || 0;
+      const next = Math.min(bounds.max, Math.max(bounds.min, Math.round((now + dir * bounds.step) / bounds.step) * bounds.step));
+      remembered[key] = Math.round(next * 1000) / 1000;
+      draw();
+      return true;
+    },
     // Turns the brush a step either way (from upright when it was random).
     turnBy: (dir) => { remembered.turn = (((remembered.turn ?? 0) + dir * BRUSH_TURN_STEP) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2); draw(); },
     setTab: (tab) => { const next = (tab === 'floors' || tab === 'heights' || tab === 'walls') && !lock ? tab : 'decor'; if (next === remembered.tab) return; remembered.tab = next; draw(); onTab(next); onChange(); },

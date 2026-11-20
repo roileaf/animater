@@ -3705,6 +3705,13 @@ const startDecorBrush = (doc = null) => {
     if (e.target !== view || !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey)) return;
     e.preventDefault(); e.stopImmediatePropagation();
     const up = (e.deltaY || e.deltaX) < 0;
+    // On Walls there is no brush to size, so the wheel moves what the mode is about instead: Ctrl+wheel a wider
+    // doorway or a thicker wall, Shift+wheel the years on it. A mode with nothing to move leaves the wheel alone.
+    if (wallsOn()) {
+      const main = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey, second = e.shiftKey && !(e.ctrlKey || e.metaKey || e.altKey);
+      if ((main || second) && state.bar?.nudge(main ? "main" : "second", up ? 1 : -1)) refreshStatus();
+      return;
+    }
     // On Floors, Alt+wheel is How alike; Shift+wheel turns nothing.
     if ((floorsOn() || heightsOn()) && e.altKey && !(e.ctrlKey || e.metaKey || e.shiftKey)) state.bar?.setTol(brushChoices().tol + (up ? 2 : -2));
     else if ((floorsOn() || heightsOn()) && e.shiftKey) return;
@@ -16826,10 +16833,24 @@ Hooks.on("canvasReady", () => {
   for (const wait of [400, 1200, 2500]) setTimeout(paintedWallsCatchUp, wait);
 });
 Hooks.on("canvasTearDown", () => { try { canvas?.app?.ticker?.remove(paintedWallsTick); } catch { /* gone with the canvas */ } paintedWalls.drop(); paintedDoors.drop(); paintedWindows.drop(); paintedRoofs.drop(); paintedDressing.drop(); garlandLightsOut(); });
+/**
+ * Whose eyes a roof answers to: the creature you have hold of, and nobody else. A GM owns every token on the map,
+ * so "mine" alone opened a house because an innkeeper was standing in it with nothing selected at all (Roi: "when
+ * theres no selected token it should not make a vision polygon"). Selected first, then — for a player, who is not
+ * forever picking tokens up and putting them down — their own creatures that can see. A GM holding nothing is
+ * looking at the map rather than through anybody, so nothing opens.
+ */
+const seeingTokens = () => {
+  const all = (canvas?.tokens?.placeables ?? []).filter((t) => !t.document?.hidden);
+  const held = all.filter((t) => t.controlled);
+  if (held.length) return held;
+  if (game.user?.isGM) return [];
+  return all.filter((t) => t.isOwner && t.document?.sight?.enabled !== false);
+};
 // A roof fades while one of your own creatures is under it, and comes back when they leave. Yours, not everyone's:
 // a player should not see a roof lift off a house the party has not gone into.
 const roofsCovering = () => {
-  const mine = (canvas?.tokens?.placeables ?? []).filter((t) => t.isOwner && !t.document.hidden);
+  const mine = seeingTokens();
   if (!mine.length) return [];
   const roofs = roofsOf(canvas?.scene?.flags?.[ID] ?? {}, { grid: canvas?.grid?.size ?? 100 });
   // The same key the layer laid them under, sun and all.
@@ -16848,7 +16869,7 @@ const sightFrom = (point) => {
 };
 const roofsOpening = () => {
   const open = new Map();
-  const mine = (canvas?.tokens?.placeables ?? []).filter((t) => t.isOwner && !t.document.hidden);
+  const mine = seeingTokens();
   if (!mine.length) return open;
   const grid = canvas?.grid?.size ?? 100;
   const roofs = roofsOf(canvas?.scene?.flags?.[ID] ?? {}, { grid });
