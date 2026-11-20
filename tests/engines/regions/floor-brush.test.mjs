@@ -9,7 +9,7 @@ test('hovering says what floor region is under the pointer and what a dab would 
   assert.equal(hoverLine(null, 'grass'), 'Over: no floor yet · a dab adds Grass');
   assert.equal(hoverLine('wood', 'wood'), 'Over: Wood · a dab grows it, Shift-drag rubs it out');
   assert.equal(hoverLine('stone', 'grass'), 'Over: Stone · Grass keeps off it (pick Stone to rub it out)');
-  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  const main = `${readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8')}\n${readFileSync(new URL('../../../scripts/shell/map-painting.mjs', import.meta.url), 'utf8')}`;
   assert.match(main, /setHoverText\(floorHoverLine\(floorUnder\(Math\.floor\(q\.y\) \* m\.width \+ Math\.floor\(q\.x\), brushPool\(c\)\), brushKey\(c\), brushName\(c\)\)\);/);
   // Cave growth names itself (its own words, with brackets kept literal when numbering).
   assert.equal(hoverLine(null, 'fungus-green', caveName), 'Over: no floor yet · a dab adds Glowing fungus (green)');
@@ -87,7 +87,7 @@ test('rubbing out takes pixels only from the picked floor\'s regions, and remove
   const plan = planFloorStroke({ saved: [a, b, c], floor: 'grass', stroke, erase: true, width: W, height: H });
   assert.deepEqual(plan.removes, ['C'], 'the grass it covers goes; the water under the same stroke stays');
   assert.deepEqual(plan.updates.map((u) => u.regionId), ['A']);
-  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  const main = `${readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8')}\n${readFileSync(new URL('../../../scripts/shell/map-painting.mjs', import.meta.url), 'utf8')}`;
   assert.match(main, /fl\.claimed = erase \? notFloor\(brushKey\(c\), brushPool\(c\)\) : claimedBy\(brushKey\(c\), brushPool\(c\)\);/, 'and the stroke shows only over the picked floor (or growth)');
   const left = areaPixels(plan.updates[0].loops, W, H);
   assert.ok(left.length < a.pixels.length && left.length > 0);

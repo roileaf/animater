@@ -55,7 +55,7 @@ test('one shared worker for the page: the same model for every caller, progress 
 });
 
 test('Floor regions\' Smart selection and Map painting both take the shared worker', () => {
-  const ui = readFileSync(new URL('../../scripts/ui/floor-regions-ui.mjs', import.meta.url), 'utf8'), main = readFileSync(new URL('../../scripts/main.mjs', import.meta.url), 'utf8');
+  const ui = readFileSync(new URL('../../scripts/ui/floor-regions-ui.mjs', import.meta.url), 'utf8'), main = `${readFileSync(new URL('../../scripts/main.mjs', import.meta.url), 'utf8')}\n${readFileSync(new URL('../../scripts/shell/map-painting.mjs', import.meta.url), 'utf8')}`;
   assert.match(ui, /smart = smartModelShared,/);
   assert.match(main, /const seg = await smartModelShared\(\{ onProgress:/);
 });

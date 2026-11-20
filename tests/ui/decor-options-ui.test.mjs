@@ -71,7 +71,7 @@ test('the brush bar remembers each kind\'s choices and the brush saves them on e
   const bar = read('scripts/ui/decor-brush-bar.mjs');
   assert.match(bar, /prop: brushPropFor\(kinds\[0\]\)/);
   assert.match(bar, /for \(const r of decorPropRows\(kind, remembered\.props\[kind\] \?\? \{\}\)\)/);
-  const main = read('scripts/main.mjs');
+  const main = `${read('scripts/main.mjs')}\n${read('scripts/shell/map-painting.mjs')}`;
   assert.match(main, /const withProp = \(d\) => \{ const c = brushChoices\(\),[^\n]*\{ \.\.\.look, prop: c\.prop \}/);
   assert.match(main, /const d = withProp\(\{ \.\.\.g, x: Math\.round\(p\.x \+ g\.x\)/);
   assert.match(main, /const d = withProp\(stampDecor\(\{ x: p\.x, y: p\.y/);

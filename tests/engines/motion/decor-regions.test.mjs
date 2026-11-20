@@ -116,7 +116,7 @@ test('trunks that block: a small ring of walls round each tree trunk and stump, 
 });
 
 test('the lead GM keeps trunk walls in step, walls marked as the region\'s, blocking movement, sight and light (not sound)', () => {
-  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  const main = `${readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8')}\n${readFileSync(new URL('../../../scripts/shell/map-painting.mjs', import.meta.url), 'utf8')}`;
   // The GM who changed the region builds them; on a scene shown afresh, the lead GM checks them.
   assert.match(main, /if \(!canvas\?\.ready \|\| !game\.user\?\.isGM \|\| !\(mine \|\| leadGM\(\)\)\) return;/);
   assert.match(main, /trunkWallsSoon\(userId === game\.user\?\.id\)/);
@@ -136,7 +136,7 @@ test('dragging a region carries its hand-placed decorations and rubbed-out spots
   assert.equal(carryDecor(decor, at(4500, 2500), at(4500, 2500, 200)), null);
   assert.equal(carryDecor({ brushed: [] }, at(0, 0), at(5, 5)), null);
   assert.deepEqual(shapesBox([{ type: 'polygon', points: [0, 0, 10, 0, 10, 20] }]), { x: 0, y: 0, w: 10, h: 20 });
-  assert.match(read('scripts/main.mjs'), /Hooks\.on\("preUpdateRegion", \(doc, change\) => \{ if \(!change\?\.shapes\) return;/);
+  assert.match(read('scripts/shell/map-painting.mjs'), /Hooks\.on\("preUpdateRegion", \(doc, change\) => \{ if \(!change\?\.shapes\) return;/);
 });
 
 test('what was painted by hand answers the panel: unticking its kind hides it, the region\'s Size and the kind\'s size scale it', async () => {

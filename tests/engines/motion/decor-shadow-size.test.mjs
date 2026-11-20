@@ -37,7 +37,7 @@ test('the brush bar and the region panel each have a Height slider', async () =>
   assert.equal(brushChoices().tall, 1);
   const read = (p) => readFileSync(new URL(`../../../${p}`, import.meta.url), 'utf8');
   assert.match(read('scripts/ui/decor-brush-bar.mjs'), /slider\('Decoration height', BRUSH_TALL, 'tall', 0\.1\)/);
-  assert.match(read('scripts/main.mjs'), /const withProp = \(d\) => \{ const c = brushChoices\(\), look = d && c\.tall !== 1 \? \{ \.\.\.d, tall: c\.tall \} : d;/);
+  assert.match(read('scripts/shell/map-painting.mjs'), /const withProp = \(d\) => \{ const c = brushChoices\(\), look = d && c\.tall !== 1 \? \{ \.\.\.d, tall: c\.tall \} : d;/);
   assert.match(read('scripts/ui/region-panel-sections.mjs'), /range\('Height', DECOR_TALL, Number\(decor\.height \?\? 1\), percent, \(v\) => act\(\{ decor: \{ height: v \} \}\)/);
 });
 

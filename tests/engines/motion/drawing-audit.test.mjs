@@ -7,7 +7,7 @@ import { floorSlot } from '../../../scripts/engines/motion/floor-slot.mjs';
 
 // The audit of how floors, decorations and heights are drawn (Roi: "audit our process of drawing floors\decorations\heights
 // elements", then "Fix all of them").
-const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+const main = `${readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8')}\n${readFileSync(new URL('../../../scripts/shell/map-painting.mjs', import.meta.url), 'utf8')}`;
 
 test('a floor look is keyed by its holes too, so a new hole repaints it', () => {
   const outline = () => Object.assign([0, 0, 100, 0, 100, 100, 0, 100], { holes: [] });

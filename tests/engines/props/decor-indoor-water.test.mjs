@@ -140,8 +140,9 @@ test("the drag's own update carries the hand breaks: carryDecor says how far, ma
   const shape = (x, y) => [{ type: "ellipse", x, y, radiusX: 150, radiusY: 150, hole: false }];
   const moved = carryDecor({ brushed: [{ kind: "crate", x: 300, y: 300, size: 1 }] }, shape(500, 500), shape(550, 480));
   assert.deepEqual([moved.dx, moved.dy, moved.brushed[0].x, moved.brushed[0].y], [50, -20, 350, 280]);
-  const main = readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8");
-  const hook = main.split(/\r?\n/).find((l) => l.startsWith('Hooks.on("preUpdateRegion", (doc, change) => {'));
+  const main = `${readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8")}\n${readFileSync(new URL("../../../scripts/shell/map-painting.mjs", import.meta.url), "utf8")}`;
+  // (Trimmed: the brush's hooks now sit indented inside shell/map-painting.mjs rather than at the foot of main.mjs.)
+  const hook = main.split(/\r?\n/).find((l) => l.trimStart().startsWith('Hooks.on("preUpdateRegion", (doc, change) => {'));
   assert.ok(hook, "the drag hook");
   assert.match(hook, /const broken = readDecorBroken\(doc\.flags\?\.\[ID\]\?\.decorBroken\); if \(broken\.length\) foundry\.utils\.setProperty\(change, `flags\.\$\{ID\}\.decorBroken`, carryDecorBroken\(broken, moved\.dx, moved\.dy\)\)/);
 });

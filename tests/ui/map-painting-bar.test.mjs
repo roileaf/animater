@@ -5,6 +5,9 @@ import { readFileSync } from 'node:fs';
 // Roi: "we need to add mapmaking button that will let us add floors and decorations instead of just one button for each";
 // of the first mock, "looks a little confusing no?"; then "Build it" from the simpler v2.
 const read = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
+// The brush's own shell: it was a stretch of main.mjs and is now shell/map-painting.mjs. The guards below are about the
+// Foundry side as a whole, so they read both and need no rewriting the next time a slice of main.mjs moves to its own file.
+const shell = () => `${read('scripts/main.mjs')}\n${read('scripts/shell/map-painting.mjs')}`;
 
 test('the bar has two tabs, Floors first, and remembers the floor choices', async () => {
   const { brushChoices, BRUSH_TOL, BRUSH_PLACES, canStandOverWater } = await import('../../scripts/ui/decor-brush-bar.mjs');
@@ -78,7 +81,7 @@ test('Decorations: the place as a drop-down, a picture per kind, Brush and Densi
 });
 
 test('main: one Map painting button paints floors and decorations, saving each stroke', () => {
-  const main = read('scripts/main.mjs');
+  const main = shell();
   assert.match(main, /name: "animaterDecorate", title: "Map painting:[^"]*", icon: "fa-solid fa-paintbrush"/);
   assert.match(main, /\['toolDecorate','Show the Map painting button'/);
   assert.match(main, /const c = brushChoices\(\), saved = brushPool\(c\), m = fl\.map;/);
@@ -146,7 +149,7 @@ test('Heights: Raise or Ramp, Edges for Raise, and the scene\'s cliff walls and 
 });
 
 test('main: the Heights tab raises, lays ramps and steps heights on the wheel; walkers, cliff walls and shadows follow', () => {
-  const main = read('scripts/main.mjs');
+  const main = shell();
   // Roi: "it doesnt let me raise the ground with a brush". Raise paints as Floors does, a stroke saved as it ends.
   assert.match(main, /if \(heightsOn\(\)\) \{ if \(!heightsDown\(p, e\.shiftKey, e\.altKey\)\) return; state\.down = true; state\.erasing = e\.shiftKey; state\.last = p; draw\(\); floorDab\(p\); return; \}/, 'a stroke on Heights paints');
   assert.match(main, /fl\.heights = \{ height: part \? part\.height : nextHeight\(field\.groundAt\(p\), true, heightStep\(\)\) \};/, 'its part\'s height, or a step over the ground');
@@ -222,7 +225,7 @@ test('Floors: Cave holds fungus, crystals or mist in a colour and stage, size an
   find(bar.element, (n) => n.dataset?.floor === 'stone').listeners.click[0]();
   assert.ok(find(bar.element, (n) => n.textContent === 'Style')); assert.equal(brushChoices().pattern, '');
   bar.close();
-  const main = read('scripts/main.mjs');
+  const main = shell();
   assert.match(main, /fl\.caves = m\.ui\.savedCaveAreas\(canvas\.scene\?\.regions/);
   assert.match(main, /const brushPool = \(c\) => \(c\.cave \? fl\.caves \?\? \[\] : fl\.saved\);/, 'growth keeps to its own regions, over the floors');
 
@@ -245,7 +248,7 @@ test('the brush goes down to a quarter of a square, by the slider, the wheel and
   // Landing on the step exactly: a quarter is kind to floating point, but the rounding must still be the step's.
   assert.match(bar, /Math\.round\(v \/ BRUSH_SIZE\.step\) \* BRUSH_SIZE\.step/);
   // main.mjs kept its own copy of the bounds, which is how one of them could drift from the other: now it takes the bar's.
-  const main = read('scripts/main.mjs');
+  const main = shell();
   assert.match(main, /const DECOR_BRUSH = BRUSH_SIZE;/);
   assert.match(main, /import \{ openBrushBar, brushChoices, BRUSH_EDGE, BRUSH_SIZE \}/);
   assert.equal((main.match(/\(up \? 0\.5 : -0\.5\)|\? 0\.5 : -0\.5\)/g) ?? []).length, 0, 'no half-square step left in the wheel or the keys');
@@ -273,7 +276,7 @@ test('a new status line leaves the sliders standing, so a drag is not cut short'
 // brush (never actually painted)." The ring and the ghost were drawn at the last place the pointer was over the map, and every
 // choice the bar changed drew them there again.
 test('the ring and the ghost leave the map with the pointer', async () => {
-  const main = read('scripts/main.mjs');
+  const main = shell();
   assert.match(main, /if \(!state\.down && e\.target !== view\) \{ hideHover\(\); if \(state\.at\) \{ state\.at = null; draw\(\); \} return; \}/);
   // With nowhere to draw them, draw() clears the ring and puts the ghost out.
   assert.match(main, /const showGhost = !!state\.at && !state\.down/);
@@ -283,7 +286,7 @@ test('the ring and the ghost leave the map with the pointer', async () => {
 // boundary doesn't change... I've had to F5 reload before I can work again." floorBegin turns every stroke away while
 // fl.finishing is set, and it was cleared on the way out of floorFinish: a throw before that left it set for good.
 test('a stroke that fails to save still lets the next one start', async () => {
-  const main = read('scripts/main.mjs');
+  const main = shell();
   assert.match(main, /const floorFinish = async \(\) => \{ try \{ await floorSave\(\); \} finally \{ fl\.finishing = false; \} \};/);
   const save = main.slice(main.indexOf('const floorSave = async'), main.indexOf('const regionHooks'));
   assert.equal((save.match(/fl\.finishing = false/g) ?? []).length, 0, 'cleared in the finally alone, never half-way through');
@@ -295,7 +298,7 @@ test('a stroke that fails to save still lets the next one start', async () => {
 // the waterfall mode." The brush knew one floor called water, so a stroke grew the first water region it touched and came back
 // out as that region's kind. Each kind of water is its own floor to the brush now: it joins its own, keeps off the others.
 test('water of one kind does not fold into water of another', async () => {
-  const main = read('scripts/main.mjs');
+  const main = shell();
   assert.match(main, /const floorKeyOf = \(floor, kind\) =>/);
   assert.match(main, /const brushKey = \(c\) => \(c\.cave \? c\.cave\.cavern : floorKeyOf\(c\.floor, c\.waterKind\)\);/);
   // A saved region carries the same key, and everything that asks "is this mine?" asks through it.

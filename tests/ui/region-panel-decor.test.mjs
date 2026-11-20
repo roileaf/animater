@@ -6,6 +6,8 @@ import { SECTIONS } from '../../scripts/ui/region-panel-sections.mjs';
 import { decorSettings } from '../../scripts/engines/motion/decor-regions.mjs';
 
 const read = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
+// The brush moved to shell/map-painting.mjs; these guards are about the Foundry side as a whole, so they read both.
+const shell = () => `${read('scripts/main.mjs')}\n${read('scripts/shell/map-painting.mjs')}`;
 
 test('the Decorations section: its summary says where, how many kinds and what was painted by hand', () => {
   assert.equal(summaryOf('decor', {}), 'None');
@@ -28,7 +30,7 @@ test('the panel saves where, how dense and how big, and leaves the kinds to the 
   assert.match(sections, /decor: decorSection/);
   for (const saved of ['decor: { where', 'decor: { density', 'decor: { scale']) assert.match(sections, new RegExp(saved));
   for (const gone of ["'Reshuffle'", "'Clear by hand'", "button\\('Brush'", "'Trunks block movement", 'an-rp-decor-kinds', 'decorKindRow']) assert.doesNotMatch(sections, new RegExp(gone));
-  const main = read('scripts/main.mjs');
+  const main = shell();
   assert.match(main, /createRegionPanel\(\{ brush: \(doc\) => startDecorBrush\(doc\)/);
   assert.match(main, /decorSettings\(region\.flags\?\.\[ID\]\?\.decor\)/);
 });
@@ -55,14 +57,15 @@ test('the brush bar offers each place its own kinds and remembers what is ticked
   // Its Decoration size scales what it lays, on open ground and on top of a region's own scale.
   assert.equal(c.scale, 1);
   assert.match(bar, /slider\('Decoration size', BRUSH_SCALE, 'scale', 0\.1\)/);
-  const main = read('scripts/main.mjs');
+  const main = shell();
   assert.match(main, /density: c\.thick, scale: c\.scale, turn: c\.turn \}/);
 });
 
 test('the Decorations tool sits in Animater\'s controls and can be hidden', () => {
-  const main = read('scripts/main.mjs');
+  const main = shell();
   assert.match(main, /name: "animaterDecorate"[^\n]*icon: "fa-solid fa-paintbrush"[^\n]*visible: toolShown\("toolDecorate"\)/);
-  assert.match(main, /onChange: \(\) => \(decorBrushing \? stopDecorBrush\(\) : startDecorBrush\(\)\)/);
+  // (The brush itself lives in shell/map-painting.mjs, so the button asks it whether it is already painting.)
+  assert.match(main, /onChange: \(\) => \(mapPainting\?\.brushing\(\) \? stopDecorBrush\(\) : startDecorBrush\(\)\)/);
   assert.match(main, /\['toolDecorate','Show the Map painting button'/);
   assert.match(main, /const data = \{ name: "Decorations", color: "#7a9a4a", shapes: strokeShapes\(circles\)/);
   assert.match(main, /await canvas\.scene\.createEmbeddedDocuments\("Region", \[data\]\)/);
@@ -80,7 +83,7 @@ test('the Decorations tool sits in Animater\'s controls and can be hidden', () =
 });
 
 test('Ctrl+Z takes back a brush stroke and Ctrl+Shift+Z or Ctrl+Y puts it back, ahead of Foundry\'s own undo', () => {
-  const main = read('scripts/main.mjs');
+  const main = shell();
   assert.match(main, /rememberDecorStep\(\{ kind: "edit", id: target\.id, before: \{ brushed: before\.brushed, erased: before\.erased \}, after \}\)/);
   assert.match(main, /rememberDecorStep\(\{ kind: "create", id: made\.id, data \}\)/);
   assert.match(main, /if \(undo \|\| redo\) \{ e\.preventDefault\(\); e\.stopImmediatePropagation\(\);/);
@@ -92,7 +95,7 @@ test('Ctrl+Z takes back a brush stroke and Ctrl+Shift+Z or Ctrl+Y puts it back, 
 });
 
 test('the wheel still zooms; Ctrl+wheel sets the brush size and Shift+wheel its density', () => {
-  const main = read('scripts/main.mjs'), bar = read('scripts/ui/decor-brush-bar.mjs');
+  const main = shell(), bar = read('scripts/ui/decor-brush-bar.mjs');
   assert.match(main, /if \(e\.target !== view \|\| !\(e\.ctrlKey \|\| e\.metaKey \|\| e\.shiftKey \|\| e\.altKey\)\) return;/);
   assert.match(main, /else if \(e\.shiftKey && !\(e\.ctrlKey \|\| e\.metaKey\)\) state\.bar\?\.turnBy\(up \? -1 : 1\);/);
   assert.match(main, /else if \(e\.shiftKey\) state\.bar\?\.setThick\(brushChoices\(\)\.thick \+ \(up \? 0\.1 : -0\.1\)\);/);
@@ -107,7 +110,7 @@ test('the wheel still zooms; Ctrl+wheel sets the brush size and Shift+wheel its 
 });
 
 test('decorations feed the other engines: canopy trees, moving water, the cavern', () => {
-  const main = read('scripts/main.mjs');
+  const main = shell();
   assert.match(main, /\[\.\.\.tree, \.\.\.decorations\.trees\(\)\]/);
   assert.match(main, /for \(const pool of decorations\.water\(\)\)/);
   assert.match(main, /decor = decorations\.cavern\(\)/);
@@ -116,7 +119,7 @@ test('decorations feed the other engines: canopy trees, moving water, the cavern
 });
 
 test('a ghost of the next dab follows the brush, changes with the bar, and a click lays exactly it', () => {
-  const main = read('scripts/main.mjs');
+  const main = shell();
   // The ghost lies lit on the floor; the ring sits above the lighting (Roi: the Floors preview was lost in a night scene).
   assert.match(main, /decorBrushRoot\(\)\.addChild\(ghost\); top\.addChild\(ring\);/);
   assert.match(main, /const top = new PIXI\.Container\(\); top\.eventMode = "none"; canvas\.interface\.addChild\(top\);/);
@@ -130,7 +133,7 @@ test('a ghost of the next dab follows the brush, changes with the bar, and a cli
 });
 
 test('a region\'s own brush shows the bar with only its place and its ticked kinds, one at a time', async () => {
-  const main = read('scripts/main.mjs');
+  const main = shell();
   assert.match(main, /state\.bar = openBrushBar\(\{ onClose: \(\) => stopDecorBrush\(\), onChange: \(\) => \{ draw\(\);[^\n]*region, thumb,/);
   const { brushChoices } = await import('../../scripts/ui/decor-brush-bar.mjs');
   const bar = read('scripts/ui/decor-brush-bar.mjs');
@@ -163,14 +166,14 @@ test('Decorations can break: a switch saved in the decor flags, the scene warnin
   assert.equal(findIn(SECTIONS.decor(c({ canBreak: true })), (n) => /Breakable props is off/.test(n.textContent)), undefined);
   assert.ok(findIn(SECTIONS.decor({ ...c({}), own: { decor: { on: true, kinds: {} }, decorBroken: [{}] } }), (n) => n.textContent === 'Repair decorations'));
   assert.equal(findIn(SECTIONS.decor(c({ canBreak: true }, { repairDecor: null })), (n) => n.textContent === 'Repair decorations'), undefined);
-  assert.match(read('scripts/main.mjs'), /repairDecor: \(doc\) => repairDecorRegionAsk\(doc\)/);
+  assert.match(shell(), /repairDecor: \(doc\) => repairDecorRegionAsk\(doc\)/);
   assert.match(read('scripts/ui/region-panel.mjs'), /repairDecor = null/);
   // The hint names the town and dungeon kinds too (final review M3).
   assert.match(read('scripts/ui/region-panel-sections.mjs'), /'Decorations can break'[^\n]*sacks[^\n]*tables[^\n]*braziers[^\n]*street lamps/);
   assert.match(read('scripts/ui/region-panel.mjs'), /const c = \{[^\n]*\brepairDecor\b/);
 });
 test('both Repair broken props questions name decorations', () => {
-  const main = read('scripts/main.mjs');
+  const main = shell();
   assert.equal((main.match(/put its walls, doors, windows, breached walls and decorations back/g) ?? []).length, 2);
   assert.doesNotMatch(main, /put its walls, doors and windows back\?/);
   assert.match(main, /put every broken prop, decoration, door, window and breached wall in this scene back/);
@@ -186,7 +189,7 @@ test('the brush bar has a search over its kinds', async () => {
   assert.match(bar, /search\.placeholder = 'Search kinds…'/);
   assert.match(bar, /if \(e\.key === 'Enter'\) \{ e\.preventDefault\(\); const first = \[\.\.\.chips\.children\]\.find\(\(c\) => !c\.hidden\); if \(first\) pick\(first\.dataset\.kind\); \}/);
   // While typing in it the brush's own keys ([, ], Esc, Ctrl+Z) stay out of the way.
-  assert.match(read('scripts/main.mjs'), /if \(e\.target\?\.closest\?\.\("input, textarea"\)\) return;/);
+  assert.match(shell(), /if \(e\.target\?\.closest\?\.\("input, textarea"\)\) return;/);
 });
 
 test('the brush bar has three places: outdoors keeps to the wild, town has the built things, underground the caves and dungeons', async () => {
