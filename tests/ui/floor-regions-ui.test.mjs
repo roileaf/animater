@@ -787,8 +787,10 @@ test("the setting is registered off and Floor regions is wired into the Animater
   assert.match(main, /hint: "Adds a Floor regions button in the Animater controls/);
   assert.match(main, /\['toolDetectWater','Show the Floor regions button'/);
   assert.match(main, /name: "animaterFloorRegions"/);
-  // Map making hides the button as well: the switch is the world's, the experimental setting is still its own gate.
-  assert.match(main, /toolShown\("toolDetectWater"\) && mapMakingOn\(\) && game\.settings\.get\(ID, "experimentalWaterRegions"\) === true/);
+  // Two switches gate the button and no more: the world's experimental tick, and each screen's "show this button".
+  // The map making switch is not one of them — the module turns that one off by itself in a world that had not
+  // painted a map, and a GM who ticks the experimental setting must get the button it promises (Discord 2026-11-20).
+  assert.match(main, /visible: toolShown\("toolDetectWater"\) && game\.settings\.get\(ID, "experimentalWaterRegions"\) === true/);
   assert.doesNotMatch(main, /c\.name === "regions"/);
   assert.match(main, /import\("\.\/ui\/floor-regions-ui\.mjs"\)/);
 });

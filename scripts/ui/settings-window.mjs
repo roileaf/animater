@@ -81,7 +81,10 @@ export const SETTINGS_TABS = Object.freeze([
     { section: "Ground & movement", world: "quietSneaking" },
     { section: "Ground & movement", world: "oldTracks", local: "oldTracksLocal" },
     { section: "Ground & movement", world: "regionSteps", local: "regionStepsLocal" },
-    { section: "Ground & movement", world: "experimentalWaterRegions" },
+    // Both of this button's switches in one place: the world's experimental tick, and each screen's "show it".
+    // They used to sit a tab and a settings window apart — a GM turned one off, saw the other still on, and read the
+    // two as unrelated (Discord, 2026-11-20). GM-only: the button itself is the GM's, so a player has nothing here.
+    { section: "Ground & movement", world: "experimentalWaterRegions", extras: ["toolDetectWater"], gmOnly: true },
     { section: "Shadows & sunlight", world: "groundShadows", local: "groundShadowsLocal" },
     { section: "Shadows & sunlight", world: "shadowsOverTokens", local: "shadowsOverTokensLocal" },
     { section: "Shadows & sunlight", world: "shadowShapes", local: "shadowShapesLocal" },

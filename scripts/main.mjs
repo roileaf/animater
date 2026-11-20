@@ -6202,7 +6202,12 @@ Hooks.on("getSceneControlButtons", (controls) => {
     add({ name: "animaterWeatherAll", title: "Weather for all scenes: a scene's own settings come first", icon: "fa-solid fa-earth-americas", order: order + 3.6, button: true, visible: toolShown("toolWeather"),
       onChange: () => openAllWeatherPanel() });
     add({ name: "animaterFloorRegions", title: "Floor regions (Experimental): propose water and other floor regions from this level's map", icon: "fa-solid fa-draw-polygon", order: order + 3.55, button: true,
-      visible: toolShown("toolDetectWater") && mapMakingOn() && game.settings.get(ID, "experimentalWaterRegions") === true,
+      // Two switches, not three. `experimentalWaterRegions` is off by default and world-wide, so a GM who ticks it has
+      // asked for this one button by name — and that outranks `mapMaking`, which this module turns off by itself for
+      // any world that had not painted a map before it was installed (mapMakingAsk above). It used to be in this gate
+      // too, so the tick did nothing and said nothing: the GM read a hint promising a button and got none (Discord,
+      // 2026-11-20). `toolDetectWater` stays: that one is each screen's own "show this button".
+      visible: toolShown("toolDetectWater") && game.settings.get(ID, "experimentalWaterRegions") === true,
       onChange: () => { void openFloorRegionsTool(); } });
     add({ name: "animaterClouds", title: "Clouds over the map: on or off, for everyone", icon: "fa-solid fa-cloud", order: order + 4, toggle: true, visible: toolShown("toolClouds"), active: game.settings.get(ID, "weatherClouds") !== false,
       onChange: (event, active) => { void game.settings.set(ID, "weatherClouds", active === true); } });
@@ -14587,7 +14592,7 @@ Hooks.once("init", () => {
     hint:'Shows the Animater button in the Animater controls (for players, in the Token controls). Turn off to hide it; Alt+Shift+A still opens Animater.',
     scope:'client',config:true,type:Boolean,default:true,onChange:()=>ui.controls?.render({reset:true})});
   registerSetting("mapMaking", { name: "Map making tools",
-    hint: "The Map painting brush and the Floor regions window in the Animater controls: for drawing floors, decorations and regions onto a map. Off, their buttons are not there; everything already painted stays exactly as it is, and the settings for it keep working. A world that has built a map with them keeps them on.",
+    hint: "The Map painting brush in the Animater controls: for drawing floors, decorations and heights onto a map. Off, its button is not there; everything already painted stays exactly as it is, and the settings for it keep working. A world that has built a map with it keeps it on. The experimental Floor regions button (Floor & world) is its own switch and is not hidden by this one.",
     scope: "world", config: true, type: Boolean, default: true, onChange: () => ui.controls?.render({ reset: true }) });
   // Whether the decision below has been made in this world. Not a choice anyone makes: it keeps it from being remade.
   registerSetting("mapMakingAsked", { name: "Map making tools decided", scope: "world", config: false, type: Boolean, default: false });
@@ -14612,7 +14617,7 @@ Hooks.once("init", () => {
   ]) registerSetting(key,{name,hint,scope:'client',config:true,type:Boolean,default:true,onChange:()=>ui.controls?.render({reset:true})});
   registerSetting("experimentalWaterRegions", {
     name: "Experimental: floor regions from the map",
-    hint: "Adds a Floor regions button in the Animater controls that proposes water and other floor regions from the level background. Off by default. It runs only when you click that button.",
+    hint: "Adds a Floor regions button in the Animater controls that proposes water and other floor regions from the level background. Off by default. It runs only when you click that button. Nothing else hides it: only Show the Floor regions button, right below, which is each screen's own.",
     scope: "world",
     config: true,
     type: Boolean,

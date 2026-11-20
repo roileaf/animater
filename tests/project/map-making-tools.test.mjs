@@ -3,18 +3,22 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { SETTINGS_TABS, WINDOW_SETTING_KEYS } from '../../scripts/ui/settings-window.mjs';
 
-// The map painting brush and the floor regions window are for building a map, not for playing on one, and they are
-// most of what a GM means by "the setup is a nightmare". A world that has never built a map with them does not get
-// their buttons; a world that has keeps everything it had. Nothing painted is touched either way — only the buttons.
+// The map painting brush is for building a map, not for playing on one, and it is most of what a GM means by "the
+// setup is a nightmare". A world that has never built a map with it does not get its button; a world that has keeps
+// everything it had. Nothing painted is touched either way — only the button. The experimental floor regions button
+// is not under this switch: see its own test below.
 const main = readFileSync(new URL('../../scripts/main.mjs', import.meta.url), 'utf8');
 
-test('the two map making tools are the only ones the switch hides', () => {
+test('the map painting brush is the only tool the switch hides', () => {
   const group = main.slice(main.indexOf('controls.animater = {'), main.indexOf('// The read happens on the click'));
   assert.ok([...group.matchAll(/add\(\{ name: (?:"animater[A-Za-z]+"|PALETTES\.[a-z]+\.name)/g)].length > 10, 'the controls group still carries its tools');
   const painting = group.slice(group.indexOf('name: "animaterDecorate"'), group.indexOf('name: "animaterCaveIn"'));
   assert.match(painting, /visible: toolShown\("toolDecorate"\) && mapMakingOn\(\)/);
+  // The floor regions button is not one of them any more: its own experimental switch is off by default, so ticking
+  // it is an ask for that button by name, and this switch — which the module turns off by itself — must not veto it.
   const regions = group.slice(group.indexOf('name: "animaterFloorRegions"'), group.indexOf('name: "animaterClouds"'));
-  assert.match(regions, /toolShown\("toolDetectWater"\) && mapMakingOn\(\)/);
+  assert.match(regions, /visible: toolShown\("toolDetectWater"\) && game\.settings\.get\(ID, "experimentalWaterRegions"\) === true/);
+  assert.ok(!regions.includes('mapMakingOn()'), 'the experimental tick is the ask, not the map making switch');
   // Playing tools are not map making: a GM who turns the switch off still has their table buttons.
   for (const tool of ['animaterCaveIn', 'animaterEnergyBlast', 'animaterMoments', 'animaterWeather', 'animaterAnimals', 'animaterClouds']) {
     const at = group.indexOf(`name: "${tool}"`);
