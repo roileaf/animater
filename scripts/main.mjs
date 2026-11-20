@@ -284,7 +284,8 @@ import { createPaintedWindows } from "./engines/motion/painted-windows.mjs";
 import { createPaintedRoofs } from "./engines/motion/painted-roofs.mjs";
 import { roomAt, roofsOf, roofLook, under as underRoof } from "./engines/motion/roof-looks.mjs";
 import { roofOpenings } from "./engines/motion/roof-sight.mjs";
-import { outsideSquares, buildingAt as buildingPlanAt, partition } from "./engines/motion/building-plan.mjs";
+import { buildingAt as buildingPlanAt } from "./engines/motion/building-plan.mjs";
+import { createPaintedBuildings, PARTITION_THIN } from "./shell/painted-buildings.mjs";
 import { dressingOf, dressingKey, handDressing, DRESSING_COLOURS_MOST, DRESSING_PLAIN } from "./engines/motion/holiday-dressing.mjs";
 import { createPaintedDressing } from "./engines/motion/painted-dressing.mjs";
 import { ROOF_IDS, ROOF_FORM_IDS, roofFor, formFits, roofShape, ROOF_OVERHANG } from "./engines/motion/roof-paint.mjs";
@@ -1801,11 +1802,9 @@ const wallsHere = () => {
   // scene's one height like every other wall, an inside wall laid a shadow across the floor as long as the outside
   // wall's, and read as another outside wall standing in the room (Roi: "inner walls shadows, thoughts?"). Inside a
   // roofed building nothing is cast at all — the room is indoors, and indoors the sun does not reach the floor.
-  const air = wallsOutsideAir();
-  const grid = canvas?.grid?.size ?? 100;
   const low = (d) => {
-    if (!air || !WALL_MATERIAL_IDS.includes(d.flags?.[ID]?.material)) return null;
-    try { return partition([[d.c[0], d.c[1]], [d.c[2], d.c[3]]], { grid, bounds: air.bounds, outside: air.outside }) ? PARTITION_THIN : null; }
+    if (!WALL_MATERIAL_IDS.includes(d.flags?.[ID]?.material)) return null;
+    try { return buildings.insideWall([[d.c[0], d.c[1]], [d.c[2], d.c[3]]]) ? PARTITION_THIN : null; }
     catch { return null; }
   };
   return (canvas.walls?.placeables ?? []).map((w) => w.document).filter((d) => !d.levels?.size || !level || d.levels.has(level))
@@ -16683,460 +16682,30 @@ Hooks.on("renderSceneConfig", (app, html) => {
   noShadows.innerHTML = `<label>No shadows on this map</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.noShadows"${app.document?.flags?.[ID]?.noShadows === true ? " checked" : ""}></div><p class="hint">The sun and moon still light this map, but walls, roofs, trees, creatures and animals cast no shadow from them. For a map that paints its own shadows. "No sun" above takes the light away as well. Shadows from lamps and a raised floor's own stay.</p>`;
   tab.append(noShadows);
 });
-// ---- Painted walls -------------------------------------------------------------------------------------------------
-// A map's walls painted instead of bought: engines/motion/wall-paint.mjs paints a run in the decorations' own hand,
-// wall-looks.mjs chains the scene's loose segments into runs and says what each is made of, and
-// engines/motion/painted-walls.mjs lays the pictures on the map a few at a time.
-//
-// A wall is painted because it was drawn with a material (the Map painting bar's Structures tab, or Wall configuration →
-// Animater painted wall), and for no other reason: nothing a map arrived with is ever painted over.
+// ---- Painted buildings ---------------------------------------------------------------------------------------------
+// Walls, the doorways and windows cut in them, the roofs over them and what a building hangs out on a feast day:
+// all of it lives in shell/painted-buildings.mjs now. Everything that feature needs from the rest of the module is
+// in the object handed to it here — which is the point of the move: what it depends on is a list you can read.
 const paintedWallsOn = () => bothSettingsOn("paintedWalls");
-const paintedWallRoot = floorLayer("paintedWalls"), paintedDoorRoot = floorLayer("paintedDoors");
-const paintedWalls = createPaintedWalls({ PIXI: globalThis.PIXI, root: paintedWallRoot, grid: () => canvas?.grid?.size ?? 100 });
-const paintedDoors = createPaintedDoors({ PIXI: globalThis.PIXI, root: paintedDoorRoot, grid: () => canvas?.grid?.size ?? 100 });
-const paintedWindows = createPaintedWindows({ PIXI: globalThis.PIXI, root: paintedDoorRoot, grid: () => canvas?.grid?.size ?? 100 });
-const paintedRoofRoot = floorLayer("paintedRoofs");
-const paintedRoofs = createPaintedRoofs({ PIXI: globalThis.PIXI, root: paintedRoofRoot, grid: () => canvas?.grid?.size ?? 100 });
-const paintedDressingRoot = floorLayer("paintedDressing");
-const paintedDressingShade = floorLayer("paintedDressingShade");
-const paintedDressing = createPaintedDressing({ PIXI: globalThis.PIXI, root: paintedDressingRoot, shadeRoot: paintedDressingShade, grid: () => canvas?.grid?.size ?? 100 });
-// The scene's walls as the engine wants them: plain records, its own flags and nothing of Foundry's.
-const paintWallList = () => (canvas?.walls?.placeables ?? []).map((w) => ({ id: w.id, c: w.document.c, door: w.document.door, ds: w.document.ds, move: w.document.move, animater: w.document.flags?.[ID] ?? null }));
-const paintWallScene = () => ({ underground: undergroundScene() });
-let paintedWallsDirty = false, paintedWallsWere = false, paintedWallsSaw = null, paintedWallsFrom = "", paintedWallsTold = false;
-// What the walls on this map amount to, in a word. canvasReady can arrive before the walls are on the canvas, and a
-// rebuild then finds nothing and sets the flag down again — so the map stayed bare until something else happened to
-// change a wall. The tick watches this instead of trusting one pulse, and catches up by itself.
-const paintedWallsNow = () => `${canvas?.scene?.id ?? ""}:${canvas?.walls?.placeables?.length ?? -1}`;
-// Which way the sun is coming from, so a roof and the ground it stands on agree about it. Roi: "i noticed the sun
-// doesnt really affect the roof" — and it did not: the painters lit everything from the top left whatever the hour.
-// The pictures are painted once and kept, so the sun goes into their keys rounded to a step. A sun creeping across
-// the sky must not repaint every building on every tick; a sun that has really moved must. Underground there is no
-// sun at all, and the painters keep their own fixed light.
-const SUN_STEP = 12; // degrees of sky worth a repaint
-// What the sky is doing to the roofs: the snow lying on the ground is lying on them too, and rain that darkens the
-// one darkens the other. Rounded, because a roof is a picture and must not be painted again for a hundredth of a
-// degree of wet.
-const roofWeatherNow = () => {
-  const ground = canvas?.scene?.flags?.[ID]?.ground ?? {};
-  const much = (v) => Math.round(Math.max(0, Math.min(1, Number(v) || 0)) * 5) / 5;
-  return { snow: much(ground.snow), wet: much(ground.wet) };
-};
-// Everything about a roof's picture that is not the roof itself: the sun it stands in and the weather on it. The
-// layer knows a roof by its key, so whoever asks it about one — to fade it, to open it — has to spell it the same
-// way, and there are three places that do.
-const roofSuffix = () => { const w = roofWeatherNow(); return `${sunKey()}:w${Math.round(w.snow * 5)}${Math.round(w.wet * 5)}${dressingKey(dressingNow())}`; };
-// The feast day the calendar says it is, if any. Calendaria works out which festival is on — the records count
-// their months from zero while the conditions beside them count from one, so asking it is both shorter and right —
-// and this only turns its answer into a colour. Nothing is hung up on an ordinary day, or with no calendar at all.
-const dressingNow = () => {
-  try {
-    // A feast called by hand wins: the GM saying "today is a holiday" is worth more than any calendar, and a world
-    // with no calendar module has nothing else to go on.
-    const byHand = handDressing(canvas?.scene?.flags?.[ID]?.holiday);
-    if (byHand) return byHand;
-    const api = globalThis.CALENDARIA?.api;
-    const today = api?.getCurrentFestival?.();
-    if (!today?.name) return null;
-    // More than one feast can fall on a day. The calendar names one of them; the rest are the ones in its own
-    // records standing on the same day as that one. Found this way rather than by working the date out again:
-    // the records count their months from zero and the clock counts from one, and the calendar has already done
-    // the sum correctly once.
-    const kept = globalThis.CALENDARIA?.api?.getActiveCalendar?.()?.festivals ?? {};
-    const sameDay = Object.entries(kept)
-      .filter(([, f]) => f?.month === today.month && f?.dayOfMonth === today.dayOfMonth)
-      .map(([key, f]) => ({ ...f, festivalKey: key }));
-    return dressingOf(sameDay.length ? sameDay : today);
-  } catch { return null; }
-};
-const sunLit = () => (sunNow ? litFrom(sunNow.angle) : null);
-const sunKey = () => (sunNow ? `:s${Math.round((Number(sunNow.angle) || 0) / SUN_STEP)}` : "");
-// Called whenever the sun is worked out again: a step across the sky is worth repainting for, anything less is not.
-let wallsSunKey = null;
-const wallsFollowSun = () => {
-  // The whole of what the sky is doing to a roof, the feast day included: the clock moving on is how a building
-  // learns that today is a festival and puts its garlands up, or that it is over and takes them down.
-  const now = roofSuffix();
-  if (now === wallsSunKey) return;
-  wallsSunKey = now;
-  paintedWallsDirty = true;
-  paintedWallsSoon();
-};
-/** How much of a wall's thickness a partition keeps: a stud wall between two rooms, not the outside stone. */
-const PARTITION_THIN = 0.62;
-// The air outside the buildings on this scene, kept for as long as the walls stay as they are: it is a flood of the
-// whole map and there is no sense in doing it again for every run painted.
-let wallsAir = null, wallsAirFrom = "";
-const wallsOutsideAir = () => {
-  const rect = canvas?.dimensions?.sceneRect;
-  if (!rect || !canvas?.ready) return null;
-  const grid = canvas?.grid?.size ?? 100;
-  const said = `${canvas.scene?.id}:${grid}:${(canvas.walls?.placeables ?? []).map((w) => w.document.c.map(Math.round).join()).join("|")}`;
-  if (wallsAir && wallsAirFrom === said) return wallsAir;
-  const bounds = { x: rect.x, y: rect.y, w: rect.width, h: rect.height };
-  try {
-    const outside = outsideSquares((canvas.walls?.placeables ?? []).map((w) => ({ c: w.document.c })), { grid, bounds });
-    wallsAir = { outside, bounds };
-    wallsAirFrom = said;
-  } catch { wallsAir = null; wallsAirFrom = ""; }
-  return wallsAir;
-};
-const rebuildPaintedWalls = () => {
-  paintedWallsDirty = false;
-  if (!paintedWallsOn()) { paintedWalls.drop(); paintedDoors.drop(); paintedWindows.drop(); paintedRoofs.drop(); paintedDressing.drop(); return; }
-  const said = paintWallScene(), season = seasonNow(), walls = paintWallList();
-  const lit = sunLit(), litKey = sunKey();
-  // Which walls are partitions: the ones with rooms on both sides. A wall inside a house is a stud wall between two
-  // rooms, not the stone holding the weather out, and drawn at the same weight it read as another outside wall
-  // standing in the middle of the floor. Worked out from the air outside the building, so it needs no setting.
-  const air = wallsOutsideAir();
-  const gridNow = canvas?.grid?.size ?? 100;
-  const insideWall = (points) => (air ? partition(points, { grid: gridNow, bounds: air.bounds, outside: air.outside }) : false);
-  const runs = wallRuns(walls, said).map((run) => {
-    const thin = insideWall(run.points);
-    const thick = thin ? Math.max(0.05, (run.thick ?? WALL_THICK) * PARTITION_THIN) : run.thick;
-    // A partition stands no higher than it is thick, or the sliver of its own side showing below the lifted top
-    // read as a plank stood on edge rather than a wall between two rooms.
-    const height = thin ? WALL_LIFT * PARTITION_THIN : undefined;
-    return { ...run, thick, height, under: thin, key: `${run.key}${thin ? ":p" : ""}${litKey}`, look: { ...wallLook({ ...said, age: run.age }, { season }), lit } };
-  });
-  paintedWallsSaw = { walls: walls.length, runs: runs.length, season, said };
-  paintedWallsFrom = paintedWallsNow();
-  paintedWalls.populate({ runs, look: { ...wallLook(said, { season }), lit } });
-  // An opening is as thick as the wall round it, partition and all: a door cut from a stud wall kept the stone's
-  // own thickness and stood proud of it on both faces (Roi: "doors as well..").
-  // ...and it stands as high as that wall does, so it is lifted off the line the wall runs along by the same step
-  // the wall's own top is. Left on the line, an opening sat half out of the stone it was cut from.
-  const thinOpening = (ends, thick) => {
-    const thin = insideWall(ends);
-    return {
-      thick: thin ? Math.max(0.05, (thick ?? WALL_THICK) * PARTITION_THIN) : thick,
-      lift: thin ? WALL_LIFT * PARTITION_THIN : WALL_LIFT,
-      p: thin ? ":p" : "",
-    };
-  };
-  paintedDoors.populate({ doors: wallDoors(walls).map((d) => {
-    const { thick, lift, p } = thinOpening([d.hinge, d.far], d.thick ?? WALL_THICK);
-    return { ...d, thick, lift, key: `${d.key}${p}${litKey}`, lit };
-  }) });
-  paintedWindows.populate({ windows: wallWindows(walls).map((w) => {
-    const half = w.length / 2, dx = Math.cos(w.along) * half, dy = Math.sin(w.along) * half;
-    const { thick, lift, p } = thinOpening([[w.middle[0] - dx, w.middle[1] - dy], [w.middle[0] + dx, w.middle[1] + dy]], w.thick ?? WALL_THICK);
-    return { ...w, thick, lift, lit, key: `${w.key}${p}${litKey}` };
-  }) });
-  // Roofs are the scene's own, not walls: it keeps them, and each takes the year as its own age says.
-  const grid = canvas?.grid?.size ?? 100;
-  const roofs = roofsOf(canvas?.scene?.flags?.[ID] ?? {}, { grid });
-  // The weather a roof is standing out in, taken from the same ground the floors are painted from rather than from
-  // a flag of its own: the snow that is lying, and how wet it all is. Roi, looking at bare slate over snowy ground:
-  // "i dont see weather integration on the roofs at all" — it was reading a flag that has never existed.
-  const weather = roofWeatherNow();
-  const sky = { ...(canvas?.scene?.flags?.[ID] ?? {}), ...weather };
-  // The weather belongs in the key as much as the sun does: a roof is a picture, and a picture of a bare roof does
-  // not become a snowy one by being left alone.
-  const skyKey = roofSuffix();
-  paintedRoofs.populate({
-    roofs: roofs.map((r) => ({ ...r, key: `${r.key}${skyKey}`, look: { ...roofLook(sky, { season, age: r.age }), lit, dressing: dressingNow()?.colour ?? null } })),
-    look: { ...roofLook(sky, { season }), lit },
-  });
-  // What the dressed buildings hang out, off the eave ring of each roof. Not part of the roof's own picture: it
-  // swings in the wind and lights up at dusk, and that picture is painted once and kept.
-  const feast = dressingNow();
-  paintedDressing.populate({
-    colour: feast?.colour ?? null,
-    colours: feast?.colours ?? null,
-    roofs: roofs.filter((r) => r.dressed).map((r) => ({
-      key: r.key,
-      dressed: true,
-      kind: r.hangs,
-      ring: roofShape(r.form, r.room.x, r.room.y, r.room.w, r.room.h, grid * ROOF_OVERHANG, r.high)?.eave ?? [],
-    })),
-  });
-  paintedWallsDrain();
-};
-// Painting a few at a time keeps a big map from holding the frame. It hung off the canvas ticker, and on this table
-// that callback never fired at all — the runs sat in the queue and the map stayed bare. A clock of its own owes
-// nothing to the canvas: it paints a handful, stops when the queue is empty, and starts again when there is more.
-let paintedWallsDraining = null;
-const paintedWallsDrain = () => {
-  if (paintedWallsDraining) return;
-  const tick = () => {
-    paintedWallsDraining = null;
-    let left = 0;
-    try {
-      left = paintedWalls.step(3) + paintedDoors.step(0.05, 3) + paintedWindows.step(0.05, 3) + paintedRoofs.step(0.05, 2);
-      // Painting is not the only thing that needs a tick: a door swinging, a window opening and a roof fading all
-      // move a little each time. Stopping the moment the queue was empty left them frozen half way — or, for a
-      // roof, never started at all.
-      left += paintedDoors.state.swinging + paintedWindows.state.moving + paintedRoofs.state.fading;
-      // Bunting never settles: it stirs in still air and swings in a wind, so while a building is dressed this
-      // clock keeps running. It is a few hundred lines a tick, which is nothing — the reason the roof itself is
-      // baked and this is not.
-      try {
-        // The wind the sky is actually blowing, which is where the Weather panel's own wind lands — the scene's
-        // weather alone never hears it, so bunting hung in a gale stirred as if it were calm (Roi: "i changed the
-        // wind in the weather panel but it doesnt move with the wind").
-        const w = weatherNow();
-        paintedDressing.weather({ wind: skySeen ? skyWindNow : w.wind, windAngle: skySeen ? skyWindAngle : w.windAngle, sun: sunNow, ...roofWeatherNow() });
-        left += paintedDressing.step(0.05);
-        garlandLightsTick();
-      } catch { /* no weather yet */ }
-    } catch (err) { if (!paintedWallsTold) { paintedWallsTold = true; console.warn("Animater | painted walls", err); } return; }
-    if (left > 0) paintedWallsDraining = setTimeout(tick, 30);
-  };
-  paintedWallsDraining = setTimeout(tick, 0);
-};
-// Painting is done a couple of runs a frame: a keep with three hundred segments fills in over a second or two
-// instead of holding the frame while every one of them is drawn.
-let paintedWallsTicks = 0;
-const paintedWallsTick = () => {
-  paintedWallsTicks++;
-  const on = paintedWallsOn();
-  if (on !== paintedWallsWere) { paintedWallsWere = on; paintedWallsDirty = true; }
-  if (on && paintedWallsNow() !== paintedWallsFrom) paintedWallsDirty = true;
-  // A throw in here would otherwise be swallowed by the ticker and the walls would simply never appear, which is
-  // exactly what happened: said once, then left alone.
-  if (paintedWallsDirty) {
-    try { rebuildPaintedWalls(); }
-    catch (err) { if (!paintedWallsTold) { paintedWallsTold = true; console.warn("Animater | painted walls", err); } }
-  }
-  paintedWalls.step();
-  // A door swings rather than snapping, so the leaves want the frame's own time.
-  paintedDoors.step(Math.min(0.1, (canvas?.app?.ticker?.deltaMS ?? 16) / 1000));
-  paintedWindows.step(Math.min(0.1, (canvas?.app?.ticker?.deltaMS ?? 16) / 1000));
-};
-// Rebuild when something says to, from a clock of our own rather than the canvas ticker (see paintedWallsDrain).
-const paintedWallsCatchUp = () => {
-  const on = paintedWallsOn();
-  if (on !== paintedWallsWere) { paintedWallsWere = on; paintedWallsDirty = true; }
-  if (on && paintedWallsNow() !== paintedWallsFrom) paintedWallsDirty = true;
-  // The sky a roof is painted under — the sun, the weather, the feast day — may not be known yet when the canvas
-  // is first ready. A calendar still loading has no festival to give, so the first paint of a scene is an ordinary
-  // day whatever the date; this is where a building finds out it is wrong and puts its garlands up.
-  if (on) { try { wallsFollowSun(); } catch { /* nothing painted yet */ } }
-  if (!paintedWallsDirty) return;
-  try { rebuildPaintedWalls(); }
-  catch (err) { if (!paintedWallsTold) { paintedWallsTold = true; console.warn("Animater | painted walls", err); } }
-};
-let paintedWallsSoonTimer = null;
-const paintedWallsSoon = () => { clearTimeout(paintedWallsSoonTimer); paintedWallsSoonTimer = setTimeout(() => { paintedWallsSoonTimer = null; paintedWallsCatchUp(); }, 120); };
-// canvasReady can arrive before the walls are on the canvas, so it is asked again a moment later as well.
-Hooks.on("canvasReady", () => {
-  paintedWallsDirty = true;
-  try { canvas.app.ticker.add(paintedWallsTick); } catch { /* the clock below does the work anyway */ }
-  paintedWallsSoon();
-  for (const wait of [400, 1200, 2500]) setTimeout(paintedWallsCatchUp, wait);
+const buildings = createPaintedBuildings({
+  ID,
+  floorLayer,
+  painting: paintedWallsOn,
+  underground: () => undergroundScene(),
+  season: () => seasonNow(),
+  weather: () => weatherNow(),
+  sun: () => sunNow,
+  // The wind the sky is actually blowing, which is where the Weather panel's own wind lands; the scene's weather
+  // alone never hears it.
+  sky: () => ({ seen: skySeen, wind: skyWindNow, windAngle: skyWindAngle }),
 });
-Hooks.on("canvasTearDown", () => { try { canvas?.app?.ticker?.remove(paintedWallsTick); } catch { /* gone with the canvas */ } paintedWalls.drop(); paintedDoors.drop(); paintedWindows.drop(); paintedRoofs.drop(); paintedDressing.drop(); garlandLightsOut(); });
-/**
- * Whose eyes a roof answers to: the creature you have hold of, and nobody else. A GM owns every token on the map,
- * so "mine" alone opened a house because an innkeeper was standing in it with nothing selected at all (Roi: "when
- * theres no selected token it should not make a vision polygon"). Selected first, then — for a player, who is not
- * forever picking tokens up and putting them down — their own creatures that can see. A GM holding nothing is
- * looking at the map rather than through anybody, so nothing opens.
- */
-const seeingTokens = () => {
-  const all = (canvas?.tokens?.placeables ?? []).filter((t) => !t.document?.hidden);
-  const held = all.filter((t) => t.controlled);
-  if (held.length) return held;
-  if (game.user?.isGM) return [];
-  return all.filter((t) => t.isOwner && t.document?.sight?.enabled !== false);
-};
-// A roof fades while one of your own creatures is under it, and comes back when they leave. Yours, not everyone's:
-// a player should not see a roof lift off a house the party has not gone into.
-const roofsCovering = () => {
-  const mine = seeingTokens();
-  if (!mine.length) return [];
-  const roofs = roofsOf(canvas?.scene?.flags?.[ID] ?? {}, { grid: canvas?.grid?.size ?? 100 });
-  // The same key the layer laid them under, sun and all.
-  return roofs.filter((r) => mine.some((t) => underRoof(r.room, t.center?.x ?? t.x, t.center?.y ?? t.y))).map((r) => `${r.key}${roofSuffix()}`);
-};
-// Roi: "can we show the insides based on the sight polygon?" — so instead of the lid coming off the whole house,
-// each roof opens where your own creatures can actually see. Foundry works the sweep out for walls and doors
-// already, and one costs a tenth of a millisecond, so this is cheap enough to redo whenever anybody moves.
-const sightFrom = (point) => {
-  try {
-    const Backend = CONFIG?.Canvas?.polygonBackends?.sight;
-    const poly = Backend?.create({ x: point.x, y: point.y }, { type: "sight" });
-    const pts = poly?.points;
-    return Array.isArray(pts) ? pts : (pts?.length ? [...pts] : null);
-  } catch { return null; }
-};
-const roofsOpening = () => {
-  const open = new Map();
-  const mine = seeingTokens();
-  if (!mine.length) return open;
-  const grid = canvas?.grid?.size ?? 100;
-  const roofs = roofsOf(canvas?.scene?.flags?.[ID] ?? {}, { grid });
-  if (!roofs.length) return open;
-  // Out past the walls, not short of them. Cut to the inside of the room, the opening showed the floor and left the
-  // stone the room is made of hidden under the roof, so a player standing in a house could not see its walls (Roi:
-  // "with our indoor vision polygon methods players cant see the actual walls"). It still stops short of the eaves,
-  // which hang a good deal further out, so the roof keeps an edge rather than being bitten into.
-  const inset = -grid * 0.22;
-  // Every creature of yours, not only the ones indoors. Roi: "from the outside looking with open door i still cant
-  // see the insides" — and quite right: standing in the doorway you can see the hall, so the hall should be open.
-  // Which part of it opens is the sweep's business, and it stops at the walls either way.
-  const sights = [];
-  for (const t of mine) { const s = sightFrom({ x: t.center?.x ?? t.x, y: t.center?.y ?? t.y }); if (s) sights.push(s); }
-  if (!sights.length) return open;
-  for (const roof of roofs) {
-    const holes = roofOpenings(roof.room, sights, { inset });
-    if (holes.length) open.set(`${roof.key}${roofSuffix()}`, holes);
-  }
-  return open;
-};
-// Real light off the garlands. The lanterns painted their own halo, which made them look lit without lighting
-// anything (Roi: "still no actual lights on the garlands"). These are light sources of Foundry's own, made at run
-// time and never written to the scene: they light the street, throw shadows off the walls and go out at dawn. Not
-// one per lantern — a string of a dozen would be a dozen sweeps of the walls — but every few along the run.
-// One light per lantern, small (Roi: "just put a small light on every garland lamp"). A lantern throws light about
-// as far as it hangs from the eave, so a light that size is cheap: it is kept from sweeping the walls, which is
-// what a light's real cost is, because at this size there is nothing between it and the ground it lights.
-const GARLAND_LIGHTS_MOST = 160, GARLAND_REACH = 0.62, GARLAND_LIGHT = 0.55;
-// The light is the lantern's own and hangs where the lantern hangs (Roi: "the light should come from the lanter,
-// just not render on the roof"). What keeps it off the slates is the roof line itself: while a building is lit, its
-// eave is an edge that stops light, drawn a little inside the roof's own edge so the lanterns hanging on it are
-// outside. It stops light and nothing else — nobody's sight, movement or hearing knows it is there.
-// A touch BEYOND the roof's own edge, not inside it: a light fades out softly rather than stopping at a line, so a
-// ring drawn inside the slates left a lit band along every eave (Roi: "still seee light on the roof"). The lanterns
-// hang about fifteen pixels further out than this, so they stay on the bright side of it.
-const EAVE_STEP = -0.08, LIGHT_BLOCKS = 20; // CONST.WALL_SENSE_TYPES.NORMAL
-const garlandEdges = new Map();
-const eaveEdgesOut = () => {
-  if (!garlandEdges.size) return;
-  for (const id of garlandEdges.keys()) { try { canvas?.edges?.delete(id); } catch { /* gone with the canvas */ } }
-  garlandEdges.clear();
-};
-const eaveEdgesNow = (grid) => {
-  const Edge = foundry?.canvas?.geometry?.edges?.Edge;
-  const eaves = paintedDressing?.eaves ?? [];
-  if (!Edge || !canvas?.edges || !eaves.length) { eaveEdgesOut(); return false; }
-  const inset = grid * EAVE_STEP, keep = new Set();
-  let changed = false, n = 0;
-  for (const { ring, middle } of eaves) {
-    if (!Array.isArray(ring) || ring.length < 3) continue;
-    // Pulled toward the middle of the building, so the roof line is inside and the lanterns on it are out.
-    const pull = (p) => { const dx = middle[0] - p[0], dy = middle[1] - p[1], l = Math.hypot(dx, dy) || 1; return [p[0] + (dx / l) * inset, p[1] + (dy / l) * inset]; };
-    for (let i = 0; i < ring.length; i++) {
-      const a = pull(ring[i]), b = pull(ring[(i + 1) % ring.length]);
-      const id = `animater.eave.${n++}`;
-      keep.add(id);
-      const was = garlandEdges.get(id);
-      // Asked of the canvas, not only of this note of it: an edge taken away elsewhere has to be laid again.
-      if (was && canvas.edges.has(id) && Math.abs(was[0] - a[0]) < 0.5 && Math.abs(was[1] - a[1]) < 0.5 && Math.abs(was[2] - b[0]) < 0.5 && Math.abs(was[3] - b[1]) < 0.5) continue;
-      try {
-        // Laid as a wall, because a sweep only looks at the kinds of edge it has been told about and a kind of our
-        // own was quietly skipped — it blocked nothing at all. It is a wall that stops light and nothing else:
-        // sight, movement and sound all pass through it as if it were not there.
-        canvas.edges.set(id, new Edge({ x: a[0], y: a[1] }, { x: b[0], y: b[1] }, { id, type: "wall", light: LIGHT_BLOCKS, darkness: 0, move: 0, sight: 0, sound: 0 }));
-        garlandEdges.set(id, [a[0], a[1], b[0], b[1]]);
-        changed = true;
-      } catch { /* a version with no edges of its own to lend */ }
-    }
-  }
-  for (const id of [...garlandEdges.keys()]) {
-    if (keep.has(id)) continue;
-    try { canvas.edges.delete(id); } catch { /* gone */ }
-    garlandEdges.delete(id);
-    changed = true;
-  }
-  return changed;
-};
-const garlandLights = new Map();
-const garlandLightsOut = () => {
-  if (!garlandLights.size) return;
-  for (const src of garlandLights.values()) { try { src.destroy(); } catch { /* gone with the canvas */ } }
-  garlandLights.clear();
-  eaveEdgesOut();
-  try { canvas?.perception?.update({ refreshLighting: true }); } catch { /* not drawn */ }
-};
-const garlandLightsNow = () => {
-  const Cls = foundry?.canvas?.sources?.PointLightSource;
-  const lamps = paintedDressing?.lamps ?? [];
-  if (!Cls || !canvas?.ready || !lamps.length) { garlandLightsOut(); return; }
-  const want = lamps.slice(0, GARLAND_LIGHTS_MOST);
-  const grid = canvas.grid?.size ?? 100, reach = grid * GARLAND_REACH;
-  // The roof line first: a light worked out before its eave was there would have swept past it.
-  eaveEdgesNow(grid);
-  const keep = new Set();
-  for (const [i, lamp] of want.entries()) {
-    const id = `animater.garland.${i}`;
-    keep.add(id);
-    let src = garlandLights.get(id);
-    if (!src) { src = new Cls({ sourceId: id }); garlandLights.set(id, src); }
-    try {
-      src.initialize({
-        x: lamp.x, y: lamp.y, elevation: 0, dim: reach, bright: reach * 0.3,
-        color: lamp.colour, alpha: GARLAND_LIGHT * Math.max(0, Math.min(1, lamp.glow)),
-        // It shines all round, as a lantern does, and the eave edge is what keeps it off the roof.
-        angle: 360, rotation: 0,
-        animation: { type: "none" }, walls: true, vision: false, disabled: false,
-      });
-      // A source only lights anything once it is attached to the scene's own collection.
-      src.add();
-    } catch { garlandLights.delete(id); try { src.destroy(); } catch { /* gone */ } }
-  }
-  for (const [id, src] of [...garlandLights]) {
-    if (keep.has(id)) continue;
-    garlandLights.delete(id);
-    try { src.destroy(); } catch { /* gone with the canvas */ }
-  }
-  try { canvas.perception.update({ refreshLighting: true }); } catch { /* not drawn */ }
-};
-// Lanterns swing, so their lights would too — but a light is a sweep of every wall near it, and sixty of those a
-// second is a scene that stops answering. They are put where the lanterns are a few times a second instead.
-let garlandLightsAt = 0;
-const garlandLightsTick = () => {
-  const now = performance.now();
-  if (now - garlandLightsAt < 400) return;
-  garlandLightsAt = now;
-  try { garlandLightsNow(); } catch (err) { console.warn("Animater | garland lights", err); }
-};
-Hooks.on("canvasTearDown", () => { garlandLights.clear(); garlandEdges.clear(); });
-// Foundry's own door control — a white door on a dark tile — is drawn over the leaf we painted, and at any zoom
-// worth painting for it covers the door entirely (Roi, of a doorway in a partition: "looks weird..."). On a door
-// Animater painted it stands back: faint and smaller, so the leaf shows through, and full size under the pointer so
-// it is still the thing you click to open the door.
-const DOOR_CONTROL_FAINT = 0.3, DOOR_CONTROL_SMALL = 0.55;
-const standBackDoorControls = () => {
-  if (!canvas?.ready) return;
-  const on = paintedWallsOn();
-  for (const wall of canvas.walls?.placeables ?? []) {
-    const control = wall.doorControl;
-    if (!control || control.destroyed) continue;
-    const painted = on && Number(wall.document.door) > 0 && !!wall.document.flags?.[ID]?.door;
-    if (!painted) {
-      if (control.anStoodBack) { control.alpha = 1; control.scale?.set(1); control.anStoodBack = false; }
-      continue;
-    }
-    control.alpha = DOOR_CONTROL_FAINT;
-    control.scale?.set(DOOR_CONTROL_SMALL);
-    if (control.anStoodBack) continue;
-    control.anStoodBack = true;
-    // Under the pointer it comes back to itself, so a GM reaching for a door still gets a door-sized target.
-    control.on?.("pointerover", () => { control.alpha = 1; control.scale?.set(1); });
-    control.on?.("pointerout", () => { if (control.anStoodBack) { control.alpha = DOOR_CONTROL_FAINT; control.scale?.set(DOOR_CONTROL_SMALL); } });
-  }
-};
-let doorControlTimer = null;
-const standBackDoorControlsSoon = () => {
-  if (doorControlTimer) return;
-  doorControlTimer = setTimeout(() => { doorControlTimer = null; try { standBackDoorControls(); } catch { /* not drawn */ } }, 60);
-};
-for (const hook of ["canvasReady", "drawWall", "refreshWall", "updateWall", "createWall", "deleteWall", "controlToken"]) Hooks.on(hook, () => standBackDoorControlsSoon());
-let roofCoverTimer = null;
-const roofCoverSoon = () => {
-  if (roofCoverTimer) return;
-  roofCoverTimer = setTimeout(() => {
-    roofCoverTimer = null;
-    try { paintedRoofs.cover(roofsCovering()); paintedRoofs.open(roofsOpening()); paintedWallsDrain(); }
-    catch (err) { if (!paintedWallsTold) { paintedWallsTold = true; console.warn("Animater | roofs", err); } }
-  }, 60);
-};
-for (const hook of ["canvasReady", "controlToken", "updateToken", "createToken", "deleteToken", "refreshToken"]) Hooks.on(hook, () => { roofCoverSoon(); });
-for (const hook of ["createWall", "updateWall", "deleteWall"]) Hooks.on(hook, (doc) => { if (doc?.parent?.id === canvas?.scene?.id) { paintedWallsDirty = true; paintedWallsSoon(); } });
-Hooks.on("updateScene", (doc) => { if (doc?.id === canvas?.scene?.id) { paintedWallsDirty = true; paintedWallsSoon(); } });
+// The names the rest of the module knows these by.
+const paintedWalls = buildings.walls, paintedDoors = buildings.doors, paintedWindows = buildings.windows;
+const paintedRoofs = buildings.roofs, paintedDressing = buildings.dressing;
+const paintWallList = buildings.wallList, sunLit = buildings.sunLit, wallsFollowSun = buildings.followSun;
+const wallsOutsideAir = buildings.outsideAir, rebuildPaintedWalls = buildings.rebuild;
+const paintedWallsSoon = buildings.soon, paintedWallsDrain = buildings.drain;
+const paintedWallsDirtySet = buildings.touch;
 
 // Wall configuration: what this one wall is made of. A wall drawn with the Map painting bar's Structures tab arrives with
 // one; this is where it is changed afterwards, or taken away again.
@@ -18359,8 +17928,8 @@ Hooks.once("ready", () => {
       // A cavern feature in a box on this screen only ({ kind: "lava" | "mist" | "fungus-blue" | "crystals-rose" | "webs" ..., x, y, w, h }); none: clear.
       // The ceiling coming down here for everyone (GM; kept with the scene), or all the rubble cleared.
       // The painted walls, their doorways and their windows: whether they are drawn at all, and what is on the map.
-      paintedWalls: () => ({ on: paintedWallsOn(), dirty: paintedWallsDirty, were: paintedWallsWere, ticks: paintedWallsTicks, saw: paintedWallsSaw, walls: paintedWalls.state, doors: paintedDoors.state, windows: paintedWindows.state, roofs: paintedRoofs.state, chimneys: paintedRoofs.chimneys, dressing: paintedDressing.state, garlandLights: garlandLights.size }),
-      repaintWalls: () => { rebuildPaintedWalls(); return { on: paintedWallsOn(), saw: paintedWallsSaw }; },
+      paintedWalls: () => buildings.state,
+      repaintWalls: () => { rebuildPaintedWalls(); return { on: paintedWallsOn(), saw: buildings.state.saw }; },
       caveIn: (x, y, radius) => bringCeilingDown({ x, y, radius }),
       clearRubble: () => clearRubble(),
       // A pebble kicked from here toward a heading (radians), on this screen only.
