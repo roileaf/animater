@@ -3773,7 +3773,7 @@ const paintingWalls = () => { try { return !!decorBrushing && brushChoices().tab
 const decorSteps = { undo: [], redo: [] };
 const rememberDecorStep = (step) => { decorSteps.undo.push(step); if (decorSteps.undo.length > 30) decorSteps.undo.shift(); decorSteps.redo = []; };
 const decorRegion = (id) => canvas.scene?.regions?.get(id) ?? null;
-// A stroke of the Walls tab, taken back and put back: what it made, and what it took away to make it. Both sides are
+// A stroke of the Structures tab, taken back and put back: what it made, and what it took away to make it. Both sides are
 // kept whole, with their ids, so a doorway undone puts the one wall back exactly as it was and redone cuts it again.
 const wallStepOf = (made, gone) => ({ kind: "walls", made: made.map((d) => d.toObject()), gone: gone.map((d) => d.toObject()) });
 const wallsBack = async (drop, make) => {
@@ -6721,7 +6721,7 @@ Hooks.on("getSceneControlButtons", (controls) => {
     const add = (tool) => { tools[tool.name] = tool; };
     controls.animater = { name: "animater", title: "Animater", icon: "animater-a-icon", layer: "tokens", order: 50, activeTool: "select", tools,
       onChange: (event, active) => { if (!active || canvas.tokens?.active) return; canvas.tokens?.activate(); void ui.controls?.activate({ control: "animater", tool: "select" }); } };
-    add({ name: "animaterDecorate", title: "Map painting: paint floors, decorations, walls and heights onto themap", icon: "fa-solid fa-paintbrush", order: order - 1, button: true, visible: toolShown("toolDecorate") && mapMakingOn(),
+    add({ name: "animaterDecorate", title: "Map painting: paint floors, decorations, structures and heights onto the map", icon: "fa-solid fa-paintbrush", order: order - 1, button: true, visible: toolShown("toolDecorate") && mapMakingOn(),
       onChange: () => (decorBrushing ? stopDecorBrush() : startDecorBrush()) });
     add({ name: "animaterCaveIn", title: "Cave-in: click where the ceiling comes down", icon: "fa-solid fa-person-falling-burst", order, button: true, visible: toolShown("toolCaveIn"),
       onChange: () => aimCaveIn() });
@@ -16644,7 +16644,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
 // wall-looks.mjs chains the scene's loose segments into runs and says what each is made of, and
 // engines/motion/painted-walls.mjs lays the pictures on the map a few at a time.
 //
-// A wall is painted because it was drawn with a material (the Map painting bar's Walls tab, or Wall configuration →
+// A wall is painted because it was drawn with a material (the Map painting bar's Structures tab, or Wall configuration →
 // Animater painted wall), and for no other reason: nothing a map arrived with is ever painted over.
 const paintedWallsOn = () => bothSettingsOn("paintedWalls");
 const paintedWallRoot = floorLayer("paintedWalls"), paintedDoorRoot = floorLayer("paintedDoors");
@@ -17012,7 +17012,7 @@ for (const hook of ["canvasReady", "controlToken", "updateToken", "createToken",
 for (const hook of ["createWall", "updateWall", "deleteWall"]) Hooks.on(hook, (doc) => { if (doc?.parent?.id === canvas?.scene?.id) { paintedWallsDirty = true; paintedWallsSoon(); } });
 Hooks.on("updateScene", (doc) => { if (doc?.id === canvas?.scene?.id) { paintedWallsDirty = true; paintedWallsSoon(); } });
 
-// Wall configuration: what this one wall is made of. A wall drawn with the Map painting bar's Walls tab arrives with
+// Wall configuration: what this one wall is made of. A wall drawn with the Map painting bar's Structures tab arrives with
 // one; this is where it is changed afterwards, or taken away again.
 Hooks.on("renderWallConfig", (app, html) => {
   const root = html instanceof HTMLElement ? html : html?.[0];

@@ -23,9 +23,9 @@ export const WALL_WIDTH = Object.freeze({ min: 0.08, max: 0.4, usual: WALL_THICK
 export const WALL_AGE = Object.freeze({ min: 0, max: 1, usual: 0, step: 0.05 });
 /** How wide a doorway is cut, in squares: a cupboard door up to a pair of gates. */
 export const DOOR_WIDE = Object.freeze({ min: 0.5, max: 3, usual: 1, step: 0.25 });
-/** What a drag on the Walls tab does: lay stone, cut a doorway, set a window in, or rub out. */
+/** What a drag on the Structures tab does: lay stone, cut a doorway, set a window in, or rub out. */
 const WALL_MODES = Object.freeze([['draw', 'Draw'], ['round', 'Round room'], ['door', 'Doorway'], ['window', 'Window'], ['roof', 'Roof'], ['move', 'Move building'], ['erase', 'Erase']]);
-// What the wheel moves on the Walls tab, where there is no brush to size: the number the mode is mostly about, and
+// What the wheel moves on the Structures tab, where there is no brush to size: the number the mode is mostly about, and
 // the one behind it. A doorway is mostly how wide it is, a wall how thick, a roof how long it has stood.
 const WALL_WHEEL = Object.freeze({
   draw: { main: ['wallWidth', WALL_WIDTH], second: ['wallAge', WALL_AGE] },
@@ -223,7 +223,7 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
     const floors = remembered.tab === 'floors' && !lock, heights = remembered.tab === 'heights' && !lock, walls = remembered.tab === 'walls' && !lock;
     // The header: the tabs, what is on the map, undo and redo, and close.
     const head = el('div', 'an-db-head an-mp-head');
-    for (const [key, icon, label] of [['floors', 'fa-solid fa-layer-group', 'Floors'], ['decor', 'fa-solid fa-tree', 'Decorations'], ['walls', 'fa-solid fa-grip-lines', 'Walls'], ['heights', 'fa-solid fa-mountain', 'Heights']]) {
+    for (const [key, icon, label] of [['floors', 'fa-solid fa-layer-group', 'Floors'], ['decor', 'fa-solid fa-tree', 'Decorations'], ['walls', 'fa-solid fa-grip-lines', 'Structures'], ['heights', 'fa-solid fa-mountain', 'Heights']]) {
       if (lock && key !== 'decor') continue;
       const t = el('button', remembered.tab === key ? 'an-mp-tab is-on' : 'an-mp-tab'); t.type = 'button'; t.setAttribute('aria-pressed', String(remembered.tab === key)); t.dataset.tab = key;
       t.innerHTML = `<i class="${icon}"></i>`; t.append(el('span', '', lock && key === 'decor' ? `Decorations: ${lock.name || 'region'}` : label));
@@ -488,7 +488,7 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
     setEdges: (v) => { remembered.edges = EDGE_CHOICES.some(([k]) => k === v) ? v : 'colour'; draw(); },
     setTol: (v) => { remembered.tol = Math.min(BRUSH_TOL.max, Math.max(BRUSH_TOL.min, Math.round(v))); draw(); },
     /**
-     * A step of the number the Walls tab's mode is mostly about — a wider doorway, a thicker wall, an older roof —
+     * A step of the number the Structures tab's mode is mostly about — a wider doorway, a thicker wall, an older roof —
      * without letting go of the map to reach the slider. `which` is 'main' or 'second'; answers whether it took it,
      * so a mode with nothing to move leaves the wheel to the map.
      */
