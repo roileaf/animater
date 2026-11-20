@@ -69,10 +69,23 @@ test('two materials never join into one run, however they touch', () => {
   assert.deepEqual(runs.map((r) => r.material).sort(), ['dressed', 'timber']);
 });
 
-test('a T junction is not one run: nobody walks straight through it', () => {
+// Roi, on an inside wall meeting an outside one: "why inside walls break the coherently of outside walls?" A T used
+// to end everybody's run, so the outside wall became two stretches of stone with their own outlines, ink and texture,
+// and the join showed. The wall that runs straight through carries on; only the wall built against it starts afresh.
+test('a wall carries straight through a T, and the wall built against it is its own run', () => {
   const runs = wallRuns([wall('a', 0, 0, 100, 0), wall('b', 100, 0, 200, 0), wall('c', 100, 0, 100, 100)]);
-  assert.equal(runs.length, 3, 'three arms, each its own run');
-  assert.deepEqual(runs.flatMap((r) => r.walls).sort(), ['a', 'b', 'c']);
+  assert.equal(runs.length, 2, 'the wall that goes through, and the branch');
+  const through = runs.find((r) => r.walls.length === 2);
+  assert.deepEqual(through.walls.slice().sort(), ['a', 'b'], 'the outside wall is one unit, partition or no partition');
+  assert.deepEqual(runs.find((r) => r.walls.length === 1).walls, ['c'], 'the inside wall on its own');
+});
+
+test('a corner is still one run, and a T that turns on both sides is not', () => {
+  const corner = wallRuns([wall('a', 0, 0, 100, 0), wall('b', 100, 0, 100, 100)]);
+  assert.equal(corner.length, 1, 'two walls meeting is a corner, whatever the angle');
+  // Three arms and no two of them in line: nothing carries through, so each is its own.
+  const star = wallRuns([wall('a', 100, 100, 0, 0), wall('b', 100, 100, 200, 0), wall('c', 100, 100, 100, 200)]);
+  assert.equal(star.length, 3, 'nothing to carry through');
 });
 
 test('a ring has no loose end, and is still painted once', () => {
@@ -198,8 +211,11 @@ test('an end that meets another wall is a join; an end that meets nothing is not
   // Roi, looking at a corner on the map: "the walls doesnt seem like one unit". Every run was capping off against
   // its neighbour with its own dark end.
   const runs = wallRuns([wall('a', 0, 0, 100, 0), wall('b', 100, 0, 200, 0), wall('c', 100, 0, 100, 100)]);
-  const arm = runs.find((r) => r.walls[0] === 'a');
-  assert.deepEqual(arm.join, [false, true], 'loose at its far end, joined where the three meet');
+  const branch = runs.find((r) => r.walls[0] === 'c');
+  assert.deepEqual(branch.join, [true, false], 'joined where the three meet, loose at its far end');
+  // The wall that carries through is loose at both ends: the T it passes is no longer an end of anything.
+  const through = runs.find((r) => r.walls.length === 2);
+  assert.deepEqual(through.join, [false, false]);
   const alone = wallRuns([wall('a', 0, 0, 100, 0)])[0];
   assert.deepEqual(alone.join, [false, false], 'a wall on its own joins nothing');
 });

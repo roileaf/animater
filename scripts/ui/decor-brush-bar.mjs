@@ -24,11 +24,12 @@ export const WALL_AGE = Object.freeze({ min: 0, max: 1, usual: 0, step: 0.05 });
 /** How wide a doorway is cut, in squares: a cupboard door up to a pair of gates. */
 export const DOOR_WIDE = Object.freeze({ min: 0.5, max: 3, usual: 1, step: 0.25 });
 /** What a drag on the Structures tab does: lay stone, cut a doorway, set a window in, or rub out. */
-const WALL_MODES = Object.freeze([['draw', 'Wall'], ['round', 'Round room'], ['door', 'Doorway'], ['window', 'Window'], ['roof', 'Roof'], ['move', 'Move building'], ['erase', 'Erase']]);
+const WALL_MODES = Object.freeze([['draw', 'Wall'], ['rect', 'Rectangle room'], ['round', 'Round room'], ['door', 'Doorway'], ['window', 'Window'], ['roof', 'Roof'], ['move', 'Move building'], ['erase', 'Erase']]);
 // What the wheel moves on the Structures tab, where there is no brush to size: the number the mode is mostly about, and
 // the one behind it. A doorway is mostly how wide it is, a wall how thick, a roof how long it has stood.
 const WALL_WHEEL = Object.freeze({
   draw: { main: ['wallWidth', WALL_WIDTH], second: ['wallAge', WALL_AGE] },
+  rect: { main: ['wallWidth', WALL_WIDTH], second: ['wallAge', WALL_AGE] },
   round: { main: ['wallWidth', WALL_WIDTH], second: ['wallAge', WALL_AGE] },
   door: { main: ['doorWide', DOOR_WIDE] },
   window: { main: ['doorWide', DOOR_WIDE] },
@@ -474,6 +475,8 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
       ? 'Drag from inside a building: its walls, its doorways and windows, and the roof over it all go together · Drag a wall itself to move just that one · It lands on the grid · Ctrl+Z puts it back · 1 / 2 / 3 / 4: tabs'
       : remembered.wallMode === 'round'
       ? 'Drag from the middle of the room outwards: a ring of walls, as round as a tower · Drag further for a wider one · A room this round takes a conical roof · 1 / 2 / 3 / 4: tabs'
+      : remembered.wallMode === 'rect'
+      ? 'Drag from one corner of the room to the far one: four walls, closed · The corner you started at stays put · Ctrl+wheel: how thick · 1 / 2 / 3 / 4: tabs'
       : remembered.wallMode === 'erase'
       ? 'Click or drag over a painted wall: it goes · Only walls painted here — never the map’s own · Shift: draw instead · 1 / 2 / 3 / 4: tabs'
       : `Drag along the map: a wall${remembered.wallCurve ? ', bending through your corners' : ', turning where you turn'} · Drag back over a corner to take that leg off · Shift: rub out · Ctrl+wheel: how thick · 1 / 2 / 3 / 4: tabs`) : heights ? (remembered.heightMode === 'ramp' ? (remembered.crossKind === 'bridge' ? 'Drag from one raised part to another: a bridge as wide as the brush' : `Drag up across a raised edge: a ${remembered.crossKind}${remembered.crossKind === 'ramp' ? ' as wide as the brush' : ''}`) + ' · Shift-click removes one · 1 / 2 / 3: tabs · Saved as you go' : 'Drag: raise the ground · Wheel over it: higher or lower · Shift-drag rubs out · Alt-drag along an edge: open it (Alt+Shift closes) · 1 / 2 / 3: tabs') : `Drag to paint · Shift-drag rubs out${floors ? (remembered.floor === 'cavern' ? ' the picked growth' : ' the picked floor') : ''} · Ctrl+wheel: brush size · 1 / 2 / 3: tabs · Saved as you paint`);

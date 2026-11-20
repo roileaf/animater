@@ -13,6 +13,7 @@ import { readDecorBroken, carryDecorBroken } from "../engines/props/decor-break.
 import { DOOR_KINDS, doorFor, doorwaySpan } from "../engines/motion/door-paint.mjs";
 import { roomAt, roofsOf, under as underRoof } from "../engines/motion/roof-looks.mjs";
 import { buildingAt as buildingPlanAt } from "../engines/motion/building-plan.mjs";
+import { rectRoom, roundRoom } from "../engines/motion/room-shapes.mjs";
 import { DRESSING_COLOURS_MOST } from "../engines/motion/holiday-dressing.mjs";
 import { ROOF_IDS, ROOF_FORM_IDS, roofFor, formFits } from "../engines/motion/roof-paint.mjs";
 import { WINDOW_ART, windowFor } from "../engines/motion/window-paint.mjs";
@@ -556,7 +557,7 @@ export function createMapPainting(ctx) {
     // Walls (engines/motion/wall-paint.mjs): a drag lays a run of Foundry's own walls — which is what the vision and the
     // movement need — each carrying the material that paints it. Nothing of a map's existing walls is touched: Animater
     // paints only what was drawn here. Shift-click takes a painted wall away again.
-    const wl = state.walls = { points: null, round: null, move: null, rubbing: false, rubbed: new Set(), gone: [], overlay: new PIXI.Graphics() };
+    const wl = state.walls = { points: null, round: null, rect: null, move: null, rubbing: false, rubbed: new Set(), gone: [], overlay: new PIXI.Graphics() };
     wl.overlay.eventMode = "none"; top.addChild(wl.overlay);
     const wallsOn = () => brushChoices().tab === "walls";
     // To the nearest grid corner, which is where a wall belongs; the grid's own answer where Foundry gives one.
@@ -678,15 +679,15 @@ export function createMapPainting(ctx) {
       const a = at(cut.from), b = at(cut.to);
       const keep = { ...own };
       const swing = choice.swing === "out" ? "out" : "in";
-      const leaf = (one, two, hinge) => ({ c: [...one, ...two], door: 1, ds: 0, flags: { [ID]: { ...keep, door: kind, hinge, swing } } });
-      // A pair meets in the middle of the opening, each leaf hung at its own end, as the doors of a hall or a barn
-      // are. Each is a door of Foundry's own, so either half opens on its own.
+      const door = (one, two, hinge, pair = false) => ({ c: [...one, ...two], door: 1, ds: 0, flags: { [ID]: { ...keep, door: kind, hinge, swing, ...(pair ? { pair: true } : {}) } } });
+      // A pair is ONE doorway with one door in it, marked as a pair: one Foundry door, so one control and one thing
+      // to open, and the painting hangs two leaves in it, each at its own end, meeting in the middle. Cut as two
+      // Foundry doors it had two controls side by side and each half opened on its own, which is not a pair of hall
+      // doors but two doors in one hole (Roi: "thats not how foundry double doors work").
       const pair = as !== "window" && choice.doorDouble === true && cut.to - cut.from > g * 0.5;
       const docs = as === "window"
         ? [windowDoc([...a, ...b], keep, choice)]
-        : pair
-          ? [leaf(a, at((cut.from + cut.to) / 2), "near"), leaf(at((cut.from + cut.to) / 2), b, "far")]
-          : [leaf(a, b, choice.doorFlip ? "far" : "near")];
+        : [door(a, b, choice.doorFlip ? "far" : "near", pair)];
       // Every wall the opening reaches into goes, and whatever is left of each at either end comes back as its own
       // wall, keeping that wall's own material and years.
       const gone = [];
@@ -733,7 +734,16 @@ export function createMapPainting(ctx) {
     // and a roof is a box kept in the scene's flags, so moving a house that way left its roof behind (Roi: "how do we
     // move a whole building somewhere else?").
     const buildingAt = (p) => {
-      const room = roomUnder(p);
+      // The whole building, not the room clicked. Asked of roomUnder, a house with a wall down the middle answered
+      // with half of itself, so Move building picked up one room and left the rest standing (Roi: "move building
+      // doesnt select all the building"). building-plan.mjs walks the indoor squares straight through partitions,
+      // which is the same question the Shift roof asks; roomUnder is only the fallback for a point that is not
+      // indoors at all, where there is nothing to walk.
+      const air = wallsOutsideAir();
+      const whole = air
+        ? buildingPlanAt(p, (canvas.walls?.placeables ?? []).map((w) => ({ c: w.document.c })), { grid: grid(), bounds: air.bounds, outside: air.outside })
+        : null;
+      const room = whole ?? roomUnder(p);
       if (!room) return null;
       const g = grid(), edge = g * 0.6;
       const round = { x: room.x - edge, y: room.y - edge, w: room.w + edge * 2, h: room.h + edge * 2 };
@@ -865,24 +875,16 @@ export function createMapPainting(ctx) {
     // ever be stepped out of right angles, and a conical roof — which wants a room that is actually round — had
     // nothing to sit on (Roi: "i cant manage to put a circle wall to use conical roof"). Here the centre is a corner
     // and the drag is the radius; the ring itself is laid off the grid, which is what makes it round.
-    const roundRoom = (middle, p) => {
-      const g = grid(), far = Math.hypot(p.x - middle.x, p.y - middle.y);
-      // In half squares, so the room it closes in is a tidy size, and never smaller than one square across.
-      const r = Math.max(g * 0.5, Math.round(far / (g * 0.5)) * g * 0.5);
-      // Enough sides that it reads as a circle, each still long enough to be a wall of its own.
-      const sides = Math.max(8, Math.min(24, Math.round((2 * Math.PI * r) / (g * 0.75))));
-      const points = [];
-      for (let i = 0; i < sides; i++) {
-        const a = (i / sides) * Math.PI * 2 - Math.PI / 2;
-        points.push({ x: Math.round(middle.x + Math.cos(a) * r), y: Math.round(middle.y + Math.sin(a) * r) });
-      }
-      points.push({ ...points[0] }); // closed: the last leg comes back to the first corner
-      return points;
-    };
+    // The shapes themselves are engines/motion/room-shapes.mjs; what is here is only where the drag started and
+    // where the pointer is. A rectangle is dragged corner to corner and snaps to the grid both ends; a ring is laid
+    // off the grid on purpose, which is what makes it round, so only its middle is snapped.
+    const ringRoom = (middle, p) => roundRoom(middle, p, grid());
+    const boxRoom = (corner, p) => rectRoom(corner, wallSnap(p), grid());
     const wallsDown = (p, shift) => {
       const mode = brushChoices().wallMode;
       if (mode === "roof") { void roofLay(p, shift).then(refreshStatus); return; }
-      if (mode === "round" && !shift) { wl.round = wallSnap(p); wl.points = roundRoom(wl.round, p); wallsShow(); return; }
+      if (mode === "round" && !shift) { wl.round = wallSnap(p); wl.points = ringRoom(wl.round, p); wallsShow(); return; }
+      if (mode === "rect" && !shift) { wl.rect = wallSnap(p); wl.points = boxRoom(wl.rect, p); wallsShow(); return; }
       if (mode === "move" && !shift) {
         // On a wall, that wall alone; inside a room, the whole building (Roi: "we should be able to also just move
         // a walls").
@@ -901,7 +903,8 @@ export function createMapPainting(ctx) {
     const wallsMove = (p) => {
       if (wl.rubbing) { wallsRub(p); return; }
       if (wl.move) { const to = wallSnap(p); wl.move.by = [to.x - wl.move.from.x, to.y - wl.move.from.y]; buildingShow(wl.move); return; }
-      if (wl.round) { wl.points = roundRoom(wl.round, p); wallsShow(); return; }
+      if (wl.round) { wl.points = ringRoom(wl.round, p); wallsShow(); return; }
+      if (wl.rect) { wl.points = boxRoom(wl.rect, p); wallsShow(); return; }
       const s = wallSnap(p);
       if (wallsSame(s, wl.points.at(-1))) return;
       // Back over the last corner takes that leg off again, so a wrong turn is undone without letting go.
@@ -998,7 +1001,10 @@ export function createMapPainting(ctx) {
       if (path.length === 1) { wl.overlay.lineStyle(0); wl.overlay.beginFill(colour, 0.6); wl.overlay.drawCircle(path[0][0], path[0][1], thick * 0.5); wl.overlay.endFill(); }
       // The corners themselves, so a curve shows what it was drawn through. A ring has nothing to show that way: it is
       // the circle that is being drawn, not the corners it happens to be made of.
+      // A ring is drawn as the shape it is, so the corners it happens to be made of are not marked: for a circle
+      // that is its middle, for a rectangle the corner it is being dragged out of.
       if (wl.round) { wl.overlay.lineStyle(2, 0xf3e4c4, 0.8); wl.overlay.drawCircle(wl.round.x, wl.round.y, Math.max(2, grid() * 0.05)); return; }
+      if (wl.rect) { wl.overlay.lineStyle(2, 0xf3e4c4, 0.8); wl.overlay.drawCircle(wl.rect.x, wl.rect.y, Math.max(2, grid() * 0.05)); return; }
       wl.overlay.lineStyle(2, 0xf3e4c4, 0.8);
       for (const p of points) wl.overlay.drawCircle(p.x, p.y, Math.max(2, grid() * 0.04));
     };
@@ -1050,7 +1056,7 @@ export function createMapPainting(ctx) {
         if (wl.gone.length) { rememberDecorStep({ kind: "walls", made: [], gone: wl.gone }); wl.gone = []; }
         refreshStatus(); return; }
       if (wl.move) { e.stopImmediatePropagation(); state.down = false; const move = wl.move; wl.move = null; wl.overlay.clear(); void buildingMove(move).then(refreshStatus); return; }
-      if (wl.points) { e.stopImmediatePropagation(); state.down = false; const run = wl.points, ring = !!wl.round; wl.points = null; wl.round = null; wl.overlay.clear(); void wallsLay(run, ring).then(refreshStatus); return; }
+      if (wl.points) { e.stopImmediatePropagation(); state.down = false; const run = wl.points, ring = !!wl.round || !!wl.rect; wl.points = null; wl.round = null; wl.rect = null; wl.overlay.clear(); void wallsLay(run, ring).then(refreshStatus); return; }
       if (hz.open) { e.stopImmediatePropagation(); state.down = false; const open = hz.open; hz.open = null; void saveOpenEdges(open); return; } if (hz.drag) { e.stopImmediatePropagation(); state.down = false; const drag = hz.drag; hz.drag = null; void layRamp(drag); return; } if (!state.down) return; e.stopImmediatePropagation(); state.down = false; draw(); if (fl.stroke) void floorFinish(); else void finish().then(refreshStatus); };
     const key = (e) => {
       if (e.target?.closest?.("input, textarea")) return;

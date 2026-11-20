@@ -24,6 +24,36 @@ test('a door hangs at one end and reaches to the other', () => {
   assert.equal(d.length, 100);
   assert.equal(d.along, 0, 'it lies along its opening');
   assert.equal(d.way, 1);
+  assert.equal(d.wall, 'a', 'and it knows the wall it hangs in');
+});
+
+// Roi, on the first attempt, which cut a pair as two Foundry doors side by side: "thats not how foundry double doors
+// work it should be like the windows with 2 leaves opening opposite direction but 1 door icon".
+test('a pair is one doorway with two leaves, each hung at its own end', () => {
+  const leaves = wallDoors([door('a', 100, 200, 300, 200, { animater: { pair: true } })]);
+  assert.equal(leaves.length, 2, 'two leaves');
+  assert.deepEqual(leaves.map((l) => l.wall), ['a', 'a'], 'and one Foundry door behind them, so one control');
+  const [one, two] = leaves;
+  assert.deepEqual(one.hinge, [100, 200], 'hung at the near end');
+  assert.deepEqual(two.hinge, [300, 200], 'and at the far end');
+  assert.deepEqual(one.far, two.far, 'they meet in the middle');
+  assert.deepEqual(one.far, [200, 200]);
+  assert.equal(one.length, 100); assert.equal(two.length, 100, 'half the opening each');
+  assert.equal(one.way, -two.way, 'hung at opposite ends, they turn opposite ways');
+  assert.notEqual(one.key, two.key, 'each leaf is painted and kept on its own');
+});
+
+test('both leaves of a pair open and shut together, because one door carries them', () => {
+  const shut = wallDoors([door('a', 100, 200, 300, 200, { animater: { pair: true } })]);
+  const open = wallDoors([door('a', 100, 200, 300, 200, { ds: 1, animater: { pair: true } })]);
+  assert.deepEqual(shut.map((l) => l.open), [false, false]);
+  assert.deepEqual(open.map((l) => l.open), [true, true]);
+});
+
+test('a pair swinging out turns both leaves the other way', () => {
+  const inward = wallDoors([door('a', 100, 200, 300, 200, { animater: { pair: true } })]);
+  const outward = wallDoors([door('a', 100, 200, 300, 200, { animater: { pair: true, swing: 'out' } })]);
+  assert.deepEqual(outward.map((l) => l.way), inward.map((l) => -l.way));
 });
 
 // Roi: "some walls doesnt look good with doors..." — a door drawn to its own idea of a door's thickness stood proud
@@ -138,6 +168,25 @@ const quietContext = () => ({
   set globalAlpha(v) {}, get globalAlpha() { return 1; },
 });
 const quietCanvas = (w, h) => ({ width: w, height: h, getContext: () => quietContext() });
+
+// Roi, looking straight down at a door: "why doors designs have the circle at the top there? isnt that the handle?
+// were looking at the door from the top..". A handle is mounted on a face, so from overhead it stands out past the
+// leaf's long side — one on each face, both in view. Checked against the reference art he sent, where every door's
+// hardware projects beyond the silhouette and nothing is drawn down the middle of the leaf.
+test('the handle stands out past the door\'s faces, at the end it opens from', () => {
+  const arcs = [];
+  const watching = () => ({ ...quietContext(), arc(x, y, r) { arcs.push({ x, y, r }); } });
+  const leaf = paintDoorLeaf('banded', 200, { grid: 100 }, (w, h) => ({ width: w, height: h, getContext: () => watching() }));
+  assert.ok(leaf, 'painted');
+  const half = leaf.thick / 2;
+  const pulls = arcs.filter((a) => Math.abs(a.y) > half);
+  assert.ok(pulls.length >= 2, 'something stands proud of each face');
+  assert.ok(pulls.some((a) => a.y < 0) && pulls.some((a) => a.y > 0), 'one on each side, both in view from above');
+  for (const a of pulls) assert.ok(a.x > 0, 'at the end away from the hinge');
+  // Small: the wood is the only light thing on a door from above, and a pull the size of a dinner plate read as one.
+  for (const a of pulls) assert.ok(a.r < leaf.thick * 0.5, 'and no bigger than a handle');
+  assert.equal(arcs.some((a) => a.y === 0 && a.r > leaf.thick * 0.15), false, 'nothing lying down the middle of the leaf');
+});
 
 test('every leaf paints, with its hinge at the end it turns about', () => {
   for (const id of DOOR_IDS) {

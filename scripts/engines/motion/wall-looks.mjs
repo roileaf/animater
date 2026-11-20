@@ -137,15 +137,52 @@ export function wallRuns(walls, scene = {}) {
   const joins = (x, y) => (meeting.get(endKey(x, y)) ?? 0) > 1;
   for (const material of new Set(kept.map((w) => w.material))) {
     const mine = kept.filter((w) => w.material === material), left = new Set(mine.map((w) => w.id));
-    // Which walls touch each end. A junction of three or more is a loose end for everybody: a T is not one run.
+    // Which walls touch each end.
     const ends = new Map();
     const touch = (key, id) => { if (!ends.has(key)) ends.set(key, []); ends.get(key).push(id); };
     const byId = new Map(mine.map((w) => [w.id, w]));
     for (const w of mine) { touch(endKey(w.c[0], w.c[1]), w.id); touch(endKey(w.c[2], w.c[3]), w.id); }
+    // Which wall each one carries on into at each end, if any.
+    //
+    // Two walls meeting is a corner, and a corner is one wall however sharply it turns. Three or more is a junction,
+    // and there the question is which of them is the SAME wall carrying on: an inside wall built against an outside
+    // one must not end the outside one, or the stone either side of it is drawn as two separate stretches, with its
+    // own outline, ink and texture, and the join shows (Roi: "why inside walls break the coherently of outside
+    // walls?"). So at a junction the pair that runs straightest through it is paired up — most nearly opposite
+    // first, so a cross pairs both ways — and whatever is left over starts a run of its own.
+    const partner = new Map();
+    const pair = (key, one, two) => { partner.set(`${key}|${one}`, two); partner.set(`${key}|${two}`, one); };
+    // The way a wall leads away from the end that meets here.
+    const outward = (w, key) => {
+      const atStart = endKey(w.c[0], w.c[1]) === key;
+      const dx = atStart ? w.c[2] - w.c[0] : w.c[0] - w.c[2];
+      const dy = atStart ? w.c[3] - w.c[1] : w.c[1] - w.c[3];
+      const len = Math.hypot(dx, dy) || 1;
+      return [dx / len, dy / len];
+    };
+    for (const [key, here] of ends) {
+      if (here.length === 2) { if (here[0] !== here[1]) pair(key, here[0], here[1]); continue; }
+      if (here.length < 3) continue;
+      const ways = new Map(here.map((id) => [id, outward(byId.get(id), key)]));
+      const straight = [];
+      for (let i = 0; i < here.length; i++) {
+        for (let j = i + 1; j < here.length; j++) {
+          if (here[i] === here[j]) continue;
+          const [ax, ay] = ways.get(here[i]), [bx, by] = ways.get(here[j]);
+          const facing = ax * bx + ay * by; // -1 when one is the other carried on
+          if (facing <= -STRAIGHT_ENOUGH) straight.push({ one: here[i], two: here[j], facing });
+        }
+      }
+      straight.sort((p, q) => p.facing - q.facing);
+      const taken = new Set();
+      for (const s of straight) {
+        if (taken.has(s.one) || taken.has(s.two)) continue;
+        taken.add(s.one); taken.add(s.two);
+        pair(key, s.one, s.two);
+      }
+    }
     const next = (key, from) => {
-      const here = ends.get(key) ?? [];
-      if (here.length !== 2) return null; // a loose end, or a junction nobody can walk straight through
-      const id = here.find((other) => other !== from);
+      const id = partner.get(`${key}|${from}`);
       return id != null && left.has(id) ? byId.get(id) : null;
     };
     const walkFrom = (wall, startKey) => {
@@ -164,7 +201,8 @@ export function wallRuns(walls, scene = {}) {
       }
       return { points, ids };
     };
-    const loose = (w) => [endKey(w.c[0], w.c[1]), endKey(w.c[2], w.c[3])].find((k) => (ends.get(k) ?? []).length !== 2);
+    // An end this wall carries on through is not an end at all; one it does not is where a run begins.
+    const loose = (w) => [endKey(w.c[0], w.c[1]), endKey(w.c[2], w.c[3])].find((k) => !partner.has(`${k}|${w.id}`));
     // Open runs first, from their loose ends, so a run is never started in its middle; then whatever rings are left.
     for (const pass of [0, 1]) {
       for (const w of mine) {
@@ -229,26 +267,40 @@ export function doorPainted(wall) {
  * whether it stands open. `ds` is Foundry's door state — 0 shut, 1 open, 2 locked, and a locked door is a shut one.
  */
 export function wallDoors(walls) {
-  return (walls ?? []).filter(doorPainted).map((w) => {
-    const [x1, y1, x2, y2] = w.c, flip = w.animater?.hinge === 'far';
-    const hinge = flip ? [x2, y2] : [x1, y1], far = flip ? [x1, y1] : [x2, y2];
+  return (walls ?? []).filter(doorPainted).flatMap((w) => {
+    const [x1, y1, x2, y2] = w.c;
     // Which end it hangs on and which way it opens are two different things: a door can be hinged at either end and
     // still swing into the room or out of it.
     const out = w.animater?.swing === 'out';
     // A door fills the wall it hangs in, so it is as thick as that wall was drawn. Left to its own idea of a door's
     // thickness it stood proud of a thin wall on both faces, a slab laid over the stone rather than set into it.
     const thick = Number(w.animater?.thick) > 0 ? Number(w.animater.thick) : null;
-    return {
-      id: w.id,
-      key: `${w.id}:${w.animater?.door ?? ''}:${w.animater?.material}:${thick ?? ''}:${Math.round(x1)},${Math.round(y1)},${Math.round(x2)},${Math.round(y2)}:${flip ? 'f' : 'n'}${out ? 'o' : 'i'}`,
+    const open = Number(w.ds) === 1;
+    // One leaf: hung at `hinge`, reaching to `far`. `flip` is only whether it hangs at the wall's far end, which is
+    // what decides which way round it turns.
+    const leaf = (hinge, far, flip, part = '') => ({
+      id: part ? `${w.id}${part}` : w.id,
+      key: `${w.id}${part}:${w.animater?.door ?? ''}:${w.animater?.material}:${thick ?? ''}:${Math.round(x1)},${Math.round(y1)},${Math.round(x2)},${Math.round(y2)}:${flip ? 'f' : 'n'}${out ? 'o' : 'i'}`,
       hinge, far, thick,
-      length: Math.hypot(x2 - x1, y2 - y1),
+      length: Math.hypot(far[0] - hinge[0], far[1] - hinge[1]),
       along: Math.atan2(far[1] - hinge[1], far[0] - hinge[0]),
       way: (flip ? -1 : 1) * (out ? -1 : 1),
       kind: w.animater?.door ?? null,
       material: w.animater?.material,
-      open: Number(w.ds) === 1,
-    };
+      open,
+      wall: w.id,
+    });
+    // A pair: one doorway, one door as far as Foundry is concerned — one control, one thing to open — and two leaves
+    // in the painting, each hung at its own end of the opening and meeting in the middle. Hung at opposite ends they
+    // turn opposite ways by themselves, which is what a pair of hall doors does (Roi: "it should be like the windows
+    // with 2 leaves opening opposite direction but 1 door icon"). Cut as two Foundry doors, as it was, the map had
+    // two door controls side by side and each half opened on its own.
+    if (w.animater?.pair === true) {
+      const mid = [(x1 + x2) / 2, (y1 + y2) / 2];
+      return [leaf([x1, y1], mid, false, ':a'), leaf([x2, y2], mid, true, ':b')];
+    }
+    const flip = w.animater?.hinge === 'far';
+    return [leaf(flip ? [x2, y2] : [x1, y1], flip ? [x1, y1] : [x2, y2], flip)];
   });
 }
 

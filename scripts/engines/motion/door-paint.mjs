@@ -55,19 +55,39 @@ const band = (g, at, thick, o, iron, width = 2, studs = false) => {
   line(g, pts.map(([x, y]) => [x + LIGHT.at[0] * o.ink, y + LIGHT.at[1] * o.ink]), 'rgba(236,230,214,0.14)', w);
   line(g, pts, iron, w);
   line(g, pts, 'rgba(12,10,8,0.5)', Math.max(0.6, w * 0.3));
+  // The bolt heads at each end of the band, seen from straight above. Iron's own colour with an ink line round it and
+  // the faintest catch of light: lit up and drawn as wide as the handle they read as ball bearings, and six of them
+  // took the eye before the door did (Roi, on a door zoomed right in: "thoughts?").
   if (studs) for (const y of [-thick * 0.32, thick * 0.32]) {
-    g.beginPath(); g.arc(at, y, w * 0.8, 0, 6.283); g.fillStyle = shade(iron, 0.2); g.fill();
-    g.beginPath(); g.arc(at + LIGHT.at[0] * w * 0.3, y + LIGHT.at[1] * w * 0.3, w * 0.35, 0, 6.283); g.fillStyle = 'rgba(248,242,228,0.4)'; g.fill();
+    g.beginPath(); g.arc(at, y, w * 0.6, 0, 6.283);
+    g.fillStyle = iron; g.fill();
+    g.strokeStyle = 'rgba(10,8,6,0.7)'; g.lineWidth = o.ink * 0.8; g.stroke();
+    g.beginPath(); g.arc(at + LIGHT.at[0] * w * 0.22, y + LIGHT.at[1] * w * 0.22, w * 0.24, 0, 6.283); g.fillStyle = 'rgba(248,242,228,0.18)'; g.fill();
   }
 };
-const ring = (g, x, y, o, iron) => {
-  const r = o.unit * 0.05;
-  g.beginPath(); g.arc(x, y, r, 0, 6.283); g.strokeStyle = iron; g.lineWidth = Math.max(1.4, r * 0.4); g.stroke();
-  g.beginPath(); g.arc(x + LIGHT.at[0] * r * 0.2, y + LIGHT.at[1] * r * 0.2, r, Math.PI * 1.05, Math.PI * 1.75); g.strokeStyle = 'rgba(246,240,226,0.3)'; g.lineWidth = Math.max(0.8, r * 0.2); g.stroke();
+// The pull, at the end the door opens from. A handle is mounted on a FACE of the door, and the map looks straight
+// down at the door's top edge, so from up here it is not a ring lying on the middle of the leaf — that is the view
+// you get standing in front of the door (Roi: "isnt that the handle? were looking at the door from the top..").
+// From above it shows as a small dark lump standing out past the leaf's long side, and a door carries one on each
+// face, so both are drawn. Small and dark: the wood is the only light thing on a door seen from overhead.
+const ring = (g, x, thick, o, iron) => {
+  const r = Math.max(1.2, o.unit * 0.035);
+  for (const side of [-1, 1]) {
+    const y = side * (thick / 2 + r * 0.55);
+    g.beginPath(); g.arc(x, y, r, 0, 6.283);
+    g.fillStyle = iron; g.fill();
+    g.strokeStyle = 'rgba(10,8,6,0.75)'; g.lineWidth = o.ink; g.stroke();
+    // The one catch of light on it, from the same corner everything else here is lit from. Faint: iron in the open
+    // air reads dark from above, and a bright bead on it looked like a pearl rather than a handle.
+    g.beginPath(); g.arc(x + LIGHT.at[0] * r * 0.3, y + LIGHT.at[1] * r * 0.3, r * 0.3, 0, 6.283);
+    g.fillStyle = 'rgba(246,240,226,0.2)'; g.fill();
+  }
 };
+// The pins the leaf turns on. The quietest end of the door: it is the end nothing happens at, and drawn heavy it was
+// the first thing the eye found.
 const hingePins = (g, x, thick, o, iron) => {
   for (const y of [-thick * 0.34, thick * 0.34]) {
-    g.beginPath(); g.arc(x, y, Math.max(1.2, thick * 0.11), 0, 6.283); g.fillStyle = iron; g.fill();
+    g.beginPath(); g.arc(x, y, Math.max(1, thick * 0.085), 0, 6.283); g.fillStyle = iron; g.fill();
     g.strokeStyle = 'rgba(14,11,8,0.6)'; g.lineWidth = o.ink * 0.8; g.stroke();
   }
 };
@@ -84,7 +104,7 @@ export const DOOR_KINDS = Object.freeze({
       face(g, rng, box(0, 0, len / 2, thick / 2), this.body, o, { grain: 0.1 });
       for (let i = 1; i < 5; i++) { const x = -len / 2 + (len * i) / 5; groove(g, [[x, -thick / 2], [x, thick / 2]], o, 0.42); }
       for (const at of [-len * 0.26, len * 0.26]) band(g, at, thick, o, this.iron, 2);
-      ring(g, len / 2 - o.unit * 0.1, 0, o, this.iron);
+      ring(g, len / 2 - o.unit * 0.1, thick, o, this.iron);
       hingePins(g, -(len / 2 - o.unit * 0.05), thick, o, this.iron);
     },
   },
@@ -94,8 +114,8 @@ export const DOOR_KINDS = Object.freeze({
     leaf(g, rng, o, { len, thick }) {
       face(g, rng, box(0, 0, len / 2, thick / 2), this.body, o, { grain: 0.12 });
       for (let i = 1; i < 4; i++) { const x = -len / 2 + (len * i) / 4; groove(g, [[x, -thick / 2], [x, thick / 2]], o, 0.5); }
-      for (const at of [-len * 0.34, 0, len * 0.34]) band(g, at, thick, o, this.iron, 3, true);
-      ring(g, len / 2 - o.unit * 0.12, 0, o, this.iron);
+      for (const at of [-len * 0.34, 0, len * 0.34]) band(g, at, thick, o, this.iron, 2, true);
+      ring(g, len / 2 - o.unit * 0.12, thick, o, this.iron);
       hingePins(g, -(len / 2 - o.unit * 0.05), thick, o, this.iron);
     },
   },
@@ -118,9 +138,13 @@ export const DOOR_KINDS = Object.freeze({
       for (const at of [-len * 0.18, len * 0.18]) groove(g, [[at, -thick / 2], [at, thick / 2]], o, 0.4);
       for (let i = 0; i < 10; i++) {
         const x = -len / 2 + (len * (i + 0.5)) / 10;
+        // Rivets, read the same way as the bolt heads on a banded door: iron's own colour, inked, barely lit. Pale
+        // they were a row of pearls down a grey plate rather than iron hammered into iron.
         for (const y of [-thick * 0.33, thick * 0.33]) {
-          g.beginPath(); g.arc(x, y, Math.max(1, thick * 0.07), 0, 6.283); g.fillStyle = shade(this.iron, 0.22); g.fill();
-          g.beginPath(); g.arc(x + LIGHT.at[0] * thick * 0.03, y + LIGHT.at[1] * thick * 0.03, Math.max(0.6, thick * 0.04), 0, 6.283); g.fillStyle = 'rgba(244,238,224,0.35)'; g.fill();
+          g.beginPath(); g.arc(x, y, Math.max(0.9, thick * 0.055), 0, 6.283);
+          g.fillStyle = this.iron; g.fill();
+          g.strokeStyle = 'rgba(10,8,6,0.6)'; g.lineWidth = o.ink * 0.7; g.stroke();
+          g.beginPath(); g.arc(x + LIGHT.at[0] * thick * 0.022, y + LIGHT.at[1] * thick * 0.022, Math.max(0.5, thick * 0.022), 0, 6.283); g.fillStyle = 'rgba(244,238,224,0.16)'; g.fill();
         }
       }
       hingePins(g, -(len / 2 - o.unit * 0.05), thick, o, this.iron);
