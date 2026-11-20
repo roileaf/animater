@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.6.3
+
+- **The Floor regions button is there when you tick for it.** The experimental Floor regions button had three switches in front of it, and a GM only ever saw one: besides the experimental setting itself and each screen’s "show this button", the world’s Map making tools switch hid it too — and Animater turns that one off by itself, once, in any world that had not painted a map with its brush before the module arrived. So a GM could tick "Experimental: floor regions from the map", read a hint promising a button, save, reload, and find nothing there, with nothing said about why. The tick is off by default and world-wide, so it now decides on its own: a GM who asks for that one button gets it, whatever the map making switch says (which still hides the Map painting brush, as it always did). The two switches that remain — the world’s tick and each screen’s — now sit in one row in Animater’s settings under Floor & world, instead of a tab and a settings window apart, which is what read as the two being unrelated.
+
 ## 4.6.2
 
 - **Rat holes.** A rat turns at every wall it meets, so the rats an underground scene woke up with were the rats each room had until it was closed. A few of a scene's walls are gnawed through now: a wall a square and a half long, dark on at least one side, three to eight to a map, and none where rats are kept out. A rat that has been in the same room about twelve seconds makes for the nearest hole it could walk to, slips in, and a few seconds later comes up out of one of the furthest holes from it, nose first, on the darker side of that wall. Told where to go by a GM, it forgets the errand. Which walls have holes is worked out from the walls themselves, so a map has the same ones every time it is opened and nothing is written to the scene.
