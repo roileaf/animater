@@ -284,7 +284,7 @@ import { createPaintedWindows } from "./engines/motion/painted-windows.mjs";
 import { createPaintedRoofs } from "./engines/motion/painted-roofs.mjs";
 import { roomAt, roofsOf, roofLook, under as underRoof } from "./engines/motion/roof-looks.mjs";
 import { roofOpenings } from "./engines/motion/roof-sight.mjs";
-import { buildingAt as buildingPlanAt } from "./engines/motion/building-plan.mjs";
+import { buildingAt as buildingPlanAt, indoorRects } from "./engines/motion/building-plan.mjs";
 import { createPaintedBuildings, PARTITION_THIN } from "./shell/painted-buildings.mjs";
 import { dressingOf, dressingKey, handDressing, DRESSING_COLOURS_MOST, DRESSING_PLAIN } from "./engines/motion/holiday-dressing.mjs";
 import { createPaintedDressing } from "./engines/motion/painted-dressing.mjs";
@@ -1907,7 +1907,34 @@ const roofedRooms = () => {
     return out;
   } catch { return []; }
 };
-const indoorPolygons = () => [...indoorPolygonsOf(regionsHere(), (region) => {
+// The rooms the walls close in, on a scene the GM has said is built of roofed buildings.
+//
+// Animater can see walls; it cannot see a roof that was drawn into the map's own picture. So on such a map a room
+// was indoors to nobody: the sun fell on the table and the chairs and they threw shadows across the floor as if the
+// ceiling were not there (Roi: "indoor shadows should only come from windows\a hole in the roof or open door or a
+// light source, it seems to me the walls doesnt block the sun light?"). Walls alone cannot mean it — a courtyard is
+// closed in and open to the sky — so the GM says so per scene, and then every room the open air cannot reach counts
+// as under cover, for the weather as much as for the sun. Light still comes in the way it always did: through the
+// windows, the open doors and what stands open to the sky.
+//
+// Kept against the flood it was worked out from, which is itself kept until the walls change.
+let walledFrom = null, walledAreas = [];
+const walledRooms = () => {
+  try {
+    if (canvas?.scene?.flags?.[ID]?.roofedBuildings !== true) return [];
+    const air = wallsOutsideAir();
+    if (!air) return [];
+    if (walledFrom === air) return walledAreas;
+    walledFrom = air;
+    walledAreas = indoorRects(air.outside, { grid: canvas.grid?.size ?? 100, bounds: air.bounds }).map((r) => {
+      const area = [r.x, r.y, r.x + r.w, r.y, r.x + r.w, r.y + r.h, r.x, r.y + r.h];
+      area.soft = 0; // a wall is an edge, not a fade
+      return area;
+    });
+    return walledAreas;
+  } catch { return []; }
+};
+const indoorPolygons = () => [...walledRooms(), ...indoorPolygonsOf(regionsHere(), (region) => {
   // Each with how far the weather fades in at its edge.
   const soft = indoorEdgeOf(region.flags?.[ID]);
   const areas = [];
@@ -2682,6 +2709,22 @@ const decorationsLook = (force = false) => { const key = decorWeatherNow(); if (
 Hooks.on("canvasTearDown", () => { decorWeatherKey = ""; });
 // The raised floor tile a decoration region was made on (its image source), or none.
 const decorPlaneOf = (region) => { try { return floorPlaneOf(planeOfRegion(region)); } catch { return null; } };
+// Whether a decoration region stands under cover, asked of the middle of each of its areas: a table in a room throws
+// no sun shadow across the floor, whatever the hour. Only this file can answer it, since what counts as a roof is the
+// scene's business (a region that stops the weather, an Animater roof, or — where the GM has said so — any room the
+// walls close in), which is why it travels to the decorations rather than being worked out there.
+const decorUnderCover = (areas) => {
+  try {
+    if (!Array.isArray(areas) || !areas.length) return false;
+    return areas.every((a) => {
+      let x = 0, y = 0;
+      const n = a.length / 2;
+      if (!(n > 0)) return false;
+      for (let i = 0; i < a.length; i += 2) { x += a[i]; y += a[i + 1]; }
+      return underCeiling({ x: x / n, y: y / n });
+    });
+  } catch { return false; }
+};
 let mapPainting = null;
 const syncDecorations = () => {
   // What a stroke has painted but not yet saved, while it paints.
@@ -2694,7 +2737,10 @@ const syncDecorations = () => {
       // While the brush paints this region, what it has painted shows at once, before it is saved.
       const live = !!settings && decorBrushing?.id === region.id;
       if (live) settings = { ...settings, brushed: decorBrushing.brushed, erased: decorBrushing.erased };
-      if (settings) list.push({ id: region.id, settings, areas: regionAreas(region), look: decorLook(settings), broken: decorBrokenKeys(region), ...(live ? { live: true } : {}), ...(decorPlaneOf(region) ? { plane: decorPlaneOf(region) } : {}) });
+      if (settings) {
+        const areas = regionAreas(region);
+        list.push({ id: region.id, settings, areas, look: decorLook(settings), broken: decorBrokenKeys(region), indoors: decorUnderCover(areas), ...(live ? { live: true } : {}), ...(decorPlaneOf(region) ? { plane: decorPlaneOf(region) } : {}) });
+      }
     } catch (err) { runtime?.trace?.("decorations", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
   }
   // A stroke on open ground, before its region is made: what it has painted, within the circles it has swept.
@@ -2712,6 +2758,15 @@ const syncDecorations = () => {
   const key = JSON.stringify(decorations.trees().map((t) => [t.id, t.kind, Math.round(t.x), Math.round(t.y)]));
   if (key !== decorTreesKey && !decorBrushing) { decorTreesKey = key; try { canopySoon(); } catch { /* not ready */ } }
 };
+// Saying this map's buildings are roofed changes what every decoration region stands under, so they are asked again
+// at once. Without this the tick took hold only on the next reload, which is no way to try a switch.
+Hooks.on("updateScene", (doc, change) => {
+  if (doc?.id !== canvas?.scene?.id) return;
+  if (change?.flags?.[ID]?.roofedBuildings === undefined) return;
+  walledFrom = null;
+  walledAreas = [];
+  try { syncDecorations(); } catch { /* not drawn yet */ }
+});
 // The Map painting bar and every stroke it lays — floors, decorations, structures and heights — are shell/map-painting.mjs.
 // It is built at the foot of this file, where everything it asks for already exists; what stands here are the names the rest
 // of the module calls it by, so the call sites did not have to change when it moved out.
@@ -15124,6 +15179,12 @@ Hooks.on("renderSceneConfig", (app, html) => {
   noShadows.className = "form-group";
   noShadows.innerHTML = `<label>No shadows on this map</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.noShadows"${app.document?.flags?.[ID]?.noShadows === true ? " checked" : ""}></div><p class="hint">The sun and moon still light this map, but walls, roofs, trees, creatures and animals cast no shadow from them. For a map that paints its own shadows. "No sun" above takes the light away as well. Shadows from lamps and a raised floor's own stay.</p>`;
   tab.append(noShadows);
+  // Whether a room the walls close in is under a roof. Off by default: a walled courtyard is closed in and open to
+  // the sky, so this has to be the GM's word about this particular map.
+  const roofed = document.createElement("div");
+  roofed.className = "form-group";
+  roofed.innerHTML = `<label>Buildings here are roofed</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.roofedBuildings"${app.document?.flags?.[ID]?.roofedBuildings === true ? " checked" : ""}></div><p class="hint">Any room the walls close in counts as under cover: the sun does not fall in it and the weather does not land in it, so the furniture and the creatures inside stop throwing sun shadows across the floor. Light still comes in through the windows, the open doors and anything open to the sky, and lamps light the room as they always did. Leave it off for a map of walled yards, pens or cloisters that really are open above.</p>`;
+  tab.append(roofed);
 });
 // ---- Painted buildings ---------------------------------------------------------------------------------------------
 // Walls, the doorways and windows cut in them, the roofs over them and what a building hangs out on a feast day:
@@ -15141,6 +15202,11 @@ const buildings = createPaintedBuildings({
   // The wind the sky is actually blowing, which is where the Weather panel's own wind lands; the scene's weather
   // alone never hears it.
   sky: () => ({ seen: skySeen, wind: skyWindNow, windAngle: skyWindAngle }),
+  // The colour of the light falling out of the sky now — warm by day, golden at dawn and dusk, silver under the
+  // moon, greyed by cloud. The roofs are drawn over the lighting pass, so they take this themselves; without it
+  // they alone would keep a noon colour through a sunset (Roi: "it should also look right in sunrise and dusk as
+  // the sun color changes").
+  skyColour: () => sunlightColor(),
 });
 // The names the rest of the module knows these by.
 const paintedWalls = buildings.walls, paintedDoors = buildings.doors, paintedWindows = buildings.windows;

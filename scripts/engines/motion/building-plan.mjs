@@ -82,6 +82,44 @@ export function buildingAt(point, walls, { grid = 100, bounds, most = PLAN_MOST,
 }
 
 /**
+ * Every square the open air cannot reach, gathered into as few rectangles as will hold them.
+ *
+ * This is the whole indoors of a map in one answer, for a scene whose buildings are roofed: where the sun does not
+ * fall and the weather does not land. It is rectangles rather than one outline per room because what asks is a
+ * point-in-polygon test run on every decoration and creature, and a box is the cheapest shape there is; a room of
+ * any ordinary shape comes back as a handful of them.
+ *
+ * Greedy: take the widest run left on a row, carry it down as far as the whole run holds, and cut that block out.
+ * `most` caps how many rectangles are cut, so a map that is nearly all indoors cannot stall a frame.
+ */
+export function indoorRects(outside, { grid = 100, bounds, most = PLAN_MOST } = {}) {
+  if (!outside || !bounds || !(grid > 0)) return [];
+  const x0 = Math.floor(bounds.x / grid), y0 = Math.floor(bounds.y / grid);
+  const x1 = Math.ceil((bounds.x + bounds.w) / grid) - 1, y1 = Math.ceil((bounds.y + bounds.h) / grid) - 1;
+  const left = new Set();
+  for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { if (!outside.has(key(cx, cy))) left.add(key(cx, cy)); }
+  const out = [];
+  for (let cy = y0; cy <= y1 && out.length < most; cy++) {
+    for (let cx = x0; cx <= x1 && out.length < most; cx++) {
+      if (!left.has(key(cx, cy))) continue;
+      let w = 1;
+      while (cx + w <= x1 && left.has(key(cx + w, cy))) w++;
+      let h = 1;
+      while (cy + h <= y1) {
+        let whole = true;
+        for (let i = 0; i < w; i++) if (!left.has(key(cx + i, cy + h))) { whole = false; break; }
+        if (!whole) break;
+        h++;
+      }
+      for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) left.delete(key(cx + i, cy + j));
+      out.push({ x: cx * grid, y: cy * grid, w: w * grid, h: h * grid });
+      cx += w - 1;
+    }
+  }
+  return out;
+}
+
+/**
  * Is this stretch of wall a partition — indoors on both sides? Asked of the middle of the run and of a step either
  * way along it, so a wall that runs along the outside of a building for part of its length is not called one.
  */

@@ -30,8 +30,6 @@ const GARLAND_LIGHTS_MOST = 160, GARLAND_REACH = 0.62, GARLAND_LIGHT = 0.55;
 // (20 is the "normal" sense: the number Foundry's own walls carry. Asked of CONST by name it comes back through a
 // deprecated proxy that warns on every read, so the number is written out here instead.)
 const EAVE_STEP = -0.08, LIGHT_BLOCKS = 20;
-/** How far Foundry's own door control stands back on a door we painted, so the leaf shows through. */
-const DOOR_CONTROL_FAINT = 0.3, DOOR_CONTROL_SMALL = 0.55;
 
 /**
  * Start the painted buildings. `ctx` is everything this feature needs from the rest of the module:
@@ -40,6 +38,7 @@ const DOOR_CONTROL_FAINT = 0.3, DOOR_CONTROL_SMALL = 0.55;
  * - `painting()` whether painted walls are switched on, `underground()` whether this scene is below ground
  * - `sun()` the sun now (or null), `season()` the season, `weather()` the scene's weather
  * - `sky()` what the sky is actually blowing: `{ seen, wind, windAngle }`
+ * - `skyColour()` the colour of the light falling out of the sky now, `[r, g, b]` from 0 to 1
  */
 export function createPaintedBuildings(ctx) {
   const { ID, floorLayer } = ctx;
@@ -53,7 +52,68 @@ export function createPaintedBuildings(ctx) {
   const walls = createPaintedWalls({ PIXI, root: wallRoot, grid: gridNow });
   const doors = createPaintedDoors({ PIXI, root: doorRoot, grid: gridNow });
   const windows = createPaintedWindows({ PIXI, root: doorRoot, grid: gridNow });
-  const roofs = createPaintedRoofs({ PIXI, root: floorLayer('paintedRoofs'), grid: gridNow });
+  // The roofs are drawn OVER the lighting, not in the map with everything else.
+  //
+  // Foundry composites its lighting across the whole primary canvas group in one pass, so a lamp standing in a room
+  // lit the roof above it — the light came up through the tiles (Roi: "also i see lights through the roof...", and
+  // the same thing read as "sun light is..weird on roofs?" when a bright slope tracked where a light had been put).
+  // Nothing drawn inside that group can escape it, which is the same wall the garland lanterns hit from the other
+  // side. So a roof goes where the lightning flash goes: in canvas.effects, above the lighting, out of its reach.
+  //
+  // The cost is that the map's own darkness no longer reaches them either, so they take the sky's light themselves
+  // (skyTint below). What they must never take is a lamp's, which is the whole point.
+  const ROOF_ABOVE_LIGHT = 99000;
+  let roofRoot = null, roofLight = null;
+  const roofRootOf = () => {
+    if (!roofRoot || roofRoot.destroyed || roofRoot.parent !== globalThis.canvas?.effects) {
+      roofRoot = new PIXI.Container();
+      roofRoot.eventMode = 'none';
+      roofRoot.zIndex = ROOF_ABOVE_LIGHT;
+      roofRoot.name = `animater.paintedRoofs`;
+      // A colour matrix, not the container's `tint`: tint is a sprite's property and setting it on a container does
+      // nothing at all — it reads back as you left it while the roofs carry on in their painted colours.
+      try {
+        const Filter = PIXI.ColorMatrixFilter ?? PIXI.filters?.ColorMatrixFilter;
+        roofLight = Filter ? new Filter() : null;
+        if (roofLight) roofRoot.filters = [roofLight];
+      } catch { roofLight = null; }
+      globalThis.canvas.effects.addChild(roofRoot);
+      globalThis.canvas.effects.sortChildren?.();
+    }
+    return roofRoot;
+  };
+  const roofs = createPaintedRoofs({ PIXI, root: roofRootOf, grid: gridNow });
+  /** How dark a roof goes at midnight. Not to black: a roof under a night sky is still a shape you can make out. */
+  const ROOF_NIGHT = 0.1;
+  // The sky's own light on the roofs, and nothing else's: how bright, from the scene's darkness, and what colour,
+  // from the sun itself — so a roof turns gold at dawn and dusk and silver under the moon along with the ground,
+  // instead of keeping a noon colour all evening.
+  const skyTint = () => {
+    const dark = Math.max(0, Math.min(1, Number(globalThis.canvas?.environment?.darknessLevel) || 0));
+    // Straight off the scene's darkness, which is what the lighting pass would have done to them: eased back a
+    // little only so a roof never goes flat black and loses its own shape.
+    const lit = Math.max(ROOF_NIGHT, 1 - dark);
+    const colour = ctx.skyColour?.();
+    // How much of the sun's colour the roofs take. Not all of it: the lighting pass the ground gets lays its colour
+    // on far more gently than a straight multiply, and at a deep orange-red sunset a roof taking the whole of it
+    // went rust while the street below it was merely warm.
+    const SKY_STAIN = 0.45;
+    const k = (i) => {
+      const c = Array.isArray(colour) && Number.isFinite(Number(colour[i])) ? Math.max(0, Math.min(1, Number(colour[i]))) : 1;
+      return 1 - SKY_STAIN + SKY_STAIN * c;
+    };
+    return [lit * k(0), lit * k(1), lit * k(2)];
+  };
+  // What the sky's light does to the roofs, as a colour matrix: each channel scaled, nothing moved about.
+  let litWas = '';
+  const lightRoofs = () => {
+    if (!roofLight) return;
+    const [r, g, b] = skyTint();
+    const said = `${r.toFixed(3)},${g.toFixed(3)},${b.toFixed(3)}`;
+    if (said === litWas) return;
+    litWas = said;
+    roofLight.matrix = [r, 0, 0, 0, 0, 0, g, 0, 0, 0, 0, 0, b, 0, 0, 0, 0, 0, 1, 0];
+  };
   const dressing = createPaintedDressing({ PIXI, root: floorLayer('paintedDressing'), shadeRoot: floorLayer('paintedDressingShade'), grid: gridNow });
 
   // The scene's walls as the engines want them: plain records, our own flags and nothing of Foundry's.
@@ -228,6 +288,9 @@ export function createPaintedBuildings(ctx) {
   let ticks = 0;
   const tick = () => {
     ticks++;
+    // The sky's light on the roofs, kept up each frame: it is theirs to carry now that the lighting pass cannot
+    // reach them. Cheap, and the clock moves it a little at dawn and dusk.
+    if (roofRoot && !roofRoot.destroyed) lightRoofs();
     const now = on();
     if (now !== were) { were = now; dirty = true; }
     if (now && wallsNow() !== from) dirty = true;
@@ -271,8 +334,21 @@ export function createPaintedBuildings(ctx) {
     if (globalThis.game?.user?.isGM) return [];
     return all.filter((t) => t.isOwner && t.document?.sight?.enabled !== false);
   };
+  // The layers a GM puts things down on. While one of those is up, every roof stands aside: there is no creature to
+  // see the room from, and a room you cannot see is a room you cannot drop a light, a sound or a wall into
+  // (Roi: "putting elements on the canvas like lights etc should fade the roof lol").
+  const PLACING = new Set(['lighting', 'sounds', 'templates', 'tiles', 'walls', 'regions', 'notes', 'drawings']);
+  const placing = () => {
+    try {
+      if (globalThis.game?.user?.isGM !== true) return false;
+      const layer = globalThis.canvas?.activeLayer;
+      return PLACING.has(layer?.options?.name ?? layer?.constructor?.layerOptions?.name ?? '');
+    } catch { return false; }
+  };
+  const allRoofs = () => roofsOf(flags(), { grid: gridNow() }).map((r) => `${r.key}${roofSuffix()}`);
   // A roof fades while one of your own creatures is under it, and comes back when they leave.
   const covering = () => {
+    if (placing()) return allRoofs();
     const mine = seeing();
     if (!mine.length) return [];
     return roofsOf(flags(), { grid: gridNow() })
@@ -292,6 +368,8 @@ export function createPaintedBuildings(ctx) {
   // the eaves, so the roof keeps its own edge.
   const opening = () => {
     const open = new Map();
+    // Nothing to cut while the GM is placing things: the whole roof is already standing aside.
+    if (placing()) return open;
     const mine = seeing();
     if (!mine.length) return open;
     const grid = gridNow();
@@ -403,33 +481,9 @@ export function createPaintedBuildings(ctx) {
     try { lightsNow(); } catch (err) { console.warn('Animater | garland lights', err); }
   };
 
-  // Foundry's own door control — a white door on a dark tile — is drawn over the leaf we painted, and at any zoom
-  // worth painting for it covers the door entirely. On a door we painted it stands back: faint and smaller, and
-  // full size under the pointer so it is still the thing you click to open the door.
-  const standBackDoorControls = () => {
-    if (!globalThis.canvas?.ready) return;
-    const painting = on();
-    for (const wall of globalThis.canvas.walls?.placeables ?? []) {
-      const control = wall.doorControl;
-      if (!control || control.destroyed) continue;
-      const painted = painting && Number(wall.document.door) > 0 && !!wall.document.flags?.[ID]?.door;
-      if (!painted) {
-        if (control.anStoodBack) { control.alpha = 1; control.scale?.set(1); control.anStoodBack = false; }
-        continue;
-      }
-      control.alpha = DOOR_CONTROL_FAINT;
-      control.scale?.set(DOOR_CONTROL_SMALL);
-      if (control.anStoodBack) continue;
-      control.anStoodBack = true;
-      control.on?.('pointerover', () => { control.alpha = 1; control.scale?.set(1); });
-      control.on?.('pointerout', () => { if (control.anStoodBack) { control.alpha = DOOR_CONTROL_FAINT; control.scale?.set(DOOR_CONTROL_SMALL); } });
-    }
-  };
-  let doorControlTimer = null;
-  const doorControlsSoon = () => {
-    if (doorControlTimer) return;
-    doorControlTimer = setTimeout(() => { doorControlTimer = null; try { standBackDoorControls(); } catch { /* not drawn */ } }, 60);
-  };
+  // (A painted door keeps Foundry's own door control exactly as Foundry draws it. Animater used to fade it and
+  // shrink it on painted doors so the leaf showed through, and bring it back under the pointer; Roi found it too
+  // hard to see and asked for the plain control back.)
 
   let coverTimer = null;
   const coverSoon = () => {
@@ -454,11 +508,15 @@ export function createPaintedBuildings(ctx) {
   Hooks.on('canvasTearDown', () => {
     try { globalThis.canvas?.app?.ticker?.remove(tick); } catch { /* gone with the canvas */ }
     walls.drop(); doors.drop(); windows.drop(); roofs.drop(); dressing.drop();
+    // The roofs' own layer is not the map's, so the canvas going does not take it: it is put away here.
+    try { roofRoot?.destroy({ children: true }); } catch { /* gone with the canvas */ }
+    roofRoot = null; roofLight = null; litWas = '';
     lightsOut();
     lights.clear(); eaveEdges.clear();
   });
-  for (const hook of ['canvasReady', 'drawWall', 'refreshWall', 'updateWall', 'createWall', 'deleteWall', 'controlToken']) Hooks.on(hook, () => { doorControlsSoon(); });
   for (const hook of ['canvasReady', 'controlToken', 'updateToken', 'createToken', 'deleteToken', 'refreshToken']) Hooks.on(hook, () => { coverSoon(); });
+  // And whenever the GM changes what they are working on, since that is what decides whether the roofs stand aside.
+  for (const hook of ['activateCanvasLayer', 'renderSceneControls']) Hooks.on(hook, () => { coverSoon(); });
   for (const hook of ['createWall', 'updateWall', 'deleteWall']) Hooks.on(hook, (doc) => { if (doc?.parent?.id === scene()?.id) { dirty = true; soon(); } });
   Hooks.on('updateScene', (doc) => { if (doc?.id === scene()?.id) { dirty = true; soon(); } });
 

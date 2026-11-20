@@ -373,14 +373,19 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
   };
   const place = (sprite, d, pic, scale) => { sprite.anchor.set(0.5); sprite.position.set(d.x, d.y); sprite.rotation = turnOf(d); const k = scale; sprite.scale.set((d.flip && DECOR_KINDS[d.kind].flat ? -1 : 1) * k, k); sprite.eventMode = 'none'; return sprite; };
   const aim = (r) => {
+    // A region under cover takes no sun at all, however bright it is outside: a table standing in a room threw its
+    // shadow across the floor as though the ceiling were not there. Whether a region is under cover is the caller's
+    // to say — only it knows what counts as a roof on this scene — and it travels with the region (`indoors`). The
+    // lamps' own shadows are unaffected: those are what a room indoors is lit by.
+    const lit = r.indoors === true ? null : sun;
     // Each standing one's shadow away from the sun or moon, stretched by how tall it stands; a tree's only when the canopy is not drawing it.
     for (const s of r.shadowSprites) {
-      const d = s.decor, k = DECOR_KINDS[d.kind], cast = sun && sun.strength > 0 && !(k.tree && canopyTrees);
+      const d = s.decor, k = DECOR_KINDS[d.kind], cast = lit && lit.strength > 0 && !(k.tree && canopyTrees);
       s.visible = !!cast; if (!cast) continue;
-      const reach = shadowReach(decorHeight(d), sun.length, grid()), w = s.texture.width * Math.abs(s.baseScale);
-      s.position.set(d.x + Math.cos(sun.angle) * reach * 0.5, d.y + Math.sin(sun.angle) * reach * 0.5);
+      const reach = shadowReach(decorHeight(d), lit.length, grid()), w = s.texture.width * Math.abs(s.baseScale);
+      s.position.set(d.x + Math.cos(lit.angle) * reach * 0.5, d.y + Math.sin(lit.angle) * reach * 0.5);
       // Stretched along the way it falls: a child rotated to the sun inside, the silhouette turned back to the decoration's own way.
-      s.rotation = sun.angle; s.scale.set((1 + reach / Math.max(w, 1) * 0.9), 1); s.inner.rotation = turnOf(d) - sun.angle;
+      s.rotation = lit.angle; s.scale.set((1 + reach / Math.max(w, 1) * 0.9), 1); s.inner.rotation = turnOf(d) - lit.angle;
     }
     // How strong the cast shadows are is the floor's, not this region's: laid on once over all of them, so two strokes
     // standing side by side cast one shadow's worth of dark where they fall together.
@@ -476,13 +481,15 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
             if (mine) mine.hand = true;
           }
           had.key = key; had.restKey = restKey; had.brushedCount = fresh.length; had.prop = spec.settings?.prop;
+          // A room can be roofed or opened while the map is up, so this is taken again rather than kept from before.
+          had.indoors = spec.indoors === true;
           aim(had); if (!spec.live) bakeContact(had); at = null;
           continue;
         }
         if (had) dropRegion(had);
         at = spec;
         const { placements, shown } = decorShown(spec, g), where = spec.settings?.where ?? 'surface';
-        const r = { key, restKey, brushedRef: fresh, brushedCount: fresh.length, placements: [...placements], shown: [...shown], where, look: spec.look, prop: spec.settings?.prop, sprites: [], shadowSprites: [], crowns: [], cloth: [], castLayer: null, contact: null, floor: null, drawn: [], pictures: new Set(), box: null, tall: 0, baked: null };
+        const r = { key, restKey, brushedRef: fresh, brushedCount: fresh.length, placements: [...placements], shown: [...shown], where, look: spec.look, prop: spec.settings?.prop, indoors: spec.indoors === true, sprites: [], shadowSprites: [], crowns: [], cloth: [], castLayer: null, contact: null, floor: null, drawn: [], pictures: new Set(), box: null, tall: 0, baked: null };
         // Shadows: the soft dark at each standing one's foot whatever the light, the cast ones, and the lights' ones
         // (filled as the lights near them are told, lamps()). This region's own three, with nothing on them: the blur
         // and the strength belong to the floor they go into, so every region on that floor shares one of each.

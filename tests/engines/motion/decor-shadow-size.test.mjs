@@ -43,7 +43,14 @@ test('the brush bar and the region panel each have a Height slider', async () =>
 
 test('sun shadows, lamp shadows and the canopy all take the painted height', () => {
   const src = readFileSync(new URL('../../../scripts/engines/motion/decorations.mjs', import.meta.url), 'utf8');
-  assert.match(src, /const reach = shadowReach\(decorHeight\(d\), sun\.length, grid\(\)\)/);
+  // `lit` is the sun as this region sees it: the sun itself outdoors, and nothing at all under a roof. Roi, on a
+  // tavern table throwing one across the floor: "indoor shadows should only come from windows\a hole in the roof or
+  // open door or a light source". Read off the source rather than driven: aim() is reached through sync(), which
+  // wants the whole picture-baking harness, and what matters here is the one line that decides.
+  assert.match(src, /const lit = r\.indoors === true \? null : sun;/);
+  assert.match(src, /const reach = shadowReach\(decorHeight\(d\), lit\.length, grid\(\)\)/);
+  assert.match(src, /indoors: spec\.indoors === true/, 'and the region is told so by whoever knows what a roof is');
+  assert.doesNotMatch(src, /cast = sun &&/, 'the sun itself is no longer what a region asks');
   assert.match(src, /const caster = \{ d, pic, scale, height: decorHeight\(d\), shadows: \[\] \}; r\.casters\.push\(caster\);/);
   assert.match(src, /up: decorHeight\(d\)/);
   assert.doesNotMatch(src, /shadowReach\(k\.height/);
