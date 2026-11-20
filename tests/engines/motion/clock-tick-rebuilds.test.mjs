@@ -56,7 +56,9 @@ test('the window dust carries on when the shafts are baked again for the sun', (
 });
 
 test("the game's clock saved as a setting builds none of the map's layers again", () => {
-  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  // The sky's own drawing is shell/sky-look.mjs now, and the Calendaria flash went with it; this guard is about the
+  // Foundry side as a whole, so it reads both.
+  const main = `${readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8')}\n${readFileSync(new URL('../../../scripts/shell/sky-look.mjs', import.meta.url), 'utf8')}`;
   for (const call of ['lampSoon', 'draftSoon', 'floorLooksSoon', 'drawTracks', 'lifeSoon', 'syncCalendariaFlash', 'scheduleIdle', 'scheduleWounds']) assert.match(main, new RegExp(`if \\(!(isClockSave|quietSave)\\([^)]*\\)\\) (\\{ forgetPlanes\\(\\); )?${call}\\(`), call);
   assert.match(main, /if \((isClockSave\(first\)|quietSave\(first, changes, options\))\) return; canopySoon\(\); glowsSoon\(\);/);
   // quietSave is ONE exported composition (engines/props/quiet-writes.mjs): a clock save, a region write that only
