@@ -70,9 +70,13 @@ test('the Decorations tool sits in Animater\'s controls and can be hidden', () =
   // A stroke is heard on the window first and kept from Foundry's canvas, so its drag-select box never shows.
   assert.match(main, /window\.addEventListener\("pointerdown", down, true\); window\.addEventListener\("pointermove", move, true\)/);
   assert.match(main, /if \(e\.button !== 0\) return; e\.stopImmediatePropagation\(\); e\.preventDefault\(\);/);
-  // Panning (a right-drag) keeps the brush; a right-click that stays put stops it.
+  // Panning (a right-drag) keeps the brush, and so does a right-click: Esc is what puts it away. A right-click
+  // that stayed put used to stop it, which is a two-finger tap away from losing the bar mid-stroke (Roi: "it only
+  // needs to be closed with Esc").
   assert.match(main, /if \(e\.button === 2\) \{ state\.rightAt = \{ x: e\.clientX, y: e\.clientY \}; return; \}/);
-  assert.match(main, /Math\.hypot\(e\.clientX - from\.x, e\.clientY - from\.y\) > 6\) return;/);
+  assert.match(main, /const menu = \(e\) => \{ state\.rightAt = null; e\.preventDefault\(\); \};/);
+  assert.doesNotMatch(main, /const menu = \(e\) => \{[^\n]*stopDecorBrush\(\)/, 'a right-click no longer puts the brush away');
+  assert.match(main, /if \(e\.key === "Escape"\) stopDecorBrush\(\);/, 'Esc still does');
 });
 
 test('Ctrl+Z takes back a brush stroke and Ctrl+Shift+Z or Ctrl+Y puts it back, ahead of Foundry\'s own undo', () => {

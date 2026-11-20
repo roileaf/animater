@@ -34,7 +34,7 @@ export function createPaintedWalls({ PIXI, root, grid = () => 100, make = undefi
     // was laid, so one ruin can stand among walls that are kept.
     const wear = { ...look, ...(run.look ?? {}) };
     const picture = paintRunPicture(run.points, run.material, {
-      grid: grid(), seed: runSeed(run.key), join: run.join ?? null, thick: run.thick, closed: run.closed === true, lit: wear.lit ?? null, tint: run.tint ?? null,
+      grid: grid(), seed: runSeed(run.key), join: run.join ?? null, thick: run.thick, height: run.height, closed: run.closed === true, lit: wear.lit ?? null, tint: run.tint ?? null,
       snow: wear.snow ?? 0, moss: wear.moss ?? 0, soot: wear.soot ?? 0, ruin: wear.ruin ?? 0,
     }, make, PICTURE_MOST);
     if (!picture) return false;
@@ -47,6 +47,12 @@ export function createPaintedWalls({ PIXI, root, grid = () => 100, make = undefi
     sprite.width = picture.box.w;
     sprite.height = picture.box.h;
     sprite.alpha = alpha;
+    // A partition passes under the walls that hold the weather out. Each run is drawn a little past its ends so the
+    // two overlap and neither shows a cap, and laid in the order they happened to be painted the inside wall could
+    // land on top of the outside one, its end sitting on the stone (Roi: "inner walls should not be on top of
+    // outward walls").
+    sprite.zIndex = run.under ? -1 : 0;
+    where.sortableChildren = true;
     where.addChild(sprite);
     art.set(run.key, { sprite, texture, run });
     // The new picture is up, so the one it replaces can come down. Only now, and only the one it replaces.

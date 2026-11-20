@@ -6,6 +6,7 @@
 // sprite being swapped, which is what it would be.
 
 import { paintDoorLeaf, DOOR_SWING, doorFor, doorHangs, DOOR_KINDS } from './door-paint.mjs';
+import { LIT } from './wall-paint.mjs';
 
 /**
  * How long a door takes to swing, in seconds. A heavy door, not a saloon door — half a second read as a door
@@ -34,7 +35,9 @@ export function createPaintedDoors({ PIXI, root, grid = () => 100, make = undefi
     const where = host();
     if (!where || !PIXI?.Sprite || !PIXI?.Texture) return false;
     const kind = DOOR_KINDS[door.kind] ? door.kind : doorFor(door.material);
-    const leaf = paintDoorLeaf(kind, door.length, { grid: grid(), seed: door.id?.length ?? 3, lit: door.lit ?? null }, make);
+    // A wall's thickness is measured from its middle out, a door's across the whole leaf, so the one is twice the
+    // other. Handed straight over, a door came out half the width of the wall it hangs in.
+    const leaf = paintDoorLeaf(kind, door.length, { grid: grid(), seed: door.id?.length ?? 3, lit: door.lit ?? null, thick: door.thick > 0 ? door.thick * 2 : undefined }, make);
     if (!leaf) return false;
     dropOne(door.key);
     let texture = null;
@@ -47,7 +50,12 @@ export function createPaintedDoors({ PIXI, root, grid = () => 100, make = undefi
     sprite.anchor.set(leaf.hinge[0] / box.w, leaf.hinge[1] / box.h);
     sprite.width = box.w;
     sprite.height = box.h;
-    sprite.position.set(door.hinge[0], door.hinge[1]);
+    // A painted wall is drawn as a wall seen from a little to one side: its top sits lifted off the line it runs
+    // along. A leaf left on that line hung half out of the wall it was set in (Roi: "not aligned"), so it is
+    // lifted the same way and by the same amount the wall was.
+    const lit = Array.isArray(door.lit) && door.lit.length === 2 ? door.lit : LIT;
+    const up = grid() * (door.lift ?? 0);
+    sprite.position.set(door.hinge[0] + lit[0] * up, door.hinge[1] + lit[1] * up);
     const at = door.open ? 1 : 0;
     sprite.rotation = door.along + swingOf(kind, door, at);
     if (doorHangs(kind)) sprite.alpha = door.open ? 0.35 : 1;

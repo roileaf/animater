@@ -235,10 +235,13 @@ export function wallDoors(walls) {
     // Which end it hangs on and which way it opens are two different things: a door can be hinged at either end and
     // still swing into the room or out of it.
     const out = w.animater?.swing === 'out';
+    // A door fills the wall it hangs in, so it is as thick as that wall was drawn. Left to its own idea of a door's
+    // thickness it stood proud of a thin wall on both faces, a slab laid over the stone rather than set into it.
+    const thick = Number(w.animater?.thick) > 0 ? Number(w.animater.thick) : null;
     return {
       id: w.id,
-      key: `${w.id}:${w.animater?.door ?? ''}:${w.animater?.material}:${Math.round(x1)},${Math.round(y1)},${Math.round(x2)},${Math.round(y2)}:${flip ? 'f' : 'n'}${out ? 'o' : 'i'}`,
-      hinge, far,
+      key: `${w.id}:${w.animater?.door ?? ''}:${w.animater?.material}:${thick ?? ''}:${Math.round(x1)},${Math.round(y1)},${Math.round(x2)},${Math.round(y2)}:${flip ? 'f' : 'n'}${out ? 'o' : 'i'}`,
+      hinge, far, thick,
       length: Math.hypot(x2 - x1, y2 - y1),
       along: Math.atan2(far[1] - hinge[1], far[0] - hinge[0]),
       way: (flip ? -1 : 1) * (out ? -1 : 1),

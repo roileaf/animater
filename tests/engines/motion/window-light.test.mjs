@@ -175,5 +175,8 @@ test('a smashed wall is an open hole its whole height: its lamplight spills out,
   assert.equal(airOpenings({ walls: [{ id: 'h', ...hole }], rooms: [room], grid: 200, inside }).length, 1, 'fog gets in through it');
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
   assert.match(main, /filter\(\(w\) => w\.flags\?\.\[ID\]\?\.breakWall\?\.broken && Number\(w\.light\) === 0\)\.map\(\(w\) => \(\{ _id: w\.id, light: HOLE_LIGHT \}\)\)/, 'walls smashed before: set once by the lead GM');
-  assert.match(main, /broken: !!d\.flags\?\.\[ID\]\?\.breakWall\?\.broken, \.\.\.wallSpanOf\(d\)/);
+  // A wall carries whether it was smashed and how tall it stands. The height is worked out beside it now, so that a
+  // partition can be given a lower one than the stone holding the weather out.
+  assert.match(main, /broken: !!d\.flags\?\.\[ID\]\?\.breakWall\?\.broken, \.\.\.span, top/);
+  assert.match(main, /const span = wallSpanOf\(d\), shorter = low\(d\)/);
 });

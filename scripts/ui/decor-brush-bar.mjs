@@ -24,7 +24,7 @@ export const WALL_AGE = Object.freeze({ min: 0, max: 1, usual: 0, step: 0.05 });
 /** How wide a doorway is cut, in squares: a cupboard door up to a pair of gates. */
 export const DOOR_WIDE = Object.freeze({ min: 0.5, max: 3, usual: 1, step: 0.25 });
 /** What a drag on the Structures tab does: lay stone, cut a doorway, set a window in, or rub out. */
-const WALL_MODES = Object.freeze([['draw', 'Draw'], ['round', 'Round room'], ['door', 'Doorway'], ['window', 'Window'], ['roof', 'Roof'], ['move', 'Move building'], ['erase', 'Erase']]);
+const WALL_MODES = Object.freeze([['draw', 'Wall'], ['round', 'Round room'], ['door', 'Doorway'], ['window', 'Window'], ['roof', 'Roof'], ['move', 'Move building'], ['erase', 'Erase']]);
 // What the wheel moves on the Structures tab, where there is no brush to size: the number the mode is mostly about, and
 // the one behind it. A doorway is mostly how wide it is, a wall how thick, a roof how long it has stood.
 const WALL_WHEEL = Object.freeze({
@@ -168,7 +168,7 @@ export const BRUSH_TURN_STEP = Math.PI / 12;
 /** The brush's choices now (pure copy): where, the one kind picked there (as a list of one), size in squares, thickness, decoration scale.
  *  While a region's own brush is out, where is the region's and the kind one of its own. */
 export const brushChoices = () => { const kinds = remembered.lock ? [remembered.lock.pick] : [...remembered.kinds[remembered.where]]; return { where: remembered.lock?.where ?? placeWhere(remembered.where), place: remembered.lock ? null : remembered.where, kinds, size: remembered.size, thick: remembered.thick, scale: remembered.scale, tall: remembered.tall, turn: remembered.turn, prop: brushPropFor(kinds[0]), tab: remembered.lock ? 'decor' : remembered.tab, floor: remembered.floor, smart: remembered.edges !== 'off', edges: remembered.edges, edgesChosen: remembered.edgesChosen, tol: remembered.tol, edge: remembered.edge, texture: remembered.texture, overWater: remembered.overWater && canStandOverWater(remembered.floor), heightMode: remembered.heightMode, crossKind: remembered.crossKind, cave: remembered.floor === 'cavern' ? caveChoice() : null, waterKind: remembered.waterKind, pattern: remembered.styles[remembered.floor] ?? '',
-  wallMaterial: remembered.wallMaterial, wallWidth: remembered.wallWidth, wallAge: remembered.wallAge, wallMode: remembered.wallMode, wallCurve: remembered.wallCurve === true, doorKind: remembered.doorKind || null, doorFlip: remembered.doorFlip === true, doorWide: remembered.doorWide, windowKind: remembered.windowKind || null, windowWalk: remembered.windowWalk === true, swing: remembered.swing === 'out' ? 'out' : 'in',
+  wallMaterial: remembered.wallMaterial, wallWidth: remembered.wallWidth, wallAge: remembered.wallAge, wallMode: remembered.wallMode, wallCurve: remembered.wallCurve === true, doorKind: remembered.doorKind || null, doorFlip: remembered.doorFlip === true, doorDouble: remembered.doorDouble === true, doorWide: remembered.doorWide, windowKind: remembered.windowKind || null, windowWalk: remembered.windowWalk === true, swing: remembered.swing === 'out' ? 'out' : 'in',
   roofKind: remembered.roofKind || null, roofForm: remembered.roofForm || null, roofAge: remembered.roofAge, roofChimney: remembered.roofChimney || null, roofDressed: remembered.roofDressed === true,
   wallTint: remembered.wallTint || null, roofTint: remembered.roofTint || null, dressingKind: remembered.dressingKind || 'garlands' }; };
 // What Cave lays (pure copy): the growth as its `cavern` word, and its stage, size and how many as the region panel saves
@@ -366,7 +366,8 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
       modes.append(seg('', WALL_MODES, remembered.wallMode, (v) => { remembered.wallMode = v; }, 'wallMode'));
       row.append(slider('Wide', DOOR_WIDE, 'doorWide', DOOR_WIDE.step, '', (v) => (v === 1 ? 'one square' : `${Math.round(v * 100) / 100} squares`)));
       row.append(seg('Opens', [['in', 'Inside'], ['out', 'Outside']], remembered.swing, (v) => { remembered.swing = v; }, 'swing'));
-      row.append(tick('Hinge the far end', 'doorFlip', 'The door hangs on the other end of the opening. Which end it hangs on and which way it opens are two different things.'));
+      row.append(tick('Double doors', 'doorDouble', 'Two leaves meeting in the middle of the opening, each hung at its own end: a hall, a barn, a temple. Each half opens on its own, as a real pair does.'));
+      row.append(tick('Hinge the far end', 'doorFlip', 'The door hangs on the other end of the opening. Which end it hangs on and which way it opens are two different things. A pair hangs at both ends, so this changes nothing for one.'));
     } else if (walls) {
       // Walls: what the next wall is made of, how thick it is drawn and how long it has stood. Dragging on the map
       // lays it — a wall of Foundry's own, which is what the vision needs, carrying the material that paints it.
@@ -464,7 +465,7 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
     row.append(more); extra.hidden = !remembered.more;
     body.append(modes, grid, row, extra);
     const keys = el('div', 'an-db-hint an-mp-keys', walls ? (remembered.wallMode === 'roof'
-      ? 'Click inside a room the walls close in: a roof goes over it, with its ridge along the room · Click a roof to take it off · It fades while somebody is under it · 1 / 2 / 3 / 4: tabs'
+      ? 'Click inside a room the walls close in: a roof goes over it · Shift-click: one roof over the whole building, inside walls and all · Click a roof to take it off · Ctrl+wheel: the years on it · 1 / 2 / 3 / 4: tabs'
       : remembered.wallMode === 'window'
       ? 'Click a painted wall: an opening is cut there and the window set into it · Click an opening that is already there to put this in it instead · 1 / 2 / 3 / 4: tabs'
       : remembered.wallMode === 'door'

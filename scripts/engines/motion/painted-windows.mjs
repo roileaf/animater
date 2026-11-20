@@ -7,6 +7,7 @@
 // its hinges at either end, or curtains drawn aside along the wall. They move; nothing is repainted to make them.
 
 import { paintWindowFrame, paintWindowLeaf, windowFor, WINDOW_ART, WINDOW_MOTION, WINDOW_SWING, WINDOW_DRAW_ASIDE } from './window-paint.mjs';
+import { LIT } from './wall-paint.mjs';
 
 /** How long a window takes to open, in seconds. A touch quicker than a door: it is lighter. */
 export const OPEN_TIME = 0.95;
@@ -53,7 +54,9 @@ export function createPaintedWindows({ PIXI, root, grid = () => 100, make = unde
     const where = host();
     if (!where || !PIXI?.Sprite || !PIXI?.Texture) return false;
     const kind = WINDOW_ART[window.kind] ? window.kind : windowFor(window.material);
-    const look = { grid: grid(), thick: window.thick, seed: window.id?.length ?? 4, slats: window.slats };
+    // A wall's thickness is measured from its middle out, a window's across the whole opening, so the one is twice
+    // the other: set into a wall drawn 0.17 thick, a window was coming out half the wall's width.
+    const look = { grid: grid(), thick: window.thick > 0 ? window.thick * 2 : undefined, seed: window.id?.length ?? 4, slats: window.slats };
     const frameArt = paintWindowFrame(kind, window.length, look, make);
     if (!frameArt) return false;
     dropOne(window.key);
@@ -66,11 +69,16 @@ export function createPaintedWindows({ PIXI, root, grid = () => 100, make = unde
       s.width = box.w; s.height = box.h;
       where.addChild(s); return s;
     };
+    // A painted wall's top is drawn lifted off the line it runs along, so an opening set into it is lifted too, or
+    // it sits half out of the stone it is cut from.
+    const lit = Array.isArray(window.lit) && window.lit.length === 2 ? window.lit : LIT;
+    const up = grid() * (window.lift ?? 0);
+    const lifted = (p) => [p[0] + lit[0] * up, p[1] + lit[1] * up];
     let frame = null;
     try {
       frame = sprite(frameArt);
       frame.anchor.set(0.5);
-      frame.position.set(window.middle[0], window.middle[1]);
+      frame.position.set(...lifted(window.middle));
       frame.rotation = window.along;
     } catch { return false; }
 
@@ -80,7 +88,7 @@ export function createPaintedWindows({ PIXI, root, grid = () => 100, make = unde
       const leafArt = paintWindowLeaf(kind, each, look, make);
       if (leafArt) {
         const along = window.along, half = window.length / 2;
-        const middle = window.middle;
+        const middle = lifted(window.middle);
         // Each leaf hangs at its own end of the opening and opens away from the other, as a casement pair does.
         for (let i = 0; i < parts; i++) {
           const way = parts === 1 ? 1 : i === 0 ? 1 : -1;

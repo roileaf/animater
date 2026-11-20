@@ -26,6 +26,17 @@ test('a door hangs at one end and reaches to the other', () => {
   assert.equal(d.way, 1);
 });
 
+// Roi: "some walls doesnt look good with doors..." — a door drawn to its own idea of a door's thickness stood proud
+// of a thin wall on both faces. It takes the wall's, measured the way a leaf is measured: right across it.
+test('a door is as thick as the wall it hangs in', () => {
+  const [plain] = wallDoors([door('a', 100, 200, 200, 200)]);
+  assert.equal(plain.thick, null, 'a wall that never said keeps the door its own usual thickness');
+  const [thin] = wallDoors([door('b', 100, 200, 200, 200, { animater: { material: 'dressed', thick: 0.1 } })]);
+  assert.equal(thin.thick, 0.1, "the wall's own half-thickness travels with the door");
+  const leaf = paintDoorLeaf('planked', 100, { grid: 100, thick: thin.thick * 2 }, (w, h) => ({ width: w, height: h, getContext: () => null }));
+  assert.equal(leaf, null, 'with no canvas to draw on, nothing is painted');
+});
+
 test('hinging the far end turns it round, and swings it the other way', () => {
   const [d] = wallDoors([door('a', 100, 200, 200, 200, { animater: { material: 'dressed', hinge: 'far' } })]);
   assert.deepEqual(d.hinge, [200, 200]);
