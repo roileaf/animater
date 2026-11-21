@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.7.3
+
+- **A region shaped to what the walls close in.** Structures has a Region mode. Click inside a room and a region is drawn round it, following the inside faces of the walls; Shift-click and it is drawn round the whole building, straight through its partitions, the way Shift already lays one roof over a whole house. A room built round a courtyard comes back with the courtyard as a hole in it. Ctrl+Z takes it back like any other stroke. Every other way of making a region here starts from the map's picture, from a brush stroke, from raised ground or from a broken prop — this one starts from the stone, which is what you want when the room you mean is the one the walls make. Walls that do not sit on a grid line cost the region a square on that side, so a round tower comes out as a blocky approximation of its ring.
+
 ## 4.7.2
 
 - **A roof is solid again.** 4.7.0 moved painted roofs above Foundry's lighting so that a lamp in a room could not light the roof over it. They went into the wrong place: `canvas.effects` is not a layer above the lighting, it *is* the lighting — it is masked, and everything inside it is composited as light. A flash belongs there, because a flash is light. A roof is a thing in the way, and put there it came out as a translucent wash with the room showing straight through it, strongest wherever the map was brightest. Roofs are now drawn in the interface group, which is above the lighting without being part of it: over the creatures, since a roof hides what is under it, and under the walls, the templates and the door controls, which a GM has to see and reach. A lamp indoors still does not light the roof, and the sky still does.
