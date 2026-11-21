@@ -50,6 +50,21 @@ test('a block of squares comes back as one loop of its corners', () => {
   assert.deepEqual([Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)], [100, 300, 100, 300]);
 });
 
+// Roi, of the first version: "it doesnt create a region inside the bounding walls". The squares meet at the middle
+// of the walls, because that is where the walls were drawn, so the outline has to come in by their half-thickness.
+test('the outline is pulled inside the walls, and a courtyard grows as the room shrinks', () => {
+  const [loop] = roomOutline(cellsOf('1,1', '2,1', '1,2', '2,2'), { grid: 100, inset: 17 });
+  const xs = loop.filter((_, i) => i % 2 === 0), ys = loop.filter((_, i) => i % 2 === 1);
+  assert.deepEqual([Math.min(...xs), Math.max(...xs)], [117, 283], 'in from 100 and 300 by the wall');
+  assert.deepEqual([Math.min(...ys), Math.max(...ys)], [117, 283]);
+  // The hole in a ring is the room's edge too, so it comes in from the other side: the hole gets bigger.
+  const ring = [];
+  for (let x = 0; x < 3; x++) for (let y = 0; y < 3; y++) if (x !== 1 || y !== 1) ring.push(`${x},${y}`);
+  const loops = roomOutline(new Set(ring), { grid: 100, inset: 10 });
+  const span = (l) => Math.max(...l.filter((_, i) => i % 2 === 0)) - Math.min(...l.filter((_, i) => i % 2 === 0));
+  assert.deepEqual(loops.map(span).sort((a, b) => a - b), [120, 280], 'the outside came in, the hole opened out');
+});
+
 test('an L-shaped room keeps the corner it turns', () => {
   const loops = roomOutline(cellsOf('0,0', '1,0', '0,1'), { grid: 100 });
   assert.equal(loops.length, 1);

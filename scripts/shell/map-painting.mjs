@@ -891,7 +891,17 @@ export function createMapPainting(ctx) {
       const walls = (canvas.walls?.placeables ?? []).map((w) => ({ c: w.document.c }));
       const cells = roomCells(p, walls, { grid: g, bounds: air.bounds, outside: air.outside, through: whole });
       if (!cells.size) { ui.notifications?.info("Animater: that spot is not inside anything — the walls there do not close it in."); return; }
-      const loops = roomOutline(cells, { grid: g });
+      // In by the stone: a wall's own drawn half-thickness, taken from the thickest painted wall round this room so
+      // the region never lies under one. A wall the map came with has no thickness of ours; those get the usual.
+      const near = (canvas.walls?.placeables ?? []).filter((w) => {
+        const own = w.document.flags?.[ID];
+        if (!WALL_MATERIAL_IDS.includes(own?.material)) return false;
+        const mx = (w.document.c[0] + w.document.c[2]) / 2, my = (w.document.c[1] + w.document.c[3]) / 2;
+        return cells.has(`${Math.floor(mx / g)},${Math.floor(my / g)}`) || cells.has(`${Math.round(mx / g)},${Math.round(my / g)}`)
+          || [...cells].some((k) => { const [cx, cy] = k.split(',').map(Number); return Math.abs(cx * g + g / 2 - mx) <= g && Math.abs(cy * g + g / 2 - my) <= g; });
+      });
+      const thick = Math.max(WALL_THICK, ...near.map((w) => Number(w.document.flags?.[ID]?.thick) || 0));
+      const loops = roomOutline(cells, { grid: g, inset: thick * g });
       if (!loops.length) { ui.notifications?.info("Animater: that room has no outline to draw."); return; }
       // The biggest loop is the room's own edge; the rest are the holes in it, which the region keeps as holes.
       const span = (l) => { const xs = l.filter((_, i) => i % 2 === 0), ys = l.filter((_, i) => i % 2 === 1); return (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys)); };

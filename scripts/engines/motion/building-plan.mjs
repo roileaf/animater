@@ -123,7 +123,7 @@ export function roomCells(point, walls, { grid = 100, bounds, most = PLAN_MOST, 
  * hole in the middle the other, which is what a region wants of a shape with a courtyard in it. Runs of points along
  * one straight line are merged, so a room ten squares across is four corners and not forty.
  */
-export function roomOutline(cells, { grid = 100 } = {}) {
+export function roomOutline(cells, { grid = 100, inset = 0 } = {}) {
   if (!cells || !cells.size || !(grid > 0)) return [];
   const has = (cx, cy) => cells.has(key(cx, cy));
   // Clockwise round each square (y runs down the screen), so an outer border comes out clockwise and a hole the
@@ -158,10 +158,34 @@ export function roomOutline(cells, { grid = 100 } = {}) {
         const ways = from.get(`${x},${y}`);
         next = ways?.length ? ways.pop() : null;
       }
-      if (loop.length >= 6) loops.push(straighten(loop));
+      if (loop.length >= 6) loops.push(pullIn(straighten(loop), inset));
     }
   }
   return loops;
+}
+
+/**
+ * A rectilinear loop pulled in by `inset` all round: the squares a room fills meet at the middle of its walls, which
+ * is where they were drawn, so an outline taken straight off them lies along the stone rather than inside it (Roi:
+ * "it doesnt create a region inside the bounding walls"). Every edge here runs along an axis, so each corner simply
+ * moves by the inward step of the two edges that meet at it — out of a corner that turns out of the room, into one
+ * that turns into it, which is what keeps a courtyard's hole growing as the room shrinks.
+ */
+function pullIn(loop, inset) {
+  if (!(inset > 0)) return loop;
+  const n = loop.length / 2;
+  if (n < 4) return loop;
+  const at = (i) => { const k = ((i % n) + n) % n; return [loop[k * 2], loop[k * 2 + 1]]; };
+  // The way into the room from an edge: a quarter turn from the way the edge runs, which for a loop wound this way
+  // round always points at what the loop encloses.
+  const inward = (a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy) || 1; return [-dy / len, dx / len]; };
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const a = at(i - 1), b = at(i), c = at(i + 1);
+    const one = inward(a, b), two = inward(b, c);
+    out.push(b[0] + (one[0] + two[0]) * inset, b[1] + (one[1] + two[1]) * inset);
+  }
+  return out;
 }
 
 /** A loop with its in-line points dropped: three points on one straight run are two. */
