@@ -376,20 +376,10 @@ export function createPaintedBuildings(ctx) {
     const over = roofsOf(flags(), { grid });
     if (!over.length) return open;
     const inset = -grid * 0.22;
-    // A roof is opened by the creatures standing UNDER IT, and by nobody else. Taken from whoever was selected
-    // wherever they stood, a token outside the building cut the roof open from the street: its sight runs along the
-    // wall, the cut reaches past the stone by design so the room's own walls show, and the house was see-through
-    // with every door shut (Roi: "when selecting a token and doors closed why can i see through the roof?"). Lit
-    // eaves made it worse, since a lit street is street a token can see.
+    const sights = [];
+    for (const t of mine) { const s = sightFrom({ x: t.center?.x ?? t.x, y: t.center?.y ?? t.y }); if (s) sights.push(s); }
+    if (!sights.length) return open;
     for (const roof of over) {
-      const sights = [];
-      for (const t of mine) {
-        const at = { x: t.center?.x ?? t.x, y: t.center?.y ?? t.y };
-        if (!underRoof(roof.room, at.x, at.y)) continue;
-        const s = sightFrom(at);
-        if (s) sights.push(s);
-      }
-      if (!sights.length) continue;
       const holes = roofOpenings(roof.room, sights, { inset });
       if (holes.length) open.set(`${roof.key}${roofSuffix()}`, holes);
     }
