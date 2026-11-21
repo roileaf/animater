@@ -9,9 +9,12 @@
 import { ROOF_IDS, ROOF_FORM_IDS, ROOF_OVERHANG, formFor, formFits, roofFor, roofShape } from './roof-paint.mjs';
 
 /** How steeply a roof climbs from its eaves to its ridge: squares of rise for each square of half-span. */
-export const ROOF_PITCH = 0.6;
+// As steep as it is wide, the pitch of thatch and of old slate. At six tenths the peak's shadow only cleared the
+// eaves' own with the sun under thirty degrees, so a hipped roof and a pyramid threw a plain box all day and their
+// shape showed in nobody's shadow (Roi, shown the sheet of them: "all roof shadow will be rectangle though?").
+export const ROOF_PITCH = 1;
 /** The most a ridge stands over its eaves, in squares: a great hall's roof is tall, but it is not a spire. */
-export const ROOF_RISE_MOST = 3;
+export const ROOF_RISE_MOST = 4;
 
 /**
  * What a roof throws a shadow from, as the wall shadows understand it: plain `{ c, top }` records, heights in
@@ -31,12 +34,96 @@ export function roofShadowEdges(roofs = [], { grid = 100, wallTall = 2 } = {}) {
     const eave = shape?.eave;
     if (!Array.isArray(eave) || eave.length < 3) continue;
     const edge = (a, b, top) => { if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 1) out.push({ c: [a[0], a[1], b[0], b[1]], top, light: 20, move: 20, sight: 20, roof: roof.id }); };
-    for (let i = 0; i < eave.length; i++) edge(eave[i], eave[(i + 1) % eave.length], wallTall);
+    const eaves = eavesAt(wallTall, roof);
+    for (let i = 0; i < eave.length; i++) edge(eave[i], eave[(i + 1) % eave.length], eaves);
     // The ridge, over the middle: half the short side out from the eaves, climbing at the roof's pitch.
     const rise = Math.min(ROOF_RISE_MOST, (Math.min(room.w, room.h) / 2 / grid) * ROOF_PITCH);
     const ridge = shape?.ridge;
-    if (Array.isArray(ridge) && ridge.length >= 2 && rise > 0) edge(ridge[0], ridge[1], wallTall + rise);
+    if (Array.isArray(ridge) && ridge.length >= 2 && rise > 0) edge(ridge[0], ridge[1], eaves + rise);
   }
+  return out;
+}
+
+/**
+ * The whole shadow of each roof, as one shape (flat x,y pairs), for a sun that way and that high.
+ *
+ * The edges above throw a shadow each, and laid together they are not the roof's: the eaves give one block, the
+ * ridge another further out, and nothing joins them, so a roof came out with steps in its shade; a pyramid and a
+ * cone have a point and no ridge at all, so theirs was a flat-topped box (Roi, of a pyramid's stepped shadow: "are
+ * we sure that the shape of the shadow matches the roof shape for all roof shapes?"). Every roof here is a solid
+ * with no hollows in it, and the shadow of such a thing is exactly the outline round the shadows of its corners:
+ * the eaves where they stand, the eaves thrown from the height of the walls, and the ridge ends or the point thrown
+ * from their own height. So that is what is drawn, whatever the form.
+ */
+export function roofShadows(roofs = [], { grid = 100, wallTall = 2, sun = null, reach = null } = {}) {
+  if (!sun || !(Number(sun.strength) > 0) || typeof reach !== 'function' || !(grid > 0)) return [];
+  const away = ((Number(sun.angle) || 0) + 180) * Math.PI / 180, dx = Math.cos(away), dy = Math.sin(away);
+  const out = [];
+  for (const roof of roofs ?? []) {
+    const room = roof?.room;
+    if (!room || !(room.w > 0) || !(room.h > 0)) continue;
+    let shape = null;
+    try { shape = roofShape(roof.form, room.x, room.y, room.w, room.h, grid * ROOF_OVERHANG, roof.high); } catch { shape = null; }
+    const eave = shape?.eave;
+    if (!Array.isArray(eave) || eave.length < 3) continue;
+    const eaves = eavesAt(wallTall, roof), rise = Math.min(ROOF_RISE_MOST, (Math.min(room.w, room.h) / 2 / grid) * ROOF_PITCH), top = eaves + rise;
+    const low = reach(eaves, sun.height) * grid, high = reach(top, sun.height) * grid;
+    const pts = [];
+    for (const p of eave) pts.push([p[0], p[1]], [p[0] + dx * low, p[1] + dy * low]);
+    for (const p of [...(Array.isArray(shape.ridge) ? shape.ridge : []), shape.peak].filter(Array.isArray)) pts.push([p[0] + dx * high, p[1] + dy * high]);
+    const hull = outline(pts);
+    if (hull.length >= 3) out.push({ points: hull.flat(), alpha: 1, top, bottom: 0, roof: roof.id });
+  }
+  return out;
+}
+
+/**
+ * How high a roof's eaves stand, in squares. A roof sits on its walls, so it is the height of the walls under it,
+ * and the caller may say that roof by roof (`wallTall` as a function of the roof). Told one height for the whole
+ * map while the walls stood at their own — a level's ceiling, twice as high — the walls threw a shadow out past
+ * the eaves', and a house had a narrow block of shade standing on a wide one.
+ */
+function eavesAt(wallTall, roof) {
+  const n = Number(typeof wallTall === 'function' ? wallTall(roof) : wallTall);
+  return Number.isFinite(n) && n > 0 ? n : 2;
+}
+
+/**
+ * The height of the walls under a roof, from the shadows those walls already throw (`quads`, wall-shadows.mjs's:
+ * each with the wall's line `c` and its `top`): the tallest wall standing inside the roof's room, or `usual` when
+ * none does.
+ */
+export function wallsUnder(roof, quads = [], { grid = 100, usual = 2 } = {}) {
+  const r = roof?.room;
+  if (!r) return usual;
+  const slack = grid * 0.6, within = (x, y) => x >= r.x - slack && x <= r.x + r.w + slack && y >= r.y - slack && y <= r.y + r.h + slack;
+  let most = 0;
+  for (const q of quads ?? []) { const c = q?.c; if (Array.isArray(c) && Number(q.top) > most && within(c[0], c[1]) && within(c[2], c[3])) most = Number(q.top); }
+  return most > 0 ? most : usual;
+}
+
+/** The outline round a handful of points (their convex hull), in order. */
+function outline(points) {
+  const p = [...points].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (p.length < 3) return p;
+  const turn = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const half = (list) => { const h = []; for (const q of list) { while (h.length >= 2 && turn(h[h.length - 2], h[h.length - 1], q) <= 0) h.pop(); h.push(q); } h.pop(); return h; };
+  return [...half(p), ...half([...p].reverse())];
+}
+
+/**
+ * The floor a roof keeps the sky off, as flat x,y pairs: the room, not the roof, since a roof hangs past its walls
+ * and the rain stops at the wall. A round tower's floor is round. It used to be handed over as the tower's box, and
+ * the four corners of that box stand outside the tower: the sun's shadow was cut away there as if it were indoors,
+ * leaving a square bite in the shadow of a round roof (Roi's picture of it, a cone with a corner missing from its
+ * shade).
+ */
+export function roofFloor(roof, { sides = 28 } = {}) {
+  const r = roof?.room;
+  if (!r || !(r.w > 0) || !(r.h > 0)) return null;
+  if (roof.form !== 'cone') return [r.x, r.y, r.x + r.w, r.y, r.x + r.w, r.y + r.h, r.x, r.y + r.h];
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2, rad = Math.min(r.w, r.h) / 2, out = [];
+  for (let i = 0; i < sides; i++) { const a = (i / sides) * Math.PI * 2; out.push(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad); }
   return out;
 }
 

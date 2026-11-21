@@ -252,7 +252,7 @@ import { cutOutArt } from "./engines/playback/art-crop.mjs";
 import { createTethers, createTetherPreview } from "./engines/playback/tethers.mjs";
 import { REGION_LOOK_FLAG, regionLookWants, syncRegionLooks, natureLook } from "./engines/playback/region-looks.mjs";
 import { lightAround, litKey, litPreset, lightDance } from "./engines/playback/surrounding-light.mjs";
-import { WINDOW_PATTERN, patternScaleOf, shaftOf, GLAZED, skyWindowOf, duskOf, sunsetTint, eraseRooms, openRooms, wallShadowQuads, shadeAcross, createWallShadows, wallSpan, windowShafts, createWindowShafts, windowGlows, createWindowGlow, windowFlashes, windowsFacing, keepToSight } from "./engines/motion/wall-shadows.mjs";
+import { WINDOW_PATTERN, patternScaleOf, shaftOf, GLAZED, skyWindowOf, duskOf, sunsetTint, eraseRooms, openRooms, wallShadowQuads, wallShadowReach, shadeAcross, createWallShadows, wallSpan, windowShafts, createWindowShafts, windowGlows, createWindowGlow, windowFlashes, windowsFacing, keepToSight } from "./engines/motion/wall-shadows.mjs";
 import { tileSunlight, tileHeight, tileLeaves, solidShare, leafShare, canopyFall, directSun, createCanopyLight, createTreeSway } from "./engines/motion/canopy-light.mjs";
 import { TREE_KINDS, createTreePatterns, treeKindOf } from "./engines/motion/tree-kinds.mjs";
 import { STRIKE_LIGHT_SQUARES, openingStrike, strikePlace, strikeAngle as strikeFrom, boltDue, createLightningBolts } from "./engines/motion/lightning-bolt.mjs";
@@ -282,7 +282,7 @@ import { createPaintedDoors } from "./engines/motion/painted-doors.mjs";
 import { DOOR_KINDS, doorFor, doorwaySpan } from "./engines/motion/door-paint.mjs";
 import { createPaintedWindows } from "./engines/motion/painted-windows.mjs";
 import { createPaintedRoofs } from "./engines/motion/painted-roofs.mjs";
-import { roomAt, roofsOf, roofLook, roofShadowEdges, under as underRoof } from "./engines/motion/roof-looks.mjs";
+import { roomAt, roofsOf, roofLook, roofShadowEdges, roofShadows, wallsUnder, roofFloor, under as underRoof } from "./engines/motion/roof-looks.mjs";
 import { roofOpenings } from "./engines/motion/roof-sight.mjs";
 import { buildingAt as buildingPlanAt, indoorRects } from "./engines/motion/building-plan.mjs";
 import { createPaintedBuildings, PARTITION_THIN } from "./shell/painted-buildings.mjs";
@@ -1897,10 +1897,9 @@ const roofedRooms = () => {
     const grid = canvas?.grid?.size ?? 100;
     const out = [];
     for (const roof of roofsOf(canvas?.scene?.flags?.[ID] ?? {}, { grid })) {
-      const r = roof?.room;
-      if (!r || !(r.w > 0) || !(r.h > 0)) continue;
-      // The room, not the roof: a roof hangs past its walls, and the rain stops at the wall.
-      const area = [r.x, r.y, r.x + r.w, r.y, r.x + r.w, r.y + r.h, r.x, r.y + r.h];
+      // The room, not the roof: a roof hangs past its walls, and the rain stops at the wall. Round under a cone.
+      const area = roofFloor(roof);
+      if (!area) continue;
       area.soft = 0; // a roof has an edge; it does not fade
       out.push(area);
     }
@@ -1951,8 +1950,11 @@ const rebuildWallShadows = () => {
     // The painted roofs cast with the walls: a building's shadow is its roof's, eaves and ridge, so it is one shadow
     // as long as the hour makes it. (The roof used to carry a second one painted into its own picture, shorter,
     // darker and deaf to the sun; that one now shows only where nothing is cast at all.)
-    const roofEdges = paintedWallsOn() ? roofShadowEdges(roofsOf(canvas.scene?.flags?.[ID] ?? {}, { grid: canvas.grid.size }), { grid: canvas.grid.size, wallTall: wallShadowTall() }) : [];
-    wallQuads = sun > 0.02 ? wallShadowQuads({ walls: [...wallsHere(), ...roofEdges], sun: sunNow, grid: canvas.grid.size, height: Number(hotSetting("wallShadowHeight")) || 2 }) : [];
+    const roofsCasting = paintedWallsOn() ? roofsOf(canvas.scene?.flags?.[ID] ?? {}, { grid: canvas.grid.size }) : [];
+    // A roof sits on its walls: its eaves stand as high as the walls under it do, which on a map with levels is the level's ceiling and not the setting's height.
+    const wallsCast = sun > 0.02 ? wallShadowQuads({ walls: wallsHere(), sun: sunNow, grid: canvas.grid.size, height: wallShadowTall() }) : [], eavesOf = (roof) => wallsUnder(roof, wallsCast, { grid: canvas.grid.size, usual: wallShadowTall() });
+    // The edges answer "is this spot shaded" for the windows; the whole outline of each roof's shadow is laid over them, so the shade is the roof's shape and not a step for each edge.
+    wallQuads = sun > 0.02 ? [...wallsCast, ...wallShadowQuads({ walls: roofShadowEdges(roofsCasting, { grid: canvas.grid.size, wallTall: eavesOf }), sun: sunNow, grid: canvas.grid.size, height: wallShadowTall() }), ...roofShadows(roofsCasting, { grid: canvas.grid.size, wallTall: eavesOf, sun: sunNow, reach: wallShadowReach })] : [];
     wallShadows.build({ quads: wallQuads, bounds: canvas.dimensions.sceneRect, alpha: 0.35 * sun, indoors: indoorPolygons(), open: undergroundScene() ? [] : landedOpenings(), grid: canvas.grid.size, tops: wallShadowTops(), wallTop: Math.max(0, ...(canvas.walls?.placeables ?? []).filter((w) => !w.document.flags?.[ID]?.cliffOf && Number(w.document.light) > 0).map((w) => wallTopOnGround(w.document))) });
   } catch { wallQuads = []; wallShadows.clear(); } finally {
     // Creatures look again for whether they stand in the shade or indoors (with wall shadows off too), and their sun
