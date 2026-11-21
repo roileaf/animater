@@ -58,14 +58,22 @@ export function createPaintedBuildings(ctx) {
   // lit the roof above it — the light came up through the tiles (Roi: "also i see lights through the roof...", and
   // the same thing read as "sun light is..weird on roofs?" when a bright slope tracked where a light had been put).
   // Nothing drawn inside that group can escape it, which is the same wall the garland lanterns hit from the other
-  // side. So a roof goes where the lightning flash goes: in canvas.effects, above the lighting, out of its reach.
+  // side. So a roof is drawn above the lighting instead.
   //
-  // The cost is that the map's own darkness no longer reaches them either, so they take the sky's light themselves
-  // (skyTint below). What they must never take is a lamp's, which is the whole point.
-  const ROOF_ABOVE_LIGHT = 99000;
+  // Above it, in the INTERFACE group — not in canvas.effects, where the lightning flash goes. That group is the
+  // lighting itself: it is masked and its contents are composited as light, so a roof put there came out as a
+  // translucent wash and the room showed straight through it, uncut, unfaded and at full alpha (Roi: "still
+  // see-through"). A flash belongs in the lighting. A roof is a thing in the way, and belongs over it.
+  //
+  // Above the tokens, since a roof hides what is under it, and below the walls, the templates and the door controls,
+  // which a GM has to be able to see and reach. The cost of being out of the lighting is that the map's darkness no
+  // longer reaches the roofs either, so they take the sky's light themselves (skyTint below). What they must never
+  // take is a lamp's, which is the whole point.
+  const ROOF_ABOVE_LIGHT = 250;
   let roofRoot = null, roofLight = null;
+  const roofHost = () => globalThis.canvas?.interface ?? globalThis.canvas?.effects;
   const roofRootOf = () => {
-    if (!roofRoot || roofRoot.destroyed || roofRoot.parent !== globalThis.canvas?.effects) {
+    if (!roofRoot || roofRoot.destroyed || roofRoot.parent !== roofHost()) {
       roofRoot = new PIXI.Container();
       roofRoot.eventMode = 'none';
       roofRoot.zIndex = ROOF_ABOVE_LIGHT;
@@ -77,8 +85,10 @@ export function createPaintedBuildings(ctx) {
         roofLight = Filter ? new Filter() : null;
         if (roofLight) roofRoot.filters = [roofLight];
       } catch { roofLight = null; }
-      globalThis.canvas.effects.addChild(roofRoot);
-      globalThis.canvas.effects.sortChildren?.();
+      const host = roofHost();
+      host.sortableChildren = true;
+      host.addChild(roofRoot);
+      host.sortChildren?.();
     }
     return roofRoot;
   };
