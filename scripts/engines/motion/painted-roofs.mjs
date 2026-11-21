@@ -143,6 +143,9 @@ export function createPaintedRoofs({ PIXI, root, grid = () => 100, make = undefi
       dressing: roof.dressed ? (look.dressing ?? null) : null,
       chimney: roof.chimney, chimneyAt: roof.chimneyAt,
       snow: look.snow ?? 0, moss: look.moss ?? 0, soot: look.soot ?? 0, wet: look.wet ?? 0, leaves: look.leaves ?? 0,
+      // How far the roof's own painted shadow reaches: nought while the sun casts the building's shadow for it.
+      // (Left off this list, the caller's "off" never arrived and the house kept two shadows.)
+      shadowReach: look.shadowReach,
     }, make);
     if (!picture) return false;
     dropOne(roof.key);
