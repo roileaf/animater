@@ -71,6 +71,14 @@ export function roofOpenings(room, sights = [], { inset = 0, least = 64 } = {}) 
   if (!(box.w > 0) || !(box.h > 0)) return [];
   const out = [];
   for (const sight of sights ?? []) {
+    // Can this creature see into the room at all? Asked of the room itself, before the cut is allowed to reach out
+    // past the walls. The reach is there so somebody inside sees the stone their own room is made of; it must not
+    // be the thing that lets somebody in. A creature in the street, whose sight runs along the outside of a shut
+    // wall, had a slice of that reach to itself and carved its way in from there, so a house with every door shut
+    // went see-through the moment a token outside was selected (Roi: "when the door is closed and theres no sight
+    // into the building, that it looks like i have nothing selected and the roof is not seethrough").
+    const seen = clipToBox(sight, room);
+    if (seen.length < 6 || ringArea(seen) < least) continue;
     const cut = clipToBox(sight, box);
     if (cut.length >= 6 && ringArea(cut) >= least) out.push(cut);
   }

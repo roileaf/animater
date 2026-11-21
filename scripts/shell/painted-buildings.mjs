@@ -358,7 +358,15 @@ export function createPaintedBuildings(ctx) {
   const sightFrom = (point) => {
     try {
       const Backend = globalThis.CONFIG?.Canvas?.polygonBackends?.sight;
-      const poly = Backend?.create({ x: point.x, y: point.y }, { type: 'sight' });
+      // Swept on the level being looked at, as every other sweep in the module is (openingRoom below does the same).
+      // Asked without one, the walls of a scene that has real levels are not the walls it sweeps against, and what
+      // comes back is a polygon nothing stopped — which, handed to roofOpenings, cuts the whole roof open from
+      // wherever the creature happens to be standing.
+      const level = globalThis.canvas?.level;
+      const poly = Backend?.create(
+        { x: point.x, y: point.y, elevation: Number(level?.elevation?.base) || 0 },
+        { type: 'sight', ...(level ? { level } : {}) },
+      );
       const pts = poly?.points;
       return Array.isArray(pts) ? pts : (pts?.length ? [...pts] : null);
     } catch { return null; }

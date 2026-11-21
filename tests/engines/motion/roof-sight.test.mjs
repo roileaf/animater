@@ -45,6 +45,25 @@ test("a cut can reach out past the walls, so the room shows the stone it is made
   assert.equal(Math.max(...cut.filter((_, i) => i % 2 === 0)), 722);
 });
 
+// Roi, with a token in the street and every door shut: "when the door is closed and theres no sight into the
+// building, that it looks like i have nothing selected and the roof is not seethrough". The reach past the walls is
+// for somebody already inside; on its own it must not let anybody in.
+test("a creature that cannot see into the room opens nothing, reach or no reach", () => {
+  // Its sight runs along the outside of the south wall and stops there: it meets the room at the wall line only.
+  const street = rect(150, 600, 600, 200);
+  assert.deepEqual(roofOpenings(ROOM, [street], { inset: -22 }), [], 'the street sees no further than the stone');
+  // The same creature once a door is open: a wedge of the room itself is in view, and that does open the roof.
+  const throughTheDoor = [400, 700, 420, 700, 480, 400, 360, 400];
+  const [cut] = roofOpenings(ROOM, [throughTheDoor], { inset: -22 });
+  assert.ok(cut && ringArea(cut) > 0, 'what it can see of the room comes off');
+  assert.ok(Math.max(...cut.filter((_, i) => i % 2 === 1)) > 600, 'and reaches past the wall it looks through');
+});
+
+test("standing inside still lifts the roof, out to the stone", () => {
+  const [cut] = roofOpenings(ROOM, [rect(250, 250, 300, 250)], { inset: -22 });
+  assert.ok(cut && ringArea(cut) >= 300 * 250, 'the room it stands in opens');
+});
+
 test("a room smaller than the inset has no inside to open", () => {
   assert.deepEqual(roofOpenings({ x: 0, y: 0, w: 40, h: 40 }, [rect(-500, -500, 2000, 2000)], { inset: 30 }), []);
 });
