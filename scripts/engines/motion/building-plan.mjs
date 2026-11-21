@@ -82,6 +82,104 @@ export function buildingAt(point, walls, { grid = 100, bounds, most = PLAN_MOST,
 }
 
 /**
+ * The squares of the building under a point, as a set of `cx,cy` keys — the walk buildingAt measures, handed over
+ * rather than counted. Empty for a point that is not indoors at all.
+ */
+export function roomCells(point, walls, { grid = 100, bounds, most = PLAN_MOST, outside = null, through = true } = {}) {
+  const seen = new Set();
+  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y) || !(grid > 0) || !bounds) return seen;
+  const air = outside ?? outsideSquares(walls, { grid, bounds, most });
+  const start = [Math.floor(point.x / grid), Math.floor(point.y / grid)];
+  if (air.has(key(...start))) return seen;
+  const x0 = Math.floor(bounds.x / grid), y0 = Math.floor(bounds.y / grid);
+  const x1 = Math.ceil((bounds.x + bounds.w) / grid) - 1, y1 = Math.ceil((bounds.y + bounds.h) / grid) - 1;
+  // `through`: a building is walked straight through its own partitions, a room is not — one room is what the walls
+  // close in, which is the whole of what some callers mean by an area.
+  const segs = through ? [] : (walls ?? []).filter((w) => Array.isArray(w?.c) && w.c.length >= 4).map((w) => [[w.c[0], w.c[1]], [w.c[2], w.c[3]]]);
+  const middle = (cx, cy) => [cx * grid + grid / 2, cy * grid + grid / 2];
+  seen.add(key(...start));
+  const queue = [start];
+  let n = 0;
+  while (queue.length) {
+    if (++n > most) break;
+    const [cx, cy] = queue.shift();
+    const at = through ? null : middle(cx, cy);
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = cx + dx, ny = cy + dy, k = key(nx, ny);
+      if (nx < x0 || ny < y0 || nx > x1 || ny > y1 || seen.has(k) || air.has(k)) continue;
+      if (at) { const to = middle(nx, ny); if (segs.some(([a, b]) => crosses(at, to, a, b))) continue; }
+      seen.add(k);
+      queue.push([nx, ny]);
+    }
+  }
+  return seen;
+}
+
+/**
+ * The outline of a set of squares, as closed loops of map points: `[[x, y, x, y, ...], ...]`.
+ *
+ * Every side of a square whose neighbour is not in the set is a piece of the border, emitted the same way round the
+ * square each time, so the pieces chain head to tail into loops by themselves — an outer wall one way round and a
+ * hole in the middle the other, which is what a region wants of a shape with a courtyard in it. Runs of points along
+ * one straight line are merged, so a room ten squares across is four corners and not forty.
+ */
+export function roomOutline(cells, { grid = 100 } = {}) {
+  if (!cells || !cells.size || !(grid > 0)) return [];
+  const has = (cx, cy) => cells.has(key(cx, cy));
+  // Clockwise round each square (y runs down the screen), so an outer border comes out clockwise and a hole the
+  // other way, and every corner has one edge arriving and one leaving.
+  const from = new Map();
+  const edge = (ax, ay, bx, by) => {
+    const at = `${ax},${ay}`;
+    if (!from.has(at)) from.set(at, []);
+    from.get(at).push([bx, by]);
+  };
+  for (const k of cells) {
+    const [cx, cy] = k.split(',').map(Number);
+    const x = cx * grid, y = cy * grid, r = x + grid, b = y + grid;
+    if (!has(cx, cy - 1)) edge(x, y, r, y);
+    if (!has(cx + 1, cy)) edge(r, y, r, b);
+    if (!has(cx, cy + 1)) edge(r, b, x, b);
+    if (!has(cx - 1, cy)) edge(x, b, x, y);
+  }
+  const loops = [];
+  for (const [at, outs] of from) {
+    while (outs.length) {
+      const loop = [];
+      let [x, y] = at.split(',').map(Number);
+      let next = outs.pop();
+      const first = `${x},${y}`;
+      loop.push(x, y);
+      // Walk the border until it comes back; a corner where two rooms pinch has two ways on, and either closes.
+      while (next) {
+        [x, y] = next;
+        if (`${x},${y}` === first) break;
+        loop.push(x, y);
+        const ways = from.get(`${x},${y}`);
+        next = ways?.length ? ways.pop() : null;
+      }
+      if (loop.length >= 6) loops.push(straighten(loop));
+    }
+  }
+  return loops;
+}
+
+/** A loop with its in-line points dropped: three points on one straight run are two. */
+function straighten(loop) {
+  const n = loop.length / 2;
+  if (n < 3) return loop;
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const px = loop[((i + n - 1) % n) * 2], py = loop[((i + n - 1) % n) * 2 + 1];
+    const x = loop[i * 2], y = loop[i * 2 + 1];
+    const nx = loop[((i + 1) % n) * 2], ny = loop[((i + 1) % n) * 2 + 1];
+    // The turn at this point: zero when it carries straight on.
+    if ((x - px) * (ny - y) - (y - py) * (nx - x) !== 0) out.push(x, y);
+  }
+  return out.length >= 6 ? out : loop;
+}
+
+/**
  * Every square the open air cannot reach, gathered into as few rectangles as will hold them.
  *
  * This is the whole indoors of a map in one answer, for a scene whose buildings are roofed: where the sun does not

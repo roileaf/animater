@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { outsideSquares, buildingAt, partition, indoorRects } from '../../../scripts/engines/motion/building-plan.mjs';
+import { outsideSquares, buildingAt, partition, indoorRects, roomCells, roomOutline } from '../../../scripts/engines/motion/building-plan.mjs';
 
 // Roi: "we need to know how to deal with inside walls". A room is what the walls close in; a building is what the
 // open air cannot get into, partitions and all.
@@ -35,6 +35,62 @@ test('the indoors comes back as rectangles that hold every square the air cannot
     if (inside) covered++;
   }
   assert.ok(covered > 0, 'and there was an indoors to cover');
+});
+
+// Roi: "is there a way to choose an area delimited by walls and make that an animater region?" The walk that finds
+// a building is the same one; what a region needs is its outline rather than its box.
+const cellsOf = (...keys) => new Set(keys);
+
+test('a block of squares comes back as one loop of its corners', () => {
+  // Two by two at (100,100): four corners, the in-line points dropped.
+  const loops = roomOutline(cellsOf('1,1', '2,1', '1,2', '2,2'), { grid: 100 });
+  assert.equal(loops.length, 1);
+  assert.equal(loops[0].length, 8, 'four corners, not twelve');
+  const xs = loops[0].filter((_, i) => i % 2 === 0), ys = loops[0].filter((_, i) => i % 2 === 1);
+  assert.deepEqual([Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)], [100, 300, 100, 300]);
+});
+
+test('an L-shaped room keeps the corner it turns', () => {
+  const loops = roomOutline(cellsOf('0,0', '1,0', '0,1'), { grid: 100 });
+  assert.equal(loops.length, 1);
+  assert.equal(loops[0].length / 2, 6, 'six corners for an L');
+});
+
+test('a room round a courtyard comes back as two loops', () => {
+  const ring = [];
+  for (let x = 0; x < 3; x++) for (let y = 0; y < 3; y++) if (x !== 1 || y !== 1) ring.push(`${x},${y}`);
+  const loops = roomOutline(new Set(ring), { grid: 100 });
+  assert.equal(loops.length, 2, 'the outside and the hole');
+  const span = (l) => Math.max(...l.filter((_, i) => i % 2 === 0)) - Math.min(...l.filter((_, i) => i % 2 === 0));
+  assert.deepEqual(loops.map(span).sort((a, b) => a - b), [100, 300]);
+});
+
+test('two rooms that do not touch are two loops, and nothing is one', () => {
+  assert.equal(roomOutline(cellsOf('0,0', '5,5'), { grid: 100 }).length, 2);
+  assert.deepEqual(roomOutline(new Set(), { grid: 100 }), []);
+});
+
+test('the squares of the building under a point are the ones the walk reaches', () => {
+  const air = outsideSquares(HOUSE, { grid: GRID, bounds: BOUNDS });
+  const cells = roomCells({ x: 250, y: 250 }, HOUSE, { grid: GRID, bounds: BOUNDS, outside: air });
+  assert.ok(cells.has('2,2'), 'the room clicked in');
+  assert.ok(cells.has('4,2'), 'and on through the partition, as a building is one building');
+  assert.equal(cells.has('8,6'), false, 'not the garden');
+  assert.equal(roomCells({ x: 50, y: 50 }, HOUSE, { grid: GRID, bounds: BOUNDS, outside: air }).size, 0, 'outdoors is no room');
+  // And the outline of those squares closes round them.
+  const [loop] = roomOutline(cells, { grid: GRID });
+  assert.ok(loop && loop.length >= 8, 'a closed outline of the building');
+});
+
+test('one room stops at the partition; the building does not', () => {
+  const air = outsideSquares(HOUSE, { grid: GRID, bounds: BOUNDS });
+  const opts = { grid: GRID, bounds: BOUNDS, outside: air };
+  const room = roomCells({ x: 250, y: 250 }, HOUSE, { ...opts, through: false });
+  assert.ok(room.has('2,2'), 'the room clicked in');
+  assert.equal(room.has('4,2'), false, 'and not past the wall down the middle');
+  const whole = roomCells({ x: 250, y: 250 }, HOUSE, { ...opts, through: true });
+  assert.ok(whole.size > room.size, 'the building is the bigger of the two');
+  assert.ok(whole.has('4,2'));
 });
 
 test('a map the air reaches all of has no indoors at all', () => {

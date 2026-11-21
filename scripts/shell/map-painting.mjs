@@ -12,7 +12,7 @@ import { quietSave } from "../engines/props/quiet-writes.mjs";
 import { readDecorBroken, carryDecorBroken } from "../engines/props/decor-break.mjs";
 import { DOOR_KINDS, doorFor, doorwaySpan } from "../engines/motion/door-paint.mjs";
 import { roomAt, roofsOf, under as underRoof } from "../engines/motion/roof-looks.mjs";
-import { buildingAt as buildingPlanAt } from "../engines/motion/building-plan.mjs";
+import { buildingAt as buildingPlanAt, roomCells, roomOutline } from "../engines/motion/building-plan.mjs";
 import { rectRoom, roundRoom } from "../engines/motion/room-shapes.mjs";
 import { DRESSING_COLOURS_MOST } from "../engines/motion/holiday-dressing.mjs";
 import { ROOF_IDS, ROOF_FORM_IDS, roofFor, formFits } from "../engines/motion/roof-paint.mjs";
@@ -880,11 +880,42 @@ export function createMapPainting(ctx) {
     // off the grid on purpose, which is what makes it round, so only its middle is snapped.
     const ringRoom = (middle, p) => roundRoom(middle, p, grid());
     const boxRoom = (corner, p) => rectRoom(corner, wallSnap(p), grid());
+    // A region shaped to what the walls close in: click inside a room and it is drawn round that room, Shift-click
+    // and it is drawn round the whole building, partitions and all (Roi: "is there a way to choose an area
+    // delimited by walls and make that an animater region?"). Everything else that makes a region here works from
+    // the map's picture or from a stroke; this one works from the stone.
+    const roomRegion = async (p, whole = false) => {
+      const air = wallsOutsideAir();
+      if (!air) { ui.notifications?.info("Animater: the walls have not been worked out yet — try again in a moment."); return; }
+      const g = grid();
+      const walls = (canvas.walls?.placeables ?? []).map((w) => ({ c: w.document.c }));
+      const cells = roomCells(p, walls, { grid: g, bounds: air.bounds, outside: air.outside, through: whole });
+      if (!cells.size) { ui.notifications?.info("Animater: that spot is not inside anything — the walls there do not close it in."); return; }
+      const loops = roomOutline(cells, { grid: g });
+      if (!loops.length) { ui.notifications?.info("Animater: that room has no outline to draw."); return; }
+      // The biggest loop is the room's own edge; the rest are the holes in it, which the region keeps as holes.
+      const span = (l) => { const xs = l.filter((_, i) => i % 2 === 0), ys = l.filter((_, i) => i % 2 === 1); return (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys)); };
+      const sorted = loops.slice().sort((a, b) => span(b) - span(a));
+      const data = {
+        name: whole ? "Building" : "Room",
+        color: "#6c8ebf",
+        shapes: sorted.map((points, i) => ({ type: "polygon", points: points.map((n) => Math.round(n)), hole: i > 0 })),
+        ...(canvas.level?.id ? { elevation: { bottom: Number(canvas.level?.elevation?.base) || 0 } } : {}),
+      };
+      try {
+        const [made] = await canvas.scene.createEmbeddedDocuments("Region", [data]);
+        if (made) {
+          rememberDecorStep({ kind: "create", id: made.id, data });
+          ui.notifications?.info(`Animater: a region over ${cells.size} square${cells.size === 1 ? "" : "s"}. Ctrl+Z takes it back.`);
+        }
+      } catch (err) { console.warn("Animater | room region", err); ui.notifications?.warn?.("That region could not be made."); }
+    };
     const wallsDown = (p, shift) => {
       const mode = brushChoices().wallMode;
       if (mode === "roof") { void roofLay(p, shift).then(refreshStatus); return; }
       if (mode === "round" && !shift) { wl.round = wallSnap(p); wl.points = ringRoom(wl.round, p); wallsShow(); return; }
       if (mode === "rect" && !shift) { wl.rect = wallSnap(p); wl.points = boxRoom(wl.rect, p); wallsShow(); return; }
+      if (mode === "region") { void roomRegion(p, shift).then(refreshStatus); return; }
       if (mode === "move" && !shift) {
         // On a wall, that wall alone; inside a room, the whole building (Roi: "we should be able to also just move
         // a walls").
