@@ -282,7 +282,7 @@ import { createPaintedDoors } from "./engines/motion/painted-doors.mjs";
 import { DOOR_KINDS, doorFor, doorwaySpan } from "./engines/motion/door-paint.mjs";
 import { createPaintedWindows } from "./engines/motion/painted-windows.mjs";
 import { createPaintedRoofs } from "./engines/motion/painted-roofs.mjs";
-import { roomAt, roofsOf, roofLook, under as underRoof } from "./engines/motion/roof-looks.mjs";
+import { roomAt, roofsOf, roofLook, roofShadowEdges, under as underRoof } from "./engines/motion/roof-looks.mjs";
 import { roofOpenings } from "./engines/motion/roof-sight.mjs";
 import { buildingAt as buildingPlanAt, indoorRects } from "./engines/motion/building-plan.mjs";
 import { createPaintedBuildings, PARTITION_THIN } from "./shell/painted-buildings.mjs";
@@ -1948,7 +1948,11 @@ const rebuildWallShadows = () => {
     // The sun's share by the scene's darkness, as a creature's sun shadow has it (movement-feel.mjs shadowFalls).
     // The moon shines by night: the darkness is its time, not a reason to fade.
     const darkness = Number(canvas.environment?.darknessLevel) || 0, sun = (sunNow.moon ? 1 : Math.max(0, 1 - darkness * 1.2)) * (Number(sunNow.strength) || 0);
-    wallQuads = sun > 0.02 ? wallShadowQuads({ walls: wallsHere(), sun: sunNow, grid: canvas.grid.size, height: Number(hotSetting("wallShadowHeight")) || 2 }) : [];
+    // The painted roofs cast with the walls: a building's shadow is its roof's, eaves and ridge, so it is one shadow
+    // as long as the hour makes it. (The roof used to carry a second one painted into its own picture, shorter,
+    // darker and deaf to the sun; that one now shows only where nothing is cast at all.)
+    const roofEdges = paintedWallsOn() ? roofShadowEdges(roofsOf(canvas.scene?.flags?.[ID] ?? {}, { grid: canvas.grid.size }), { grid: canvas.grid.size, wallTall: wallShadowTall() }) : [];
+    wallQuads = sun > 0.02 ? wallShadowQuads({ walls: [...wallsHere(), ...roofEdges], sun: sunNow, grid: canvas.grid.size, height: Number(hotSetting("wallShadowHeight")) || 2 }) : [];
     wallShadows.build({ quads: wallQuads, bounds: canvas.dimensions.sceneRect, alpha: 0.35 * sun, indoors: indoorPolygons(), open: undergroundScene() ? [] : landedOpenings(), grid: canvas.grid.size, tops: wallShadowTops(), wallTop: Math.max(0, ...(canvas.walls?.placeables ?? []).filter((w) => !w.document.flags?.[ID]?.cliffOf && Number(w.document.light) > 0).map((w) => wallTopOnGround(w.document))) });
   } catch { wallQuads = []; wallShadows.clear(); } finally {
     // Creatures look again for whether they stand in the shade or indoors (with wall shadows off too), and their sun
@@ -15207,6 +15211,9 @@ const buildings = createPaintedBuildings({
   // they alone would keep a noon colour through a sunset (Roi: "it should also look right in sunrise and dusk as
   // the sun color changes").
   skyColour: () => sunlightColor(),
+  // Whether the sun is casting shadows here at all. While it is, the buildings' shadows are cast with the walls',
+  // and the roofs leave their own painted one off.
+  sunCasts: () => { try { return wallShadowsOn() && !!sunNow && Number(sunNow.strength) > 0.02; } catch { return false; } },
 });
 // The names the rest of the module knows these by.
 const paintedWalls = buildings.walls, paintedDoors = buildings.doors, paintedWindows = buildings.windows;

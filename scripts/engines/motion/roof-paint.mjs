@@ -586,7 +586,9 @@ function paintRoofLit(g, kind, shape, o) {
   // to land past the overhang to be seen at all, which at 0.42 against an overhang of 0.42 it did not.
   const reach = o.unit * (Number.isFinite(Number(o.shadowReach)) ? Number(o.shadowReach) : ROOF_SHADOW_REACH);
   g.save(); g.filter = `blur(${Math.max(3, o.unit * 0.1)}px)`; g.translate(-LIGHT.at[0] * reach, -LIGHT.at[1] * reach);
-  poly(g, shape.eave); g.fillStyle = 'rgba(10,8,5,0.45)'; g.fill(); g.restore();
+  // (As dark as the walls' cast shadows are at full sun and no darker: this one stands in for those where nothing
+  // is cast, and at 0.45 it was the darkest shadow on the map.)
+  poly(g, shape.eave); g.fillStyle = 'rgba(10,8,5,0.35)'; g.fill(); g.restore();
 
   const faceTone = Math.max(0, Math.min(1, Number.isFinite(Number(o.faceTone)) ? Number(o.faceTone) : ROOF_FACE_TONE));
   const eaveLight = Math.max(0, Math.min(1, Number.isFinite(Number(o.eaveLight)) ? Number(o.eaveLight) : ROOF_EAVE_LIGHT));

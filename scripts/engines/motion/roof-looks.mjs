@@ -6,7 +6,39 @@
 // where the GM clicked, never crossing a wall, and see what that reaches. If it reaches the edge of the map it was
 // not a room at all — it was the outdoors — and nothing is roofed.
 
-import { ROOF_IDS, ROOF_FORM_IDS, formFor, formFits, roofFor } from './roof-paint.mjs';
+import { ROOF_IDS, ROOF_FORM_IDS, ROOF_OVERHANG, formFor, formFits, roofFor, roofShape } from './roof-paint.mjs';
+
+/** How steeply a roof climbs from its eaves to its ridge: squares of rise for each square of half-span. */
+export const ROOF_PITCH = 0.6;
+/** The most a ridge stands over its eaves, in squares: a great hall's roof is tall, but it is not a spire. */
+export const ROOF_RISE_MOST = 3;
+
+/**
+ * What a roof throws a shadow from, as the wall shadows understand it: plain `{ c, top }` records, heights in
+ * squares. A building's shadow is the roof's — the eaves hang past the walls and the ridge stands over both — so
+ * the eave ring casts from the height of the walls under it and the ridge from its own height above them. Handed to
+ * the same caster as the walls, the building then has ONE shadow, as long as the hour makes it, where it used to
+ * have the walls' and a second painted into the roof's own picture that never moved (Roi: "why theres a roof shadow
+ * and wall shadow and why the roof shadow is stronger?").
+ */
+export function roofShadowEdges(roofs = [], { grid = 100, wallTall = 2 } = {}) {
+  const out = [];
+  for (const roof of roofs ?? []) {
+    const room = roof?.room;
+    if (!room || !(room.w > 0) || !(room.h > 0) || !(grid > 0)) continue;
+    let shape = null;
+    try { shape = roofShape(roof.form, room.x, room.y, room.w, room.h, grid * ROOF_OVERHANG, roof.high); } catch { shape = null; }
+    const eave = shape?.eave;
+    if (!Array.isArray(eave) || eave.length < 3) continue;
+    const edge = (a, b, top) => { if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 1) out.push({ c: [a[0], a[1], b[0], b[1]], top, light: 20, move: 20, sight: 20, roof: roof.id }); };
+    for (let i = 0; i < eave.length; i++) edge(eave[i], eave[(i + 1) % eave.length], wallTall);
+    // The ridge, over the middle: half the short side out from the eaves, climbing at the roof's pitch.
+    const rise = Math.min(ROOF_RISE_MOST, (Math.min(room.w, room.h) / 2 / grid) * ROOF_PITCH);
+    const ridge = shape?.ridge;
+    if (Array.isArray(ridge) && ridge.length >= 2 && rise > 0) edge(ridge[0], ridge[1], wallTall + rise);
+  }
+  return out;
+}
 
 /** The most squares a room may be before we call it the outdoors and give up. */
 export const ROOM_MOST = 4000;

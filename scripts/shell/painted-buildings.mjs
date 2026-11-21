@@ -39,6 +39,7 @@ const EAVE_STEP = -0.08, LIGHT_BLOCKS = 20;
  * - `sun()` the sun now (or null), `season()` the season, `weather()` the scene's weather
  * - `sky()` what the sky is actually blowing: `{ seen, wind, windAngle }`
  * - `skyColour()` the colour of the light falling out of the sky now, `[r, g, b]` from 0 to 1
+ * - `sunCasts()` whether the sun is casting shadows on this scene now
  */
 export function createPaintedBuildings(ctx) {
   const { ID, floorLayer } = ctx;
@@ -169,7 +170,12 @@ export function createPaintedBuildings(ctx) {
   // Everything about a roof's picture that is not the roof itself: the sun it stands in, the weather on it and the
   // feast day. The layer knows a roof by its key, so whoever asks it about one — to fade it, to open it — has to
   // spell it the same way, and there are three places that do.
-  const roofSuffix = () => { const w = roofWeatherNow(); return `${sunKey()}:w${Math.round(w.snow * 5)}${Math.round(w.wet * 5)}${dressingKey(dressingNow())}`; };
+  // Whether the sun is casting the building's shadow just now. While it is, the roof's own painted shadow is left
+  // off: a building throws one shadow, and the cast one is the one that knows the hour. Where nothing is cast —
+  // underground, a map told to have no shadows, the sun switched off — the painted one stays, since without any
+  // shadow clear of the eaves a hip roof reads as a box you are looking down into.
+  const sunCasts = () => { try { return ctx.sunCasts?.() === true; } catch { return false; } };
+  const roofSuffix = () => { const w = roofWeatherNow(); return `${sunKey()}:w${Math.round(w.snow * 5)}${Math.round(w.wet * 5)}${dressingKey(dressingNow())}${sunCasts() ? ':c' : ''}`; };
 
   let sunKeySeen = null;
   const followSun = () => {
@@ -242,9 +248,11 @@ export function createPaintedBuildings(ctx) {
     const over = roofsOf(flags(), { grid });
     const sky = { ...flags(), ...roofWeatherNow() };
     const skyKey = roofSuffix();
+    // (Reach nought: the painted shadow lies wholly under the roof it belongs to, which is to say nowhere.)
+    const own = sunCasts() ? { shadowReach: 0 } : {};
     roofs.populate({
-      roofs: over.map((r) => ({ ...r, key: `${r.key}${skyKey}`, look: { ...roofLook(sky, { season, age: r.age }), lit, dressing: dressingNow()?.colour ?? null } })),
-      look: { ...roofLook(sky, { season }), lit },
+      roofs: over.map((r) => ({ ...r, key: `${r.key}${skyKey}`, look: { ...roofLook(sky, { season, age: r.age }), ...own, lit, dressing: dressingNow()?.colour ?? null } })),
+      look: { ...roofLook(sky, { season }), ...own, lit },
     });
     // What the dressed buildings hang out, off the eave ring of each roof. Not part of the roof's own picture: it
     // swings in the wind and lights up at dusk, and that picture is painted once and kept.
