@@ -215,7 +215,7 @@ import {
 } from "./engines/preview/canvas-preview-area.mjs";
 import { TokenMotionPlayer, motionDirection, withFragmentSeed, withFragmentCut, withFragmentTowards } from "./engines/motion/motion.mjs";
 import { installedFxCatalog, OptionalFxPlayer, fxAvailability, startTokenFxPreview, effectOptions, tintedPreset } from './engines/playback/optional-fx.mjs';
-import { AppliedLooks, APPLIED_FLAG, withApplied, normalizeApplied } from './engines/playback/applied-looks.mjs';
+import { AppliedLooks, APPLIED_FLAG, APPLIED_ON, appliedDocs, touchesApplied, withApplied, normalizeApplied } from './engines/playback/applied-looks.mjs';
 import {catalogFxSettings} from './catalogs/shared/catalog-fx.mjs';
 import {conditionLookMode} from './catalogs/shared/condition-look-choice.mjs';
 import {RUNE_SETTING} from './catalogs/pf2e/weapons/weapon-runes.mjs';
@@ -16084,17 +16084,21 @@ Hooks.once("ready", () => {
   const appliedLooks = new AppliedLooks({
     retain: (stage) => allowsTokenFx(localQuality()) && tokenFx?.ready?.() !== false ? optionalFx.retain(stage, { session: `applied:${stage.destination?.id}:${uuid()}`, userId: `applied:${clientId}` }) : undefined,
     trace: (detail) => runtime?.trace("Skipped", detail) });
-  const syncApplied = () => { for (const doc of canvas?.scene?.tokens ?? []) void appliedLooks.sync(doc); };
+  const syncApplied = () => { for (const doc of appliedDocs(canvas?.scene)) void appliedLooks.sync(doc); };
   Hooks.on("canvasReady", () => { setTimeout(syncApplied, 1500); });
   if (canvas?.ready) setTimeout(syncApplied, 1500);
   Hooks.on("canvasTearDown", () => { void appliedLooks.clear(); });
-  Hooks.on("createToken", (doc) => { void appliedLooks.sync(doc); });
-  Hooks.on("deleteToken", (doc) => { void appliedLooks.drop(doc.id); });
-  Hooks.on("updateToken", (doc, change) => { const f = change?.flags?.[ID]; if (f && (APPLIED_FLAG in f || `-=${APPLIED_FLAG}` in f)) void appliedLooks.sync(doc); });
+  // (A tile's image and a drawing's shape carry looks too: the engine follows a redrawn mesh or shape by itself.)
+  for (const name of APPLIED_ON) {
+    Hooks.on(`create${name}`, (doc) => { if (doc.parent === canvas?.scene) void appliedLooks.sync(doc); });
+    Hooks.on(`delete${name}`, (doc) => { void appliedLooks.drop(doc.id); });
+    Hooks.on(`update${name}`, (doc, change) => { if (doc.parent === canvas?.scene && touchesApplied(change, ID)) void appliedLooks.sync(doc); });
+  }
   // Tokenshade on the Token HUD (ui/tokenshade-hud.mjs): a quick picker that applies a look to this token for everyone,
   // takes one off, and tries one on (this screen only) while hovered. The GM on any token, a player on their own.
+  // The Tile HUD and the Drawing HUD get the same button, for the tile's image or the drawing's shape.
   let tokenshadeHud = null;
-  Hooks.on("renderTokenHUD", (hud, html) => {
+  const mountShadeHud = (hud, html, host) => {
     const token = hud?.object, doc = token?.document, root = html instanceof HTMLElement ? html : html?.[0];
     if (!doc || !root || !(game.user.isGM || doc.isOwner)) return;
     const catalog = fxCatalog();
@@ -16102,10 +16106,9 @@ Hooks.once("ready", () => {
     void (tokenshadeHud ??= import("./ui/tokenshade-hud.mjs")).then((m) => {
       if (hud.object !== token || !root.isConnected) return;
       const paramsOf = (library, name) => tokenFx.getPresets(library).find((p) => p.name === name)?.params ?? [];
-      const applied = normalizeApplied(doc.flags?.[ID]?.[APPLIED_FLAG]);
       const stageOf = (look) => ({ kind: "tokenfx", assets: [], fxLibrary: look.library, fxPreset: look.name, subject: "source", duration: 3000 });
       m.mountTokenshadeHud(root, {
-        tokenId: doc.id, looks: m.hudLooks(catalog.presets, paramsOf), applied,
+        tokenId: doc.id, host, looks: m.hudLooks(catalog.presets, paramsOf, host), get applied() { return normalizeApplied(doc.flags?.[ID]?.[APPLIED_FLAG]); },
         apply: async (look) => { try { await doc.setFlag(ID, APPLIED_FLAG, withApplied(doc.flags?.[ID]?.[APPLIED_FLAG], { name: look.name, stage: stageOf(look) })); } catch (error) { ui.notifications?.warn(`Animater | ${error.message}`); } },
         remove: async (id) => {
           const left = normalizeApplied(doc.flags?.[ID]?.[APPLIED_FLAG]).filter((l) => l.id !== id);
@@ -16116,7 +16119,10 @@ Hooks.once("ready", () => {
         recent: () => m.readRecent(), remember: (key) => m.writeRecent(m.pushRecent(m.readRecent(), key)),
       });
     }).catch((error) => runtime?.trace("Blocked", `Tokenshade HUD: ${error.message}`));
-  });
+  };
+  Hooks.on("renderTokenHUD", (hud, html) => { mountShadeHud(hud, html, "token"); });
+  Hooks.on("renderTileHUD", (hud, html) => { mountShadeHud(hud, html, "tile"); });
+  Hooks.on("renderDrawingHUD", (hud, html) => { mountShadeHud(hud, html, "drawing"); });
   // Foundry's server relays a module event with the sender's user id as the second argument.
   game.socket?.on(`module.${ID}`, (data, senderId) => {
     if (data?.type === WINDOW_MESSAGE) { const asked = game.users.get(senderId); const wall = canvas?.scene?.walls?.get(data.wallId); if (game.users.activeGM?.isSelf && data.sceneId === canvas?.scene?.id && wall && asked && mayUseWindow({ canDoors: asked.can("WALL_DOORS"), paused: game.paused, inReach: windowReachedBy(asked, wall) }) && windowClick({ locked: wall.flags?.[ID]?.windowLocked === true }) === "toggle") void toggleWindow(wall); return; }

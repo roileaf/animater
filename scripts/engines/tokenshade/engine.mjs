@@ -4,6 +4,7 @@ import { fxFilterClass } from './filter-factory.mjs';
 import { specFor } from './filters/index.mjs';
 import { forArt, artPace } from './top-down.mjs';
 import { tokenArtScale } from '../media/media-preview.mjs';
+import { hostKind, hostMesh, hostSize } from './hosts.mjs';
 
 // Build the filters for a preset (sorted by stacking order). Unknown filter types are
 // skipped so a user's preset with an exotic filter still shows the rest.
@@ -19,8 +20,10 @@ export function presetFilters(PIXI, preset, { tokenSize = null, key = '', textur
 }
 
 // The size a look's rings and halos are drawn for: the token's square at its art's scale (media-preview tokenArtScale), so
-// a token the GM scaled up gets a bigger look, one scaled down a smaller one.
+// a token the GM scaled up gets a bigger look, one scaled down a smaller one. A tile or a drawing: its own size on
+// the map (hosts.mjs).
 export const tokenFxSize = token => {
+  if (hostKind(token) !== 'token') return hostSize(token);
   const w = Number(token?.w ?? token?.width), h = Number(token?.h ?? token?.height);
   if (!(w > 0 && h > 0)) return null;
   const k = tokenArtScale(token);
@@ -54,8 +57,9 @@ export class TokenFxEngine {
   // `blend: false`: no fade in or out (a teleport's dissolve, which must not show the plain art first).
   apply(token, preset, { key = '', always = false, speed = 1, blend = true } = {}) {
     if (!token || token.destroyed) return () => {};
+    // (Top-down forms are for creatures: a tile or a drawing shows the look as it is.)
     let cutOut = false;
-    try { cutOut = this.cutOut(token) === true; } catch { /* drawn as for any token */ }
+    try { cutOut = hostKind(token) === 'token' && this.cutOut(token) === true; } catch { /* drawn as for any token */ }
     const filters = presetFilters(this.PIXI ?? globalThis.PIXI, forArt(preset, cutOut), { tokenSize: tokenFxSize(token), key });
     if (!filters.length) return () => {};
     const sources = [...new Set(filters.flatMap(f => f.animations?.sources ?? []))];
@@ -76,6 +80,8 @@ export class TokenFxEngine {
   // turned to stone, slower while slowed or worn out, faster while quickened; as it was once none ask.
   // `ending`: a look on its way out, which no longer counts.
   pace(token, ending = null) {
+    // Only a creature's art: a tile's video keeps the pace its own controls give it.
+    if (hostKind(token) !== 'token') return;
     const video = token?.mesh?.texture?.baseTexture?.resource?.source;
     const wanted = artPace([...this.entries].filter(e => e.token === token && e !== ending && !e.leavingAt).map(e => e.name));
     for (const [v, was] of this.paced) {
@@ -114,9 +120,10 @@ export class TokenFxEngine {
   // Does a shown look move the token's art (a transform: rocking, swaying, trembling)?
   moves(token) { return [...this.entries].some(e => e.token === token && e.filters.some(f => f.spec?.type === 'transform' && f.enabled !== false)); }
 
-  // Our filters sit after any other module's on the token mesh, in our stacking order.
+  // Our filters sit after any other module's on the token mesh, in our stacking order (and beside Animater's own
+  // on a tile: a tree's sway, a blast's warp).
   attach(entry) {
-    const mesh = entry.token.mesh;
+    const mesh = hostMesh(entry.token);
     if (!mesh || mesh.destroyed) return;
     entry.mesh = mesh;
     const ours = new Set(entry.filters);
@@ -160,8 +167,10 @@ export class TokenFxEngine {
       const token = entry.token;
       if (!token || token.destroyed) { this.drop(entry); continue; }
       if (entry.leavingAt && time - entry.leavingAt >= entry.fadeMs) { this.drop(entry); continue; }
-      // A redraw gives the token a new mesh: follow it.
-      if (token.mesh !== entry.mesh) { this.detach(entry); this.attach(entry); this.pace(token); }
+      // A redraw gives the token a new mesh (a drawing a new shape): follow it. And whatever set the mesh's filters
+      // anew without ours gets them back.
+      if (hostMesh(token) !== entry.mesh) { this.detach(entry); this.attach(entry); this.pace(token); }
+      else if (entry.mesh && !entry.mesh.destroyed && !entry.mesh.filters?.includes(entry.filters[0])) this.attach(entry);
       const mesh = entry.mesh;
       if (!mesh) continue;
       const visible = (on || entry.always) && token.visible !== false && mesh.visible !== false && mesh.renderable !== false && mesh.worldAlpha > 0;

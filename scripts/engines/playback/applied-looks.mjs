@@ -1,6 +1,13 @@
 // Tokenshade looks applied to a token from the Tokenshade studio (Apply to selected tokens): kept in the token's
 // flags (flags.animater.appliedLooks), so every screen draws them, and they stay until removed. Each client keeps
 // the filters it draws in step with the flags (sync), through a retain(stage) that returns a stop function.
+// A tile and a drawing keep theirs the same way, in the same flag (set from their HUD, ui/tokenshade-hud.mjs).
+
+// Does a document change touch the applied looks (set, changed, or removed)?
+export const touchesApplied = (change, moduleId = 'animater') => { const f = change?.flags?.[moduleId]; return Boolean(f && typeof f === 'object' && (APPLIED_FLAG in f || `-=${APPLIED_FLAG}` in f)); };
+// The documents of a scene that can carry looks: its tokens, tiles and drawings.
+export const APPLIED_ON = ['Token', 'Tile', 'Drawing'];
+export const appliedDocs = (scene) => [...(scene?.tokens ?? []), ...(scene?.tiles ?? []), ...(scene?.drawings ?? [])];
 
 export const APPLIED_FLAG = 'appliedLooks';
 const MAX = 8;

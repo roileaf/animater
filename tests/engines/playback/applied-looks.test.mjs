@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { AppliedLooks, normalizeApplied, withApplied, APPLIED_FLAG } from '../../../scripts/engines/playback/applied-looks.mjs';
+import { AppliedLooks, normalizeApplied, withApplied, touchesApplied, appliedDocs, APPLIED_ON, APPLIED_FLAG } from '../../../scripts/engines/playback/applied-looks.mjs';
 
 // Roi: "we need to add a button to apply to token" (the Tokenshade studio's Use it card).
 const prone = { kind: 'tokenfx', assets: [], fxLibrary: 'tokenshade', fxPreset: 'Prone', subject: 'source', duration: 3000 };
@@ -45,5 +45,29 @@ test('the studio offers Apply to selected tokens and Remove, through the host', 
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
   assert.match(main, /applyTokenFx:async\(stage,name\)=>/);
   assert.match(main, /doc\.setFlag\(ID,APPLIED_FLAG,withApplied\(/);
-  assert.match(main, /Hooks\.on\("updateToken", \(doc, change\) => \{ const f = change\?\.flags\?\.\[ID\]; if \(f && \(APPLIED_FLAG in f/);
+  assert.match(main, /Hooks\.on\(`update\$\{name\}`, \(doc, change\) => \{ if \(doc\.parent === canvas\?\.scene && touchesApplied\(change, ID\)\) void appliedLooks\.sync\(doc\); \}\);/);
+});
+
+// Roi: Tokenshade on drawings and tiles.
+test('tiles and drawings keep looks in the same flag: a change to it is told from any other change', () => {
+  assert.deepEqual(APPLIED_ON, ['Token', 'Tile', 'Drawing']);
+  assert.equal(touchesApplied({ flags: { animater: { [APPLIED_FLAG]: [] } } }), true);
+  assert.equal(touchesApplied({ flags: { animater: { [`-=${APPLIED_FLAG}`]: null } } }), true);
+  assert.equal(touchesApplied({ flags: { animater: { sunlight: 'tree' } } }), false);
+  assert.equal(touchesApplied({ flags: { other: { [APPLIED_FLAG]: [] } } }), false);
+  assert.equal(touchesApplied({ x: 10 }), false);
+  assert.equal(touchesApplied({ flags: { animater: null } }), false);
+  assert.deepEqual(appliedDocs({ tokens: ['t'], tiles: ['i'], drawings: ['d'] }), ['t', 'i', 'd']);
+  assert.deepEqual(appliedDocs(null), []);
+});
+
+test('a tile\'s look is drawn on the tile and stopped when its flag goes', async () => {
+  const drawn = [], stopped = [];
+  const looks = new AppliedLooks({ retain: async (stage) => { drawn.push(stage.destination.documentName); return async () => { stopped.push(stage.fxPreset); }; } });
+  const tile = { id: 'tile1', documentName: 'Tile', flags: { animater: { [APPLIED_FLAG]: withApplied([], { name: 'Prone', stage: prone }, 'x1') } } };
+  await looks.sync(tile);
+  assert.deepEqual(drawn, ['Tile']);
+  tile.flags.animater = {};
+  await looks.sync(tile);
+  assert.deepEqual(stopped, ['Prone']);
 });

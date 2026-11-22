@@ -2,23 +2,29 @@
 // everyone (the token's flags, playback/applied-looks.mjs), × on a look already on it takes it off, and hovering a
 // look tries it on the token on this screen only. Transitions and looks that follow the game stay out: they play once
 // or need the game's values, so they make no lasting look.
+// The Tile HUD and the Drawing HUD get the same button and picker, for a tile's image and a drawing's shape.
 import { PRESET_GROUPS, presetGroup } from './tokenshade-studio.mjs';
 
 export const HUD_LIBRARIES = ['tokenshade', 'tokenshade-custom'];
 export const HUD_SKIP = new Set(['Transitions', 'Follows the game']);
+// What each kind of thing leaves out. A drawing has no body for wings or growths to grow from (they are placed on a
+// creature's art), so Body forms stay off it as well.
+export const HUD_SKIP_FOR = { token: HUD_SKIP, tile: HUD_SKIP, drawing: new Set([...HUD_SKIP, 'Body forms']) };
+const hostOf = (host) => (Object.hasOwn(HUD_SKIP_FOR, host) ? host : 'token');
 export const RECENT = 'Recent', MINE = 'Mine', MAX_RECENT = 8;
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 export const lookKey = (l) => `${l.library}|${l.name}`;
 
 // The looks the picker offers (pure): from the installed presets [{ name, library }], each with its section.
-// paramsOf(library, name) gives a preset's layers (what decides Transitions and Follows the game).
-export function hudLooks(presets = [], paramsOf = () => []) {
-  const out = [];
+// paramsOf(library, name) gives a preset's layers (what decides Transitions and Follows the game). host: 'token',
+// 'tile' or 'drawing'.
+export function hudLooks(presets = [], paramsOf = () => [], host = 'token') {
+  const out = [], skip = HUD_SKIP_FOR[hostOf(host)];
   for (const p of presets) {
     if (!HUD_LIBRARIES.includes(p?.library) || !p.name) continue;
     const params = paramsOf(p.library, p.name) ?? [];
     const group = presetGroup(p.name, params);
-    if (HUD_SKIP.has(group)) continue;
+    if (skip.has(group)) continue;
     out.push({ name: p.name, library: p.library, group: p.library === 'tokenshade-custom' ? MINE : group });
   }
   return out;
@@ -44,11 +50,11 @@ export const readRecent = (store = globalThis.localStorage) => { try { const v =
 export const writeRecent = (list, store = globalThis.localStorage) => { try { store?.setItem(RECENT_KEY, JSON.stringify(list)); } catch { /* not kept */ } };
 
 // The picker's inside (pure HTML): the looks already on the token, the search, the sections and the looks.
-export function hudPaletteHTML({ looks = [], applied = [], section = null, query = '', recent = [] } = {}) {
+export function hudPaletteHTML({ looks = [], applied = [], section = null, query = '', recent = [], host = 'token' } = {}) {
   const sections = hudSections(looks, recent), current = sections.includes(section) ? section : sections[0] ?? null;
   const list = hudFilter(looks, { section: current, query, recent });
   const on = applied.length
-    ? `<div class="an-tshud-label">On this token</div><div class="an-tshud-on">${applied.map((a) => `<button type="button" class="an-tshud-chip" data-ts-remove="${esc(a.id)}" title="Take it off">${esc(a.name)} <i class="fa-solid fa-xmark"></i></button>`).join('')}</div>`
+    ? `<div class="an-tshud-label">On this ${hostOf(host)}</div><div class="an-tshud-on">${applied.map((a) => `<button type="button" class="an-tshud-chip" data-ts-remove="${esc(a.id)}" title="Take it off">${esc(a.name)} <i class="fa-solid fa-xmark"></i></button>`).join('')}</div>`
     : '';
   const tabs = sections.map((s) => `<button type="button" class="an-tshud-tab${s === current && !query ? ' is-active' : ''}" data-ts-section="${esc(s)}">${esc(s)}</button>`).join('');
   const items = list.length
@@ -65,8 +71,9 @@ let openFor = null, state = { section: null, query: '' };
 export const hudOpenFor = () => openFor;
 
 /**
- * Adds the button to the HUD (`root` its element) and, when open, the picker. ctx: { tokenId, looks, applied, apply(look),
- * remove(id), preview(look) → stop function, recent(), remember(key) }.
+ * Adds the button to the HUD (`root` its element) and, when open, the picker. ctx: { tokenId, host, looks, applied,
+ * apply(look), remove(id), preview(look) → stop function, recent(), remember(key) }. `applied` is read again at every
+ * draw, and the picker redraws once a look is applied or taken off (a Drawing HUD does not redraw itself).
  */
 export function mountTokenshadeHud(root, ctx, doc = globalThis.document) {
   const col = root?.querySelector?.('.col.left');
@@ -82,7 +89,7 @@ export function mountTokenshadeHud(root, ctx, doc = globalThis.document) {
   const draw = () => {
     if (!palette) return;
     const focused = doc.activeElement?.classList?.contains('an-tshud-search'), caret = focused ? doc.activeElement.selectionStart : null;
-    palette.innerHTML = hudPaletteHTML({ looks: ctx.looks, applied: ctx.applied, section: state.section, query: state.query, recent: ctx.recent() });
+    palette.innerHTML = hudPaletteHTML({ looks: ctx.looks, applied: ctx.applied, section: state.section, query: state.query, recent: ctx.recent(), host: ctx.host });
     if (focused) { const s = palette.querySelector('.an-tshud-search'); s.focus(); try { s.setSelectionRange(caret, caret); } catch { /* fine */ } }
   };
   const open = () => {
@@ -98,9 +105,10 @@ export function mountTokenshadeHud(root, ctx, doc = globalThis.document) {
       e.preventDefault(); e.stopPropagation();
       const t = e.target.closest('button'); if (!t) return;
       if (t.dataset.tsSection) { state.section = t.dataset.tsSection; state.query = ''; draw(); return; }
-      if (t.dataset.tsRemove) { endPreview(); void ctx.remove(t.dataset.tsRemove); return; }
+      const redraw = () => { try { draw(); } catch { /* closed meanwhile */ } };
+      if (t.dataset.tsRemove) { endPreview(); void Promise.resolve(ctx.remove(t.dataset.tsRemove)).then(redraw, redraw); return; }
       const look = t.dataset.tsApply && ctx.looks.find((l) => lookKey(l) === t.dataset.tsApply);
-      if (look) { endPreview(); ctx.remember(lookKey(look)); void ctx.apply(look); }
+      if (look) { endPreview(); ctx.remember(lookKey(look)); void Promise.resolve(ctx.apply(look)).then(redraw, redraw); }
     });
     palette.addEventListener('input', (e) => { if (e.target.classList.contains('an-tshud-search')) { state.query = e.target.value; draw(); } });
     palette.addEventListener('pointerover', (e) => {
