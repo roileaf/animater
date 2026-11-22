@@ -144,7 +144,8 @@ export function dnd5eEvent(type, subject, { rolls = [], results = {}, verdict = 
     activityId: subject.id ?? subject._id,
     activity: subject,
     activityName: subject.name,
-    ...(type === "use" && results.templates?.length ? { placedArea: true } : {}),
+    // Whether this use placed an area: D&D 5e places it before the use is done, so "none" is known too.
+    ...(type === "use" ? { placedArea: Boolean(results.templates?.length) } : {}),
     ...(dnd5eEventElement(subject, rolls) ? { element: dnd5eEventElement(subject, rolls) } : {}),
     tokenId: subject.getUsageToken?.()?.id,
     sceneId: subject.getUsageToken?.()?.parent?.id,

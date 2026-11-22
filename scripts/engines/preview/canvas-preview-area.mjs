@@ -28,6 +28,34 @@ function coneArea(x, y, length, angle, rotation) {
   const radians = rotation * Math.PI / 180;
   return { type: "cone", center: { x, y }, endpoint: { x: x + Math.cos(radians) * length, y: y + Math.sin(radians) * length }, length, angle };
 }
+// The area of a cast that placed none (a module that resolves a spell itself, with no template), built from the
+// spell's own area ({ type, size | value, width } in the scene's distance units) and who it was cast by and at.
+// An emanation stands around the one creature aimed at, else around the caster; a burst or a cube lands on what
+// is aimed at (their middle), else on the caster; a cone or a line runs from the caster toward it and needs both.
+export function castArea(spec, { source, targets = [], gridSize = 100, gridDistance = 5, coneAngle = 90 } = {}) {
+  const type = spec?.type, size = Number(spec?.size ?? spec?.value);
+  if (!type || !Number.isFinite(size) || size <= 0) return null;
+  const scale = gridSize / gridDistance, reach = size * scale;
+  const aimed = (targets ?? []).filter((t) => t && t !== source);
+  const middle = (tokens) => {
+    const points = tokens.map(centerOf);
+    return { x: points.reduce((sum, p) => sum + p.x, 0) / points.length, y: points.reduce((sum, p) => sum + p.y, 0) / points.length };
+  };
+  if (["emanation", "radius"].includes(type)) {
+    const around = aimed.length === 1 ? aimed[0] : source;
+    if (!around) return null;
+    const width = Number(around.w) || (Number(around.document?.width) || 1) * gridSize;
+    return { center: { ...centerOf(around) }, diameter: 2 * reach + width };
+  }
+  const spot = aimed.length ? middle(aimed) : source ? { ...centerOf(source) } : null;
+  if (["burst", "sphere", "cylinder", "circle"].includes(type)) return spot ? { center: spot, diameter: 2 * reach } : null;
+  if (["cube", "square"].includes(type)) return spot ? { type: "square", center: spot, diameter: reach, width: reach } : null;
+  if (!["cone", "line"].includes(type) || !source || !aimed.length) return null;
+  const from = centerOf(source), to = middle(aimed), dx = to.x - from.x, dy = to.y - from.y, far = Math.hypot(dx, dy);
+  if (!far) return null;
+  if (type === "cone") return coneArea(from.x, from.y, reach, Math.min(90, Number(coneAngle) || 90), Math.atan2(dy, dx) * 180 / Math.PI);
+  return { type: "line", center: { x: from.x, y: from.y }, endpoint: { x: from.x + dx / far * reach, y: from.y + dy / far * reach }, length: reach, width: (Number(spec.width) || gridDistance) * scale };
+}
 export function templateArea(
   template,
   { gridSize = 100, gridDistance = 5, source, spec } = {},

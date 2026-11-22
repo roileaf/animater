@@ -464,6 +464,15 @@ export function effectSources(effect, resolve = syncUuid) {
   }
   return { uuids: uuids.filter(Boolean), names };
 }
+// Whether a recipe draws on a placed area (an area stage, or a projectile aimed at one).
+export const needsArea = (recipe) => (recipe?.stages ?? []).some((s) => s.kind === "template" || s.travelDestination === "area");
+// A use that placed no area, playing a recipe that draws on one: `build(event)` gives { area, template } made from
+// the spell's own size (castArea), which stand in for the placed ones. Any other event is played as it is.
+export function withCastArea(event, recipe, build) {
+  if (event?.type !== "use" || event.template || !needsArea(recipe)) return event;
+  const built = build?.(event);
+  return built?.area ? { ...event, area: built.area, template: built.template } : event;
+}
 export function matchRecipe(recipes, event) {
   const sources = effectSources(event.item);
   const names = new Set(
@@ -501,6 +510,11 @@ export function matchRecipe(recipes, event) {
   // item of the same name: the same spell from another book's compendium, an importer or a copy has another link.
   const exact = (r) => Boolean(r.itemUuid) && uuids.includes(r.itemUuid);
   const owned = (r) => /(^|\.)Actor\./.test(String(r.itemUuid ?? ""));
+  // A recipe set to "Item used" that draws on a placed area has no area when the item is used: it waits, and plays
+  // when that item's area is placed (an "Area placed" recipe for the same item goes first). A use known to have
+  // placed none (event.placedArea === false) has nothing to wait for: it plays then, on an area built from the
+  // spell's own size (withCastArea).
+  const triggered = (r) => r.trigger === event.type ? !(event.type === "use" && event.placedArea !== false && needsArea(r)) : event.type === "template" && r.trigger === "use" && needsArea(r);
   return (
     recipes
       .filter(
@@ -509,7 +523,7 @@ export function matchRecipe(recipes, event) {
           (!r.systemId || !event.systemId || r.systemId === event.systemId) &&
           sameActivity(r, event, exact(r)) &&
           (!r.weaponMode || r.weaponMode === event.weaponMode) &&
-          r.trigger === event.type &&
+          triggered(r) &&
           (Object.hasOwn(STRIKE_SCOPES, r.matchScope ?? '')
             ? event.weaponMode === r.matchScope && isStrikeItem(event)
             : weaponClassOf(r.matchScope)
@@ -522,6 +536,7 @@ export function matchRecipe(recipes, event) {
           (Object.hasOwn(STRIKE_SCOPES, a.matchScope ?? '') ? 2 : weaponClassOf(a.matchScope) ? 1 : 0) - (Object.hasOwn(STRIKE_SCOPES, b.matchScope ?? '') ? 2 : weaponClassOf(b.matchScope) ? 1 : 0) ||
           Number(exact(b)) - Number(exact(a)) ||
           Number(Boolean(b.itemUuid)) - Number(Boolean(a.itemUuid)) ||
+          Number(b.trigger === event.type) - Number(a.trigger === event.type) ||
           a.id.localeCompare(b.id),
       )[0] ?? null
   );

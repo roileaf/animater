@@ -129,6 +129,7 @@ import { createAreaMarkQueue, registerSpellArsenal } from "./integrations/spell-
 import { wrapRulerHighlight } from "./integrations/walked-path.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName, templateDocument } from "./engines/playback/runtime.mjs";
+import { areaTargets } from "./engines/playback/area-targets.mjs";
 import { AREA_LOOP_MODES } from "./engines/playback/lasting-area.mjs";
 import { wallHit, planFlight } from "./engines/playback/flight-path.mjs";
 import { nowPlayingRows } from "./ui/activity-actions.mjs";
@@ -208,6 +209,7 @@ import {normalizeLayers} from './engines/tokenshade/layers.mjs';
 import { SceneFxPreview } from "./engines/preview/scene-fx-preview.mjs";
 import {
   createCanvasPreviewArea,
+  castArea,
   templateArea,
 } from "./engines/preview/canvas-preview-area.mjs";
 import { TokenMotionPlayer, motionDirection, withFragmentSeed, withFragmentCut, withFragmentTowards } from "./engines/motion/motion.mjs";
@@ -10001,15 +10003,29 @@ async function enrich(event) {
         : null;
     event.targets = eventTargets(event, doc?.object ?? null, Array.from(game.user.targets ?? []));
   } else event.targets = Array.from(game.user.targets ?? []);
+  // A placed area's creature stages play for who stands in it (area-targets.mjs): the user's targets may be set a
+  // moment after the area is, or be left over from before.
+  const placed = event.type === "template" ? templateDocument(event.template) : null;
+  if (placed?.documentName === "Region" && typeof placed.testPoint === "function")
+    event.targets = areaTargets({ tokens: canvas.tokens?.placeables ?? [], userTargets: event.targets, source: event.source, gridSize: canvas.grid?.size ?? 100,
+      inside: (point, token) => placed.testPoint({ x: point.x, y: point.y, elevation: Number(token.document?.elevation ?? 0) }) });
   event.area = eventArea(event);
   return event;
 }
+// The area its spell or ability names: D&D 5e's on the activity, the others' on the item.
+const areaSpec = (event) => (event.systemId ?? game.system.id)==='dnd5e' ? {...event.activity?.target?.template,type:event.activity?.target?.template?.type==='wall'?'line':event.activity?.target?.template?.type} : event.item?.system?.area;
 function eventArea(event) {
   return circleArea(
     event.template,
     event.source,
-    (event.systemId ?? game.system.id)==='dnd5e' ? {...event.activity?.target?.template,type:event.activity?.target?.template?.type==='wall'?'line':event.activity?.target?.template?.type} : event.item?.system?.area,
+    areaSpec(event),
   );
+}
+// A cast that placed no area (a module resolved it without a template): one built from the spell's own size, with a
+// stand-in for the template it never had (canvas-preview-area.mjs castArea). null when it has no size to build from.
+function castAreaFor(event) {
+  const area = castArea(areaSpec(event), { source: event.source, targets: event.targets, gridSize: canvas.grid?.size ?? 100, gridDistance: canvas.scene?.grid.distance ?? 5, coneAngle: CONFIG.MeasuredTemplate?.defaults?.angle });
+  return area ? { area, template: { id: "cast-area", center: area.center } } : null;
 }
 function findRecipe(id) {
   if (id && typeof id === "object") return id;
@@ -16259,6 +16275,7 @@ Hooks.once("ready", () => {
     gridSize: () => canvas.grid.size,
     gridDistance: () => canvas.scene?.grid?.distance ?? 5,
     areaMask,
+    castArea: castAreaFor,
     previewArea: (recipe, context) => {
       const prepared = {
         ...recipe,

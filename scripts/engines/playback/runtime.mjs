@@ -1,5 +1,5 @@
 import { uuid } from "../../core/uuid.mjs";
-import { ID, DEFAULT_RECIPE_COLOR, matchRecipe, planRecipe, resolveAsset, validateRecipe } from "../../core/model.mjs";
+import { ID, DEFAULT_RECIPE_COLOR, matchRecipe, planRecipe, resolveAsset, validateRecipe, withCastArea } from "../../core/model.mjs";
 import { applyEventElement } from "../../catalogs/shared/element-choice.mjs";
 import { OPTIONAL_FX_KINDS } from './optional-fx.mjs';
 import { applyEffectOptions, applyMediaOptions, cropAreaArt, normalizeOptions } from "../../core/stage-options.mjs";
@@ -360,7 +360,8 @@ export class AnimaterRuntime {
     await Promise.all([recipe, ...riders].filter(Boolean).map(async (next) => {
       try {
         // The event's own recipe tells it when it starts (its plan), e.g. for a placed area's impact.
-        const session = await this.play(next, {...event,automatic:true}, next === recipe && typeof event.onPlayStart === "function" ? { onStart: event.onPlayStart } : undefined);
+        // A use that placed no area, for a recipe that draws on one: the area is built from the spell's own size.
+        const session = await this.play(next, {...withCastArea(event, next, (e) => this.host.castArea?.(e)),automatic:true}, next === recipe && typeof event.onPlayStart === "function" ? { onStart: event.onPlayStart } : undefined);
         if (session && next === recipe && replay) this.holdAreaReplay(replay, event);
       } catch (error) {
         this.trace("Blocked", error.message, next);
