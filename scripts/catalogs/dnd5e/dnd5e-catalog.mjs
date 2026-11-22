@@ -186,15 +186,19 @@ export function resolveDndAutomaticRecipe(event,stateFor,saved=[],{customEnabled
  const entry=findDndEntry(event),state=normalizeDndCatalogState(stateFor(entry?.kind??'feat'));
  // Left out of Plug & play, the catalog's own animation is silent; a version the GM customized still plays.
  const custom=customEnabled||entry&&state.enabled&&state.customized.includes(entry.id)?saved:[];
- const selected=entry&&dndEntryEnabled(entry.id,state),prefer=selected&&(state.selected.includes(entry.id)||state.preferCatalog&&!state.customized.includes(entry.id)&&!ownRecipe(custom,event));
+ // The GM's Customize copy of the design the catalog plays for this event (saved under the catalog's own id). The
+ // catalog finds its design for an activity a later system version renamed or split (dndVariantForEvent); a copy
+ // is bound to the old activity (model.mjs sameActivity) and would never match it on its own.
+ const copy=on=>{const design=entry?dndVariantForEvent(entry,event):null;return design?custom.find(r=>r.enabled===on&&r.catalogEntry===entry.id&&r.id===design.recipe.id&&r.trigger===event.type)??null:null;};
+ const selected=entry&&dndEntryEnabled(entry.id,state),prefer=selected&&(state.selected.includes(entry.id)||state.preferCatalog&&!state.customized.includes(entry.id)&&!ownRecipe(custom,event)&&!copy(true));
  const override=matchStrikeOverride(custom,event);if(override)return override;
- if(!prefer){const match=matchRecipe(custom,event);if(match)return match;}
+ if(!prefer){const match=matchRecipe(custom,event)??copy(true);if(match)return match;}
  const indexedNpc=findDndNpcAction(event);
  if(indexedNpc&&(npcEnabled===false||npcExcluded.includes(indexedNpc.id)||indexedNpc.delegated))return null;
  const npcFallback=()=>resolveDndNpcAction(event,custom,{npcEnabled,npcExcluded,motion:state.motion,sounds:state.sound?sounds:null,soundVolume:state.soundVolume});
  if(!entry){if(!state.enabled||state.scope==='selected')return null;return npcFallback();}
  if(!selected||['condition','effect'].includes(entry.kind))return null;
- if(!prefer&&custom.some(r=>!r.enabled&&matchRecipe([{...r,enabled:true}],event)))return null;
+ if(!prefer&&(custom.some(r=>!r.enabled&&matchRecipe([{...r,enabled:true}],event))||copy(false)))return null;
  let variant=dndVariantForEvent(entry,event);
  // A save spell plays when cast (Sacred Flame, Toll the Dead). Cast before anyone is
  // targeted, it waits for that item's damage roll, when the targets are known.

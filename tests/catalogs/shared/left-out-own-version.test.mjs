@@ -77,3 +77,22 @@ test("the catalog card of a left-out entry says the GM's customized version play
   assert.match(card({ saved: null }), /Left out of Plug/);
   assert.match(card({ saved: { enabled: true }, state: { ...state, customized: [] } }), /Left out of Plug/);
 });
+
+// D&D 5e 6.1 gave Spirit Guardians (2024) a "Cast Spell" utility activity that places its area; the catalog was
+// read when one "Cast and Save" activity did both. The catalog still plays for the new activity (dndVariantForEvent),
+// so the GM's Customize copy of that design must too.
+test("D&D 5e: a Customize copy plays for the activity its catalog design plays for", () => {
+  const entry = dndEntries("spell").find((e) => e.name === "Spirit Guardians" && e.edition === "2024"), area = entry.variants.find((v) => v.recipe.trigger === "template");
+  const save = { id: area.activityId, type: "save", name: "Spirit Guardians Save" }, cast = { id: "tevaatMC9LZxVPLS", type: "utility", name: "Cast Spell" };
+  const item = { type: "spell", name: entry.name, uuid: "Actor.a.Item.b", _stats: { compendiumSource: entry.uuid }, system: { identifier: "spirit-guardians", activities: new Map([[save.id, save], [cast.id, cast]]) } };
+  const event = () => ({ type: "template", systemId: "dnd5e", activity: cast, activityId: cast.id, activityName: cast.name, item });
+  const own = mine(dndRecipe(entry, area.id)), customized = { ...on, customized: [entry.id] };
+  const resolve = (state, saved, customEnabled = false) => resolveDndAutomaticRecipe(event(), () => state, saved, { customEnabled });
+  assert.equal(resolve(on, [])?.catalogEntry, entry.id, "the catalog plays for the new activity");
+  assert.equal(resolve(customized, [own])?.name, "Mine", "so does the GM's copy");
+  assert.equal(resolve({ ...customized, excluded: [entry.id] }, [own], true)?.name, "Mine", "left out, own recipes on (the reported world)");
+  assert.equal(resolve(customized, [{ ...own, enabled: false }]), null, "paused: nothing plays");
+  assert.equal(resolve(customized, [{ ...own, trigger: "use" }])?.name, entry.name, "a copy moved to another trigger is not this event's");
+  // The copy stays one activity's: the save rolled later (a "use" of the Save activity) does not play the area again.
+  assert.notEqual(resolveDndAutomaticRecipe({ type: "use", systemId: "dnd5e", activity: save, activityId: save.id, activityName: save.name, item }, () => customized, [own], { customEnabled: false })?.name, "Mine");
+});
