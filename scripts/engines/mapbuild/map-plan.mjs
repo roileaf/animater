@@ -45,7 +45,8 @@ const shapeOf = (s) => {
   return null;
 };
 // A painted floor's flags, as the brush writes them: its pattern, and a soft edge or a hard one.
-const floorFlags = ({ floor, style = '', edge = 1 }) => ({ floor, texture: 'on', ...(style ? { textureStyles: { [floor]: style } } : {}), ...(edge > 0 ? { stepEdge: edge } : { stepEdgeOff: true }) });
+// (`image`: a picture of ground the GM owns, laid in place of the tile painted for this floor — map-dress.mjs deals them.)
+const floorFlags = ({ floor, style = '', edge = 1, image = '' }) => ({ floor, texture: 'on', ...(style ? { textureStyles: { [floor]: style } } : {}), ...(edge > 0 ? { stepEdge: edge } : { stepEdgeOff: true }), ...(typeof image === 'string' && image && floor !== 'water' ? { textureImage: image.slice(0, 400) } : {}) });
 /** The floor a building of some material usually has: [floor, pattern]. */
 export const floorFor = (material) => ({ timber: ['wood', 'planks'], fieldstone: ['wood', 'old'], dressed: ['stone', 'flagstones'], brick: ['wood', 'planks'], adobe: ['stone', 'cobbles'], palisade: ['dirt', 'earth'], hewn: ['stone', 'dungeon'], natural: ['stone', 'cave'] }[material] ?? ['wood', 'planks']);
 
@@ -112,9 +113,12 @@ export function planDocuments(plan = {}, { grid = 100, mark = true } = {}) {
     if (!(w > 0) || !(h > 0)) continue;
     const material = b.material ?? 'timber', age = num(b.age, 0.25), id = `${mark ? BUILT_ROOF : ''}${b.id ?? i}`;
     const wall = (c, opening = null) => {
-      const own = { material, age, thick: num(b.thick, WALL_THICK), ...(b.tint ? { tint: b.tint } : {}), ...tag };
-      if (opening?.door) return { c, door: 1, ds: 0, flags: { animater: { ...own, door: opening.kind ?? doorFor(material), hinge: 'near', swing: 'in' } } };
-      if (opening) return { c, flags: { animater: { ...own, window: opening.kind ?? windowFor(material), windowOpen: false, windowSlats: false, windowWalk: false, swing: 'in' } } };
+      // (`cover`: a picture the GM owns in place of our painted one — a strip for the walls, a leaf for a door, a
+      // window for a window — where the building was dealt one.)
+      const pic = (v) => (typeof v === 'string' && v ? v.slice(0, 400) : null);
+      const own = { material, age, thick: num(b.thick, WALL_THICK), ...(b.tint ? { tint: b.tint } : {}), ...(pic(b.cover) ? { cover: pic(b.cover) } : {}), ...tag };
+      if (opening?.door) return { c, door: 1, ds: 0, flags: { animater: { ...own, door: opening.kind ?? doorFor(material), hinge: 'near', swing: 'in', ...(pic(opening.cover) ? { doorCover: pic(opening.cover) } : {}) } } };
+      if (opening) return { c, flags: { animater: { ...own, window: opening.kind ?? windowFor(material), windowOpen: false, windowSlats: false, windowWalk: false, swing: 'in', ...(pic(opening.cover) ? { windowCover: pic(opening.cover) } : {}) } } };
       return { c, flags: { animater: own } };
     };
     if (b.floor?.floor) regions.push(region(`${b.name ?? 'Building'} floor`, b.floor.floor, [b.round ? shapeOf({ x: x + w / 2, y: y + h / 2, radiusX: w / 2, radiusY: h / 2 }) : shapeOf({ x, y, width: w, height: h })], floorFlags({ ...b.floor, edge: 0 })));
@@ -124,7 +128,7 @@ export function planDocuments(plan = {}, { grid = 100, mark = true } = {}) {
       const door = (b.doors ?? [])[0], want = door ? num(door.angle, Math.PI / 2) : null;
       const turn = (a) => Math.abs(Math.atan2(Math.sin(a - want), Math.cos(a - want)));
       const doorAt = want === null ? -1 : Array.from({ length: ROUND_SIDES }, (_, k) => k).sort((p, q) => turn(((p + 1) / ROUND_SIDES) * Math.PI * 2) - turn(((q + 1) / ROUND_SIDES) * Math.PI * 2))[0];
-      for (let k = 0; k < ROUND_SIDES; k++) walls.push(wall([...ring[k], ...ring[(k + 1) % ROUND_SIDES]], k === doorAt ? { door: true, kind: door.kind } : null));
+      for (let k = 0; k < ROUND_SIDES; k++) walls.push(wall([...ring[k], ...ring[(k + 1) % ROUND_SIDES]], k === doorAt ? { door: true, kind: door.kind, cover: door.cover } : null));
     } else {
       const corners = { n: [[x, y], [x + w, y]], e: [[x + w, y], [x + w, y + h]], s: [[x + w, y + h], [x, y + h]], w: [[x, y + h], [x, y]] };
       for (const side of SIDES) {
@@ -139,7 +143,7 @@ export function planDocuments(plan = {}, { grid = 100, mark = true } = {}) {
     }
     if (b.roof !== false) {
       const room = { x, y, w, h }, form = b.round ? 'cone' : (b.roof?.form ?? formFor(room, { grid }));
-      roofs.push({ id, x, y, w, h, kind: b.roof?.kind ?? roofFor(material), form, round: !!b.round, ...(form === 'shed' ? { high: b.roof?.high ?? 'north' } : {}), age, chimney: b.roof?.chimney ?? null, material, ...(b.roof?.tint ? { tint: b.roof.tint } : {}), ...(b.roof?.dressed ? { dressed: true } : {}) });
+      roofs.push({ id, x, y, w, h, kind: b.roof?.kind ?? roofFor(material), form, round: !!b.round, ...(form === 'shed' ? { high: b.roof?.high ?? 'north' } : {}), age, chimney: b.roof?.chimney ?? null, material, ...(b.roof?.tint ? { tint: b.roof.tint } : {}), ...(b.roof?.dressed ? { dressed: true } : {}), ...(typeof b.roof?.cover === 'string' && b.roof.cover ? { cover: b.roof.cover.slice(0, 400) } : {}) });
     }
   }
 
