@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.8.3
+
+- **D&D 5e: smites cast through DAS · Core animate.** DAS asks which smite to cast after a weapon hits and resolves it itself — the slot, the saving throws, the damage — without the spell ever being "used" as D&D 5e means it, and with no area set down. Animater heard nothing, so Hail of Thorns, Divine Smite and the rest played no animation at all, whatever recipe you had made. The smite DAS records on the weapon's damage roll is now its cast. A smite with an area (Hail of Thorns: 5 feet around the creature hit) plays on that area, built from the spell's own size, and every creature standing in it is one of its targets; any other smite plays on the creature hit. The catalog's animation, your customized copy and a recipe of your own all answer it, whether set to "Area placed" or "Item used".
+
 ## 4.8.2
 
 - **An area's creatures react, whoever you had targeted.** A recipe's target stages on a placed area — an impact on each creature caught — played for whoever you had targeted at the instant the area was set down. A system or module that targets what a template covers does it a moment later, so the stage found no one and was skipped without a word; targets left over from an earlier action could stand anywhere. The stage now plays for the creatures standing in the area: the ones you targeted among them if you chose some, otherwise all of them. Never the caster, never a hidden creature, and a big creature counts if any of its squares is inside. On tables where nobody targets, area recipes will show their reactions for the first time.
