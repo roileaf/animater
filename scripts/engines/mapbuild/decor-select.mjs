@@ -96,6 +96,66 @@ export function prefabRegion(prefab, x, y, { grid = 100, was = 100, seed = 1, le
 /** The saved prefabs, cleaned (pure): a list of { name, items, grid }, the unreadable ones dropped. */
 export const prefabsOf = (raw) => (Array.isArray(raw) ? raw : []).filter((p) => p && typeof p.name === 'string' && Array.isArray(p.items) && p.items.length).slice(0, 60);
 
+/**
+ * The parts of a map (pure): the regions the map-making tools laid, as a list to pick from — [{ id, name, sort, count }].
+ * `regions` [{ id, name, own (its flags.animater) }]. `sort` what it is: 'ground' (under the whole map), 'water',
+ * 'path' (a road or a stream laid as a line), 'run' (a fence or hedge laid as a line), 'room' (a room's furnishings),
+ * 'things' (decorations placed by hand), 'floor' (any other painted floor). `count` how many decorations it holds.
+ * Regions with nothing of the module's on them are left out. Parts of one name are numbered, so the third fence is
+ * "Fence 3" wherever it is asked about; the ground comes first, then the rest as the scene keeps them.
+ */
+export function mapParts(regions = [], map = null) {
+  const out = [];
+  for (const r of regions) {
+    const own = r?.own ?? {}, placed = own.decor?.on === true && Array.isArray(own.decor.brushed) ? own.decor.brushed.length : 0;
+    const sort = own.wholeMap ? 'ground' : own.furnishOf ? 'room' : own.path && placed ? 'run' : own.floor === 'water' ? 'water' : own.path ? 'path' : placed ? 'things' : own.floor ? 'floor' : null;
+    // (`box` the region's own, `map` the map's: where it lies is said after its name, so "Fence" is "Fence, north-west".)
+    const where = sort && sort !== 'ground' && r.box ? whereOnMap(r.box.x + r.box.w / 2, r.box.y + r.box.h / 2, map) : '';
+    if (sort) out.push({ id: r.id, name: String(r.name ?? '').trim() || 'Region', sort, count: placed, where });
+  }
+  const total = new Map(), seen = new Map();
+  for (const p of out) total.set(p.name, (total.get(p.name) ?? 0) + 1);
+  for (const p of out) if (total.get(p.name) > 1) { const n = (seen.get(p.name) ?? 0) + 1; seen.set(p.name, n); p.name = `${p.name} ${n}`; }
+  return [...out.filter((p) => p.sort === 'ground'), ...out.filter((p) => p.sort !== 'ground')];
+}
+
+/**
+ * Made `times` as big as one thing (pure): each bigger or smaller, and standing that much further from or nearer to
+ * the middle of them all — what dragging the corner of a selection does. One alone only changes size.
+ */
+export function scaledAbout(ds = [], times = 1) {
+  const c = centreOf(ds), k = Number(times) > 0 ? Number(times) : 1;
+  return sizedBy(ds, k).map((d, n) => ({ ...d, x: Math.round(c.x + (ds[n].x - c.x) * k), y: Math.round(c.y + (ds[n].y - c.y) * k) }));
+}
+/**
+ * The box round what is picked, and its two handles (pure): { x0, y0, x1, y1, cx, cy, turn: [x, y], size: [x, y] }
+ * in scene pixels, or null with nothing picked. The turn handle stands above the middle of its top edge, `stalk`
+ * away; the size handle is its bottom right corner.
+ */
+export function selectionBox(ds = [], grid = 100, stalk = 30) {
+  if (!ds.length) return null;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const d of ds) { const r = reachOf(d, grid); x0 = Math.min(x0, d.x - r); y0 = Math.min(y0, d.y - r); x1 = Math.max(x1, d.x + r); y1 = Math.max(y1, d.y + r); }
+  const c = centreOf(ds);
+  return { x0, y0, x1, y1, cx: c.x, cy: c.y, turn: [(x0 + x1) / 2, y0 - stalk], size: [x1, y1] };
+}
+/** How far a selection is turned by dragging its turn handle to a point (pure), radians: in steps of `step` unless `free`. */
+export function turnTo(box, from, to, { step = SELECT_TURN, free = false } = {}) {
+  const a = Math.atan2(to.y - box.cy, to.x - box.cx) - Math.atan2(from.y - box.cy, from.x - box.cx), by = Math.atan2(Math.sin(a), Math.cos(a));
+  return free || !(step > 0) ? by : Math.round(by / step) * step;
+}
+/** How many times as big a selection is made by dragging its size handle to a point (pure), within a quarter and four times. */
+export function sizeTo(box, from, to) {
+  const was = Math.hypot(from.x - box.cx, from.y - box.cy), now = Math.hypot(to.x - box.cx, to.y - box.cy);
+  return was > 1 ? Math.min(4, Math.max(0.25, now / was)) : 1;
+}
+/** Where on the map something stands, in a word or two (pure): "north-west", "centre", "south". `rect` the map { x, y, width, height }. */
+export function whereOnMap(x, y, rect) {
+  if (!rect || !(rect.width > 0) || !(rect.height > 0)) return '';
+  const u = (x - rect.x) / rect.width, v = (y - rect.y) / rect.height, ns = v < 0.36 ? 'north' : v > 0.64 ? 'south' : '', ew = u < 0.36 ? 'west' : u > 0.64 ? 'east' : '';
+  return ns && ew ? `${ns}-${ew}` : ns || ew || 'centre';
+}
+
 /** Made `times` as big (pure), each where it stands, within what its kind allows. */
 export const sizedBy = (ds = [], times = 1) => ds.map((d) => { const usual = DECOR_KINDS[d.kind]?.size ?? 1; return { ...d, size: Math.round(Math.min(usual * SELECT_SIZE.max, Math.max(usual * SELECT_SIZE.min, d.size * times)) * 1000) / 1000 }; });
 /** Copies, set off a little (pure): each its own decoration, with a seed of its own. */

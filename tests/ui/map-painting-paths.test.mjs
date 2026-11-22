@@ -10,7 +10,7 @@ const bar = readFileSync(new URL('../../scripts/ui/decor-brush-bar.mjs', import.
 const shell = readFileSync(new URL('../../scripts/shell/map-painting.mjs', import.meta.url), 'utf8');
 
 test('the bar has a Paths tab, a tile for every kind, and says how a path is drawn', () => {
-  assert.match(bar, /\['paths', 'fa-solid fa-route', 'Paths'\]/);
+  assert.match(bar, /\['paths', 'fa-solid fa-route', 'Paths', /);
   assert.match(bar, /tab === 'walls' \|\| tab === 'paths' \|\| /, 'the tab can be switched to');
   assert.match(bar, /for \(const id of PATH_IDS\)/);
   assert.match(bar, /Enter or double-click lays it · Backspace: back a point · Esc: start again · Shift: on the grid/);
@@ -25,7 +25,7 @@ test('a click adds a point, Enter or a second click on the spot lays it, and it 
   assert.match(paths, /rememberDecorStep\(\{ kind: "create", id: made\.id, data \}\)/, 'one path, one step of undo');
   assert.match(shell, /if \(pathsOn\(\)\) \{ state\.at = p; pathDown\(p, e\); draw\(\); refreshStatus\(\); return; \}/);
   assert.match(shell, /e\.key === "Enter" \|\| e\.key === "Backspace" \|\| e\.key === "Escape"/);
-  assert.match(shell, /5: "paths"/, 'and the tab has its key');
+  assert.match(shell, /3: "paths"/, 'and the tab has its key');
 });
 
 test('nothing of a path reads the map\'s picture, so one is drawn on a scene that has none', () => {

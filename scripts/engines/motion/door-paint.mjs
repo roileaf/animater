@@ -222,7 +222,11 @@ function paintDoorLeafLit(kind, length, look = {}, make = defaultCanvas) {
   // Its own shadow on the floor, thrown away from the light; it swings with the leaf, because it is the leaf's.
   g.save(); g.filter = `blur(${Math.max(2, unit * 0.05)}px)`; g.translate(-LIGHT.at[0] * unit * 0.16, -LIGHT.at[1] * unit * 0.16);
   poly(g, box(0, 0, len / 2, thick / 2)); g.fillStyle = 'rgba(10,8,5,0.38)'; g.fill(); g.restore();
-  d.leaf(g, rng, o, { len, thick });
+  // A picture of a door leaf the GM owns in place of ours (roof-cover.mjs). Such a picture is square, the leaf lying
+  // across its middle with its hinge at the right-hand end: turned about and sized to the opening, so its hinge is
+  // on ours and it reaches the far jamb.
+  if (look.cover?.image) { g.save(); g.rotate(Math.PI); g.drawImage(look.cover.image, -len / 2, -len / 2, len, len); g.restore(); }
+  else d.leaf(g, rng, o, { len, thick });
   // `box` is the size this picture covers on the map, which is not the size of the canvas any more: the canvas
   // holds more pixels than that so it keeps its edges when the table zooms in. Whoever shows it wants the box.
   return { canvas, hinge: [pad, pad + thick / 2], length: len, thick, pad, box: { w, h } };

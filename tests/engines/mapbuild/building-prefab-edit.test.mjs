@@ -51,7 +51,7 @@ test('mirrored, one stays where it stands and several become their mirror image'
   assert.deepEqual([back[0].x, back[1].x, back[0].mirror, back[1].mirror], [0, 200, undefined, undefined], 'twice is as it was');
   assert.ok(near(turnOf(back[0]), 0.3));
   const draws = readFileSync(new URL('../../../scripts/engines/motion/decorations.mjs', import.meta.url), 'utf8');
-  assert.match(draws, /\(d\.flip && DECOR_KINDS\[d\.kind\]\.flat \? -1 : 1\) \* \(d\.mirror \? -1 : 1\) \* k/, 'drawn mirrored, whatever kind it is; the brush\'s own flip still only shows on what lies flat');
+  assert.match(draws, /\(d\.flip && DECOR_KINDS\[d\.kind\]\?\.flat \? -1 : 1\) \* \(d\.mirror \? -1 : 1\) \* k/, 'drawn mirrored, whatever kind it is; the brush\'s own flip still only shows on what lies flat');
 });
 
 test('a drag kept to the grid puts the first one picked on a half square', () => {

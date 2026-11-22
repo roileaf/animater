@@ -19,6 +19,7 @@ import { roofShape, ROOF_OVERHANG } from '../engines/motion/roof-paint.mjs';
 import { roofOpenings } from '../engines/motion/roof-sight.mjs';
 import { dressingOf, dressingKey, handDressing } from '../engines/motion/holiday-dressing.mjs';
 import { outsideSquares, partition } from '../engines/motion/building-plan.mjs';
+import { createRoofCovers } from '../engines/motion/roof-cover.mjs';
 
 /** Degrees of sky worth painting a building again for. */
 const SUN_STEP = 12;
@@ -177,6 +178,17 @@ export function createPaintedBuildings(ctx) {
   const sunCasts = () => { try { return ctx.sunCasts?.() === true; } catch { return false; } };
   const roofSuffix = () => { const w = roofWeatherNow(); return `${sunKey()}:w${Math.round(w.snow * 5)}${Math.round(w.wet * 5)}${dressingKey(dressingNow())}${sunCasts() ? ':c' : ''}`; };
 
+  // The roofing pictures the scene's roofs are covered with (roof-cover.mjs), read from where the GM keeps them. A
+  // roof whose picture has not arrived yet is painted in its own kind meanwhile, and again when it has.
+  const covers = createRoofCovers({
+    load: (src) => new Promise((done, fail) => { const img = new Image(); img.crossOrigin = 'anonymous'; img.onload = () => done(img); img.onerror = () => fail(new Error('no picture')); img.src = src; }),
+    read: (img) => { const w = img.naturalWidth, h = img.naturalHeight, c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0); return { data: g.getImageData(0, 0, w, h).data, width: w, height: h }; },
+    changed: () => { dirty = true; soon(); },
+  });
+  // (Whether a roof's covering has arrived is part of its key, so it is painted again when it does — and everything that
+  // asks the layer about a roof spells its key with this too.)
+  const coverKey = (r) => (r?.cover ? `:${covers.state(r.cover)}` : '');
+
   let sunKeySeen = null;
   const followSun = () => {
     const now = roofSuffix();
@@ -217,7 +229,7 @@ export function createPaintedBuildings(ctx) {
       const thin = insideWall(run.points);
       const thick = thin ? Math.max(0.05, (run.thick ?? WALL_THICK) * PARTITION_THIN) : run.thick;
       const height = thin ? WALL_LIFT * PARTITION_THIN : undefined;
-      return { ...run, thick, height, under: thin, key: `${run.key}${thin ? ':p' : ''}${litKey}`, look: { ...wallLook({ ...said, age: run.age }, { season }), lit } };
+      return { ...run, thick, height, under: thin, key: `${run.key}${thin ? ':p' : ''}${litKey}${coverKey(run)}`, look: { ...wallLook({ ...said, age: run.age }, { season }), lit, cover: run.cover ? covers.get(run.cover) : null } };
     });
     saw = { walls: list.length, runs: runs.length, season, said };
     from = wallsNow();
@@ -234,7 +246,7 @@ export function createPaintedBuildings(ctx) {
     };
     doors.populate({ doors: wallDoors(list).map((d) => {
       const { thick, lift, p } = thinOpening([d.hinge, d.far], d.thick ?? WALL_THICK);
-      return { ...d, thick, lift, key: `${d.key}${p}${litKey}`, lit };
+      return { ...d, thick, lift, key: `${d.key}${p}${litKey}${coverKey(d)}`, lit, cover: d.cover ? covers.get(d.cover) : null };
     }) });
     windows.populate({ windows: wallWindows(list).map((w) => {
       const half = w.length / 2, dx = Math.cos(w.along) * half, dy = Math.sin(w.along) * half;
@@ -251,7 +263,7 @@ export function createPaintedBuildings(ctx) {
     // (Reach nought: the painted shadow lies wholly under the roof it belongs to, which is to say nowhere.)
     const own = sunCasts() ? { shadowReach: 0 } : {};
     roofs.populate({
-      roofs: over.map((r) => ({ ...r, key: `${r.key}${skyKey}`, look: { ...roofLook(sky, { season, age: r.age }), ...own, lit, dressing: dressingNow()?.colour ?? null } })),
+      roofs: over.map((r) => { const cover = r.cover ? covers.get(r.cover) : null; return { ...r, key: `${r.key}${skyKey}${coverKey(r)}`, look: { ...roofLook(sky, { season, age: r.age }), ...own, lit, dressing: dressingNow()?.colour ?? null, cover } }; }),
       look: { ...roofLook(sky, { season }), ...own, lit },
     });
     // What the dressed buildings hang out, off the eave ring of each roof. Not part of the roof's own picture: it
@@ -357,14 +369,19 @@ export function createPaintedBuildings(ctx) {
   // see the room from, and a room you cannot see is a room you cannot drop a light, a sound or a wall into
   // (Roi: "putting elements on the canvas like lights etc should fade the roof lol").
   const PLACING = new Set(['lighting', 'sounds', 'templates', 'tiles', 'walls', 'regions', 'notes', 'drawings']);
+  const roofsAsideForBar = () => { try { return globalThis.document?.getElementById?.('an-decor-brush')?.dataset?.roofs === 'aside'; } catch { return false; } };
   const placing = () => {
     try {
       if (globalThis.game?.user?.isGM !== true) return false;
+      // The Map painting bar is out, on a tool that works under the roofs — picking up furniture, furnishing a room,
+      // cutting a door: what is being worked on is indoors, and a roof over it hides it (the bar says so itself,
+      // ui/decor-brush-bar.mjs). On the tools that make roofs they stay, to be seen.
+      if (roofsAsideForBar()) return true;
       const layer = globalThis.canvas?.activeLayer;
       return PLACING.has(layer?.options?.name ?? layer?.constructor?.layerOptions?.name ?? '');
     } catch { return false; }
   };
-  const allRoofs = () => roofsOf(flags(), { grid: gridNow() }).map((r) => `${r.key}${roofSuffix()}`);
+  const allRoofs = () => roofsOf(flags(), { grid: gridNow() }).map((r) => `${r.key}${roofSuffix()}${coverKey(r)}`);
   // A roof fades while one of your own creatures is under it, and comes back when they leave.
   const covering = () => {
     if (placing()) return allRoofs();
@@ -372,21 +389,24 @@ export function createPaintedBuildings(ctx) {
     if (!mine.length) return [...hovered];
     return [...new Set([...hovered, ...roofsOf(flags(), { grid: gridNow() })
       .filter((r) => mine.some((t) => underRoof(r.room, t.center?.x ?? t.x, t.center?.y ?? t.y)))
-      .map((r) => `${r.key}${roofSuffix()}`)])];
+      .map((r) => `${r.key}${roofSuffix()}${coverKey(r)}`)])];
   };
   // A GM has no creature of their own to look from, so the pointer is their eye: the roof it rests on stands aside
   // and comes back when the pointer leaves (Roi: "when hovering over a roof i dont see the insides of the house").
   // On their own screen only, as every roof's fading is. Looked at when the pointer has moved, and the roofs are
   // only asked to change when it has crossed onto or off one.
-  let hovered = [], hoverAt = '';
+  let hovered = [], hoverAt = '', barWas = false;
   const hoverNow = () => {
     if (globalThis.game?.user?.isGM !== true) return;
+    // (The bar coming out, going away or changing tool changes whether the roofs stand aside: looked at each frame.)
+    const bar = roofsAsideForBar();
+    if (bar !== barWas) { barWas = bar; coverSoon(); }
     const p = globalThis.canvas?.mousePosition;
     if (!p) return;
     const at = `${Math.round(p.x)},${Math.round(p.y)}`;
     if (at === hoverAt) return;
     hoverAt = at;
-    const now = roofsOf(flags(), { grid: gridNow() }).filter((r) => underRoof(r.room, p.x, p.y)).map((r) => `${r.key}${roofSuffix()}`);
+    const now = roofsOf(flags(), { grid: gridNow() }).filter((r) => underRoof(r.room, p.x, p.y)).map((r) => `${r.key}${roofSuffix()}${coverKey(r)}`);
     if (now.join('|') !== hovered.join('|')) { hovered = now; coverSoon(); }
   };
   const sightFrom = (point) => {
@@ -423,7 +443,7 @@ export function createPaintedBuildings(ctx) {
     if (!sights.length) return open;
     for (const roof of over) {
       const holes = roofOpenings(roof.room, sights, { inset });
-      if (holes.length) open.set(`${roof.key}${roofSuffix()}`, holes);
+      if (holes.length) open.set(`${roof.key}${roofSuffix()}${coverKey(roof)}`, holes);
     }
     return open;
   };

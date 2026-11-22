@@ -1010,6 +1010,8 @@ function painted(g, rng, pts, base, o, opts = {}) {
   g.save(); pathOf(g, pts, sharp); g.clip(); pathOf(g, pts, sharp); g.strokeStyle = 'rgba(14,8,2,0.35)'; g.lineWidth = o.ink * 2.6; g.stroke(); g.restore();
   pathOf(g, pts, sharp); g.strokeStyle = INKD; g.lineWidth = o.ink * (opts.ink ?? 1.5); g.stroke();
 }
+/** The painters' own tools, for the kits painted in other files (decor-kit.mjs): the same ink, the same finish. */
+export const paintTools = Object.freeze({ inked: (...a) => inked(...a), painted: (...a) => painted(...a), boxAt: (...a) => boxAt(...a), softShadow: (...a) => softShadow(...a), blob, line, trace, poly, mix, shade, centre, reach, pathOf: (...a) => pathOf(...a), INKD });
 // A box (half sizes w by h about cx, cy, turned) as corner points.
 const boxAt = (cx, cy, w, h, turn) => { const c = Math.cos(turn), s = Math.sin(turn); return [[-w, -h], [w, -h], [w, h], [-w, h]].map(([u, v]) => [cx + c * u - s * v, cy + s * u + c * v]); };
 const softShadow = (g, pts, o, a = 0.4) => { const c = centre(pts), r = reach(pts, c); g.save(); g.filter = `blur(${Math.max(1, r * 0.12)}px)`; g.translate(r * 0.06, r * 0.08); trace(g, pts); g.fillStyle = `rgba(10,6,2,${a})`; g.fill(); g.restore(); };

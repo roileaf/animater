@@ -199,10 +199,12 @@ export function roofsOf(scene = {}, { grid = 100 } = {}) {
     const age = Math.max(0, Math.min(1, Number(r?.age) || 0));
     // The colour the GM painted it in, if any: a village of red pantiles and one grey slate hall.
     const tint = typeof r?.tint === 'string' && /^#[0-9a-f]{3,8}$/i.test(r.tint) ? r.tint : null;
+    // A picture of roofing it is covered with instead of our own painted courses (roof-cover.mjs): where the GM keeps it.
+    const cover = typeof r?.cover === 'string' && r.cover.length > 0 && r.cover.length <= 400 ? r.cover : null;
     return {
       id: r?.id ?? `roof${i}`,
-      key: `${r?.id ?? i}:${kind}:${form}:${Math.round(room.x)},${Math.round(room.y)},${Math.round(room.w)},${Math.round(room.h)}:${Math.round(age * 100)}:${r?.chimney ?? ''}:${r?.dressed ? 'd' : ''}${tint ? `:${tint}` : ''}`,
-      room, kind, form, age, tint,
+      key: `${r?.id ?? i}:${kind}:${form}:${Math.round(room.x)},${Math.round(room.y)},${Math.round(room.w)},${Math.round(room.h)}:${Math.round(age * 100)}:${r?.chimney ?? ''}:${r?.dressed ? 'd' : ''}${tint ? `:${tint}` : ''}${cover ? `:~${cover}` : ''}`,
+      room, kind, form, age, tint, cover,
       chimney: r?.chimney === 'stone' || r?.chimney === 'brick' ? r.chimney : null,
       chimneyAt: Number.isFinite(Number(r?.chimneyAt)) ? Number(r.chimneyAt) : 0.6,
       high: r?.high,

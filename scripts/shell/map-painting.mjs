@@ -16,6 +16,7 @@ import { buildingAt as buildingPlanAt, roomCells, roomOutline } from "../engines
 import { rectRoom, roundRoom } from "../engines/motion/room-shapes.mjs";
 import { DRESSING_COLOURS_MOST } from "../engines/motion/holiday-dressing.mjs";
 import { ROOF_IDS, ROOF_FORM_IDS, roofFor, formFits } from "../engines/motion/roof-paint.mjs";
+import { artName, artSuits, cardAsset, ownArtAs, ownArtList, weathersAs, withOwnArt, withoutOwnArt } from "../engines/mapbuild/own-art.mjs";
 import { WINDOW_ART, windowFor } from "../engines/motion/window-paint.mjs";
 import { alongStretch } from "../engines/motion/wall-looks.mjs";
 import { WALL_MATERIAL_CHOICES, WALL_MATERIAL_IDS, WALL_THICK, WALL_LIFT, smoothRun } from "../engines/motion/wall-paint.mjs";
@@ -30,13 +31,13 @@ import { DECOR_KINDS, stampDecor, paintDecor } from "../engines/motion/decor-pai
 import { pathRegion, pathKind, areaRegion, pathUnder, pointAt, legAt } from "../engines/mapbuild/path-lay.mjs";
 import { planDocuments, houseFrom } from "../engines/mapbuild/map-plan.mjs";
 import { furnishRoom, ROOM_KINDS } from "../engines/mapbuild/furnish.mjs";
-import { pickable, pickAt, pickBox, movedBy, turnedBy, sizedBy, copiesOf, listAfter, growFor, reachOf, SELECT_TURN, SELECT_GROW, mirroredOver, snappedDrag, prefabOf, prefabRegion, prefabsOf } from "../engines/mapbuild/decor-select.mjs";
+import { pickable, pickAt, pickBox, movedBy, turnedBy, sizedBy, copiesOf, listAfter, growFor, reachOf, SELECT_TURN, SELECT_GROW, mirroredOver, snappedDrag, prefabOf, prefabRegion, prefabsOf, mapParts, selectionBox, turnTo, sizeTo, scaledAbout } from "../engines/mapbuild/decor-select.mjs";
 
 // The stand-in id a stroke on open ground paints under, until the region it is drawing is actually made.
 export const NEW_DECOR_REGION = "animater-decor-new";
 
 export function createMapPainting(ctx) {
-  const { floorLayer, regionsHere, regionAreas, syncDecorations, decorations, decorLook, heightUnits, heightStep, heightsSceneOn, heightsOf, cliffsTopDown, floorTextures, openFloorRegionsTool, paintWallList, wallsOutsideAir, insideWall, leadGM, lifeAfterPaint, hotSetting, bothSettingsOn, pointInPolygon, sunLit } = ctx;
+  const { openMapBuilder = null, floorLayer, regionsHere, regionAreas, syncDecorations, decorations, decorLook, heightUnits, heightStep, heightsSceneOn, heightsOf, cliffsTopDown, floorTextures, openFloorRegionsTool, paintWallList, wallsOutsideAir, insideWall, leadGM, lifeAfterPaint, hotSetting, bothSettingsOn, pointInPolygon, sunLit } = ctx;
 
   // The decorations brush: paints decorations by hand, each dab a few within its circle, kept off what already stands there.
   // From a region's Decorations section (Brush) it paints that region's ticked kinds into it. From the Decorations tool in
@@ -54,6 +55,60 @@ export function createMapPainting(ctx) {
   // The bar's own bounds, not a second copy of them: the keys and the wheel move the brush by the step its slider uses.
   const DECOR_BRUSH = BRUSH_SIZE;
   const decorBrushTarget = (p) => regionsHere().find((r) => decorSettings(r.flags?.[ID]?.decor) && regionPointIn(p, regionAreas(r)));
+  // The GM's own pictures for walls, doors and roofs, kept with the GM (a flag of theirs, as their prefabs are), and the
+  // two ways of picking another. In their asset browser: its window is opened on the kind of thing wanted, and the
+  // next asset clicked there is taken instead of being set down — read off the card that was clicked, which says its
+  // name, where it is kept and its size. Nothing of that module is called but the one thing it offers for opening
+  // its window, and if it changes how its cards are marked this stops finding them and the file browser still works.
+  const ownArtFor = () => {
+    let held = null;
+    const now = () => held ?? (held = ownArtList(game.user?.getFlag?.(ID, "ownArt")));
+    const keep = (list) => { held = list; try { void game.user?.setFlag?.(ID, "ownArt", list); } catch { /* kept for this sitting */ } };
+    const add = (item) => { keep(withOwnArt(now(), item)); return now().find((it) => it.what === item.what && it.url === item.url) ?? null; };
+    const browserOn = () => game.modules?.get?.("fa-nexus")?.active === true && typeof globalThis.faNexus?.open === "function";
+    const TAB = { wall: "paths", roof: "textures", door: "assets" }, FIND = { wall: "Wall", roof: "Roof", door: "Door" }, NOUN = { wall: "a strip of wall", roof: "roofing", door: "a door leaf" };
+    const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+    const pick = (what) => new Promise((done) => {
+      const TYPES = ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick", "dragstart"], win = () => document.getElementById("fa-nexus-app");
+      let over = false, timer = null;
+      const end = (item) => { if (over) return; over = true; clearInterval(timer); for (const type of TYPES) document.removeEventListener(type, on, true); document.removeEventListener("keydown", key, true); done(item); };
+      const on = (e) => {
+        const card = e.target?.closest?.("#fa-nexus-app .fa-nexus-card"); if (!card) return;
+        // (Taken here, so the browser does not start setting it down on the map.)
+        e.preventDefault(); e.stopImmediatePropagation();
+        if (e.type !== "click") return;
+        const img = card.querySelector("img"), art = cardAsset({ ...card.dataset }, img?.currentSrc || img?.src || "");
+        if (!art) { ui.notifications?.warn("Animater: that one cannot be used here."); return; }
+        const fit = artSuits(what, art);
+        if (!fit.ok) { ui.notifications?.warn(`Animater: ${fit.why}`); return; }
+        if (!art.url) { ui.notifications?.warn("Animater: that one's picture could not be found. Set it down as a tile and pick its file instead."); return; }
+        const item = add({ what, url: art.url, name: art.name, thumb: art.thumb, as: weathersAs(what, `${art.path} ${art.name}`) });
+        try { void foundry.applications.instances?.get?.("fa-nexus-app")?.close?.(); } catch { /* it stays open */ }
+        end(item);
+      };
+      const key = (e) => { if (e.key === "Escape") { e.stopPropagation(); end(null); } };
+      Promise.resolve().then(() => globalThis.faNexus.open()).then(async () => {
+        await pause(700);
+        try { win()?.querySelector(`.fa-nexus-tab[data-nexus-tab="${TAB[what]}"]`)?.click(); } catch { /* whichever tab it is on */ }
+        await pause(500);
+        try { const s = win()?.querySelector('input[type="search"], input[placeholder^="Search"]'); if (s && !s.value) { s.value = FIND[what]; s.dispatchEvent(new Event("input", { bubbles: true })); } } catch { /* unsearched */ }
+        if (!win()) { end(null); return; }
+        ui.notifications?.info(`Animater: click ${NOUN[what]} in the asset browser to use it here. Esc: not now.`);
+        for (const type of TYPES) document.addEventListener(type, on, true);
+        document.addEventListener("keydown", key, true);
+        timer = setInterval(() => { if (!win()) end(null); }, 500);
+      }).catch(() => end(null));
+    });
+    const file = async (what) => {
+      const path = await pickFile(""); if (!path) return null;
+      const fit = artSuits(what, { path, name: artName(path) });
+      if (!fit.ok) { ui.notifications?.warn(`Animater: ${fit.why}`); return null; }
+      return add({ what, url: path, name: artName(path), thumb: path, as: weathersAs(what, path) });
+    };
+    return { list: (what) => now().filter((it) => it.what === what), browser: browserOn, pick, file, drop: (what, url) => keep(withoutOwnArt(now(), what, url)), as: (what, url, as) => keep(ownArtAs(now(), what, url, as)) };
+  };
+  // Foundry's own file browser: the path it answers with, or nothing.
+  const pickFile = (current = "") => new Promise((done) => { try { const Picker = foundry.applications.apps?.FilePicker?.implementation ?? globalThis.FilePicker; const picker = new Picker({ type: "image", current, callback: (path) => done(path || null) }); picker.addEventListener?.("close", () => done(null), { once: true }); void (picker.browse?.() ?? picker.render?.(true)); } catch { done(null); } });
   const startDecorBrush = (doc = null) => {
     stopDecorBrush();
     if (!canvas?.ready || !game.user?.isGM) return;
@@ -64,19 +119,33 @@ export function createMapPainting(ctx) {
     // scene's lighting, in canvas.interface, so they show in their own colours at night too.)
     const top = new PIXI.Container(); top.eventMode = "none"; canvas.interface.addChild(top);
     ring.eventMode = "none"; decorBrushRoot().addChild(ghost); top.addChild(ring);
+    // (Over the painted roofs, which live in the same layer at 250: a selection's box and handles, a path's line and
+    // a wall being drawn have to show on a roofed building too.)
+    top.zIndex = 900; try { canvas.interface.sortChildren?.(); } catch { /* sorted on its next frame */ }
     const state = decorBrushing = { id: null, doc: null, brushed: [], erased: [], circles: [], fresh: null, size: DECOR_BRUSH.usual, down: false, last: null, at: null, seed: Date.now() % 1e6, ring, ghost, ghostKey: null, ghostItems: [], ghostSeed: Date.now() % 1e5, bar: null };
     // A region's own brush shows the bar too, with only its place and its ticked kinds; either way it paints one kind at a time.
     const own = doc ? decorSettings(doc.flags?.[ID]?.decor) : null;
     const region = own ? { name: doc.name, where: own.where, kinds: Object.keys(own.kinds).filter((id) => DECOR_KINDS[id] && (DECOR_KINDS[id].set === "both" || DECOR_KINDS[id].set === own.where)) } : null;
     // Map painting: the bar's Floors tab paints floor regions, its Decorations tab decorations (each kind with its own picture).
     const thumbs = new Map(), thumb = (kind) => { if (!thumbs.has(kind)) { let pic = null; try { pic = paintDecor(kind, 7, 48, decorLook({ where: brushChoices().where }))?.canvas ?? null; } catch { /* no picture */ } thumbs.set(kind, pic); } return thumbs.get(kind); };
+    // The parts of the map (engines/mapbuild/decor-select.mjs mapParts): every region the map-making tools laid on this
+    // level, named so two fences can be told apart. Defined before the bar is opened: the bar draws itself as it opens.
+    const partsList = () => { const rect = canvas.dimensions?.sceneRect; return mapParts(regionsHere().map((r) => ({ id: r.id, name: r.name, own: r.flags?.[ID], box: shapesBox(r.shapes ?? []) })), rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null); };
     state.bar = openBrushBar({ onClose: () => stopDecorBrush(), onChange: () => { draw(); if ((floorsOn() || (heightsOn() && brushChoices().heightMode === "raise")) && modelOn()) void loadSam(); refreshHeights(); refreshStatus(); }, region, thumb,
       onSelectAct: (act) => (act === "fillMap" ? void pathFillMap() : selectAct(act)),
+      parts: partsList, onPart: (act, id) => partAct(act, id), first: "select",
+      // (The whole-map builder writes to the scene itself; the brush is put away while it does.)
+      onBuildMap: openMapBuilder ? () => { stopDecorBrush(); void openMapBuilder(); } : null,
       // (Read straight from the GM's flags: the bar draws itself as it opens, before the rest of the brush is set up.)
       prefabs: () => prefabsOf(game.user?.getFlag?.(ID, "prefabs")).map((p) => `${p.name} (${p.items.length})`),
-      onTab: () => { pathClear(); selectGhost(false); Object.assign(sl, { picked: [], drag: null, box: null, hover: null, placing: null }); if (selectOn()) selectRefresh(); if (floorsOn() || heightsOn()) void readMap(); if (!floorsOn()) hideHover(); refreshHeights(); draw(); refreshStatus(); },
+      onTab: () => { pathClear(); selectGhost(false); Object.assign(sl, { picked: [], drag: null, box: null, hover: null, placing: null, part: null, partsKey: null, spin: null, grow: null, over: null }); if (state.float) state.float.hidden = true; if (selectOn()) selectRefresh(); if (floorsOn() || heightsOn()) void readMap(); if (!floorsOn()) hideHover(); refreshHeights(); draw(); refreshStatus(); },
       sceneTicks: { get: () => ({ walls: heightsSceneOn("walls"), shadows: heightsSceneOn("shadows"), topdown: cliffsTopDown() }), set: (key, on) => void canvas.scene?.update(key === "topdown" ? { [`flags.${ID}.cliffView`]: on ? "topdown" : "side" } : { [`flags.${ID}.${key === "walls" ? "cliffWalls" : "heightShadows"}`]: on }) },
       // The feast the GM has called on this scene, with no calendar behind it.
+      // The GM's own pictures for walls, doors and roofs (engines/mapbuild/own-art.mjs): kept with the GM, shown as
+      // tiles beside our own materials, picked in their asset browser where they have one or from a file.
+      ownArt: ownArtFor(),
+      // Foundry's own file browser, for a picture of roofing the GM owns: the path it answers with, or nothing.
+      pickRoofing: (current = "") => new Promise((done) => { try { const Picker = foundry.applications.apps?.FilePicker?.implementation ?? globalThis.FilePicker; const picker = new Picker({ type: "image", current, callback: (path) => done(path || null) }); picker.addEventListener?.("close", () => done(null), { once: true }); void (picker.browse?.() ?? picker.render?.(true)); } catch { done(null); } }),
       sceneHoliday: { get: () => canvas.scene?.flags?.[ID]?.holiday ?? null, set: (said) => void canvas.scene?.update({ [`flags.${ID}.holiday`]: { on: said?.on === true, colours: (said?.colours ?? []).slice(0, DRESSING_COLOURS_MOST) } }) },
       onUndo: () => { if (!state.down) void undoDecorStep().then(refreshStatus); }, onRedo: () => { if (!state.down) void redoDecorStep().then(refreshStatus); },
       onReadMap: game.settings.get(ID, "experimentalWaterRegions") === true ? () => { stopDecorBrush(); void openFloorRegionsTool(); } : null });
@@ -214,14 +283,53 @@ export function createMapPainting(ctx) {
     // (As the region keeps them once cleaned: that is the list an edit is written back as, so a place in it stays a place.)
     const selectRefresh = () => { sl.all = pickable(regionsHere().map((r) => ({ id: r.id, brushed: decorSettings(r.flags?.[ID]?.decor)?.brushed ?? [] }))); sl.picked = sl.picked.filter((p) => sl.all.some((it) => sameItem(it, p))); };
     const selectedNow = () => sl.picked.map((p) => sl.all.find((it) => sameItem(it, p))).filter(Boolean);
+    // What is picked shows itself on the map: a box round it, a round handle above the box that turns it, a square one
+    // at its corner that sizes it. Dragged anywhere else, it moves. The few other things to do to it float beside it.
+    const HANDLE = 9;
+    const boxNow = () => selectionBox(selectedNow().map((it) => it.d), grid(), (HANDLE * 3.4) / (canvas.stage?.scale?.x || 1));
     const selectDraw = () => {
       const g = sl.overlay; g.clear();
-      const off = sl.drag?.moved ? sl.drag : { dx: 0, dy: 0 };
-      for (const it of selectedNow()) { const r = reachOf(it.d, grid()); g.lineStyle(4, 0x1e160e, 0.85); g.drawCircle(it.d.x + off.dx, it.d.y + off.dy, r); g.lineStyle(2, 0xf3d27a, 1); g.drawCircle(it.d.x + off.dx, it.d.y + off.dy, r); }
-      if (sl.hover && !sl.drag && !sl.box && !sl.picked.some((p) => sameItem(p, sl.hover))) { g.lineStyle(2, 0xffffff, 0.75); g.drawCircle(sl.hover.d.x, sl.hover.d.y, reachOf(sl.hover.d, grid())); }
+      const px = 1 / (canvas.stage?.scale?.x || 1), held = selectedNow(), box = boxNow();
+      const off = sl.drag?.moved ? sl.drag : { dx: 0, dy: 0 }, busy = !!(sl.drag?.moved || sl.spin || sl.grow);
+      // A part of the map picked from the list: its outline, so a road or a pond can be seen to be the one meant.
+      const part = sl.part ? decorRegion(sl.part) : null;
+      if (part && !held.length) { try { for (const area of regionAreas(part)) { g.lineStyle(4 * px, 0x1e160e, 0.8); g.drawPolygon(Array.from(area)); g.lineStyle(2 * px, 0xf3d27a, 1); g.drawPolygon(Array.from(area)); } } catch { /* a shape it cannot outline */ } }
+      // What a click would pick, before it is clicked.
+      if (sl.hover && !busy && !sl.box && !sl.picked.some((p) => sameItem(p, sl.hover))) { g.lineStyle(2 * px, 0xffffff, 0.75); g.drawCircle(sl.hover.d.x, sl.hover.d.y, reachOf(sl.hover.d, grid())); }
+      if (box) {
+        // (While it is being turned or sized the ghost shows where it is going; the box stays where it was.)
+        const x = box.x0 + off.dx, y = box.y0 + off.dy, w = box.x1 - box.x0, h = box.y1 - box.y0;
+        g.lineStyle(3 * px, 0x1e160e, 0.7); g.drawRect(x, y, w, h); g.lineStyle(1.5 * px, 0xf3d27a, 1); g.drawRect(x, y, w, h);
+        if (!busy) {
+          const [tx, ty] = box.turn, [sx, sy] = box.size, r = HANDLE * px;
+          g.lineStyle(1.5 * px, 0xf3d27a, 1); g.moveTo(tx, box.y0); g.lineTo(tx, ty);
+          g.lineStyle(2 * px, 0x1e160e, 1); g.beginFill(sl.over === "turn" ? 0xffffff : 0xf3d27a, 1); g.drawCircle(tx, ty, r); g.endFill();
+          g.beginFill(sl.over === "size" ? 0xffffff : 0xf3d27a, 1); g.drawRect(sx - r, sy - r, r * 2, r * 2); g.endFill();
+        }
+      }
       // A prefab about to be set down: where each of its pieces would stand.
-      if (sl.placing && state.at) { const k = grid() / (sl.placing.grid || 100); g.lineStyle(2, 0xf3d27a, 0.9); for (const it of sl.placing.items) g.drawCircle(state.at.x + it.dx * k, state.at.y + it.dy * k, reachOf(it, grid())); }
-      if (sl.box) { g.lineStyle(1.5, 0xf3d27a, 0.9); g.beginFill(0xf3d27a, 0.08); g.drawRect(Math.min(sl.box.a.x, sl.box.b.x), Math.min(sl.box.a.y, sl.box.b.y), Math.abs(sl.box.b.x - sl.box.a.x), Math.abs(sl.box.b.y - sl.box.a.y)); g.endFill(); }
+      if (sl.placing && state.at) { const k = grid() / (sl.placing.grid || 100); g.lineStyle(2 * px, 0xf3d27a, 0.9); for (const it of sl.placing.items) g.drawCircle(state.at.x + it.dx * k, state.at.y + it.dy * k, reachOf(it, grid())); }
+      if (sl.box) { g.lineStyle(1.5 * px, 0xf3d27a, 0.9); g.beginFill(0xf3d27a, 0.08); g.drawRect(Math.min(sl.box.a.x, sl.box.b.x), Math.min(sl.box.a.y, sl.box.b.y), Math.abs(sl.box.b.x - sl.box.a.x), Math.abs(sl.box.b.y - sl.box.a.y)); g.endFill(); }
+      floatPlace(busy || sl.box ? null : box, held, part);
+    };
+    // The things to do to what is picked that have no handle: beside it on the map, as icons. Put where the box is on
+    // the screen (under its left corner), and away when nothing is held or it is being dragged.
+    const floatBar = state.float = document.createElement("div");
+    floatBar.id = "an-map-float"; floatBar.className = "an-map-float"; floatBar.hidden = true; document.body.append(floatBar);
+    const floatActs = [["flip", "fa-solid fa-left-right", "Mirror (F)"], ["copy", "fa-solid fa-clone", "Copy (Ctrl+D)"], ["all", "fa-solid fa-object-group", "Pick all of its kind here (Ctrl+A)"], ["savePrefab", "fa-solid fa-bookmark", "Keep as a prefab"], ["remove", "fa-solid fa-trash", "Take off the map (Delete)"]];
+    for (const [act, icon, tip] of floatActs) { const b = document.createElement("button"); b.type = "button"; b.dataset.selectAct = act; b.title = tip; b.setAttribute("aria-label", tip); b.innerHTML = `<i class="${icon}"></i>`; b.addEventListener("click", () => (act === "remove" && !sl.picked.length && sl.part ? partAct("delete", sl.part) : selectAct(act))); floatBar.append(b); }
+    const floatPlace = (box, held, part) => {
+      const show = selectOn() && (held.length > 0 || !!part);
+      if (!show || (!box && held.length)) { floatBar.hidden = true; return; }
+      let wx, wy;
+      if (box) { wx = box.x0; wy = box.y1; }
+      else { const b = shapesBox(part.shapes ?? []); if (!b) { floatBar.hidden = true; return; } wx = b.x; wy = b.y + b.h; }
+      const t = canvas.stage.worldTransform, r = canvas.app.view.getBoundingClientRect();
+      // (A part held with none of its pieces picked — a road, a pond — has only Remove to offer.)
+      for (const b of floatBar.children) b.hidden = !held.length && b.dataset.selectAct !== "remove";
+      floatBar.hidden = false;
+      floatBar.style.left = `${Math.round(Math.min(window.innerWidth - 220, Math.max(8, t.a * wx + t.tx + r.left)))}px`;
+      floatBar.style.top = `${Math.round(Math.min(window.innerHeight - 48, Math.max(8, t.d * wy + t.ty + r.top + 10)))}px`;
     };
     // One edit to what is picked. `change(ds)`: what each becomes (null: taken off the map). `add(ds)`: more to lay with
     // them. `then`: what is picked afterwards — the same ones, none, or what was added.
@@ -267,6 +375,28 @@ export function createMapPainting(ctx) {
       try { const [made] = await canvas.scene.createEmbeddedDocuments("Region", [data]); if (made) { rememberDecorStep({ kind: "create", id: made.id, data }); selectRefresh(); sl.picked = sl.all.filter((it) => it.id === made.id).map((it) => ({ id: it.id, i: it.i })); } }
       catch (err) { console.warn("Animater | prefab", err); ui.notifications?.warn?.("The prefab could not be set down."); }
     };
+    // A part of the map, from the bar's list. Picked: its pieces are all picked up (a fence, a room's furniture), or,
+    // for a floor, a road or water, the part itself is held and outlined. Named: asked for, and saved as the region's
+    // name. Taken away: the whole region goes, and Ctrl+Z puts it back.
+    const partAct = (act, id) => {
+      const doc = decorRegion(id);
+      if (!doc) { state.bar?.refresh?.(); return; }
+      if (act === "pick") { selectRefresh(); sl.picked = sl.all.filter((it) => it.id === id).map((it) => ({ id: it.id, i: it.i })); sl.part = id; draw(); refreshStatus(); return; }
+      if (act === "delete") {
+        const data = doc.toObject();
+        void doc.delete().then(() => { rememberDecorStep({ kind: "floor", updates: [], creates: [], removes: [{ id, data }] }); if (sl.part === id) sl.part = null; selectRefresh(); draw(); refreshStatus(); })
+          .catch((err) => { console.warn("Animater | map parts", err); ui.notifications?.warn?.("That could not be taken off the map."); });
+        return;
+      }
+      if (act === "rename") {
+        void (async () => {
+          let name = null;
+          try { name = await foundry.applications.api.DialogV2.prompt({ window: { title: "Name this part (Animater)" }, content: `<div class="form-group"><label>Name</label><input type="text" name="name" value="${String(doc.name ?? "").replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`)}" autofocus></div>`, ok: { label: "Save", icon: "fa-solid fa-check", callback: (_event, button) => button.form?.elements?.name?.value ?? "" }, rejectClose: false }); } catch { name = null; }
+          const next = String(name ?? "").trim();
+          if (next && next !== doc.name) { await doc.update({ name: next.slice(0, 80) }); refreshStatus(); }
+        })();
+      }
+    };
     const selectAct = (act) => {
       if (act === "savePrefab") { void prefabSave(); return; }
       if (String(act).startsWith("placePrefab:") || String(act).startsWith("dropPrefab:")) {
@@ -294,6 +424,11 @@ export function createMapPainting(ctx) {
     };
     const selectDown = (p, e) => {
       if (sl.placing) { const prefab = sl.placing; sl.placing = null; void prefabSet(prefab, p, e.shiftKey).then(() => { draw(); refreshStatus(); }); return; }
+      // A handle of what is already picked comes before anything under it: the round one turns, the square one sizes.
+      const box = boxNow(), reach = (HANDLE * 1.7) / (canvas.stage?.scale?.x || 1), on = (q) => Math.hypot(p.x - q[0], p.y - q[1]) <= reach;
+      if (box && on(box.turn)) { sl.spin = { box, from: p, by: 0 }; return; }
+      if (box && on(box.size)) { sl.grow = { box, from: p, k: 1 }; return; }
+      sl.part = null;
       selectRefresh();
       const hit = pickAt(sl.all, p.x, p.y, grid()), has = (it) => sl.picked.some((q) => sameItem(q, it));
       if (!hit) { if (!e.shiftKey) sl.picked = []; sl.box = { a: p, b: p, add: e.shiftKey }; return; }
@@ -302,6 +437,15 @@ export function createMapPainting(ctx) {
       if (has(hit)) sl.drag = { from: p, dx: 0, dy: 0, moved: false };
     };
     const selectMove = (p, e) => {
+      // Turned by its round handle, a step at a time (Alt: freely); sized by its square one. The ghost shows it going.
+      if (sl.spin || sl.grow) {
+        const b = (sl.spin ?? sl.grow).box;
+        if (sl.spin) sl.spin.by = turnTo(b, sl.spin.from, p, { free: e?.altKey === true }); else sl.grow.k = sizeTo(b, sl.grow.from, p);
+        selectGhost(true);
+        if (sl.ghost) { sl.ghost.pivot.set(b.cx, b.cy); sl.ghost.position.set(b.cx, b.cy); sl.ghost.rotation = sl.spin?.by ?? 0; sl.ghost.scale.set(sl.grow?.k ?? 1); }
+        return;
+      }
+      if (!sl.drag && !sl.box) { const box = boxNow(), reach = (HANDLE * 1.7) / (canvas.stage?.scale?.x || 1), on = (q) => Math.hypot(p.x - q[0], p.y - q[1]) <= reach; sl.over = box && on(box.turn) ? "turn" : box && on(box.size) ? "size" : null; }
       if (sl.drag) {
         let dx = p.x - sl.drag.from.x, dy = p.y - sl.drag.from.y;
         if (Math.hypot(dx, dy) > 3) sl.drag.moved = true;
@@ -314,6 +458,8 @@ export function createMapPainting(ctx) {
       else sl.hover = pickAt(sl.all, p.x, p.y, grid());
     };
     const selectUp = () => {
+      if (sl.spin) { const by = sl.spin.by; sl.spin = null; selectGhost(false); if (by) selectEdit((ds) => turnedBy(ds, by)); return; }
+      if (sl.grow) { const k = sl.grow.k; sl.grow = null; selectGhost(false); if (Math.abs(k - 1) > 0.01) selectEdit((ds) => scaledAbout(ds, k)); return; }
       if (sl.drag) { const { dx, dy, moved } = sl.drag; sl.drag = null; selectGhost(false); if (moved) selectEdit((ds) => ds.map((d) => movedBy(d, dx, dy))); return; }
       if (!sl.box) return;
       const box = sl.box, got = pickBox(sl.all, box.a, box.b).map((it) => ({ id: it.id, i: it.i })); sl.box = null;
@@ -401,6 +547,11 @@ export function createMapPainting(ctx) {
       const parts = [...floorsText, ...(painted ? [`${painted} decorations`] : [])];
       // (Hovering the map on Floors: what is under the pointer, and what a dab there would do.)
       const pathText = () => brushChoices().pathShape === "edit" ? (pt.edit ? `Editing the ${pathKind(pt.edit.kind).label.toLowerCase()}: ${pt.points.length} points · Enter lays it again · Esc leaves it` : "Click a path to take hold of its points") : (pt.points.length ? `${pt.points.length} point${pt.points.length === 1 ? "" : "s"} · Enter or double-click lays the ${pathKind(brushChoices().pathKind).label.toLowerCase()}` : "Click along the map to draw a path");
+      // (What is picked is looked up again whenever the map may have changed under it — an undo, another GM — so its
+      // box is the size it is now and not the size it was.)
+      if (selectOn() && !sl.drag && !sl.spin && !sl.grow) { selectRefresh(); selectDraw(); }
+      // (The bar's list of parts is drawn afresh when the parts have changed: laid, named, taken away, by anyone.)
+      if (selectOn()) { const key = partsList().map((p) => `${p.id}:${p.name}:${p.count}`).join("|"); if (key !== sl.partsKey) { sl.partsKey = key; state.bar?.refresh?.(); } }
       const selectText = () => { if (sl.placing) return `Click where "${sl.placing.name}" goes · Shift: on the grid · Esc: not now`; const held = selectedNow(); if (!held.length) return sl.all.length ? "Click a decoration to pick it up" : "Nothing laid by hand here yet"; const kinds = [...new Set(held.map((it) => DECOR_KINDS[it.d.kind].label))]; return `${held.length} picked: ${kinds.slice(0, 3).join(", ")}${kinds.length > 3 ? "…" : ""} · drag to move`; };
       const text = selectOn() ? selectText() : pathsOn() ? pathText() : heightsOn() ? (hz.busy || (modelOn() && brushChoices().heightMode === "raise" && sam.status) || hz.hoverText || heightsSummary()) : floorsOn() && !fl.map ? (fl.why || "Reading the map…") : floorsOn() && modelOn() && sam.status ? sam.status : floorsOn() && fl.hoverText ? fl.hoverText : parts.length ? `On this level: ${parts.join(" · ")}` : "Nothing painted yet";
       state.bar?.setStatus(text, { undo: decorSteps.undo.length > 0, redo: decorSteps.redo.length > 0 });
@@ -883,7 +1034,7 @@ export function createMapPainting(ctx) {
         change = {
           door: 1, ds: 0, sight: NORMAL, sound: NORMAL,
           [`flags.${ID}.door`]: DOOR_KINDS[choice.doorKind] ? choice.doorKind : doorFor(own.material),
-          [`flags.${ID}.hinge`]: choice.doorFlip ? "far" : "near", [`flags.${ID}.swing`]: swing,
+          [`flags.${ID}.hinge`]: choice.doorFlip ? "far" : "near", [`flags.${ID}.swing`]: swing, [`flags.${ID}.doorCover`]: choice.doorCover ? String(choice.doorCover).slice(0, 400) : null,
           ...forget("window", "windowOpen", "windowSlats", "windowWalk"),
         };
       }
@@ -918,7 +1069,7 @@ export function createMapPainting(ctx) {
       const a = at(cut.from), b = at(cut.to);
       const keep = { ...own };
       const swing = choice.swing === "out" ? "out" : "in";
-      const door = (one, two, hinge, pair = false) => ({ c: [...one, ...two], door: 1, ds: 0, flags: { [ID]: { ...keep, door: kind, hinge, swing, ...(pair ? { pair: true } : {}) } } });
+      const door = (one, two, hinge, pair = false) => ({ c: [...one, ...two], door: 1, ds: 0, flags: { [ID]: { ...keep, door: kind, hinge, swing, ...(pair ? { pair: true } : {}), ...(choice.doorCover ? { doorCover: String(choice.doorCover).slice(0, 400) } : {}) } } });
       // A pair is ONE doorway with one door in it, marked as a pair: one Foundry door, so one control and one thing
       // to open, and the painting hangs two leaves in it, each at its own end, meeting in the middle. Cut as two
       // Foundry doors it had two controls side by side and each half opened on its own, which is not a pair of hall
@@ -1099,6 +1250,8 @@ export function createMapPainting(ctx) {
         chimney: choice.roofChimney === "brick" || choice.roofChimney === "stone" ? choice.roofChimney : null,
         dressed: choice.roofDressed === true,
         tint: choice.roofTint || null,
+        // A picture of roofing laid on it in place of the painted courses (roof-cover.mjs), where the GM keeps it.
+        ...(choice.roofCover ? { cover: String(choice.roofCover).slice(0, 400) } : {}),
         // What this building hangs out is its own, kept with it like its chimney and its colour — not a live
         // setting on the bar, which was both the same for every building and forgotten on reload.
         hangs: choice.dressingKind || "garlands",
@@ -1304,7 +1457,7 @@ export function createMapPainting(ctx) {
         if (Math.hypot(b[0] - a[0], b[1] - a[1]) < least) continue;
         // The colour it is painted in is kept on the wall, like its years and its thickness: the walls already up
         // keep the colour they were drawn in when the GM picks another.
-        docs.push({ c: [Math.round(a[0]), Math.round(a[1]), Math.round(b[0]), Math.round(b[1])], flags: { [ID]: { material: choice.wallMaterial, age: choice.wallAge ?? 0, thick: choice.wallWidth ?? WALL_THICK, ...(choice.wallTint ? { tint: choice.wallTint } : {}) } } });
+        docs.push({ c: [Math.round(a[0]), Math.round(a[1]), Math.round(b[0]), Math.round(b[1])], flags: { [ID]: { material: choice.wallMaterial, age: choice.wallAge ?? 0, thick: choice.wallWidth ?? WALL_THICK, ...(choice.wallTint ? { tint: choice.wallTint } : {}), ...(choice.wallCover ? { cover: String(choice.wallCover).slice(0, 400) } : {}) } } });
       }
       if (!docs.length) return;
       try {
@@ -1376,7 +1529,7 @@ export function createMapPainting(ctx) {
       if (!state.down && e.target !== view) { hideHover(); if (state.at) { state.at = null; draw(); } return; } const p = at(e); state.at = p; if (!state.down) state.erasing = e.shiftKey; draw();
       if (hz.drag) { e.stopImmediatePropagation(); hz.drag.ramp.b = p; refreshHeights(); return; }
       if (hz.open) { e.stopImmediatePropagation(); const last = hz.open.circles.at(-1); if (Math.hypot(p.x - last.x, p.y - last.y) >= hz.open.r * 0.5) { hz.open.circles.push({ x: Math.round(p.x), y: Math.round(p.y), r: Math.round(hz.open.r) }); refreshHeights(); } return; }
-      if (selectOn()) { hideHover(); if (sl.drag || sl.box) e.stopImmediatePropagation(); selectMove(p, e); draw(); return; }
+      if (selectOn()) { hideHover(); if (sl.drag || sl.box || sl.spin || sl.grow) e.stopImmediatePropagation(); selectMove(p, e); draw(); return; }
       if (pathsOn() && pt.box) { e.stopImmediatePropagation(); pt.box.b = pathSnap(p, e.shiftKey); draw(); return; }
       if (pathsOn() && pt.grab != null) { e.stopImmediatePropagation(); pt.points[pt.grab] = pathSnap(p, e.shiftKey); draw(); return; }
       if (pathsOn()) { hideHover(); if (pt.dragging) { e.stopImmediatePropagation(); pathDrag(p, e.shiftKey); draw(); } return; }
@@ -1387,7 +1540,7 @@ export function createMapPainting(ctx) {
       if (fl.stroke) { const step = sizeNow() * grid() / 6, dist = Math.hypot(p.x - state.last.x, p.y - state.last.y); if (dist < step) return; for (let s = step; s <= dist; s += step) floorDab({ x: state.last.x + ((p.x - state.last.x) * s) / dist, y: state.last.y + ((p.y - state.last.y) * s) / dist }); state.last = p; return; }
       if (Math.hypot(p.x - state.last.x, p.y - state.last.y) > sizeNow() * grid() * 0.35) { state.last = p; dab(p, e.shiftKey); }
     };
-    const up = (e) => { if (sl.drag || sl.box) { e.stopImmediatePropagation(); selectUp(); draw(); refreshStatus(); return; }
+    const up = (e) => { if (sl.drag || sl.box || sl.spin || sl.grow) { e.stopImmediatePropagation(); selectUp(); draw(); refreshStatus(); return; }
       if (pt.box) { e.stopImmediatePropagation(); void pathBoxFinish().then(refreshStatus); return; }
       if (pt.grab != null) { e.stopImmediatePropagation(); pt.grab = null; draw(); refreshStatus(); return; }
       if (pt.dragging) { e.stopImmediatePropagation(); pt.dragging = false; draw(); refreshStatus(); return; }
@@ -1407,9 +1560,11 @@ export function createMapPainting(ctx) {
       const z = e.key === "z" || e.key === "Z", undo = (e.ctrlKey || e.metaKey) && z && !e.shiftKey, redo = (e.ctrlKey || e.metaKey) && ((z && e.shiftKey) || e.key === "y" || e.key === "Y");
       if (undo || redo) { e.preventDefault(); e.stopImmediatePropagation(); if (!state.down) void (undo ? undoDecorStep() : redoDecorStep()).then(refreshStatus); return; }
       // 1, 2 and 3 switch the tabs (kept from Foundry's macro bar while the brush is out).
-      if (["1", "2", "3", "4", "5", "6"].includes(e.key) && !(e.ctrlKey || e.metaKey || e.altKey)) { e.preventDefault(); e.stopImmediatePropagation(); state.bar?.setTab({ 1: "floors", 2: "decor", 3: "heights", 4: "walls", 5: "paths", 6: "select" }[e.key]); return; }
+      if (["1", "2", "3", "4", "5", "6"].includes(e.key) && !(e.ctrlKey || e.metaKey || e.altKey)) { e.preventDefault(); e.stopImmediatePropagation(); state.bar?.setTab({ 1: "select", 2: "floors", 3: "paths", 4: "walls", 5: "decor", 6: "heights" }[e.key]); return; }
       // Something picked up: the arrows nudge it (Shift: a whole square), Delete takes it off the map, Ctrl+D copies it,
       // Ctrl+A picks all of its kind in its region, and Esc lets go of it (and only then, with nothing held, puts the brush away).
+      // A part held from the list and nothing of it picked up (a road, a floor): Delete takes the part away, Esc lets go.
+      if (selectOn() && sl.part && !sl.picked.length && (e.key === "Delete" || e.key === "Backspace" || e.key === "Escape")) { e.preventDefault(); e.stopImmediatePropagation(); if (e.key === "Escape") { sl.part = null; draw(); refreshStatus(); } else partAct("delete", sl.part); return; }
       if (selectOn() && sl.placing && e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); sl.placing = null; draw(); refreshStatus(); return; }
       if (selectOn() && sl.picked.length) {
         const step = (e.shiftKey ? 1 : 0.1) * grid(), nudge = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key], ctrl = e.ctrlKey || e.metaKey;
@@ -1425,6 +1580,8 @@ export function createMapPainting(ctx) {
     // The wheel still zooms the map; Ctrl+wheel sets the brush's size and Shift+wheel how thick it lays them (both kept from
     // Foundry, whose Ctrl or Shift+wheel would turn the selected tokens).
     const wheel = (e) => {
+      // (The map zooms under what is picked: its handles and the actions beside it are put back where it now is.)
+      if (selectOn() && sl.picked.length) setTimeout(() => { if (decorBrushing === state) draw(); }, 80);
       // On Heights (Raise), the plain wheel over a raised part raises or lowers it; elsewhere it zooms as ever.
       if (e.target === view && heightsOn() && brushChoices().heightMode === "raise" && !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey)) { const part = heightsHere().field.partAt(at(e)); if (part) { e.preventDefault(); e.stopImmediatePropagation(); wheelHeight(part, (e.deltaY || e.deltaX) < 0); return; } }
       if (e.target !== view || !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey)) return;
@@ -1454,7 +1611,7 @@ export function createMapPainting(ctx) {
     // It is put away with Esc, or with the cross on the bar (Roi: "it only needs to be closed with Esc").
     const menu = (e) => { state.rightAt = null; e.preventDefault(); };
     window.addEventListener("pointerdown", down, true); window.addEventListener("pointermove", move, true); window.addEventListener("pointerup", up, true); window.addEventListener("keydown", key, true); view.addEventListener("contextmenu", menu, true); window.addEventListener("wheel", wheel, { capture: true, passive: false });
-    state.stop = () => { flushWheel(); window.removeEventListener("pointerdown", down, true); window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", key, true); view.removeEventListener("contextmenu", menu, true); window.removeEventListener("wheel", wheel, { capture: true }); for (const [hook, id] of regionHooks) Hooks.off(hook, id); try { ring.destroy(); ghost.destroy({ children: true }); fl.overlay.destroy(); hz.overlay.destroy(); hz.labels.destroy({ children: true }); pt.overlay.destroy(); sl.overlay.destroy(); sl.ghost?.destroy({ children: true }); fl.preview?.destroy({ texture: true, baseTexture: true }); clearTimeout(hoverTimer); clearTimeout(fl.hoverAsk); fl.hover?.destroy({ texture: true, baseTexture: true }); top.parent?.removeChild(top); top.destroy(); if (sam.ready) void sam.ready.seg.drop(sam.ready.view); } catch { /* gone */ } state.bar?.close(); };
+    state.stop = () => { flushWheel(); window.removeEventListener("pointerdown", down, true); window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", key, true); view.removeEventListener("contextmenu", menu, true); window.removeEventListener("wheel", wheel, { capture: true }); for (const [hook, id] of regionHooks) Hooks.off(hook, id); try { ring.destroy(); ghost.destroy({ children: true }); fl.overlay.destroy(); hz.overlay.destroy(); hz.labels.destroy({ children: true }); pt.overlay.destroy(); sl.overlay.destroy(); sl.ghost?.destroy({ children: true }); state.float?.remove(); fl.preview?.destroy({ texture: true, baseTexture: true }); clearTimeout(hoverTimer); clearTimeout(fl.hoverAsk); fl.hover?.destroy({ texture: true, baseTexture: true }); top.parent?.removeChild(top); top.destroy(); if (sam.ready) void sam.ready.seg.drop(sam.ready.view); } catch { /* gone */ } state.bar?.close(); };
     if (floorsOn()) void readMap().then(refreshStatus);
     if (heightsOn()) { void readMap(); refreshHeights(); }
     refreshStatus();

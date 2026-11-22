@@ -254,6 +254,8 @@ import { REGION_LOOK_FLAG, regionLookWants, syncRegionLooks, natureLook } from "
 import { lightAround, litKey, litPreset, lightDance } from "./engines/playback/surrounding-light.mjs";
 import { WINDOW_PATTERN, patternScaleOf, shaftOf, GLAZED, skyWindowOf, duskOf, sunsetTint, eraseRooms, openRooms, wallShadowQuads, wallShadowReach, shadeAcross, createWallShadows, wallSpan, windowShafts, createWindowShafts, windowGlows, createWindowGlow, windowFlashes, windowsFacing, keepToSight } from "./engines/motion/wall-shadows.mjs";
 import { tileSunlight, tileHeight, tileLeaves, solidShare, leafShare, canopyFall, directSun, createCanopyLight, createTreeSway } from "./engines/motion/canopy-light.mjs";
+import { tileProps, PROP_CHOICE } from "./engines/motion/tile-props.mjs";
+import { greenShare, reliefPixels, underConditions } from "./engines/motion/decor-from-art.mjs";
 import { TREE_KINDS, createTreePatterns, treeKindOf } from "./engines/motion/tree-kinds.mjs";
 import { STRIKE_LIGHT_SQUARES, openingStrike, strikePlace, strikeAngle as strikeFrom, boltDue, createLightningBolts } from "./engines/motion/lightning-bolt.mjs";
 import { ARRIVALS, ARRIVAL_MS, arrivalHere, arrivalAt, arrivalShake, arrivalFlash, arrivalWords } from "./engines/motion/scene-arrival.mjs";
@@ -2464,6 +2466,8 @@ const sunlitTiles = () => {
     try {
       const d = t.document, mesh = t.mesh;
       if (d.hidden || !mesh?.texture || mesh.destroyed) continue;
+      // (One told to stand as a thing (tile-props.mjs) is the decorations' to shade, not the canopy's.)
+      if (d.flags?.[ID]?.sunlight === PROP_CHOICE) continue;
       // Its level: the first it is placed on, else the one shown.
       const placed = [...(d.levels ?? [])][0], own = placed ? canvas.scene?.levels?.get?.(placed) : null;
       const level = (own ?? canvas.level)?.elevation ?? {}, base = Number(level.base ?? level.bottom) || 0;
@@ -2733,6 +2737,86 @@ const decorUnderCover = (areas) => {
     });
   } catch { return false; }
 };
+// The tiles that stand on the map as things (engines/motion/tile-props.mjs): a barrel, a cart or a bush laid down as a tile —
+// with an asset pack's own placing tool, say — given the decorations' shadows, snow and rain. Each tile's own say (Tile
+// configuration → Animater → Sunlight → Object) always counts; the rest only where the GM has turned it on for the scene
+// (Scene configuration → Animater), since a map built of tiles for floors and walls wants none of it.
+const tilePropsHere = () => canvas?.scene?.flags?.[ID]?.tileProps === true;
+// A tile that grows — a bush, a hedge: mostly leaf-green — in the season's colours (decor-from-art.mjs): its picture read
+// once a season and kept. Only a few new ones a pass (the rest a moment later), never a big one, and one whose picture
+// cannot be read (another site's) keeps its summer look.
+const tileSeasonArt = new Map(), TILE_SEASON_MOST = 1024, TILE_SEASON_A_PASS = 4;
+let tileSeasonLeft = 0;
+const tileInSeason = (texture, season) => {
+  if (!season || season === "summer") return null;
+  const base = texture?.baseTexture; if (!base) return null;
+  const key = `${base.uid ?? base.cacheId}|${season}`;
+  if (tileSeasonArt.has(key)) { const had = tileSeasonArt.get(key); if (!had || !had.baseTexture?.destroyed) return had; }
+  if (tileSeasonLeft <= 0) { tilePropsSoon(); return null; }
+  let art = null;
+  try {
+    const source = base.resource?.source, w = Math.round(base.realWidth ?? base.width ?? 0), h = Math.round(base.realHeight ?? base.height ?? 0);
+    if (source && !(source instanceof HTMLVideoElement) && w > 0 && h > 0 && Math.max(w, h) <= TILE_SEASON_MOST) {
+      tileSeasonLeft--;
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      const ctx = c.getContext("2d", { willReadFrequently: true }); ctx.drawImage(source, 0, 0, w, h);
+      const px = ctx.getImageData(0, 0, w, h);
+      if (greenShare(px.data, w, h) > 0.3) { ctx.putImageData(new ImageData(underConditions(px.data, w, h, { season }), w, h), 0, 0); art = PIXI.Texture.from(c); }
+    }
+  } catch { /* another site's picture: unreadable */ }
+  tileSeasonArt.set(key, art);
+  return art;
+};
+Hooks.on("canvasTearDown", () => { for (const t of tileSeasonArt.values()) { try { t?.destroy(true); } catch { /* gone */ } } tileSeasonArt.clear(); });
+// A tile's relief (decor-from-art.mjs reliefPixels): how high each part of its picture stands and how much it shines, read
+// from the picture once and kept, so the light can fall across it — its iron hoops glint toward the sun and toward a torch
+// carried past. The same few a pass, the same size limit, and none for a picture that cannot be read.
+const tileReliefs = new Map();
+const tileRelief = (texture) => {
+  const base = texture?.baseTexture; if (!base) return null;
+  const key = `${base.uid ?? base.cacheId}`;
+  if (tileReliefs.has(key)) { const had = tileReliefs.get(key); if (!had || !had.baseTexture?.destroyed) return had; }
+  if (tileSeasonLeft <= 0) { tilePropsSoon(); return null; }
+  let maps = null;
+  try {
+    const source = base.resource?.source, w = Math.round(base.realWidth ?? base.width ?? 0), h = Math.round(base.realHeight ?? base.height ?? 0);
+    if (source && !(source instanceof HTMLVideoElement) && w > 0 && h > 0 && Math.max(w, h) <= TILE_SEASON_MOST) {
+      tileSeasonLeft--;
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      const ctx = c.getContext("2d", { willReadFrequently: true }); ctx.drawImage(source, 0, 0, w, h);
+      ctx.putImageData(new ImageData(reliefPixels(ctx.getImageData(0, 0, w, h).data, w, h), w, h), 0, 0);
+      maps = PIXI.Texture.from(c);
+    }
+  } catch { /* another site's picture: unreadable, it is drawn as it is */ }
+  tileReliefs.set(key, maps);
+  return maps;
+};
+Hooks.on("canvasTearDown", () => { for (const t of tileReliefs.values()) { try { t?.destroy(true); } catch { /* gone */ } } tileReliefs.clear(); });
+// How much of the light's shading across a tile's form is laid on, beside its glints (Scene configuration → Animater →
+// Object relief): none unless the GM asks, since an asset pack's pictures have their light painted in. (Roi, of it laid
+// on by default: "it pops up the textures... makes everything bulgy"; of none at all: "i dont see lighting reflected on
+// metal parts". So the glints are always there and the shading is the GM's to add.)
+const tileReliefHere = () => Math.max(0, Math.min(1, Number(canvas?.scene?.flags?.[ID]?.tileRelief) || 0));
+const syncTileProps = () => {
+  try {
+    if (!canvas?.ready) return;
+    const on = tilePropsHere(), tiles = [];
+    for (const t of canvas.tiles?.placeables ?? []) {
+      const d = t.document, mesh = t.mesh, choice = d?.flags?.[ID]?.sunlight ?? "";
+      if (!mesh?.texture || mesh.destroyed || t.visible === false || (!on && choice !== PROP_CHOICE)) continue;
+      const placed = [...(d.levels ?? [])][0], own = placed ? canvas.scene?.levels?.get?.(placed) : null, level = (own ?? canvas.level)?.elevation ?? {}, base = Number(level.base ?? level.bottom) || 0;
+      tiles.push({ id: d.id, src: d.texture?.src, choice, own: d.flags?.[ID]?.sunHeight ?? null, hidden: d.hidden, overhead: (Number(d.elevation) || 0) > base, solid: tileSolid(mesh.texture).solid, texture: mesh.texture, x: mesh.x, y: mesh.y, width: mesh.width * (mesh.scale?.x < 0 ? -1 : 1), height: mesh.height * (mesh.scale?.y < 0 ? -1 : 1), rotation: (mesh.rotation * 180) / Math.PI, alpha: Number(d.alpha ?? 1) || 1, indoors: underCeiling({ x: mesh.x, y: mesh.y }) });
+    }
+    let wet = 0; try { wet = wetOn() && groundOf().now.wet > DECOR_WET ? 1 : 0; } catch { /* dry */ }
+    const season = undergroundScene() ? null : seasonNow(); tileSeasonLeft = TILE_SEASON_A_PASS;
+    decorations.props(shadowsOffHere() ? [] : tileProps(tiles, { on, grid: canvas.grid?.size ?? 100, per: Number(canvas.grid?.distance) || 5 }).map((p) => { const art = tileInSeason(p.texture, season), maps = tileRelief(p.texture); return art || maps ? { ...p, ...(art ? { art } : {}), ...(maps ? { maps } : {}) } : p; }), { wet, shade: tileReliefHere() });
+  } catch (err) { runtime?.trace?.("decorations", `tile props: ${err?.message ?? err}`); }
+};
+// (A moment after a tile changes: its picture is drawn a little after its document says so.)
+let tilePropsTimer = null;
+const tilePropsSoon = () => { clearTimeout(tilePropsTimer); tilePropsTimer = setTimeout(() => { tilePropsTimer = null; syncTileProps(); lightDecorations(); }, 300); };
+for (const hook of ["createTile", "updateTile", "deleteTile"]) Hooks.on(hook, (doc) => { if (doc?.parent === canvas?.scene) tilePropsSoon(); });
+Hooks.on("updateScene", (scene, change) => { if (scene?.id === canvas?.scene?.id && change?.flags?.[ID] && ("tileProps" in change.flags[ID] || "tileRelief" in change.flags[ID] || "noShadows" in change.flags[ID])) tilePropsSoon(); });
 let mapPainting = null;
 const syncDecorations = () => {
   // What a stroke has painted but not yet saved, while it paints.
@@ -2757,6 +2841,7 @@ const syncDecorations = () => {
     list.push({ id: NEW_DECOR_REGION, settings, areas: decorBrushing.circles.map(([x, y, r]) => decorCircle(x, y, r)), look: decorLook(settings), live: true });
   }
   decorations.sync(list);
+  syncTileProps();
   // The lamps, braziers and candles among them light the map: real light sources, the same on every screen.
   // (Not while a stroke paints: every light that changes has Foundry redo its lighting and every creature's vision, and a
   // stroke asks ten times a second. The lamps a stroke lays come on when it ends, with everything else it settles.)
@@ -15191,6 +15276,14 @@ Hooks.on("renderSceneConfig", (app, html) => {
   noShadows.className = "form-group";
   noShadows.innerHTML = `<label>No shadows on this map</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.noShadows"${app.document?.flags?.[ID]?.noShadows === true ? " checked" : ""}></div><p class="hint">The sun and moon still light this map, but walls, roofs, trees, creatures and animals cast no shadow from them. For a map that paints its own shadows. "No sun" above takes the light away as well. Shadows from lamps and a raised floor's own stay.</p>`;
   tab.append(noShadows);
+  const tileProps = document.createElement("div");
+  tileProps.className = "form-group";
+  tileProps.innerHTML = `<label>Tiles stand as objects</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.tileProps"${app.document?.flags?.[ID]?.tileProps === true ? " checked" : ""}></div><p class="hint">For a map dressed with tiles (barrels, carts, bushes from an asset pack, placed with any tool): each one that is a thing gets a shadow from the sun or moon that turns with the hour, one from every torch near it, the dark at its foot, and the ground's snow and rain. Floors, rugs, stains, roofs and trees are left alone. One tile can be set either way in its own configuration (Animater → Sunlight). If the tiles already carry a drawn drop shadow from their placing tool, turn that off there, or there will be two.</p>`;
+  tab.append(tileProps);
+  const tileRelief = document.createElement("div");
+  tileRelief.className = "form-group";
+  tileRelief.innerHTML = `<label>Object relief</label><div class="form-fields"><input type="range" min="0" max="1" step="0.05" name="flags.${ID}.tileRelief" value="${Math.max(0, Math.min(1, Number(app.document?.flags?.[ID]?.tileRelief) || 0))}"></div><p class="hint">How strongly the sun and torches shade the shape of the tiles that stand as objects (their sides toward the light paler, away from it darker). At nothing, the default, a tile is drawn as it was painted and only its metal glints toward the light. Art with its own light painted in looks swollen with much of this.</p>`;
+  tab.append(tileRelief);
   // Whether a room the walls close in is under a roof. Off by default: a walled courtyard is closed in and open to
   // the sky, so this has to be the GM's word about this particular map.
   const roofed = document.createElement("div");
@@ -15444,15 +15537,15 @@ Hooks.on("renderTileConfig", (app, html) => {
   const root = html instanceof HTMLElement ? html : html?.[0];
   if (!root || root.querySelector(`[name="flags.${ID}.sunlight"]`)) return;
   const own = (app.document ?? app.object)?.flags?.[ID]?.sunlight;
-  const v = ["tree", "roof", "none"].includes(own) ? own : "";
+  const v = ["tree", "roof", PROP_CHOICE, "none"].includes(own) ? own : "";
   const set = document.createElement("fieldset");
   const flags = (app.document ?? app.object)?.flags?.[ID] ?? {}, height = flags.sunHeight, units = canvas?.scene?.grid?.units || "ft";
   const leaves = ["sparse", "medium", "dense"].includes(flags.sunLeaves) ? flags.sunLeaves : "", treeKind = TREE_KINDS.some(([k]) => k && k === flags.sunTree) ? flags.sunTree : "";
-  set.innerHTML = `<legend>Animater</legend><div class="form-group"><label>Sunlight</label><div class="form-fields"><select name="flags.${ID}.sunlight">${[["", "Auto (by its name and picture)"], ["tree", "Tree: dappled shade"], ["roof", "Roof: a building's shadow"], ["none", "None"]].map(([o, l]) => `<option value="${o}"${o === v ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>
+  set.innerHTML = `<legend>Animater</legend><div class="form-group"><label>Sunlight</label><div class="form-fields"><select name="flags.${ID}.sunlight">${[["", "Auto (by its name and picture)"], ["tree", "Tree: dappled shade"], ["roof", "Roof: a building's shadow"], [PROP_CHOICE, "Object: its own shadow, snow and rain"], ["none", "None"]].map(([o, l]) => `<option value="${o}"${o === v ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>
     <div class="form-group"><label>Leaves</label><div class="form-fields"><select name="flags.${ID}.sunLeaves">${[["", "Auto (by its name and picture)"], ["sparse", "Sparse: light shade, many flecks"], ["medium", "Medium"], ["dense", "Dense: deep shade, few flecks"]].map(([o, l]) => `<option value="${o}"${o === leaves ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>
     <div class="form-group"><label>Tree type</label><div class="form-fields"><select name="flags.${ID}.sunTree">${TREE_KINDS.map(([o, l]) => `<option value="${o}"${o === treeKind ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>
     <div class="form-group"><label>Height (${units})</label><div class="form-fields"><input type="number" min="0" step="any" name="flags.${ID}.sunHeight" value="${Number(height) > 0 ? height : ""}" placeholder="Auto"></div></div>
-    <p class="hint">How the sun passes this overhead tile. A tree's shade falls on the ground away from the sun, dappled with moving sun flecks; a roof casts a building's solid shadow outside and lets the sun in only through its holes. Auto: a tile named as a tree (tree, oak, pine, canopy, foliage…) is a tree; one named as a building (roof, house, tower, tent…) or drawn solid is a roof; anything else (fog, birds) lets the sun be; a tile that restricts light or weather is a roof. Height: how tall it stands, so how far its shade reaches. Auto: a roof as tall as its level's storey, a tree by its name (an oak or pine 30 ft, a bush or hedge 6 ft, other trees 25 ft). Leaves (a tree's): how thick its crown is. Auto: by its name (a birch, willow or palm sparse; an oak, pine or fir dense), else by the gaps in its picture. Tree type: the pattern of its shade, a broadleaf's clumps, a pine's needles, a palm's fronds, a birch's lace, a bare tree's branches or a willow's strands. Auto: by its name, else a broadleaf.</p>`;
+    <p class="hint">How the sun passes this overhead tile. A tree's shade falls on the ground away from the sun, dappled with moving sun flecks; a roof casts a building's solid shadow outside and lets the sun in only through its holes. Auto: a tile named as a tree (tree, oak, pine, canopy, foliage…) is a tree; one named as a building (roof, house, tower, tent…) or drawn solid is a roof; anything else (fog, birds) lets the sun be; a tile that restricts light or weather is a roof. An object (a barrel, a cart, a statue laid as a tile) stands on the ground: its shadow turns with the sun and with any torch near it, and snow and rain lie on it; Auto does this only where the scene has "Tiles stand as objects" on. Height: how tall it stands, so how far its shade reaches. Auto: a roof as tall as its level's storey, a tree by its name (an oak or pine 30 ft, a bush or hedge 6 ft, other trees 25 ft). Leaves (a tree's): how thick its crown is. Auto: by its name (a birch, willow or palm sparse; an oak, pine or fir dense), else by the gaps in its picture. Tree type: the pattern of its shade, a broadleaf's clumps, a pine's needles, a palm's fronds, a birch's lace, a bare tree's branches or a willow's strands. Auto: by its name, else a broadleaf.</p>`;
   const tab = root.querySelector('.tab[data-tab="overhead"]') ?? root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector(".tab.active") ?? root.querySelector("form, .window-content") ?? root;
   tab.append(set);
 });
@@ -18285,7 +18378,7 @@ Hooks.on("canvasTearDown", () => { bleedSeen.clear(); bleedClear(); });
 // The Map painting bar, made last because it leans on most of this file: the brush itself is shell/map-painting.mjs and
 // everything it needs from here is the list below, so what map making depends on is a list you can read.
 mapPainting = createMapPainting({
-  floorLayer, regionsHere, regionAreas, syncDecorations, decorations, decorLook,
+  floorLayer, regionsHere, regionAreas, syncDecorations, decorations, decorLook, openMapBuilder: () => mapBuilder.open(),
   heightUnits, heightStep, heightsSceneOn, heightsOf, cliffsTopDown, floorTextures, openFloorRegionsTool,
   paintWallList, wallsOutsideAir, insideWall: buildings.insideWall, leadGM, lifeAfterPaint, hotSetting, bothSettingsOn,
   pointInPolygon, sunLit,

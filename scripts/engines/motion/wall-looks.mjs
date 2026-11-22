@@ -219,12 +219,15 @@ export function wallRuns(walls, scene = {}) {
         // The colour it was painted in belongs to the wall the same way its years do: chosen on the bar when it
         // was laid, and the run takes its first wall's.
         const tint = typeof first.animater?.tint === 'string' && /^#[0-9a-f]{3,8}$/i.test(first.animater.tint) ? first.animater.tint : null;
-        const stamp = `${Math.round(age * 100)}:${Math.round(thick * 100)}${tint ? `:${tint}` : ''}`;
+        // A picture of a strip of wall it is covered with in place of our own painted stones (roof-cover.mjs): the
+        // wall's own, as its colour is, and the run takes its first wall's.
+        const cover = typeof first.animater?.cover === 'string' && first.animater.cover.length > 0 && first.animater.cover.length <= 400 ? first.animater.cover : null;
+        const stamp = `${Math.round(age * 100)}:${Math.round(thick * 100)}${tint ? `:${tint}` : ''}${cover ? `:~${cover}` : ''}`;
         // `id` is the run itself, whatever it is wearing: the same stones, however the year or the sun has changed
         // how they are painted. `key` is this particular picture of them. Telling the two apart is what lets a run
         // being painted again keep the picture it has until the new one is ready.
         const id = `${material}:${ids.slice().sort().join('|')}`;
-        runs.push({ id, key: `${id}:${shapeOf(points)}:${join.map(Number).join('')}:${stamp}`, points, material, walls: ids, closed: !start, join, age, thick: thick || undefined, tint });
+        runs.push({ id, key: `${id}:${shapeOf(points)}:${join.map(Number).join('')}:${stamp}`, points, material, walls: ids, closed: !start, join, age, thick: thick || undefined, tint, cover });
       }
     }
   }
@@ -276,12 +279,14 @@ export function wallDoors(walls) {
     // thickness it stood proud of a thin wall on both faces, a slab laid over the stone rather than set into it.
     const thick = Number(w.animater?.thick) > 0 ? Number(w.animater.thick) : null;
     const open = Number(w.ds) === 1;
+    // A picture of a door leaf it is hung with in place of our painted one (roof-cover.mjs).
+    const cover = typeof w.animater?.doorCover === 'string' && w.animater.doorCover.length > 0 && w.animater.doorCover.length <= 400 ? w.animater.doorCover : null;
     // One leaf: hung at `hinge`, reaching to `far`. `flip` is only whether it hangs at the wall's far end, which is
     // what decides which way round it turns.
     const leaf = (hinge, far, flip, part = '') => ({
       id: part ? `${w.id}${part}` : w.id,
-      key: `${w.id}${part}:${w.animater?.door ?? ''}:${w.animater?.material}:${thick ?? ''}:${Math.round(x1)},${Math.round(y1)},${Math.round(x2)},${Math.round(y2)}:${flip ? 'f' : 'n'}${out ? 'o' : 'i'}`,
-      hinge, far, thick,
+      key: `${w.id}${part}:${w.animater?.door ?? ''}:${w.animater?.material}:${thick ?? ''}:${Math.round(x1)},${Math.round(y1)},${Math.round(x2)},${Math.round(y2)}:${flip ? 'f' : 'n'}${out ? 'o' : 'i'}${cover ? `:~${cover}` : ''}`,
+      hinge, far, thick, cover,
       length: Math.hypot(far[0] - hinge[0], far[1] - hinge[1]),
       along: Math.atan2(far[1] - hinge[1], far[0] - hinge[0]),
       way: (flip ? -1 : 1) * (out ? -1 : 1),

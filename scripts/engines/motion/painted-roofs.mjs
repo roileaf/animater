@@ -146,6 +146,8 @@ export function createPaintedRoofs({ PIXI, root, grid = () => 100, make = undefi
       // How far the roof's own painted shadow reaches: nought while the sun casts the building's shadow for it.
       // (Left off this list, the caller's "off" never arrived and the house kept two shadows.)
       shadowReach: look.shadowReach,
+      // The roofing picture it is covered with, when it has one and it has arrived (roof-cover.mjs).
+      cover: look.cover ?? null,
     }, make);
     if (!picture) return false;
     dropOne(roof.key);

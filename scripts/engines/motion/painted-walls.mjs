@@ -36,6 +36,8 @@ export function createPaintedWalls({ PIXI, root, grid = () => 100, make = undefi
     const picture = paintRunPicture(run.points, run.material, {
       grid: grid(), seed: runSeed(run.key), join: run.join ?? null, thick: run.thick, height: run.height, closed: run.closed === true, lit: wear.lit ?? null, tint: run.tint ?? null,
       snow: wear.snow ?? 0, moss: wear.moss ?? 0, soot: wear.soot ?? 0, ruin: wear.ruin ?? 0,
+      // The picture of wall it is covered with, when it has one and it has arrived (roof-cover.mjs).
+      cover: wear.cover ?? null,
     }, make, PICTURE_MOST);
     if (!picture) return false;
     dropOne(run.key);

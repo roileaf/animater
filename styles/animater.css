@@ -4173,7 +4173,7 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .an-decor-brush .an-db-prop select, .an-decor-brush .an-db-prop input { height: 22px; padding: 0 4px; background: #2a241d; color: #e8dfcc; border: 1px solid #5a4b3a; border-radius: 4px; font-size: 12px; }
 .an-decor-brush .an-db-prop input { width: 44px; }
 /* Map painting: the brush bar with its Floors and Decorations tabs, one picker of tiles, one row of sliders, the rest under More. */
-.an-decor-brush.an-map-paint { padding: 0; border-radius: 10px; overflow: hidden auto; }
+.an-decor-brush.an-map-paint { padding: 0; border-radius: 10px; overflow: hidden auto; width: min(1040px, calc(100vw - 360px)); }
 /* (Foundry gives every button a fixed height; the bar's tabs and tiles size to what they hold.) */
 .an-map-paint .an-mp-tab, .an-map-paint .an-mp-tile { height: auto; min-height: 0; line-height: 1.25; }
 .an-map-paint .an-mp-head { gap: 6px; margin: 0; padding: 6px 8px; border-bottom: 1px solid #5a4b3a; }
@@ -4204,8 +4204,47 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .an-map-paint .an-mp-tick input[type="checkbox"]:checked::after { transform: scale(1); }
 .an-map-paint .an-mp-tick input[type="checkbox"]:focus-visible { outline: 2px solid #e0bd6a; outline-offset: 1px; }
 /* The modes a tab paints in, above the tiles they choose between: what is being done, then what it is done with. */
-.an-map-paint .an-mp-modes { display: flex; gap: 2px; margin: 0 0 7px; }
+.an-map-paint .an-mp-modes { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 7px; }
 .an-map-paint .an-mp-modes:empty { display: none; }
+/* What the Select tab does to what is picked, and the buttons like them: named, as wide as their name, in a row that wraps. */
+.an-map-paint .an-mp-act { display: inline-flex; align-items: center; gap: 5px; width: auto; height: 26px; min-height: 0; padding: 0 9px; flex: 0 0 auto; line-height: 1; border-radius: 6px; border: 1px solid #3d342a; background: #1c1814; color: #e8dfcc; font-size: 12px; }
+.an-map-paint .an-mp-act:hover { border-color: #c8a24a; }
+.an-map-paint .an-mp-row:has(.an-mp-act) { flex-wrap: wrap; gap: 6px 8px; }
+.an-map-paint .an-mp-note { color: #a89a82; font-size: 12px; }
+/* The bar's two columns: the tool in hand and its one line of help; and, beside it on every tool, what is on the map. */
+.an-map-paint .an-mp-work { display: block; }
+.an-map-paint .an-mp-work.an-mp-has-side { display: grid; grid-template-columns: minmax(0, 1fr) 210px; }
+.an-map-paint .an-mp-main { min-width: 0; }
+.an-map-paint .an-mp-side { border-left: 1px solid #5a4b3a; padding: 6px 6px 6px 8px; max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.an-map-paint .an-mp-side-head { color: #a89a82; font-size: 11px; padding: 0 2px 3px; }
+/* A part of the map: a road, a fence, a furnished room. Its name picks it up; its cross, shown as the pointer reaches it, takes it away. */
+.an-map-paint .an-mp-part { display: flex; align-items: center; min-width: 0; border: 1px solid transparent; border-radius: 6px; }
+.an-map-paint .an-mp-part:hover { background: #2a231b; }
+.an-map-paint .an-mp-part.an-db-on { border-color: #c8a24a; background: #3a3024; }
+.an-map-paint .an-mp-part button { height: 24px; min-height: 0; line-height: 1; border: 0; background: none; box-shadow: none; color: #e8dfcc; font-size: 12px; padding: 0 5px; }
+.an-map-paint .an-mp-part-name { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: flex-start; gap: 6px; overflow: hidden; white-space: nowrap; text-align: left; }
+.an-map-paint .an-mp-part-name i { flex: 0 0 14px; text-align: center; color: #a89a82; }
+.an-map-paint .an-mp-part-name span { overflow: hidden; text-overflow: ellipsis; }
+.an-map-paint .an-mp-part-name small { flex: 0 0 auto; margin-left: auto; color: #8a7d68; font-size: 10px; }
+.an-map-paint .an-mp-part-del { flex: 0 0 auto; width: 20px; color: #a89a82; visibility: hidden; }
+.an-map-paint .an-mp-part:hover .an-mp-part-del, .an-map-paint .an-mp-part-del:focus-visible { visibility: visible; }
+.an-map-paint .an-mp-part-del:hover { color: #ff9a84; }
+/* The tools wrap to a second row before they are cut off; the line saying what is on the map has a row of its own, whole. */
+.an-map-paint .an-mp-head { flex-wrap: wrap; }
+.an-map-paint .an-mp-status { flex: 1 1 100%; order: 9; text-align: left; white-space: normal; padding: 2px 4px 0; font-size: 12px; }
+.an-map-paint .an-mp-whole { margin-left: auto; color: #e0bd6a; border-color: #5a4b3a; }
+.an-map-paint .an-mp-whole:hover { border-color: #c8a24a; }
+/* One line of help and a question mark for the rest of it. */
+.an-map-paint .an-mp-keys { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.an-map-paint .an-mp-help { flex: 0 0 auto; width: 20px; height: 20px; min-height: 0; padding: 0; line-height: 1; border-radius: 50%; border: 1px solid #5a4b3a; background: none; color: #a89a82; font-size: 12px; }
+.an-map-paint .an-mp-help:hover, .an-map-paint .an-mp-help[aria-expanded="true"] { border-color: #c8a24a; color: #fff6e0; }
+/* What is done to what is picked, beside it on the map: icons, not a row of words in the bar. */
+.an-map-float { position: fixed; z-index: 72; display: flex; gap: 3px; padding: 4px; border-radius: 8px; border: 1px solid #5a4b3a; background: #1c1814; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45); }
+.an-map-float[hidden] { display: none; }
+.an-map-float button { width: 30px; height: 28px; min-height: 0; padding: 0; line-height: 1; border-radius: 6px; border: 1px solid transparent; background: none; color: #e8dfcc; font-size: 14px; }
+.an-map-float button[hidden] { display: none; }
+.an-map-float button:hover { border-color: #c8a24a; background: #3a3024; }
+.an-map-float button[data-select-act="remove"]:hover { border-color: #b4553f; color: #ff9a84; }
 /* On the Walls tab the tiles keep their height whatever the mode, so the controls under them stay where they were:
    windows have thirteen kinds and doorways seven, and the whole panel used to jump as you switched. */
 .an-map-paint .an-mp-onwalls .an-mp-grid { height: 124px; align-content: start; }
@@ -4223,7 +4262,9 @@ body.an-scrubbing, body.an-scrubbing * { cursor: ew-resize !important; user-sele
 .an-map-paint .an-mp-extra { margin: 8px 0 0; padding-top: 8px; border-top: 1px dashed #3d342a; }
 .an-map-paint .an-mp-extra[hidden] { display: none; }
 .an-map-paint .an-mp-link { background: none; border: 0; padding: 0; color: #c8a24a; text-decoration: underline; }
-.an-map-paint .an-mp-keys { padding: 4px 10px 8px; opacity: 0.55; font-size: 11px; }
+.an-map-paint .an-mp-keys { padding: 4px 10px 8px; opacity: 0.8; font-size: 12px; white-space: pre-line; }
+.an-map-paint .an-mp-more[hidden] { display: none; }
+.an-map-paint .an-mp-row:empty, .an-map-paint .an-mp-grid:empty { display: none; }
 .an-region-panel .an-rp-num { width: 56px; }
 
 /* Animater's own A, as in the window's header, for its buttons: FXMaster uses the wand too. In the icon's own colour, like the others. */

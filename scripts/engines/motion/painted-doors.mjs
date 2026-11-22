@@ -37,7 +37,7 @@ export function createPaintedDoors({ PIXI, root, grid = () => 100, make = undefi
     const kind = DOOR_KINDS[door.kind] ? door.kind : doorFor(door.material);
     // A wall's thickness is measured from its middle out, a door's across the whole leaf, so the one is twice the
     // other. Handed straight over, a door came out half the width of the wall it hangs in.
-    const leaf = paintDoorLeaf(kind, door.length, { grid: grid(), seed: door.id?.length ?? 3, lit: door.lit ?? null, thick: door.thick > 0 ? door.thick * 2 : undefined }, make);
+    const leaf = paintDoorLeaf(kind, door.length, { grid: grid(), seed: door.id?.length ?? 3, lit: door.lit ?? null, thick: door.thick > 0 ? door.thick * 2 : undefined, cover: door.cover && typeof door.cover === 'object' ? door.cover : null }, make);
     if (!leaf) return false;
     dropOne(door.key);
     let texture = null;

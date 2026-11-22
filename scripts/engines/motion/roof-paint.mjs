@@ -13,6 +13,7 @@
 // Pure canvas 2D: no Foundry, no PIXI, no clock.
 
 import { PAINT_KIT, seeded } from './decor-paint.mjs';
+import { coverCourses } from './roof-cover.mjs';
 import { LIGHT, underLight, tintedKind, PICTURE_SHARP } from './wall-paint.mjs';
 
 const { poly, line, mix, noise, INK, defaultCanvas } = PAINT_KIT;
@@ -572,12 +573,34 @@ function weather(g, rng, o, face, r, lit) {
 
 // ---------------------------------------------------------------------------------------------------- the picture
 
+/**
+ * A slope covered with a roofing picture (roof-cover.mjs) instead of courses painted piece by piece: laid from its
+ * eave up, then turned toward or away from the light as the painted coverings are — into the roofing, not over it,
+ * and more gently than they are, since a painted picture has shading of its own on every tile.
+ */
+function layCover(g, o, face, lit, faceTone) {
+  const c = o.cover, at = coverCourses(face, c, o.unit);
+  g.save(); g.rotate(at.rot);
+  for (const y of at.rows) for (const x of at.cols) g.drawImage(c.image, x, y, at.w, at.h);
+  g.restore();
+  const turn = (Math.max(0, Math.min(1, Number(lit) || 0)) - 0.5) * 2 * faceTone;
+  if (Math.abs(turn) > 0.004) {
+    g.save(); g.globalCompositeOperation = turn > 0 ? 'soft-light' : 'multiply';
+    g.fillStyle = turn > 0 ? `rgba(255,244,214,${Math.min(1, turn * 1.3).toFixed(3)})` : `rgba(18,16,26,${Math.min(1, -turn * 0.95).toFixed(3)})`;
+    poly(g, face.pts); g.fill(); g.restore();
+  }
+}
+
 /** One roof, drawn into `g` in the picture's own pixels. `shape` from hippedRoof, already relative to the picture. */
 export function paintRoof(g, kind, shape, o) { return underLight(o?.lit, () => paintRoofLit(g, kind, shape, o)); }
 function paintRoofLit(g, kind, shape, o) {
   // The covering wearing whatever colour it was painted in: `face` reaches for `this.base`, so a tinted copy of
   // the kind tints every slate laid from it without any of them knowing about it.
-  const r = tintedKind(ROOF_KINDS[kind] ?? ROOF_KINDS.tile, o.tint, o.tintMuch);
+  // (A roof covered with a picture takes that picture's own colour for what is its own: its caps, what shows at its
+  // joins. It is still the kind it was laid as for everything else — how readily moss takes to it, how it weathers.)
+  const cover = o.cover?.image && o.cover.width > 0 && o.cover.height > 0 ? o.cover : null;
+  const own = ROOF_KINDS[kind] ?? ROOF_KINDS.tile;
+  const r = tintedKind(cover?.base ? { ...own, base: cover.base } : own, o.tint, o.tintMuch);
   const rng = seeded(o.seed ?? 9);
   // Its shadow on the ground, thrown away from the light: this is what puts it above the walls, and seen from
   // straight above it is very nearly the only thing that does. A hip roof and an empty room are the same four
@@ -617,7 +640,7 @@ function paintRoofLit(g, kind, shape, o) {
       g.fillStyle = rng() < 0.55 ? `rgba(14,12,9,${r.grain})` : `rgba(240,235,222,${r.grain * 0.7})`;
       g.fillRect(c[0] + (rng() - 0.5) * reach * 2, c[1] + (rng() - 0.5) * reach * 2, 1, 1);
     }
-    r.face(g, rng, o, face, lit);
+    if (cover) layCover(g, { ...o, cover }, face, lit, faceTone); else r.face(g, rng, o, face, lit);
     weather(g, rng, o, face, r, lit);
     g.restore();
     poly(g, face.pts); g.strokeStyle = 'rgba(16,13,9,0.35)'; g.lineWidth = o.ink * 0.9; g.stroke();
@@ -694,7 +717,7 @@ export function paintRoofPicture(room, kind, look = {}, make = defaultCanvas, mo
     unit: grid, ink: Math.max(0.7, grid / 90), seed: look.seed ?? 9,
     snow: look.snow ?? 0, moss: look.moss ?? 0, soot: look.soot ?? 0, wet: look.wet ?? 0, leaves: look.leaves ?? 0,
     chimney: look.chimney ?? null, chimneyAt: look.chimneyAt, lit: look.lit ?? null,
-    faceTone: look.faceTone, shadowReach: look.shadowReach, eaveLight: look.eaveLight, capped: look.capped, tint: look.tint ?? null, tintMuch: look.tintMuch,
+    faceTone: look.faceTone, shadowReach: look.shadowReach, eaveLight: look.eaveLight, capped: look.capped, tint: look.tint ?? null, tintMuch: look.tintMuch, cover: look.cover ?? null,
   });
   // Where the smoke comes from, in scene pixels: the scene's own chimney smoke wants this.
   return { canvas, box, scale: k, form, chimney: look.chimney ? chimneyAt(shape, look.chimneyAt ?? 0.6) : null };

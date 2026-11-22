@@ -424,6 +424,27 @@ export const WORKED = Object.freeze({ faced: 0.035, cut: 0.06, raw: 0.16 });
  * `o`: { unit (pixels a grid square), ink, seed, snow, moss, soot, ruin, thick, height }.
  */
 /** Painted with the light where o.lit says it is, so a wall agrees with the ground it stands on. */
+/**
+ * A wall covered with a picture of a strip of wall the GM owns (roof-cover.mjs) in place of stones painted one by
+ * one. The line, its thickness, its corners and its ends stay ours: the strip is scaled so its wall is exactly as
+ * thick as this wall is drawn — so the doorways and windows cut in it still fit — laid along each stretch with its
+ * courses carried on from the stretch before, and each stretch cut to a mitre where it meets the next, which holds
+ * at any angle. (The pack's own corner pieces were tried and left gaps: they are made for corners on the grid.)
+ */
+function layStrip(g, segs, half, cover, closed) {
+  const [top, bottom] = Array.isArray(cover.band) ? cover.band : [0, cover.height];
+  const k = (half * 2) / Math.max(1, bottom - top), w = cover.width * k, h = cover.height * k, mid = ((top + bottom) / 2) * k;
+  if (!(w > 1)) return;
+  const A = offsetSide(segs, half * 1.05, 1, closed), B = offsetSide(segs, half * 1.05, -1, closed);
+  let along = 0;
+  segs.forEach((s, i) => {
+    g.save(); poly(g, [A[i], A[i + 1], B[i + 1], B[i]]); g.clip();
+    g.translate(s.a[0], s.a[1]); g.rotate(Math.atan2(s.d[1], s.d[0]));
+    for (let x = -(along % w) - w, n = 0; x < s.len + w && n < 400; x += w, n++) g.drawImage(cover.image, x, -mid, w, h);
+    g.restore(); along += s.len;
+  });
+}
+
 export function paintRun(g, points, material, o) { return underLight(o?.lit, () => paintRunLit(g, points, material, o)); }
 function paintRunLit(g, points, material, o) {
   // The material wearing whatever colour it was painted in, before any of it is drawn, so the tint runs through
@@ -431,6 +452,8 @@ function paintRunLit(g, points, material, o) {
   const m = tintedKind(WALL_MATERIALS[material] ?? WALL_MATERIALS.dressed, o.tint, o.tintMuch);
   const rng = seeded(o.seed ?? 11), segs = [];
   const half = o.unit * (o.thick ?? WALL_THICK), lift = o.unit * (o.height ?? WALL_LIFT);
+  // (A wall covered with a picture keeps a straight edge: the picture has its own drawn one, and a ragged cut eats it.)
+  const cover = o.cover?.image && o.cover.width > 0 && o.cover.height > 0 ? o.cover : null, rough = cover ? 0 : half * 0.11;
   // A ring comes back to where it started, so it has no ends at all: nothing to run on past, nothing to cap.
   const ring = o.closed === true && points.length > 3 && Math.hypot(points[0][0] - points.at(-1)[0], points[0][1] - points.at(-1)[1]) < 1;
   // An end that meets another wall is run on past the corner, so the two overlap and neither shows a cap. An end that
@@ -442,9 +465,9 @@ function paintRunLit(g, points, material, o) {
   // both has to be slit open somewhere to join them. The fill does not mind the slit; the ink line did, and drew it:
   // a stroke straight across the wall at the corner the run happened to start from (Roi: "why left side is not
   // connecting seamlessly?"). So the two sides are kept apart here, and the ink walks each loop on its own.
-  const sideA = ring ? ragged(subdivide(offsetSide(segs, half, 1, true), 7), half * 0.11, o.seed ?? 1) : null;
-  const sideB = ring ? ragged(subdivide(offsetSide(segs, half, -1, true), 7), half * 0.11, (o.seed ?? 1) + 5) : null;
-  const edge = ring ? [...sideA, ...sideB.slice().reverse()] : ragged(subdivide(runOutline(segs, half, false), 7), half * 0.11, o.seed ?? 1);
+  const sideA = ring ? ragged(subdivide(offsetSide(segs, half, 1, true), 7), rough, o.seed ?? 1) : null;
+  const sideB = ring ? ragged(subdivide(offsetSide(segs, half, -1, true), 7), rough, (o.seed ?? 1) + 5) : null;
+  const edge = ring ? [...sideA, ...sideB.slice().reverse()] : ragged(subdivide(runOutline(segs, half, false), 7), rough, o.seed ?? 1);
   const face = edge.map(([x, y]) => [x + LIGHT.at[0] * lift, y + LIGHT.at[1] * lift]);
   // What the ink goes round: one loop for a run with ends, where the caps are edges like any other; two for a ring.
   const inked = ring ? [face.slice(0, sideA.length), face.slice(sideA.length)] : [face];
@@ -457,13 +480,15 @@ function paintRunLit(g, points, material, o) {
   // The sliver of side it shows: the gap between its foot and its lifted top.
   g.save(); poly(g, edge); g.clip(); g.fillStyle = mix(m.edge, '#0b0a08', 0.3); poly(g, edge); g.fill(); g.restore();
 
-  faceStone(g, rng, face, m.base, o, { grain: m.grain });
+  if (cover) { poly(g, face); g.fillStyle = mix(m.edge, '#0b0a08', 0.5); g.fill(); } else faceStone(g, rng, face, m.base, o, { grain: m.grain });
   const lifted = segs.map((s) => wallSeg([s.a[0] + LIGHT.at[0] * lift, s.a[1] + LIGHT.at[1] * lift], [s.b[0] + LIGHT.at[0] * lift, s.b[1] + LIGHT.at[1] * lift]));
   g.save(); poly(g, face); g.clip();
-  m.face(g, rng, lifted, half, o);
+  if (cover) layStrip(g, lifted, half, cover, ring); else m.face(g, rng, lifted, half, o);
   weather(g, rng, lifted, half, o);
   g.restore();
 
+  // (A covering picture has its own drawn edge along both sides; only its cut ends want closing, with one plain line.)
+  if (cover) { for (const loop of inked) line(g, [...loop, loop[0]], INK, o.ink * 0.9); if (o.ruin > 0) bites(g, rng, lifted, half, o, face); return; }
   // A pale lip where the light catches the top, then the ink line, its weight uneven as a drawn one is.
   g.save(); poly(g, face); g.clip();
   for (const loop of inked) line(g, [...loop, loop[0]].map(([x, y]) => [x + LIGHT.at[0] * o.ink * 1.6, y + LIGHT.at[1] * o.ink * 1.6]), 'rgba(244,238,224,0.17)', o.ink * 1.8);
@@ -669,7 +694,7 @@ export function paintRunPicture(points, material, look = {}, make = defaultCanva
   paintRun(g, points.map(([x, y]) => [x - box.x, y - box.y]), material, {
     unit: grid, ink: Math.max(0.7, grid / 90), seed: look.seed ?? 1,
     snow: look.snow ?? 0, moss: look.moss ?? 0, soot: look.soot ?? 0, ruin: look.ruin ?? 0,
-    thick: look.thick ?? WALL_THICK, height: look.height ?? WALL_LIFT, join: look.join ?? null, closed: look.closed === true, lit: look.lit ?? null, tint: look.tint ?? null, tintMuch: look.tintMuch,
+    thick: look.thick ?? WALL_THICK, height: look.height ?? WALL_LIFT, join: look.join ?? null, closed: look.closed === true, lit: look.lit ?? null, tint: look.tint ?? null, tintMuch: look.tintMuch, cover: look.cover ?? null,
   });
   return { canvas, box, scale: k };
 }

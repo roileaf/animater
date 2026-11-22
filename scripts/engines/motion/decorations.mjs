@@ -11,6 +11,7 @@ import { DECOR_KINDS, DECOR_VARIANTS, paintDecor, paintSeedOf, trunkRadius, wate
 import { CAVERN_KINDS, canopyKindOf, decorPlacements, decorRole } from './decor-regions.mjs';
 import { SNOW_LOOK } from './snow-look.mjs';
 import { decorKeyed, decorLightOut } from '../props/decor-break.mjs';
+import { aimLit, createLitMesh, litUniforms } from './decor-lit.mjs';
 
 // Snow on the decorations: the ground's own snow (snow-look.mjs, as sky-light.mjs lays it), on each one's top. A region's
 // standing decorations baked small twice: their pictures (where snow can catch: their lighter parts) and their silhouettes
@@ -151,6 +152,8 @@ export function boxWith(box, { x, y }, reach) {
 /** How tall a decoration stands, in squares (pure): its kind's height, scaled by how big it was painted against the kind's own size,
  *  and by its Height (`tall`, 0.3 to 3: the brush's and its region's together). */
 export const decorHeight = (d) => {
+  // (A tile standing as a thing says its own height outright: it is no kind of ours.)
+  if (Number.isFinite(d?.high)) return Math.max(0, d.high);
   const k = DECOR_KINDS[d?.kind]; if (!k || !(k.size > 0) || !(d.size > 0)) return 0;
   const tall = Number.isFinite(Number(d.tall)) && d.tall !== null && d.tall !== undefined ? Math.min(3, Math.max(0.3, Number(d.tall))) : 1;
   return k.height * (d.size / k.size) * tall;
@@ -248,6 +251,8 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
   let at = null;
   const shadows = () => shadowsOf(at), ground = () => groundOf(at), above = () => aboveOf(at), flat = () => flatOf(at);
   const pictures = new Map(), regions = new Map(), PICTURES_KEPT = 240;
+  // The tiles standing on the map as things (props(), below) are kept as one region more among the rest, under a name no region has.
+  const PROPS = '\u0000tile-props';
   // Shadows are blurred once for the whole floor, not once a region. Each region keeps a plain container of its own
   // inside these three — so a region can still be taken away, or its feet baked, on its own — but the blur and the
   // strength sit here, over the lot. That is three blurs on a map however many strokes have been painted on it
@@ -292,7 +297,7 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
     const box = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }, k = Math.min(0.5, 1024 / Math.max(box.w, box.h)), w = Math.max(1, Math.ceil(box.w * k)), h = Math.max(1, Math.ceil(box.h * k));
     const bake = (useShadow, blur) => {
       const stage = new PIXI.Container();
-      for (const { d, pic, scale } of items) { const tex = useShadow ? pic.shadow : pic.art; if (!tex) continue; const s = new PIXI.Sprite(tex); s.anchor.set(0.5); s.position.set((d.x - box.x) * k, (d.y - box.y) * k); s.rotation = turnOf(d); s.scale.set(scale * k); stage.addChild(s); }
+      for (const { d, pic, scale } of items) { const tex = useShadow ? pic.shadow : pic.art; if (!tex) continue; const s = new PIXI.Sprite(tex); s.anchor.set(0.5); s.position.set((d.x - box.x) * k, (d.y - box.y) * k); s.rotation = turnOf(d); s.scale.set(scale * k * (d.mirror ? -1 : 1), scale * k * (d.squash ?? 1)); stage.addChild(s); }
       if (blur > 0 && PIXI.BlurFilter) { const f = new PIXI.BlurFilter(blur); f.padding = Math.ceil(blur * 3); stage.filters = [f]; stage.filterArea = new PIXI.Rectangle(0, 0, w, h); }
       const rt = PIXI.RenderTexture.create({ width: w, height: h });
       try { render(stage, rt); } finally { try { stage.destroy({ children: true }); } catch { /* drawn */ } }
@@ -371,7 +376,7 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
     const mesh = new PIXI.Mesh(geometry, PIXI.Shader.from(CLOTH_VERT, CLOTH_FRAG, { uArt: pic.art, uCloth: pic.cloth ?? PIXI.Texture.WHITE, uTime: 0, uPush: 0, uSeed: ((d.seed >>> 0) % 997) / 97, uDir: [1, 0], uAlpha: 1, uRadial: SWAY[mode].radial, uAmp: SWAY[mode].amp, uShade: SWAY[mode].shade, uSpeed: SWAY[mode].speed, uEdge: SWAY[mode].edge ?? 0 }));
     mesh.position.set(d.x, d.y); mesh.rotation = turnOf(d); mesh.scale.set(scale, scale); mesh.eventMode = 'none'; mesh.decor = d; mesh.texture = pic.art; return mesh;
   };
-  const place = (sprite, d, pic, scale) => { sprite.anchor.set(0.5); sprite.position.set(d.x, d.y); sprite.rotation = turnOf(d); const k = scale; sprite.scale.set((d.flip && DECOR_KINDS[d.kind].flat ? -1 : 1) * (d.mirror ? -1 : 1) * k, k); sprite.eventMode = 'none'; return sprite; };
+  const place = (sprite, d, pic, scale) => { sprite.anchor.set(0.5); sprite.position.set(d.x, d.y); sprite.rotation = turnOf(d); const k = scale; sprite.scale.set((d.flip && DECOR_KINDS[d.kind]?.flat ? -1 : 1) * (d.mirror ? -1 : 1) * k, k * (d.squash ?? 1)); sprite.eventMode = 'none'; return sprite; };
   const aim = (r) => {
     // A region under cover takes no sun at all, however bright it is outside: a table standing in a room threw its
     // shadow across the floor as though the ceiling were not there. Whether a region is under cover is the caller's
@@ -380,7 +385,7 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
     const lit = r.indoors === true ? null : sun;
     // Each standing one's shadow away from the sun or moon, stretched by how tall it stands; a tree's only when the canopy is not drawing it.
     for (const s of r.shadowSprites) {
-      const d = s.decor, k = DECOR_KINDS[d.kind], cast = lit && lit.strength > 0 && !(k.tree && canopyTrees);
+      const d = s.decor, k = DECOR_KINDS[d.kind], cast = lit && lit.strength > 0 && !(k?.tree && canopyTrees) && d.indoors !== true;
       s.visible = !!cast; if (!cast) continue;
       const reach = shadowReach(decorHeight(d), lit.length, grid()), w = s.texture.width * Math.abs(s.baseScale);
       s.position.set(d.x + Math.cos(lit.angle) * reach * 0.5, d.y + Math.sin(lit.angle) * reach * 0.5);
@@ -394,6 +399,9 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
   // One decoration drawn into a region's layers, keeping hold of what it made (`r.drawn`) so that one can be taken away on
   // its own. The brush adds to a region dab by dab; without this the whole region — every sprite, every shadow — was thrown
   // away and built again ten times a second, which is what made painting into a full region stutter.
+  // The light on the tiles drawn lit (props()): the sun or moon, unless it stands under a roof, and the lamps near it.
+  let lampsNow = [];
+  const relight = (r) => { if (!r?.lit?.length) return; const g = grid(); for (const m of r.lit) { try { aimLit(m, litUniforms({ at: m.decor, sun: m.indoors ? null : sun, lamps: lampsNow, grid: g })); } catch { /* gone with the canvas */ } } };
   const drawOne = (d, r, look, where, g, contact, cast) => {
     const role = decorRole(d, where); if (!role || role === 'cavern') return null;
     // (Standing ones take their snow from the snow layer over them, flat ones the ground's lying over them; a tree's crown has its own painted.)
@@ -504,22 +512,70 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
         if (where !== 'cave' && !spec.live) { const standing = shown.filter((d) => decorRole(d, where) === 'standing' && !DECOR_KINDS[d.kind].light).map((d) => ({ d, ...picture(d, { ...spec.look, snow: 0 }) })).filter((it) => it.pic); try { r.snow = bakeSnow(r, standing); } catch (err) { console.warn('Animater | decoration snow', err); } }
         regions.set(spec.id, r); aim(r); if (!spec.live) bakeContact(r); at = null;
       }
-      for (const [id, r] of regions) if (!seen.has(id)) { dropRegion(r); regions.delete(id); }
+      for (const [id, r] of regions) if (!seen.has(id) && id !== PROPS) { dropRegion(r); regions.delete(id); }
       // (Pictures for looks no longer shown let go once there are many: out of PIXI's cache, not destroyed, so a wreck or the
       // brush's ghost still holding one keeps it. Kept for good till the scene closed, a season, the wet, night and snow each
       // made a whole new set: the audit's finding.)
       if (pictures.size > PICTURES_KEPT) { const used = new Set(); for (const r of regions.values()) for (const k of r.pictures ?? []) used.add(k); for (const [k, p] of pictures) { if (used.has(k)) continue; pictures.delete(k); for (const t of [p?.art, p?.shadow, p?.trunk, p?.cloth]) { try { if (t) { PIXI.Texture.removeFromCache?.(t); PIXI.BaseTexture.removeFromCache?.(t.baseTexture); } } catch { /* gone */ } } } }
     },
+    /**
+     * The scene's tiles that stand on the map as things — a barrel, a cart, a bush somebody else painted — given what the
+     * painted decorations have: the dark at the foot, a shadow from the sun or moon that turns and lengthens with it, one
+     * from each lamp near, the ground's snow lying on top, and rain's darkening. Nothing of a tile is changed: its picture
+     * is drawn once more over its shadows (which lie over the tiles), and the shadows are that same picture made dark.
+     * 'list' [{ id, texture, x, y (its middle), width, height (as drawn; negative: mirrored), rotation (radians), high
+     * (squares; 0 casts nothing), alpha, indoors (under a roof: no sun shadow), art (another picture of it to draw, as a
+     * bush in autumn), snowless (a fire), maps (its relief, decor-from-art.mjs reliefPixels: with it the light falls
+     * across it — its iron glints toward the sun and a torch) }]; 'wet' 0-1; 'shade' 0-1 how much of the light's shading
+     * across its form is laid on beside the glints (none by default: a painted picture has its own).
+     */
+    props(list = [], { wet = 0, shade = 0 } = {}) {
+      const g = grid(), soaked = Math.max(0, Math.min(1, Number(wet) || 0)), form = Math.max(0, Math.min(1, Number(shade) || 0));
+      const shown = list.filter((p) => p?.texture && !p.texture.destroyed && p.texture.width > 0 && p.texture.height > 0 && Math.abs(p.width) > 0 && Math.abs(p.height) > 0);
+      const key = JSON.stringify([shown.map((p) => [p.id, Math.round(p.x), Math.round(p.y), Math.round(p.width), Math.round(p.height), +(Number(p.rotation) || 0).toFixed(3), +(Number(p.high) || 0).toFixed(2), p.alpha ?? 1, !!p.indoors, !!p.snowless]), g, soaked, form]);
+      const had = regions.get(PROPS), same = (a, b) => a.length === b.length && a.every((t, i) => t === b[i]), textures = shown.flatMap((p) => [p.texture, p.art ?? null, p.maps ?? null]);
+      if (had?.key === key && same(had.textures, textures)) return;
+      if (had) { dropRegion(had); regions.delete(PROPS); }
+      if (!shown.length) return;
+      at = null;
+      const r = { key, textures, placements: [], shown: [], where: 'surface', look: {}, prop: undefined, indoors: false, sprites: [], shadowSprites: [], crowns: [], cloth: [], castLayer: null, contact: null, floor: null, drawn: [], pictures: new Set(), box: null, tall: 0, baked: null, casters: [], lit: [] };
+      const floor = floorOf(), contact = new PIXI.Container(), cast = new PIXI.Container(), lampLayer = new PIXI.Container();
+      for (const c of [contact, cast, lampLayer]) c.eventMode = 'none';
+      r.floor = floor; r.contact = contact; r.castLayer = cast; r.lampLayer = lampLayer;
+      // (Wet: a touch darker and bluer, as the painted ones go.)
+      const dry = 255 - Math.round(51 * soaked), tint = ((dry - Math.round(5 * soaked)) << 16) | (dry << 8) | Math.min(255, dry + Math.round(8 * soaked)), snowed = [];
+      for (const p of shown) {
+        const sx = p.width / p.texture.width, sy = p.height / p.texture.height, scale = Math.abs(sx);
+        const d = { x: p.x, y: p.y, turn: Number(p.rotation) || 0, fixed: true, size: Math.max(Math.abs(p.width), Math.abs(p.height)) / g, high: Math.max(0, Number(p.high) || 0), squash: sy / scale, seed: 0, ...(sx < 0 ? { mirror: true } : {}), ...(p.indoors ? { indoors: true } : {}) };
+        const pic = { art: p.art ?? p.texture, shadow: p.texture };
+        if (d.high > 0) {
+          const foot = place(new PIXI.Sprite(pic.shadow), d, pic, scale); foot.tint = 0x06070c; foot.position.set(d.x + g * 0.02, d.y + g * 0.03); foot.scale.set(foot.scale.x * 1.06, foot.scale.y * 1.06); contact.addChild(foot);
+          const holder = new PIXI.Container(), inner = new PIXI.Container(), sil = place(new PIXI.Sprite(pic.shadow), d, pic, scale); sil.position.set(0, 0); sil.rotation = 0; sil.tint = 0x06070c;
+          inner.addChild(sil); holder.addChild(inner); holder.decor = d; holder.inner = inner; holder.baseScale = sil.scale.x; holder.texture = pic.shadow; cast.addChild(holder); r.shadowSprites.push(holder);
+          r.casters.push({ d, pic, scale, height: d.high, shadows: [] });
+          r.box = boxWith(r.box, d, d.size * g * 0.7); r.tall = Math.max(r.tall, d.high);
+          if (!p.snowless) snowed.push({ d, pic, scale });
+        }
+        // With its relief it is drawn lit (decor-lit.mjs): placed as its sprite would be, its lights handed to it by light() and lamps().
+        const lit = p.maps && !p.maps.destroyed && PIXI.Mesh && PIXI.Geometry && PIXI.Shader ? createLitMesh(PIXI, { art: pic.art, maps: p.maps, relief: 8, mirror: !!d.mirror, shade: form, glint: 2.4, tint: [((tint >> 16) & 255) / 255, ((tint >> 8) & 255) / 255, (tint & 255) / 255] }) : null;
+        if (lit) { lit.position.set(d.x, d.y); lit.rotation = d.turn; lit.scale.set((d.mirror ? -1 : 1) * scale, scale * d.squash); lit.decor = d; lit.indoors = d.indoors === true; r.lit.push(lit); }
+        const sprite = ground().addChild(lit ?? place(new PIXI.Sprite(pic.art), d, pic, scale)); sprite.alpha = Math.max(0, Math.min(1, Number(p.alpha ?? 1))); if (!lit) sprite.tint = tint; r.sprites.push(sprite);
+      }
+      floor.contact.addChild(contact); floor.cast.addChild(cast); floor.lamp.addChild(lampLayer); floor.count++; r.sprites.push(contact, cast, lampLayer);
+      try { r.snow = bakeSnow(r, snowed); } catch (err) { console.warn('Animater | tile snow', err); }
+      regions.set(PROPS, r); aim(r); relight(r); bakeContact(r);
+    },
     // snowAmount 0-1: how much snow lies now (as the ground's), its light from the same sun or moon (moon: its cooler colour).
     light({ sun: now = null, treesByCanopy = false, snowAmount = 0, moon = false } = {}) {
       sun = now; canopyTrees = treesByCanopy;
       snow = { amount: Math.max(0, Math.min(1, Number(snowAmount) || 0)), toSun: now ? [Math.cos(now.angle + Math.PI), Math.sin(now.angle + Math.PI)] : [0, 0], z: now ? Math.max(0, Math.min(1, now.strength)) : 0, low: now ? Math.min(2.25, Math.max(0.35, now.length)) : 1, color: moon ? [0.72, 0.8, 1] : [1, 0.97, 0.9] };
-      for (const r of regions.values()) { aim(r); if (r.snow) { snowUniforms(r.snow.uniforms); r.snow.mesh.visible = snow.amount > 0.01; } }
+      for (const r of regions.values()) { aim(r); relight(r); if (r.snow) { snowUniforms(r.snow.uniforms); r.snow.mesh.visible = snow.amount > 0.01; } }
     },
     // The lights now ([{ x, y, radius, strength (against the sky) }]): each standing decoration near one throws a shadow away
     // from it, the two nearest lights each. A few times a second, as lights move with the creatures carrying them.
     lamps(list = []) {
       const g = grid(), lights = list.filter((l) => l && l.radius > 0 && (l.strength ?? 1) > 0.03);
+      lampsNow = lights.map((l) => ({ x: l.x, y: l.y, radius: l.radius, strength: l.strength ?? 1, color: l.color ?? [1, 0.74, 0.46], height: g * LAMP_HEIGHT * 0.6 })); relight(regions.get(PROPS));
       for (const r of regions.values()) {
         if (!r.lampLayer) continue;
         for (const c of r.casters) {

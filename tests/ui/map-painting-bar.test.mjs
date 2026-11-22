@@ -90,7 +90,8 @@ test('main: one Map painting button paints floors and decorations, saving each s
   assert.match(main, /name: floorRegionName\(c\.floor, names\), floor: c\.floor, texture: c\.texture, pattern: c\.pattern, waterKind: c\.waterKind, overWater: c\.overWater, edge: c\.edge === BRUSH_EDGE\.usual \? "" : c\.edge \}/, 'a new region takes the Soft edge, its style and its water kind');
   assert.match(main, /const data = c\.cave \? toCaveRegionData\(\{ loops: made\.loops \}, \{ \.\.\.opts, \.\.\.c\.cave, name: floorRegionName\(c\.cave\.cavern, names, caveName\) \}\)/, 'cave growth makes cave regions');
   // (Structures and Paths have their keys too: the hint had long said 1 to 4 while only 1 to 3 answered.)
-  assert.match(main, /state\.bar\?\.setTab\(\{ 1: "floors", 2: "decor", 3: "heights", 4: "walls", 5: "paths", 6: "select" \}\[e\.key\]\);/);
+  // (The keys go by the order of the tools along the bar, which is the order a map is made in.)
+  assert.match(main, /state\.bar\?\.setTab\(\{ 1: "select", 2: "floors", 3: "paths", 4: "walls", 5: "decor", 6: "heights" \}\[e\.key\]\);/);
   // Roi: "we have no preview when hovering over the canvas?" Hovering shows what the next dab would take.
   assert.match(main, /if \(!state\.down\) \{ if \(floorsOn\(\) && fl\.map && !e\.shiftKey\) hoverFloor\(p\); else hideHover\(\); return; \}/);
   assert.match(main, /const cells = floorDabCells\(\{[^\n]*seed: floorColourAt\(m\.rgba, m\.width, m\.height, q\.x, q\.y\), tolerance: c\.tol, smart: c\.smart, allowed: \(i\) => !claimed\[i\], within \}\);/);
@@ -135,7 +136,8 @@ test('Heights: Raise or Ramp, Edges for Raise, and the scene\'s cliff walls and 
   bar.setTab('heights'); assert.deepEqual(tabs, ['heights']); assert.equal(brushChoices().tab, 'heights'); assert.equal(brushChoices().heightMode, 'raise');
   assert.deepEqual(HEIGHT_MODES.map(([k]) => k), ['raise', 'ramp']);
   const root = bar.element;
-  assert.ok(find(root, (n) => n.dataset?.tab === 'heights' && n.title === 'Heights (3)'));
+  // (Each tool says what it does when the pointer rests on it, and its key: the sixth along the bar.)
+  assert.ok(find(root, (n) => n.dataset?.tab === 'heights' && n.title === 'Raise the ground; ramps, ladders and bridges (6)'));
   assert.deepEqual(all(root, (n) => n.dataset?.edges).map((b) => b.dataset.edges), ['off', 'colour', 'model'], 'Edges for Raise');
   assert.ok(find(root, (n) => n.textContent === 'Brush'), 'Raise is a brush');
   const boxes = all(root, (n) => n.dataset?.sceneTick);
