@@ -17,6 +17,7 @@ import { rectRoom, roundRoom } from "../engines/motion/room-shapes.mjs";
 import { DRESSING_COLOURS_MOST } from "../engines/motion/holiday-dressing.mjs";
 import { ROOF_IDS, ROOF_FORM_IDS, roofFor, formFits } from "../engines/motion/roof-paint.mjs";
 import { artName, artSuits, cardAsset, ownArtAs, ownArtList, stampOwn, weathersAs, withOwnArt, withoutOwnArt } from "../engines/mapbuild/own-art.mjs";
+import { cutPixels, liftMask, liftPlaces, liftTileData, maskBox, roomyBox } from "../engines/mapbuild/map-lift.mjs";
 import { WINDOW_ART, windowFor } from "../engines/motion/window-paint.mjs";
 import { alongStretch } from "../engines/motion/wall-looks.mjs";
 import { WALL_MATERIAL_CHOICES, WALL_MATERIAL_IDS, WALL_THICK, WALL_LIFT, smoothRun } from "../engines/motion/wall-paint.mjs";
@@ -699,6 +700,41 @@ export function createMapPainting(ctx) {
       for (const spot of smartNearbyClicks(at, m.width, m.height)) { sets.push((await sam.ready.seg.masks(sam.ready.view, [spot])).masks); await new Promise((r) => setTimeout(r, 0)); }
       return modelMaskFor({ sets, rgba: m.rgba, width: m.width, height: m.height, at: q });
     };
+    // Lift from map (engines/mapbuild/map-lift.mjs): a click on a thing painted into the map's picture — a bush, a rock, a
+    // barrel — cuts it out and lays it as a tile exactly over where it was painted, told to stand as an object. From then
+    // on it is the engines': its shadow turns with the sun, snow lies on it, it can be given a material and broken.
+    // The outline is the smart model's, the same one Edges: Model asks; the picture is cut from the map's full picture,
+    // not the smaller one the model read, and kept in the world's own folder.
+    const lf = { busy: false, picture: null, from: "" };
+    const liftOn = () => brushChoices().lift === true && !floorsOn() && !heightsOn() && !pathsOn() && !selectOn() && !wallsOn();
+    const liftPicture = async (src) => { if (lf.from === src && lf.picture) return lf.picture; const img = new Image(); img.crossOrigin = "anonymous"; await new Promise((done, fail) => { img.onload = done; img.onerror = () => fail(new Error("the map picture could not be read")); img.src = src; }); lf.picture = img; lf.from = src; return img; };
+    const liftAt = async (p) => {
+      if (lf.busy) return;
+      lf.busy = true;
+      try {
+        await readMap();
+        const m = fl.map; if (!m) { ui.notifications?.warn?.(`Animater: ${fl.why || "this level has no map picture to lift from."}`); return; }
+        if (!sam.ready) { void loadSam(); ui.notifications?.info?.("Animater: the smart model is getting ready; click the thing again in a moment."); return; }
+        const q = toImage(p); if (q.x < 0 || q.y < 0 || q.x >= m.width || q.y >= m.height) return;
+        const answer = await sam.ready.seg.masks(sam.ready.view, [{ x: Math.round(q.x), y: Math.round(q.y), label: 1 }]);
+        const mask = liftMask({ masks: answer.masks, scores: answer.scores, width: m.width, height: m.height }), found = mask ? maskBox(mask, m.width, m.height) : null;
+        if (!found || found.count < 12) { ui.notifications?.info?.("Animater: nothing was found there to lift. Click nearer the middle of the thing."); return; }
+        const src = canvas.level?.background?.src, img = await liftPicture(src), box = roomyBox(found, m.width, m.height), at = liftPlaces(box, m, { width: img.naturalWidth, height: img.naturalHeight });
+        const cut = document.createElement("canvas"); cut.width = at.cut.width; cut.height = at.cut.height;
+        const g = cut.getContext("2d", { willReadFrequently: true }); g.drawImage(img, at.source.x, at.source.y, at.source.width, at.source.height, 0, 0, cut.width, cut.height);
+        const px = g.getImageData(0, 0, cut.width, cut.height);
+        g.putImageData(new ImageData(cutPixels(px.data, cut.width, cut.height, mask, m.width, m.height, box), cut.width, cut.height), 0, 0);
+        const Picker = foundry.applications.apps.FilePicker.implementation, folder = `worlds/${game.world.id}/animater-lifted`;
+        const blob = await new Promise((done) => cut.toBlob(done, "image/webp", 0.95)); if (!blob) throw new Error("the cut picture could not be made");
+        try { await Picker.createDirectory("data", folder, { notify: false }); } catch { /* there already */ }
+        const saved = (await Picker.upload("data", folder, new File([blob], `lifted-${canvas.scene.id}-${Date.now().toString(36)}.webp`, { type: "image/webp" }), {}, { notify: false }))?.path;
+        if (!saved) throw new Error("the cut picture could not be saved");
+        const level = canvas.level, data = liftTileData({ src: saved, scene: at.scene, stands: brushChoices().liftStands, per: Number(canvas.grid?.distance) || 5, levelId: level?.id ?? null, elevation: Number(level?.elevation?.base ?? level?.elevation?.bottom) || 0 });
+        const [made] = await canvas.scene.createEmbeddedDocuments("Tile", [data]);
+        if (made) { rememberDecorStep({ kind: "tile", id: made.id, data: made.toObject() }); ui.notifications?.info?.("Animater: lifted. It stands on the map as a tile now; Ctrl+Z puts it back in the picture."); }
+      } catch (err) { console.warn("Animater | lift from map", err); ui.notifications?.warn?.(`Animater: that could not be lifted (${err?.message ?? err}).`); }
+      finally { lf.busy = false; }
+    };
     // Heights: Raise is a brush, as Floors is (Edges and How alike, the brush's size): a stroke grows the raised part it starts on,
     // or, on lower ground, raises a new one a step over it, joining any of that height it touches; Shift-drag rubs out of the
     // raised part it starts on. Each saved as the stroke ends. Ramps are dragged, and the wheel over a raised part sets its height.
@@ -887,6 +923,8 @@ export function createMapPainting(ctx) {
       // Walls have no brush and lay no decoration: the ring and the ghost would both be lying about what a drag does.
       if (wallsOn()) { ghost.visible = false; wl.overlay.visible = true; if (!state.down) wallsHover(); return; }
       wl.overlay.visible = false;
+      // (Lifting has no brush and lays nothing: no ring, no ghost.)
+      if (liftOn()) { ghost.visible = false; fl.overlay.visible = false; return; }
       if (heightsOn()) {
         ghost.visible = false;
         // (Raise is a brush: its ring, in the raised ground's colour.)
@@ -1524,6 +1562,8 @@ export function createMapPainting(ctx) {
       if (wallsOn()) { wallsDown(p, e.shiftKey); state.down = !!wl.points || !!wl.move || wl.rubbing; state.erasing = e.shiftKey; draw(); return; }
       if (heightsOn()) { if (!heightsDown(p, e.shiftKey, e.altKey)) return; state.down = true; state.erasing = e.shiftKey; state.last = p; draw(); floorDab(p); return; }
       if (floorsOn()) { if (!floorBegin(p, e.shiftKey)) return; state.down = true; state.erasing = e.shiftKey; state.last = p; draw(); floorDab(p); return; }
+      // (Lifting is a click, not a stroke: nothing is laid, a thing is taken up out of the map's picture.)
+      if (liftOn()) { void liftAt(p); return; }
       begin(p); state.down = true; state.erasing = e.shiftKey; state.last = p; draw(); dab(p, e.shiftKey, true);
     };
     const move = (e) => {
@@ -1704,6 +1744,8 @@ export function createMapPainting(ctx) {
       else if (step.kind === "building") { await wallsBack(step.walls, []); for (const r of step.regions) await decorRegion(r.id)?.delete(); await canvas.scene?.update({ [`flags.${ID}.roofs`]: step.roofsBefore }); }
       // (Select's: every region it touched, and a region it grew goes back to the shape it had.)
       else if (step.kind === "edits") { for (const c of step.changed) await decorRegion(c.id)?.update({ flags: { [ID]: { decor: c.before } }, ...(c.shapesBefore ? { shapes: c.shapesBefore } : {}) }, { render: false }); }
+      // (A thing lifted out of the map: its tile goes, and it is only paint again.)
+      else if (step.kind === "tile") await canvas.scene?.tiles?.get(step.id)?.delete();
       else await decorRegion(step.id)?.delete();
       decorSteps.redo.push(step);
     } catch (err) { console.warn("Animater | decorations undo", err); }
@@ -1720,6 +1762,7 @@ export function createMapPainting(ctx) {
       else if (step.kind === "roofs") await canvas.scene?.update({ [`flags.${ID}.roofs`]: step.after });
       else if (step.kind === "building") { await wallsBack([], step.walls); for (const r of step.regions) { const [made] = await canvas.scene.createEmbeddedDocuments("Region", [r.data]); if (made) r.id = made.id; } await canvas.scene?.update({ [`flags.${ID}.roofs`]: step.roofsAfter }); }
       else if (step.kind === "edits") { for (const c of step.changed) await decorRegion(c.id)?.update({ flags: { [ID]: { decor: c.after } }, ...(c.shapesAfter ? { shapes: c.shapesAfter } : {}) }, { render: false }); }
+      else if (step.kind === "tile") { const { _id, ...data } = step.data; void _id; const [made] = await canvas.scene.createEmbeddedDocuments("Tile", [data]); if (made) step.id = made.id; }
       else { const [made] = await canvas.scene.createEmbeddedDocuments("Region", [step.data]); if (made) step.id = made.id; }
       decorSteps.undo.push(step);
     } catch (err) { console.warn("Animater | decorations redo", err); }
