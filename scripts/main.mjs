@@ -130,6 +130,7 @@ import { wrapRulerHighlight } from "./integrations/walked-path.mjs";
 import { registerTriggerEngine } from "./integrations/trigger-engine.mjs";
 import { AnimaterRuntime, sameEffectName, templateDocument } from "./engines/playback/runtime.mjs";
 import { areaTargets } from "./engines/playback/area-targets.mjs";
+import { dasSmiteOf, dasSmiteEvent } from "./integrations/das-smite.mjs";
 import { AREA_LOOP_MODES } from "./engines/playback/lasting-area.mjs";
 import { wallHit, planFlight } from "./engines/playback/flight-path.mjs";
 import { nowPlayingRows } from "./ui/activity-actions.mjs";
@@ -10009,6 +10010,21 @@ async function enrich(event) {
   if (placed?.documentName === "Region" && typeof placed.testPoint === "function")
     event.targets = areaTargets({ tokens: canvas.tokens?.placeables ?? [], userTargets: event.targets, source: event.source, gridSize: canvas.grid?.size ?? 100,
       inside: (point, token) => placed.testPoint({ x: point.x, y: point.y, elevation: Number(token.document?.elevation ?? 0) }) });
+  // A cast another module resolved with no template (das-smite.mjs): its area is built from the spell's own size
+  // around the creature hit, and a round one also catches whoever else stands in it.
+  if (event.castWithoutArea && !event.template) {
+    const built = castAreaFor(event);
+    if (built) {
+      const { center, diameter } = built.area, hit = event.targets ?? [];
+      const within = built.area.type ? [] : areaTargets({ tokens: canvas.tokens?.placeables ?? [], source: event.source, gridSize: canvas.grid?.size ?? 100,
+        inside: (point) => Math.hypot(point.x - center.x, point.y - center.y) <= diameter / 2 });
+      event.targets = [...hit, ...within.filter((token) => !hit.includes(token))];
+      event.area = built.area;
+      event.template = built.template;
+      return event;
+    }
+    if (event.type === "template") event.type = "use";
+  }
   event.area = eventArea(event);
   return event;
 }
@@ -17557,6 +17573,12 @@ Hooks.once("ready", () => {
     });
     Hooks.on("dnd5e.postUseActivity", (activity, _config, results) => {
       void dispatch(dnd5eEvent("use", activity, { results }));
+    });
+    // DAS · Core casts a smite without D&D 5e's own use: the weapon's damage message carries it (das-smite.mjs).
+    Hooks.on("createChatMessage", (message, _options, userId) => {
+      const smite = userId === game.user.id ? dasSmiteOf(message) : null;
+      if (!smite) return;
+      void (async () => dispatch(dasSmiteEvent(message, await fromUuid(smite.item), { userId: game.user.id })))().catch((error) => runtime.trace("Blocked", error.message));
     });
     const effectApplied = (effect, userId) => {
       if (userId !== game.user.id || effect.disabled || effect.isSuppressed) return;
