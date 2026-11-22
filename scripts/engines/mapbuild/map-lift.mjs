@@ -29,7 +29,7 @@ export const LIFT_MOST = 2048;
  * `masks` each one value a pixel (anything but 0 is in), `scores` the model's own for each. A Uint8Array of 0s and
  * 1s, or null.
  */
-export function liftMask({ masks = [], scores = [], width = 0, height = 0, least = 0.0003, most = 0.25 } = {}) {
+export function liftMask({ masks = [], scores = [], width = 0, height = 0, least = 0.0003, most = 0.12 } = {}) {
   const n = width * height; if (!(n > 0)) return null;
   let best = null;
   masks.forEach((m, i) => {
