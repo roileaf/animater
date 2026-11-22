@@ -67,6 +67,8 @@ export class DndCatalogWorkspace {
   const leave={label:excluded?'Put back in Plug & play':'Leave out of Plug & play',action:'dnd-exclude',disabled:!canUse};
   if(!automatic)return catalogStatusHTML({tone:'manual',title:'Plays on demand',text:'Play it with your selected tokens.',buttons:[{label:'Play animation',action:'play',primary:true,disabled:!canUse},customize]});
   if(using)return catalogStatusHTML({tone:'on',title:persistent?'Animates while it is active':'Plays automatically',text:when,buttons:[customize,all?leave:null]});
+  // Left out, the catalog's animation is silent; the GM's customized version still plays (the catalogs' resolvers).
+  if(all&&excluded&&saved&&!persistent&&state.customized.includes(entry.id))return catalogStatusHTML({tone:'custom',title:saved.enabled===false?'Your version is paused':'Your version plays',text:'The catalog animation is left out of Plug & play; yours plays instead.',buttons:[{...customize,primary:true},leave]});
   if(all&&excluded)return catalogStatusHTML({tone:'off',title:'Left out of Plug & play',text:when,buttons:[{...leave,primary:true},customize]});
   return catalogStatusHTML({tone:'off',title:'Not playing automatically',text:when,buttons:[{label:'Use animation',action:'dnd-use',primary:true,disabled:!canUse},customize]});
  }

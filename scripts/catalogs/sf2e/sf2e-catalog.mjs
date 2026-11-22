@@ -89,7 +89,8 @@ export function sfVariantForEvent(entry,event){
 export function resolveSfAutomaticRecipe(event,stateFor,saved=[],{customEnabled=true,sounds,runes=runeFlourishesEnabled()}={}){
  if(event.systemId&&event.systemId!=='sf2e')return null;
  const entry=findSfEntry(event),state=normalizeSfCatalogState(entry&&stateFor(entry.kind));
- const custom=customEnabled||entry&&sfEntryEnabled(entry.id,state)&&state.customized.includes(entry.id)?saved:[];
+ // Left out of Plug & play, the catalog's own animation is silent; a version the GM customized still plays.
+ const custom=customEnabled||entry&&state.enabled&&state.customized.includes(entry.id)?saved:[];
  // An action rolled as a skill check has a stand-in item with no uuid: a copy bound to the entry's uuid still matches.
  if(entry?.uuid&&!event.itemUuid)event={...event,itemUuid:entry.uuid};
  const selected=entry&&sfEntryEnabled(entry.id,state),prefer=selected&&(state.selected.includes(entry.id)||state.preferCatalog&&!state.customized.includes(entry.id)&&!ownRecipe(custom,event));

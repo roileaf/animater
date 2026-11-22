@@ -128,7 +128,8 @@ export function resolveAutomaticWeaponRecipe(event,state,custom=[],{customEnable
  const catalog=r=>withRuneFlourishes(named(r),event.item,{runes});
  const active=weapon&&event.type==='attack'&&catalogWeaponEnabled(weapon.id,state)&&weapon.modes.some(m=>m.mode===mode);
  const bound={...event,weaponMode:mode,...(weapon?.strikeBinding==='unarmed'?{itemUuid:`Compendium.pf2e.equipment-srd.Item.${weapon.id}`}:{})};
- const configured=customEnabled||active&&state.customized?.includes(key)?custom:[];
+ // Left out of Plug & play, the catalog's own animation is silent; a version the GM customized still plays.
+ const configured=customEnabled||weapon&&state?.enabled===true&&state.customized?.includes(key)?custom:[];
  const override=matchStrikeOverride(configured,bound);if(override)return override;
  if(active&&(state.selected?.includes(weapon.id)||state.preferCatalog&&!ownRecipe(configured,bound))&&!state.customized?.includes(key))return catalog(weaponRecipe(weapon,mode,{motion:state.motion,soundCatalog:state.sound===false?null:soundCatalog,soundVolume:state.soundVolume,surfaceSound:state.surfaceSound}));
  const saved=matchRecipe(configured,bound);if(saved)return saved;

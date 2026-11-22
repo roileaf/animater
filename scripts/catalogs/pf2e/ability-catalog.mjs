@@ -73,7 +73,8 @@ export function createAbilityCatalog({ entries, source, recipeKind, label, packs
     const found = find(event);
     if (found && enabled(found.id,state) && (state.selected.includes(found.id) || (state.preferCatalog && !state.customized.includes(found.id) && !ownRecipe(customEnabled ? customRecipes : [], found?.uuid && !event.itemUuid ? { ...event, itemUuid: found.uuid } : event))))
       return automaticRecipe(event,state,[],soundCatalog);
-    const configured = customEnabled || (found && state.enabled && !state.excluded.includes(found.id) && state.customized.includes(found.id)) ? customRecipes : [];
+    // Left out of Plug & play, the catalog's own animation is silent; a version the GM customized still plays.
+    const configured = customEnabled || (found && state.enabled && state.customized.includes(found.id)) ? customRecipes : [];
     // An action rolled as a skill check (Demoralize, Shove) has a stand-in item with no uuid: your
     // copy, bound to the entry's uuid, still matches (and, paused, still silences the default).
     const keyed = found?.uuid && !event.itemUuid ? { ...event, itemUuid: found.uuid } : event;

@@ -53,7 +53,8 @@ export function resolveAutomaticFeatRecipe(event, state, customRecipes = [], {cu
   const feat = findCatalogFeat(event);
   if (feat && catalogFeatEnabled(feat.id,state) && (state.selected?.includes(feat.id) || (state.preferCatalog && !state.customized?.includes(feat.id) && !ownRecipe(customEnabled ? customRecipes : [], event))))
     return automaticFeatCatalogRecipe(event,state,[],soundCatalog);
-  const configured = customEnabled || (feat && state?.enabled && !state.excluded?.includes(feat.id) && state.customized?.includes(feat.id)) ? customRecipes : [];
+  // Left out of Plug & play, the catalog's own animation is silent; a version the GM customized still plays.
+  const configured = customEnabled || (feat && state?.enabled && state.customized?.includes(feat.id)) ? customRecipes : [];
   return matchRecipe(configured,event) ?? automaticFeatCatalogRecipe(event,state,configured,soundCatalog);
 }
 export function filterFeats({search="",level="all",activity="all",actionType=activity,activation=actionType,category="all",classTrait="all",theme="all",quality="all",edition="all"} = {}) {

@@ -184,7 +184,8 @@ export function withoutTargets(recipe){
 const needsTargets=recipe=>recipe.trigger!=='template'&&recipe.stages.some(s=>(['travel','projectile','impact'].includes(s.kind)||s.subject==='targets')&&!s.optionalTargets&&s.travelDestination!=='area');
 export function resolveDndAutomaticRecipe(event,stateFor,saved=[],{customEnabled=true,sounds,npcEnabled=true,npcExcluded=[]}={}){
  const entry=findDndEntry(event),state=normalizeDndCatalogState(stateFor(entry?.kind??'feat'));
- const custom=customEnabled||entry&&dndEntryEnabled(entry.id,state)&&state.customized.includes(entry.id)?saved:[];
+ // Left out of Plug & play, the catalog's own animation is silent; a version the GM customized still plays.
+ const custom=customEnabled||entry&&state.enabled&&state.customized.includes(entry.id)?saved:[];
  const selected=entry&&dndEntryEnabled(entry.id,state),prefer=selected&&(state.selected.includes(entry.id)||state.preferCatalog&&!state.customized.includes(entry.id)&&!ownRecipe(custom,event));
  const override=matchStrikeOverride(custom,event);if(override)return override;
  if(!prefer){const match=matchRecipe(custom,event);if(match)return match;}

@@ -176,8 +176,8 @@ export function resolveAutomaticRecipe(
   const configured =
     customEnabled ||
     (spell &&
+      // Left out of Plug & play, the catalog's own animation is silent; a version the GM customized still plays.
       state?.enabled &&
-      !state.excluded?.includes(spell.id) &&
       state.customized?.includes(spell.id))
       ? customRecipes
       : [];

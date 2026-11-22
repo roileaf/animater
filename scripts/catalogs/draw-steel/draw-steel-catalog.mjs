@@ -191,7 +191,8 @@ const lookFields = (item) => { const row = abilityRow(item), look = abilityLook(
 // lasting conditions belong to the persistent layers, not to dispatch.
 export function resolveDrawSteelAutomaticRecipe(event, stateFor, saved = [], { customEnabled = true, sounds = null } = {}) {
   const entry = findDsEntry(event), state = normalizeDsCatalogState(entry && stateFor(entry.kind));
-  const custom = customEnabled || (entry && dsEntryEnabled(entry.id, state) && state.customized.includes(entry.id)) ? saved : [];
+  // Left out of Plug & play, the catalog's own animation is silent; a version the GM customized still plays.
+  const custom = customEnabled || (entry && state.enabled && state.customized.includes(entry.id)) ? saved : [];
   const selected = entry && dsEntryEnabled(entry.id, state), prefer = selected && (state.selected.includes(entry.id) || (state.preferCatalog && !state.customized.includes(entry.id) && !ownRecipe(custom, event)));
   const override = matchStrikeOverride(custom, event);
   if (override) return override;

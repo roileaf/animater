@@ -453,7 +453,8 @@ export function findDhEntry(event) {
 // lasting conditions and the defeated set belong to the persistent layers, not to dispatch.
 export function resolveDaggerheartAutomaticRecipe(event, stateFor, saved = [], { customEnabled = true, sounds = null } = {}) {
   const entry = findDhEntry(event), state = normalizeDhCatalogState(entry && stateFor(entry.kind));
-  const custom = customEnabled || (entry && dhEntryEnabled(entry.id, state) && state.customized.includes(entry.id)) ? saved : [];
+  // Left out of Plug & play, the catalog's own animation is silent; a version the GM customized still plays.
+  const custom = customEnabled || (entry && state.enabled && state.customized.includes(entry.id)) ? saved : [];
   const selected = entry && dhEntryEnabled(entry.id, state), prefer = selected && (state.selected.includes(entry.id) || (state.preferCatalog && !state.customized.includes(entry.id) && !ownRecipe(custom, event)));
   const override = matchStrikeOverride(custom, event);
   if (override) return override;
