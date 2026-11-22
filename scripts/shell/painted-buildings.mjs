@@ -309,6 +309,7 @@ export function createPaintedBuildings(ctx) {
     // The sky's light on the roofs, kept up each frame: it is theirs to carry now that the lighting pass cannot
     // reach them. Cheap, and the clock moves it a little at dawn and dusk.
     if (roofRoot && !roofRoot.destroyed) lightRoofs();
+    try { hoverNow(); } catch { /* no pointer yet */ }
     const now = on();
     if (now !== were) { were = now; dirty = true; }
     if (now && wallsNow() !== from) dirty = true;
@@ -368,10 +369,25 @@ export function createPaintedBuildings(ctx) {
   const covering = () => {
     if (placing()) return allRoofs();
     const mine = seeing();
-    if (!mine.length) return [];
-    return roofsOf(flags(), { grid: gridNow() })
+    if (!mine.length) return [...hovered];
+    return [...new Set([...hovered, ...roofsOf(flags(), { grid: gridNow() })
       .filter((r) => mine.some((t) => underRoof(r.room, t.center?.x ?? t.x, t.center?.y ?? t.y)))
-      .map((r) => `${r.key}${roofSuffix()}`);
+      .map((r) => `${r.key}${roofSuffix()}`)])];
+  };
+  // A GM has no creature of their own to look from, so the pointer is their eye: the roof it rests on stands aside
+  // and comes back when the pointer leaves (Roi: "when hovering over a roof i dont see the insides of the house").
+  // On their own screen only, as every roof's fading is. Looked at when the pointer has moved, and the roofs are
+  // only asked to change when it has crossed onto or off one.
+  let hovered = [], hoverAt = '';
+  const hoverNow = () => {
+    if (globalThis.game?.user?.isGM !== true) return;
+    const p = globalThis.canvas?.mousePosition;
+    if (!p) return;
+    const at = `${Math.round(p.x)},${Math.round(p.y)}`;
+    if (at === hoverAt) return;
+    hoverAt = at;
+    const now = roofsOf(flags(), { grid: gridNow() }).filter((r) => underRoof(r.room, p.x, p.y)).map((r) => `${r.key}${roofSuffix()}`);
+    if (now.join('|') !== hovered.join('|')) { hovered = now; coverSoon(); }
   };
   const sightFrom = (point) => {
     try {
