@@ -89,7 +89,8 @@ test('main: one Map painting button paints floors and decorations, saving each s
   assert.match(main, /rememberDecorStep\(\{ kind: "floor", updates, creates, removes \}\)/);
   assert.match(main, /name: floorRegionName\(c\.floor, names\), floor: c\.floor, texture: c\.texture, pattern: c\.pattern, waterKind: c\.waterKind, overWater: c\.overWater, edge: c\.edge === BRUSH_EDGE\.usual \? "" : c\.edge \}/, 'a new region takes the Soft edge, its style and its water kind');
   assert.match(main, /const data = c\.cave \? toCaveRegionData\(\{ loops: made\.loops \}, \{ \.\.\.opts, \.\.\.c\.cave, name: floorRegionName\(c\.cave\.cavern, names, caveName\) \}\)/, 'cave growth makes cave regions');
-  assert.match(main, /state\.bar\?\.setTab\(e\.key === "1" \? "floors" : e\.key === "2" \? "decor" : "heights"\);/);
+  // (Structures and Paths have their keys too: the hint had long said 1 to 4 while only 1 to 3 answered.)
+  assert.match(main, /state\.bar\?\.setTab\(\{ 1: "floors", 2: "decor", 3: "heights", 4: "walls", 5: "paths", 6: "select" \}\[e\.key\]\);/);
   // Roi: "we have no preview when hovering over the canvas?" Hovering shows what the next dab would take.
   assert.match(main, /if \(!state\.down\) \{ if \(floorsOn\(\) && fl\.map && !e\.shiftKey\) hoverFloor\(p\); else hideHover\(\); return; \}/);
   assert.match(main, /const cells = floorDabCells\(\{[^\n]*seed: floorColourAt\(m\.rgba, m\.width, m\.height, q\.x, q\.y\), tolerance: c\.tol, smart: c\.smart, allowed: \(i\) => !claimed\[i\], within \}\);/);

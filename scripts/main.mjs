@@ -306,6 +306,7 @@ import { createFloorBlood, hitMarks, bleedStep, standingDrip, splatMarks, scaleM
 import { bakeBlood } from "./engines/motion/blood-bake.mjs";
 import { WATER_KINDS, fallWindAngle, stepScale, textureOpacity, waterDepthLook, noLifeOnWater, unfitForLife, waterFlows, waterKindOf, activeStep, floodedByStep, paintsOverWater, showsTexture, stepEdge, stepFlags, stepLook, takesSeason, textureFloor, textureStyleOf, castsShadow, overShadowOf, dockStyleOf, showsPosts, caveLook, indoorEdgeOf } from "./engines/motion/region-steps.mjs";
 import { createFloorLooks, createFloorTextures, skyForFloors } from "./engines/motion/floor-looks.mjs";
+import { floorStack } from "./engines/motion/floor-stack.mjs";
 import { createFloorMotion } from "./engines/motion/floor-motion.mjs";
 import { openStepsWindow, refreshStepsWindow } from "./ui/region-steps-ui.mjs";
 import { createRegionPanel } from "./ui/region-panel.mjs";
@@ -373,6 +374,7 @@ import { rollFile, rollShape, lapFile, lapShape, paceGap, paceVoice, knocksFor, 
 import { WoundedLooks, bleedTier, tokenMoving } from "./engines/playback/wounded-looks.mjs";
 import { builtinPreset } from "./engines/tokenshade/presets.mjs";
 import { createMapPainting, NEW_DECOR_REGION } from "./shell/map-painting.mjs";
+import { createMapBuilder } from "./shell/map-builder.mjs";
 import { createSkyLook } from "./shell/sky-look.mjs";
 import { createSmoke } from "./shell/smoke.mjs";
 let conditionBody;
@@ -3293,14 +3295,14 @@ const syncFloorLooks = () => {
       if (notOnFloor(own, bound)) continue;
       const floor = plainFloorOf(region);
       if (floor && showsTexture(own, sceneChoice) && !movingIds.has(region.id)) {
-        const spec = { id: region.id, areas: iceAreas(region), floor: textureFloor(own, floor), style: textureStyleOf(own, textureFloor(own, floor)), seconds: stepLook(own, floor).seconds, edge: stepEdge(own), scale: stepScale(own), opacity: textureOpacity(own), blades: floorLevel.blades, shine: floorLevel.shine, roofed: roofedRegion(regionAreas(region)) };
+        const spec = { id: region.id, areas: iceAreas(region), over: own.overWater === true, floor: textureFloor(own, floor), style: textureStyleOf(own, textureFloor(own, floor)), seconds: stepLook(own, floor).seconds, edge: stepEdge(own), scale: stepScale(own), opacity: textureOpacity(own), blades: floorLevel.blades, shine: floorLevel.shine, roofed: roofedRegion(regionAreas(region)) };
         const home = floorPlaneOf(bound);
         if (home) spec.plane = { ...home, zIndex: MAP_SORT.floorTextures };
         painted.push(spec);
       }
     } catch (err) { runtime?.trace?.("floor looks", `${region?.id ?? "?"}: ${err?.message ?? err}`); /* a broken region never breaks the rest */ }
   }
-  floorTextures.sync(painted);
+  floorTextures.sync(floorStack(painted, moving));
   syncMovingWater(moving);
   syncFloorShadows(moving);
   iceDrawn.cut = iceCutNow;
@@ -5558,6 +5560,8 @@ const openAnimalsPanel = () => {
   void animalsPanelApp.render({ force: true });
 };
 const toolShown = (key) => { try { return game.settings.get(ID, key) !== false; } catch { return true; } };
+// Build a map (shell/map-builder.mjs): a whole map laid out on an empty scene. Shown with the Map painting brush.
+const mapBuilder = createMapBuilder();
 // Map making — the painting brush and the floor regions window — is for building a map, not for playing on one. A
 // world that has never built one is not shown the tools for it (see mapMakingSeen below); a world that has keeps them.
 const mapMakingOn = () => { try { return game.settings.get(ID, "mapMaking") !== false; } catch { return true; } };
@@ -5663,6 +5667,8 @@ Hooks.on("getSceneControlButtons", (controls) => {
       onChange: (event, active) => { if (!active || canvas.tokens?.active) return; canvas.tokens?.activate(); void ui.controls?.activate({ control: "animater", tool: "select" }); } };
     add({ name: "animaterDecorate", title: "Map painting: paint floors, decorations, structures and heights onto the map", icon: "fa-solid fa-paintbrush", order: order - 1, button: true, visible: toolShown("toolDecorate") && mapMakingOn(),
       onChange: () => (mapPainting?.brushing() ? stopDecorBrush() : startDecorBrush()) });
+    add({ name: "animaterBuildMap", title: "Build a map: lay out a village, an inn, a camp or a farm on this scene from nothing", icon: "fa-solid fa-map", order: order - 0.9, button: true, visible: toolShown("toolDecorate") && mapMakingOn(),
+      onChange: () => { void mapBuilder.open(); } });
     add({ name: "animaterCaveIn", title: "Cave-in: click where the ceiling comes down", icon: "fa-solid fa-person-falling-burst", order, button: true, visible: toolShown("toolCaveIn"),
       onChange: () => aimCaveIn() });
     add({ name: "animaterEnergyBlast", title: "Energy blast: pick a kind, click where it goes off", icon: "fa-solid fa-explosion", order: order + 3, button: true, visible: toolShown("toolEnergyBlast"),

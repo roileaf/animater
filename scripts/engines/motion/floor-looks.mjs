@@ -749,7 +749,7 @@ const boxOf = (areas, pad) => {
   return { x, y, w: Math.max(...xs) + pad - x, h: Math.max(...ys) + pad - y };
 };
 // The region's shape in a small soft image, its holes cut out.
-const maskOf = (PIXI, render, areas, box, grid, edge = 1) => {
+const maskOf = (PIXI, render, areas, box, grid, edge = 1, under = null) => {
   const k = Math.min(0.25, 512 / Math.max(1, box.w, box.h)), w = Math.max(2, Math.ceil(box.w * k)), h = Math.max(2, Math.ceil(box.h * k));
   const texture = PIXI.RenderTexture.create({ width: w, height: h }), g = new PIXI.Graphics(), holder = new PIXI.Container();
   const at = (points) => points.map((v, i) => (v - (i % 2 ? box.y : box.x)) * k);
@@ -766,8 +766,21 @@ const maskOf = (PIXI, render, areas, box, grid, edge = 1) => {
   for (const area of areas) for (const hole of area.holes ?? []) { any = true; cuts.beginFill(0xffffff, 1); cuts.drawPolygon(at(Array.from(hole))); cuts.endFill(); }
   if (any) { cuts.blendMode = PIXI.BLEND_MODES.ERASE; cutter.addChild(cuts); render(cutter, texture, false); }
   cutter.destroy({ children: true });
+  // Moving water lying under it (floor-stack.mjs): the floor is opened over it. A little inside the water's own edge,
+  // where the water has come to its full, so nothing of the map shows between the two.
+  if (under?.length) {
+    const open = PIXI.RenderTexture.create({ width: w, height: h }), fill = new PIXI.Graphics(), rim = new PIXI.Graphics(), filled = new PIXI.Container(), rimmed = new PIXI.Container(), opener = new PIXI.Container();
+    rim.lineStyle(Math.max(1, grid * UNDER_INSET * k) * 2, 0xffffff, 1);
+    for (const area of under) { const points = at(Array.from(area)); fill.beginFill(0xffffff, 1); fill.drawPolygon(points); fill.endFill(); rim.drawPolygon(points); }
+    filled.addChild(fill); render(filled, open, true);
+    rim.blendMode = PIXI.BLEND_MODES.ERASE; rimmed.addChild(rim); render(rimmed, open, false);
+    const hole = new PIXI.Sprite(open); hole.blendMode = PIXI.BLEND_MODES.ERASE; opener.addChild(hole); render(opener, texture, false);
+    filled.destroy({ children: true }); rimmed.destroy({ children: true }); opener.destroy({ children: true }); open.destroy(true);
+  }
   return texture;
 };
+// How far inside water's edge a floor it lies in still covers it, in squares.
+const UNDER_INSET = 0.3;
 // The most of the shape any point of a mask holds, 0-1. Read once, as a look or floor is made.
 const peakOf = (pixels, mask) => { try { const px = pixels(mask); let most = 0; for (let i = 3; i < px.length; i += 4) if (px[i] > most) most = px[i]; return Math.max(0.05, most / 255); } catch { return 1; } };
 const seedOf = (id) => { let h = 7; for (const ch of String(id)) h = (h * 31 + ch.charCodeAt(0)) % 997; return h / 37; };
@@ -1079,7 +1092,7 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
   const paint = (areas, floor, edge, style, useBlades, shineOn, parent = null, spec = null) => {
     const size = grid() || 100, box = boxOf(areas, size * Math.max(1, edge));
     if (!box) return null;
-    const mask = maskOf(PIXI, render, areas, box, size, edge);
+    const mask = maskOf(PIXI, render, areas, box, size, edge, spec?.under);
     // Four squares to a tile: a blade of grass, a board or a flagstone at its right size for the map, and sharp.
     const made = surfaceShine(floor, style), shine = shineOn ? made : { ...made, gloss: 0, glitter: 0, lift: 0, relief: 0, ripple: 0, wets: 0 }, answers = shine.gloss + shine.glitter + shine.lift + shine.relief > 0;
     skyAt = 0;
@@ -1091,6 +1104,13 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
     // Grass stands up off its ground, blade by blade.
     if (useBlades && swaysInWind(floor)) { const made = bladesOf(PIXI, areas, box, style, size, mask, mesh.shader.uniforms.uPeak); if (made) { mesh.addChild(made.shadows, made.blades); mesh.animaterBlades = made.blades; mesh.animaterBladeShadows = made.shadows; skyAt = 0; } }
     return mesh;
+  };
+  // The floors lie in the order of the list, bottom first, and not in the order their tiles happened to be ready: each
+  // is put back on top in turn, a floor fading out under the one replacing it. Nothing moves when they already lie so.
+  const inOrder = (list) => {
+    const want = new Map();
+    for (const spec of list) { const entry = known.get(spec.id); for (const mesh of [entry?.old, entry?.mesh]) if (mesh?.parent) { const row = want.get(mesh.parent) ?? []; row.push(mesh); want.set(mesh.parent, row); } }
+    for (const [parent, row] of want) { const now = parent.children.filter((child) => row.includes(child)); if (now.some((child, i) => child !== row[i])) for (const mesh of row) parent.addChild(mesh); }
   };
   // A painted floor's alpha, its grass blades and their shadows with it.
   const showAt = (mesh, alpha) => { if (!mesh) return; mesh.shader.uniforms.uAlpha = alpha; if (mesh.animaterBlades) { mesh.animaterBlades.shader.uniforms.uAlpha = alpha; mesh.animaterBladeShadows.shader.uniforms.uAlpha = alpha; } };
@@ -1113,7 +1133,7 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
       for (const spec of list) {
         seen.add(spec.id);
         if (spec.roofed) roofed.add(spec.id); else roofed.delete(spec.id);
-        const shape = shapeKey(spec.areas), edge = spec.edge ?? 1, style = spec.style ?? '', useBlades = spec.blades !== false, shineOn = spec.shine !== false, entry = known.get(spec.id);
+        const shape = shapeKey(spec.areas) + shapeKey(spec.under), edge = spec.edge ?? 1, style = spec.style ?? '', useBlades = spec.blades !== false, shineOn = spec.shine !== false, entry = known.get(spec.id);
         // How much it covers the map (the region's Texture opacity): what its alpha stands at once faded in.
         const opacity = Math.min(1, Math.max(0, Number(spec.opacity ?? 1)));
         scaleNow = spec.scale ?? 1;
@@ -1133,6 +1153,7 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
         known.set(spec.id, { mesh, old: entry.mesh, floor: spec.floor, style, shape, edge, useBlades, shineOn, seconds: spec.seconds, opacity });
       }
       for (const [id, entry] of known) if (!seen.has(id)) { drop(entry.old); drop(entry.mesh); known.delete(id); }
+      inOrder(list);
     },
     tick(seconds, { wind = 0, angle = 0.6, sky = () => null, tokens = () => [], view = () => null, lights = () => [], weather = () => null, flash = () => null, shade = () => null, mostLights = MOST_FLOOR_LIGHTS } = {}) {
       const shadeNow = shade();

@@ -189,7 +189,8 @@ test('the brush bar has a search over its kinds', async () => {
   assert.match(bar, /search\.placeholder = 'Search kinds…'/);
   assert.match(bar, /if \(e\.key === 'Enter'\) \{ e\.preventDefault\(\); const first = \[\.\.\.chips\.children\]\.find\(\(c\) => !c\.hidden\); if \(first\) pick\(first\.dataset\.kind\); \}/);
   // While typing in it the brush's own keys ([, ], Esc, Ctrl+Z) stay out of the way.
-  assert.match(shell(), /if \(e\.target\?\.closest\?\.\("input, textarea"\)\) return;/);
+  // (A tick or a slider just clicked keeps the focus and is no place to type: the keys still work past those.)
+  assert.match(shell(), /const field = e\.target\?\.closest\?\.\("input, textarea"\);\n\s+if \(field && !\["checkbox", "range", "color", "button"\]\.includes\(field\.type\)\) return;/);
 });
 
 test('the brush bar has three places: outdoors keeps to the wild, town has the built things, underground the caves and dungeons', async () => {

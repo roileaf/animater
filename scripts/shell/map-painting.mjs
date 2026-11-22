@@ -27,6 +27,10 @@ import { decorSettings, strokeShapes, decorPlacements, trunkWalls, carryDecor, s
 import { openBrushBar, brushChoices, BRUSH_EDGE, BRUSH_SIZE } from "../ui/decor-brush-bar.mjs";
 import { edgeTouches, openAt as heightOpenAt, OPEN_EDGES_MOST, nextHeight, rampFromDrag, rampOutline, heightRegionData, rampRegionData, heightsHoverLine, heightName, refitHeights } from "../engines/regions/heights.mjs";
 import { DECOR_KINDS, stampDecor, paintDecor } from "../engines/motion/decor-paint.mjs";
+import { pathRegion, pathKind, areaRegion, pathUnder, pointAt, legAt } from "../engines/mapbuild/path-lay.mjs";
+import { planDocuments, houseFrom } from "../engines/mapbuild/map-plan.mjs";
+import { furnishRoom, ROOM_KINDS } from "../engines/mapbuild/furnish.mjs";
+import { pickable, pickAt, pickBox, movedBy, turnedBy, sizedBy, copiesOf, listAfter, growFor, reachOf, SELECT_TURN, SELECT_GROW, mirroredOver, snappedDrag, prefabOf, prefabRegion, prefabsOf } from "../engines/mapbuild/decor-select.mjs";
 
 // The stand-in id a stroke on open ground paints under, until the region it is drawing is actually made.
 export const NEW_DECOR_REGION = "animater-decor-new";
@@ -67,7 +71,10 @@ export function createMapPainting(ctx) {
     // Map painting: the bar's Floors tab paints floor regions, its Decorations tab decorations (each kind with its own picture).
     const thumbs = new Map(), thumb = (kind) => { if (!thumbs.has(kind)) { let pic = null; try { pic = paintDecor(kind, 7, 48, decorLook({ where: brushChoices().where }))?.canvas ?? null; } catch { /* no picture */ } thumbs.set(kind, pic); } return thumbs.get(kind); };
     state.bar = openBrushBar({ onClose: () => stopDecorBrush(), onChange: () => { draw(); if ((floorsOn() || (heightsOn() && brushChoices().heightMode === "raise")) && modelOn()) void loadSam(); refreshHeights(); refreshStatus(); }, region, thumb,
-      onTab: () => { if (floorsOn() || heightsOn()) void readMap(); if (!floorsOn()) hideHover(); refreshHeights(); draw(); refreshStatus(); },
+      onSelectAct: (act) => (act === "fillMap" ? void pathFillMap() : selectAct(act)),
+      // (Read straight from the GM's flags: the bar draws itself as it opens, before the rest of the brush is set up.)
+      prefabs: () => prefabsOf(game.user?.getFlag?.(ID, "prefabs")).map((p) => `${p.name} (${p.items.length})`),
+      onTab: () => { pathClear(); selectGhost(false); Object.assign(sl, { picked: [], drag: null, box: null, hover: null, placing: null }); if (selectOn()) selectRefresh(); if (floorsOn() || heightsOn()) void readMap(); if (!floorsOn()) hideHover(); refreshHeights(); draw(); refreshStatus(); },
       sceneTicks: { get: () => ({ walls: heightsSceneOn("walls"), shadows: heightsSceneOn("shadows"), topdown: cliffsTopDown() }), set: (key, on) => void canvas.scene?.update(key === "topdown" ? { [`flags.${ID}.cliffView`]: on ? "topdown" : "side" } : { [`flags.${ID}.${key === "walls" ? "cliffWalls" : "heightShadows"}`]: on }) },
       // The feast the GM has called on this scene, with no calendar behind it.
       sceneHoliday: { get: () => canvas.scene?.flags?.[ID]?.holiday ?? null, set: (said) => void canvas.scene?.update({ [`flags.${ID}.holiday`]: { on: said?.on === true, colours: (said?.colours ?? []).slice(0, DRESSING_COLOURS_MOST) } }) },
@@ -88,6 +95,230 @@ export function createMapPainting(ctx) {
     const hz = state.heights = { overlay: new PIXI.Graphics(), labels: new PIXI.Container(), sel: null, drag: null, busy: "", hoverText: "", wheel: null, wheelTimer: null };
     hz.overlay.eventMode = "none"; hz.labels.eventMode = "none"; top.addChild(hz.overlay, hz.labels);
     const heightsHere = () => heightsOf(canvas.scene, canvas.level?.id ?? null);
+    // Paths (engines/mapbuild/path-lay.mjs): a line clicked point by point, or dragged freehand, and laid on Enter or a
+    // double-click as what the bar says it is — a road, a stream, a run of fence. Each is a region of its own, saved at
+    // once, so Foundry's Region tools pick the whole road or fence up and move it. Nothing here reads the map's picture,
+    // so paths are drawn on a scene that has none.
+    const pathsOn = () => brushChoices().tab === "paths";
+    const pt = state.paths = { points: [], dragging: false, clickAt: 0, overlay: new PIXI.Graphics() };
+    pt.overlay.eventMode = "none"; top.addChild(pt.overlay);
+    // (Shift puts a point on the grid: its corners and the middles of its squares' sides.)
+    const pathSnap = (p, snap) => { if (!snap) return [Math.round(p.x), Math.round(p.y)]; const half = grid() / 2; return [Math.round(p.x / half) * half, Math.round(p.y / half) * half]; };
+    const pathClear = () => { pt.points = []; pt.dragging = false; pt.box = null; pt.edit = null; pt.grab = null; pt.touched = null; pt.overlay.clear(); };
+    const pathPreview = () => {
+      const g = pt.overlay; g.clear();
+      // (Leaving Edit lets go of the path that was held.)
+      if (pt.edit && brushChoices().pathShape !== "edit") { pt.points = []; pt.edit = null; pt.grab = null; pt.touched = null; }
+      // (A path being edited is shown as what it is, at its own width, and ends where its last point is.)
+      const c = brushChoices(), kind = pathKind(pt.edit?.kind ?? c.pathKind), line = state.at && !pt.dragging && !pt.edit && c.pathShape === "line" ? [...pt.points, [state.at.x, state.at.y]] : pt.points;
+      if (pt.edit) c.pathWide = pt.edit.wide ?? kind.wide;
+      // Ground being filled in: the outline so far closed up and tinted with its floor, or the box being dragged.
+      if (c.pathShape !== "line" && c.pathShape !== "edit") {
+        const fill = Number.parseInt(String(floorTint(c.areaFloor)).slice(1), 16) || 0xffffff;
+        g.lineStyle(2, 0xffffff, 0.9);
+        if (pt.box) { g.beginFill(fill, 0.3); g.drawRect(Math.min(pt.box.a[0], pt.box.b[0]), Math.min(pt.box.a[1], pt.box.b[1]), Math.abs(pt.box.b[0] - pt.box.a[0]), Math.abs(pt.box.b[1] - pt.box.a[1])); g.endFill(); }
+        else if (c.pathShape === "area" && line.length > 1) { g.beginFill(fill, 0.3); g.drawPolygon(line.flat()); g.endFill(); }
+        g.lineStyle(2, 0x1e160e, 0.9);
+        for (const p of pt.points) { g.beginFill(0xf3e4c4, 1); g.drawCircle(p[0], p[1], Math.max(4, grid() * 0.06)); g.endFill(); }
+        return;
+      }
+      const wide = kind.type === "pieces" ? (DECOR_KINDS[kind.kind]?.size ?? 1) * c.pathWide * 0.35 * grid() : c.pathWide * grid();
+      const tint = kind.type === "pieces" ? 0xd9b46a : (Number.parseInt(String(floorTint(kind.type === "water" ? "water" : kind.floor)).slice(1), 16) || 0xffffff);
+      const trace = () => { g.moveTo(line[0][0], line[0][1]); for (const p of line.slice(1)) g.lineTo(p[0], p[1]); };
+      // How wide it will lie, and the line itself down its middle.
+      if (line.length > 1) { g.lineStyle({ width: wide, color: tint, alpha: 0.35, join: "round", cap: "butt" }); trace(); g.lineStyle(2, 0xffffff, 0.9); trace(); }
+      g.lineStyle(2, 0x1e160e, 0.9);
+      for (const p of pt.points) { g.beginFill(0xf3e4c4, 1); g.drawCircle(p[0], p[1], Math.max(4, grid() * 0.06)); g.endFill(); }
+      if (state.at && !pt.points.length && c.pathShape === "line") { g.lineStyle(2, tint, 0.95); g.drawCircle(state.at.x, state.at.y, Math.max(6, wide / 2)); }
+    };
+    // A laid path laid again along the line its points were moved to: the old region goes and the new one comes in one
+    // step, so Ctrl+Z puts the path back exactly as it was (a fence's walls go and come with their region).
+    const pathRelay = async () => {
+      const edit = pt.edit, drawn = pt.points; pathClear();
+      const old = edit ? decorRegion(edit.id) : null; if (!old) return;
+      const data = pathRegion(edit.kind, drawn, { grid: grid(), wide: edit.wide, smooth: edit.smooth, seed: edit.seed, levelId: canvas.level?.id ?? null, blocks: edit.blocks });
+      if (!data) return;
+      try {
+        const removes = [{ id: old.id, data: old.toObject() }];
+        await canvas.scene.deleteEmbeddedDocuments("Region", [old.id]);
+        const [made] = await canvas.scene.createEmbeddedDocuments("Region", [data]);
+        if (made) rememberDecorStep({ kind: "floor", updates: [], creates: [{ id: made.id, data }], removes });
+      } catch (err) { console.warn("Animater | paths", err); ui.notifications?.warn?.("The path could not be laid again."); }
+    };
+    // Edit a path: the first click takes hold of the path under it; after that a click on a point picks it up, and a
+    // click on the line between two puts a new point there and picks that up.
+    const pathEditDown = (p, e) => {
+      const reach = Math.max(12, grid() * 0.3);
+      if (!pt.edit) {
+        const found = pathUnder(regionsHere().map((r) => ({ id: r.id, own: r.flags?.[ID] })), p.x, p.y, { grid: grid(), reach });
+        if (!found) { ui.notifications?.info?.("Animater: no path there that remembers how it was drawn. Paths laid before today's update have to be drawn again."); return; }
+        pt.edit = found; pt.points = found.line; return;
+      }
+      let i = pointAt(pt.points, p.x, p.y, reach);
+      if (i < 0) { const leg = legAt(pt.points, p.x, p.y, reach); if (leg < 0) return; pt.points.splice(leg + 1, 0, pathSnap(p, e.shiftKey)); i = leg + 1; }
+      pt.grab = i; pt.touched = i;
+    };
+    const pathFinish = async () => {
+      if (pt.edit) return pathRelay();
+      const drawn = pt.points; pathClear();
+      const c = brushChoices(), levelId = canvas.level?.id ?? null;
+      const data = c.pathShape === "area" ? areaRegion(c.areaFloor, { points: drawn, style: c.areaStyle, edge: c.edge, levelId })
+        : c.pathShape === "line" ? pathRegion(c.pathKind, drawn, { grid: grid(), wide: c.pathWide, smooth: c.pathSmooth, seed: state.seed++, levelId, blocks: c.pathBlocks }) : null;
+      if (!data) return;
+      try { const [made] = await canvas.scene.createEmbeddedDocuments("Region", [data]); if (made) rememberDecorStep({ kind: "create", id: made.id, data }); }
+      catch (err) { console.warn("Animater | paths", err); ui.notifications?.warn?.("The path could not be saved."); }
+    };
+    // A box of ground, dragged from corner to corner.
+    const pathBoxFinish = async () => {
+      const box = pt.box; pt.box = null; pt.overlay.clear();
+      const c = brushChoices(), x = Math.min(box.a[0], box.b[0]), y = Math.min(box.a[1], box.b[1]), width = Math.abs(box.b[0] - box.a[0]), height = Math.abs(box.b[1] - box.a[1]);
+      if (width < grid() * 0.3 || height < grid() * 0.3) return;
+      const data = areaRegion(c.areaFloor, { box: { x, y, width, height }, style: c.areaStyle, edge: c.edge, levelId: canvas.level?.id ?? null });
+      try { const [made] = await canvas.scene.createEmbeddedDocuments("Region", [data]); if (made) rememberDecorStep({ kind: "create", id: made.id, data }); }
+      catch (err) { console.warn("Animater | paths", err); ui.notifications?.warn?.("The ground could not be saved."); }
+    };
+    // The ground under the whole map: one floor from edge to edge, in place of whichever was laid there before (by
+    // this, or by Build a map). It lies under every other floor, being the biggest.
+    const pathFillMap = async () => {
+      const rect = canvas.dimensions?.sceneRect, c = brushChoices(); if (!rect) return;
+      const data = areaRegion(c.areaFloor, { box: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, style: c.areaStyle, whole: true, levelId: canvas.level?.id ?? null });
+      if (!data) return;
+      try {
+        const removes = regionsHere().filter((r) => r.flags?.[ID]?.wholeMap === true).map((r) => ({ id: r.id, data: r.toObject() }));
+        if (removes.length) await canvas.scene.deleteEmbeddedDocuments("Region", removes.map((r) => r.id));
+        const [made] = await canvas.scene.createEmbeddedDocuments("Region", [data]);
+        if (made) rememberDecorStep({ kind: "floor", updates: [], creates: [{ id: made.id, data }], removes });
+      } catch (err) { console.warn("Animater | paths", err); ui.notifications?.warn?.("The ground could not be saved."); }
+      refreshStatus();
+    };
+    const pathDown = (p, e) => {
+      const shape = brushChoices().pathShape;
+      if (shape === "all") return;
+      if (shape === "edit") { pathEditDown(p, e); return; }
+      if (shape === "box") { const q = pathSnap(p, e.shiftKey); pt.box = { a: q, b: q }; return; }
+      const q = pathSnap(p, e.shiftKey), last = pt.points.at(-1), now = Date.now();
+      // A second click on the same spot, straight after the first: that is the end of the line.
+      if (last && now - pt.clickAt < 400 && Math.hypot(q[0] - last[0], q[1] - last[1]) < grid() * 0.3) { void pathFinish().then(refreshStatus); return; }
+      pt.clickAt = now; pt.points.push(q); pt.dragging = true;
+    };
+    // Held and dragged, it draws freehand: a point every square or so.
+    const pathDrag = (p, snap) => { const q = pathSnap(p, snap), last = pt.points.at(-1); if (last && Math.hypot(q[0] - last[0], q[1] - last[1]) >= grid() * 0.9) pt.points.push(q); };
+    // Select (engines/mapbuild/decor-select.mjs): picks up what was laid by hand — by the brush, a path or Build a map —
+    // one at a click, more with Shift or a box, and moves, turns, sizes, copies or removes it. What a region scatters by
+    // itself is not there to pick: it is not kept anywhere, only worked out. Each edit is one step of undo, and the
+    // edits wait their turn, so a spin of the wheel is written in order.
+    const selectOn = () => brushChoices().tab === "select";
+    const sl = state.select = { all: [], picked: [], drag: null, box: null, hover: null, busy: Promise.resolve(), overlay: new PIXI.Graphics() };
+    sl.overlay.eventMode = "none"; top.addChild(sl.overlay);
+    const sameItem = (a, b) => a.id === b.id && a.i === b.i;
+    // (As the region keeps them once cleaned: that is the list an edit is written back as, so a place in it stays a place.)
+    const selectRefresh = () => { sl.all = pickable(regionsHere().map((r) => ({ id: r.id, brushed: decorSettings(r.flags?.[ID]?.decor)?.brushed ?? [] }))); sl.picked = sl.picked.filter((p) => sl.all.some((it) => sameItem(it, p))); };
+    const selectedNow = () => sl.picked.map((p) => sl.all.find((it) => sameItem(it, p))).filter(Boolean);
+    const selectDraw = () => {
+      const g = sl.overlay; g.clear();
+      const off = sl.drag?.moved ? sl.drag : { dx: 0, dy: 0 };
+      for (const it of selectedNow()) { const r = reachOf(it.d, grid()); g.lineStyle(4, 0x1e160e, 0.85); g.drawCircle(it.d.x + off.dx, it.d.y + off.dy, r); g.lineStyle(2, 0xf3d27a, 1); g.drawCircle(it.d.x + off.dx, it.d.y + off.dy, r); }
+      if (sl.hover && !sl.drag && !sl.box && !sl.picked.some((p) => sameItem(p, sl.hover))) { g.lineStyle(2, 0xffffff, 0.75); g.drawCircle(sl.hover.d.x, sl.hover.d.y, reachOf(sl.hover.d, grid())); }
+      // A prefab about to be set down: where each of its pieces would stand.
+      if (sl.placing && state.at) { const k = grid() / (sl.placing.grid || 100); g.lineStyle(2, 0xf3d27a, 0.9); for (const it of sl.placing.items) g.drawCircle(state.at.x + it.dx * k, state.at.y + it.dy * k, reachOf(it, grid())); }
+      if (sl.box) { g.lineStyle(1.5, 0xf3d27a, 0.9); g.beginFill(0xf3d27a, 0.08); g.drawRect(Math.min(sl.box.a.x, sl.box.b.x), Math.min(sl.box.a.y, sl.box.b.y), Math.abs(sl.box.b.x - sl.box.a.x), Math.abs(sl.box.b.y - sl.box.a.y)); g.endFill(); }
+    };
+    // One edit to what is picked. `change(ds)`: what each becomes (null: taken off the map). `add(ds)`: more to lay with
+    // them. `then`: what is picked afterwards — the same ones, none, or what was added.
+    const selectEdit = (change, { add = null, then = "same" } = {}) => {
+      sl.busy = sl.busy.then(async () => {
+        selectRefresh();
+        const picked = selectedNow(); if (!picked.length) return;
+        const was = picked.map((it) => it.d), now = change ? change(was) : was, more = add ? add(was) : [];
+        const byRegion = new Map();
+        picked.forEach((it, n) => { const r = byRegion.get(it.id) ?? { changes: new Map(), added: [], stands: [] }; if (change) { r.changes.set(it.i, now[n]); if (now[n]) r.stands.push(now[n]); } if (more[n]) { r.added.push(more[n]); r.stands.push(more[n]); } byRegion.set(it.id, r); });
+        const changed = [], next = [];
+        for (const [id, r] of byRegion) {
+          const doc = decorRegion(id), s = doc ? decorSettings(doc.flags?.[ID]?.decor) : null; if (!s) continue;
+          const list = listAfter(s.brushed, r.changes, r.added), own = doc.flags?.[ID] ?? {}, shapesBefore = doc.toObject().shapes;
+          // Carried out of its region, a decoration takes the region with it — unless the region's shape is a floor's.
+          const grow = own.floor || own.height != null || own.ramp ? [] : growFor(r.stands, shapesBox(shapesBefore), grid());
+          const update = { flags: { [ID]: { decor: { brushed: list, erased: s.erased } } } }; if (grow.length) update.shapes = [...shapesBefore, ...grow];
+          await doc.update(update, { render: false });
+          changed.push({ id, before: { brushed: s.brushed, erased: s.erased }, after: { brushed: list, erased: s.erased }, shapesBefore: grow.length ? shapesBefore : null, shapesAfter: grow.length ? update.shapes : null });
+          if (then === "added") for (let k = 0; k < r.added.length; k++) next.push({ id, i: list.length - r.added.length + k });
+        }
+        if (changed.length) rememberDecorStep({ kind: "edits", changed });
+        if (then === "none") sl.picked = []; else if (then === "added") sl.picked = next;
+      }).catch((err) => { console.warn("Animater | select", err); ui.notifications?.warn?.("That could not be saved."); }).then(() => { if (decorBrushing !== state) return; selectRefresh(); draw(); refreshStatus(); });
+    };
+    // Prefabs: what is picked, saved under a name and set down again anywhere, on any map. Kept with the GM who made
+    // them (their user's flags), so they are there in every world scene and nobody else's list is touched.
+    const prefabsNow = () => prefabsOf(game.user?.getFlag?.(ID, "prefabs"));
+    const prefabSave = async () => {
+      selectRefresh();
+      const held = selectedNow(); if (!held.length) { ui.notifications?.info?.("Pick what the prefab is made of first."); return; }
+      let name = null;
+      try { name = await foundry.applications.api.DialogV2.prompt({ window: { title: "Save as prefab (Animater)" }, content: `<div class="form-group"><label>Name</label><input type="text" name="name" value="" placeholder="A furnished bedroom" autofocus></div><p class="hint">${held.length} decoration${held.length === 1 ? "" : "s"}, as they stand to each other now. Set it down again from the Select tab, on any map.</p>`, ok: { label: "Save", icon: "fa-solid fa-floppy-disk", callback: (_event, button) => button.form?.elements?.name?.value ?? "" }, rejectClose: false }); } catch { name = null; }
+      if (name === null || name === undefined) return;
+      const list = [...prefabsNow(), { ...prefabOf(held.map((it) => it.d), name), grid: grid() }].slice(-60);
+      await game.user.setFlag(ID, "prefabs", list);
+      state.bar?.refresh?.(); ui.notifications?.info?.(`Animater: saved the prefab "${list.at(-1).name}".`);
+    };
+    const prefabSet = async (prefab, p, snap) => {
+      const half = grid() / 2, x = snap ? Math.round(p.x / half) * half : p.x, y = snap ? Math.round(p.y / half) * half : p.y;
+      const data = prefabRegion(prefab, x, y, { grid: grid(), was: prefab.grid ?? 100, seed: state.seed++, levelId: canvas.level?.id ?? null });
+      if (!data) return;
+      try { const [made] = await canvas.scene.createEmbeddedDocuments("Region", [data]); if (made) { rememberDecorStep({ kind: "create", id: made.id, data }); selectRefresh(); sl.picked = sl.all.filter((it) => it.id === made.id).map((it) => ({ id: it.id, i: it.i })); } }
+      catch (err) { console.warn("Animater | prefab", err); ui.notifications?.warn?.("The prefab could not be set down."); }
+    };
+    const selectAct = (act) => {
+      if (act === "savePrefab") { void prefabSave(); return; }
+      if (String(act).startsWith("placePrefab:") || String(act).startsWith("dropPrefab:")) {
+        const list = prefabsNow(), n = Number(String(act).split(":")[1]), prefab = list[n]; if (!prefab) return;
+        if (String(act).startsWith("placePrefab:")) { sl.placing = prefab; sl.picked = []; draw(); refreshStatus(); }
+        else void game.user.setFlag(ID, "prefabs", list.filter((_, i) => i !== n)).then(() => { state.bar?.refresh?.(); });
+        return;
+      }
+      selectRefresh();
+      if (!sl.picked.length) { ui.notifications?.info?.("Pick a decoration first: click one on the map."); return; }
+      if (act === "all") { const first = selectedNow()[0]; if (first) sl.picked = sl.all.filter((it) => it.id === first.id && it.d.kind === first.d.kind).map((it) => ({ id: it.id, i: it.i })); draw(); refreshStatus(); return; }
+      if (act === "flip") selectEdit((ds) => mirroredOver(ds));
+      else if (act === "turnLeft" || act === "turnRight") selectEdit((ds) => turnedBy(ds, act === "turnLeft" ? -SELECT_TURN : SELECT_TURN));
+      else if (act === "smaller" || act === "bigger") selectEdit((ds) => sizedBy(ds, act === "bigger" ? SELECT_GROW : 1 / SELECT_GROW));
+      else if (act === "copy") selectEdit(null, { add: (ds) => copiesOf(ds, grid() * 0.5, grid() * 0.5, state.seed++), then: "added" });
+      else if (act === "remove") selectEdit((ds) => ds.map(() => null), { then: "none" });
+    };
+    // What is being dragged, shown going with the pointer: the same pictures, a little faint, over where they stood.
+    const selectGhost = (on) => {
+      if (!on) { try { sl.ghost?.destroy({ children: true }); } catch { /* gone */ } sl.ghost = null; return; }
+      if (sl.ghost) return;
+      sl.ghost = new PIXI.Container(); sl.ghost.eventMode = "none"; sl.ghost.alpha = 0.7; decorBrushRoot().addChild(sl.ghost);
+      const look = decorLook({ where: brushChoices().where });
+      for (const it of selectedNow().slice(0, 150)) { try { const s = decorations.sprite(it.d, look); if (s) sl.ghost.addChild(s); } catch { /* one picture missing: the rings still show it */ } }
+    };
+    const selectDown = (p, e) => {
+      if (sl.placing) { const prefab = sl.placing; sl.placing = null; void prefabSet(prefab, p, e.shiftKey).then(() => { draw(); refreshStatus(); }); return; }
+      selectRefresh();
+      const hit = pickAt(sl.all, p.x, p.y, grid()), has = (it) => sl.picked.some((q) => sameItem(q, it));
+      if (!hit) { if (!e.shiftKey) sl.picked = []; sl.box = { a: p, b: p, add: e.shiftKey }; return; }
+      if (e.shiftKey) sl.picked = has(hit) ? sl.picked.filter((q) => !sameItem(q, hit)) : [...sl.picked, { id: hit.id, i: hit.i }];
+      else if (!has(hit)) sl.picked = [{ id: hit.id, i: hit.i }];
+      if (has(hit)) sl.drag = { from: p, dx: 0, dy: 0, moved: false };
+    };
+    const selectMove = (p, e) => {
+      if (sl.drag) {
+        let dx = p.x - sl.drag.from.x, dy = p.y - sl.drag.from.y;
+        if (Math.hypot(dx, dy) > 3) sl.drag.moved = true;
+        // Shift keeps it to the grid: the first one picked lands on a half square, the rest keeping their places by it.
+        if (e?.shiftKey) ({ dx, dy } = snappedDrag(selectedNow()[0]?.d, dx, dy, grid()));
+        sl.drag.dx = dx; sl.drag.dy = dy;
+        if (sl.drag.moved) { selectGhost(true); sl.ghost?.position.set(dx, dy); }
+      }
+      else if (sl.box) sl.box.b = p;
+      else sl.hover = pickAt(sl.all, p.x, p.y, grid());
+    };
+    const selectUp = () => {
+      if (sl.drag) { const { dx, dy, moved } = sl.drag; sl.drag = null; selectGhost(false); if (moved) selectEdit((ds) => ds.map((d) => movedBy(d, dx, dy))); return; }
+      if (!sl.box) return;
+      const box = sl.box, got = pickBox(sl.all, box.a, box.b).map((it) => ({ id: it.id, i: it.i })); sl.box = null;
+      sl.picked = box.add ? [...sl.picked, ...got.filter((g) => !sl.picked.some((q) => sameItem(q, g)))] : got;
+    };
     const heightLabel = (text, x, y) => { const t = new PIXI.Text(text, { fontFamily: "Signika, sans-serif", fontSize: Math.max(14, Math.round(grid() * 0.28)), fill: 0xf3e4c4, stroke: 0x1e160e, strokeThickness: 4, fontWeight: "bold" }); t.anchor.set(0.5); t.position.set(x, y); hz.labels.addChild(t); };
     // (A label in the middle of the biggest outline's box.)
     const labelSpot = (areas) => { let best = null; for (const a of areas) { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (let i = 0; i < a.length; i += 2) { x0 = Math.min(x0, a[i]); x1 = Math.max(x1, a[i]); y0 = Math.min(y0, a[i + 1]); y1 = Math.max(y1, a[i + 1]); } const size = (x1 - x0) * (y1 - y0); if (!best || size > best.size) best = { size, x: (x0 + x1) / 2, y: (y0 + y1) / 2 }; } return best ?? { x: 0, y: 0 }; };
@@ -169,7 +400,9 @@ export function createMapPainting(ctx) {
       let painted = 0; for (const r of regionsHere()) painted += decorSettings(r.flags?.[ID]?.decor)?.brushed?.length ?? 0;
       const parts = [...floorsText, ...(painted ? [`${painted} decorations`] : [])];
       // (Hovering the map on Floors: what is under the pointer, and what a dab there would do.)
-      const text = heightsOn() ? (hz.busy || (modelOn() && brushChoices().heightMode === "raise" && sam.status) || hz.hoverText || heightsSummary()) : floorsOn() && !fl.map ? (fl.why || "Reading the map…") : floorsOn() && modelOn() && sam.status ? sam.status : floorsOn() && fl.hoverText ? fl.hoverText : parts.length ? `On this level: ${parts.join(" · ")}` : "Nothing painted yet";
+      const pathText = () => brushChoices().pathShape === "edit" ? (pt.edit ? `Editing the ${pathKind(pt.edit.kind).label.toLowerCase()}: ${pt.points.length} points · Enter lays it again · Esc leaves it` : "Click a path to take hold of its points") : (pt.points.length ? `${pt.points.length} point${pt.points.length === 1 ? "" : "s"} · Enter or double-click lays the ${pathKind(brushChoices().pathKind).label.toLowerCase()}` : "Click along the map to draw a path");
+      const selectText = () => { if (sl.placing) return `Click where "${sl.placing.name}" goes · Shift: on the grid · Esc: not now`; const held = selectedNow(); if (!held.length) return sl.all.length ? "Click a decoration to pick it up" : "Nothing laid by hand here yet"; const kinds = [...new Set(held.map((it) => DECOR_KINDS[it.d.kind].label))]; return `${held.length} picked: ${kinds.slice(0, 3).join(", ")}${kinds.length > 3 ? "…" : ""} · drag to move`; };
+      const text = selectOn() ? selectText() : pathsOn() ? pathText() : heightsOn() ? (hz.busy || (modelOn() && brushChoices().heightMode === "raise" && sam.status) || hz.hoverText || heightsSummary()) : floorsOn() && !fl.map ? (fl.why || "Reading the map…") : floorsOn() && modelOn() && sam.status ? sam.status : floorsOn() && fl.hoverText ? fl.hoverText : parts.length ? `On this level: ${parts.join(" · ")}` : "Nothing painted yet";
       state.bar?.setStatus(text, { undo: decorSteps.undo.length > 0, redo: decorSteps.redo.length > 0 });
     };
     const toImage = (p) => ({ x: ((p.x - fl.map.rect.x) * fl.map.width) / fl.map.rect.width, y: ((p.y - fl.map.rect.y) * fl.map.height) / fl.map.rect.height });
@@ -492,6 +725,12 @@ export function createMapPainting(ctx) {
     };
     const draw = () => {
       ring.clear();
+      // Paths have no brush either: the line so far, and where the next point would take it.
+      // Select has none: a ring round what is picked, and round what a click would pick.
+      sl.overlay.visible = selectOn();
+      if (selectOn()) { ghost.visible = false; fl.overlay.visible = false; wl.overlay.visible = false; pt.overlay.visible = false; selectDraw(); return; }
+      pt.overlay.visible = pathsOn();
+      if (pathsOn()) { ghost.visible = false; fl.overlay.visible = false; wl.overlay.visible = false; pathPreview(); return; }
       const floors = floorsOn(); fl.overlay.visible = floors;
       // Walls have no brush and lay no decoration: the ring and the ghost would both be lying about what a drag does.
       if (wallsOn()) { ghost.visible = false; wl.overlay.visible = true; if (!state.down) wallsHover(); return; }
@@ -922,10 +1161,14 @@ export function createMapPainting(ctx) {
     };
     const wallsDown = (p, shift) => {
       const mode = brushChoices().wallMode;
-      if (mode === "roof") { void roofLay(p, shift).then(refreshStatus); return; }
+      // (A roof put on or taken off is a step to take back like any other: the scene's roofs as they were, and as they are.)
+      if (mode === "roof") { const before = foundry.utils.deepClone(canvas.scene?.flags?.[ID]?.roofs ?? []); void roofLay(p, shift).then(() => { const after = foundry.utils.deepClone(canvas.scene?.flags?.[ID]?.roofs ?? []); if (JSON.stringify(before) !== JSON.stringify(after)) rememberDecorStep({ kind: "roofs", before, after }); }).then(refreshStatus); return; }
       if (mode === "round" && !shift) { wl.round = wallSnap(p); wl.points = ringRoom(wl.round, p); wallsShow(); return; }
       if (mode === "rect" && !shift) { wl.rect = wallSnap(p); wl.points = boxRoom(wl.rect, p); wallsShow(); return; }
+      // A whole building: the same box, and on letting go its walls, door, windows, floor and roof together.
+      if (mode === "house" && !shift) { wl.rect = wallSnap(p); wl.house = { from: { x: p.x, y: p.y } }; wl.points = boxRoom(wl.rect, p); wallsShow(); return; }
       if (mode === "region") { void roomRegion(p, shift).then(refreshStatus); return; }
+      if (mode === "furnish") { void roomFurnish(p).then(refreshStatus); return; }
       if (mode === "move" && !shift) {
         // On a wall, that wall alone; inside a room, the whole building (Roi: "we should be able to also just move
         // a walls").
@@ -1069,11 +1312,59 @@ export function createMapPainting(ctx) {
         if (made?.length) rememberDecorStep(wallStepOf(made, []));
       } catch (err) { ui.notifications?.warn("Animater: those walls could not be laid."); console.warn("Animater | walls", err); }
     };
+    // Furnish (engines/mapbuild/furnish.mjs): the room under a click set out as what the bar says it is — beds in a
+    // bedroom, a counter and tables in a tavern — clear of its doors. It is a decorations region of its own, laid by
+    // hand as far as the rest of the module knows, so Select moves any piece of it. Clicked again, the room is set out
+    // afresh in place of what this laid there before; whatever else stands in the room is left alone.
+    const roomFurnish = async (p) => {
+      const room = roomUnder(p);
+      if (!room) { ui.notifications?.info("Animater: that is not a room — the walls there do not close it in."); return; }
+      const g = grid(), c = brushChoices(), key = [room.x, room.y, room.w, room.h].map(Math.round).join(",");
+      const doors = (canvas.walls?.placeables ?? []).filter((w) => w.document.door > 0).map((w) => [(w.document.c[0] + w.document.c[2]) / 2, (w.document.c[1] + w.document.c[3]) / 2])
+        .filter(([x, y]) => x >= room.x - g * 0.6 && x <= room.x + room.w + g * 0.6 && y >= room.y - g * 0.6 && y <= room.y + room.h + g * 0.6);
+      // (The squares the room really covers, so a round or an L-shaped one is furnished where it is and not in the
+      // corners of the box round it. A spot counts when it and a little either side of it are all in the room.)
+      let inside = null;
+      try { const air = wallsOutsideAir(); if (air) { const cells = roomCells(p, (canvas.walls?.placeables ?? []).map((w) => ({ c: w.document.c })), { grid: g, bounds: air.bounds, outside: air.outside, through: false }); if (cells.size) inside = (x, y) => [[0, 0], [0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3]].every(([dx, dy]) => cells.has(`${Math.floor(x / g + dx)},${Math.floor(y / g + dy)}`)); } } catch { inside = null; }
+      const seed = state.seed++, { things } = furnishRoom({ x: room.x, y: room.y, w: room.w, h: room.h }, c.furnishKind, { grid: g, seed, doors, inside });
+      if (!things.length) { ui.notifications?.info("Animater: that room is too small to furnish."); return; }
+      const brushed = things.map((t, n) => ({ kind: t.kind, x: Math.round(t.x), y: Math.round(t.y), size: t.size, turn: t.turn, seed: ((seed + (n + 1) * 7919) >>> 0), flip: false, fixed: true }));
+      const levelId = canvas.level?.id ?? null, inset = g * 0.15;
+      const data = { name: `${ROOM_KINDS[c.furnishKind]?.label ?? "Room"} furnishings`, color: "#c0a060", levels: levelId ? [levelId] : [], shapes: [{ type: "rectangle", x: Math.round(room.x + inset), y: Math.round(room.y + inset), width: Math.round(room.w - inset * 2), height: Math.round(room.h - inset * 2), rotation: 0, hole: false }],
+        flags: { [ID]: { furnishOf: key, decor: { on: true, where: "surface", density: 0, scale: 1, height: 1, seed, kinds: {}, brushed, erased: [] } } } };
+      try {
+        const removes = regionsHere().filter((r) => r.flags?.[ID]?.furnishOf === key).map((r) => ({ id: r.id, data: r.toObject() }));
+        if (removes.length) await canvas.scene.deleteEmbeddedDocuments("Region", removes.map((r) => r.id));
+        const [made] = await canvas.scene.createEmbeddedDocuments("Region", [data]);
+        if (made) rememberDecorStep({ kind: "floor", updates: [], creates: [{ id: made.id, data }], removes });
+      } catch (err) { ui.notifications?.warn("Animater: that room could not be furnished."); console.warn("Animater | furnish", err); }
+    };
+    // A whole building from one drag (engines/mapbuild/map-plan.mjs houseFrom): four walls of the bar's material with a
+    // door and windows let into them, the floor that goes with it, and a roof over it. The door is on the side the drag
+    // ended toward: dragged down the map it faces south, dragged up it faces north. All of it is the GM's own work —
+    // nothing is marked as built — and all of it is one step to take back.
+    const houseLay = async (points, from, to) => {
+      const here = canvas?.scene; if (!here || !Array.isArray(points) || points.length < 4) return;
+      const xs = points.map((p) => p.x), ys = points.map((p) => p.y), g = grid(), c = brushChoices();
+      const house = houseFrom({ x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }, { grid: g, face: to.y >= from.y ? "s" : "n", material: c.wallMaterial, age: c.wallAge ?? 0, thick: c.wallWidth ?? WALL_THICK, tint: c.wallTint, doorKind: c.doorKind, windowKind: c.windowKind,
+        roof: { ...(c.roofKind ? { kind: c.roofKind } : {}), ...(c.roofForm ? { form: c.roofForm } : {}), chimney: c.roofChimney || null, ...(c.roofTint ? { tint: c.roofTint } : {}), ...(c.roofDressed ? { dressed: true } : {}) }, id: foundry.utils.randomID(10) });
+      if (!house) { ui.notifications?.info("Animater: drag a box at least a square each way for a building."); return; }
+      const docs = planDocuments({ buildings: [house] }, { grid: g, mark: false }), levelId = canvas.level?.id ?? null;
+      try {
+        const roofsBefore = foundry.utils.deepClone(here.flags?.[ID]?.roofs ?? []), roofsAfter = [...roofsBefore, ...docs.roofs];
+        const walls = await here.createEmbeddedDocuments("Wall", docs.walls);
+        const regionData = docs.regions.map((r) => ({ ...r, levels: levelId ? [levelId] : [] })), regions = regionData.length ? await here.createEmbeddedDocuments("Region", regionData) : [];
+        await here.update({ [`flags.${ID}.roofs`]: roofsAfter });
+        rememberDecorStep({ kind: "building", walls: walls.map((w) => w.toObject()), regions: regions.map((r, i) => ({ id: r.id, data: regionData[i] })), roofsBefore, roofsAfter });
+      } catch (err) { ui.notifications?.warn("Animater: that building could not be laid."); console.warn("Animater | building", err); }
+    };
 
     // (Heard on the window before Foundry's canvas hears them, and kept from it while painting, so a stroke never draws
     // Foundry's drag-select box or selects what it passes over.)
     const down = (e) => {
       if (e.target !== view) return; if (e.button === 2) { state.rightAt = { x: e.clientX, y: e.clientY }; return; } if (e.button !== 0) return; e.stopImmediatePropagation(); e.preventDefault(); const p = at(e);
+      if (selectOn()) { state.at = p; selectDown(p, e); draw(); refreshStatus(); return; }
+      if (pathsOn()) { state.at = p; pathDown(p, e); draw(); refreshStatus(); return; }
       if (wallsOn()) { wallsDown(p, e.shiftKey); state.down = !!wl.points || !!wl.move || wl.rubbing; state.erasing = e.shiftKey; draw(); return; }
       if (heightsOn()) { if (!heightsDown(p, e.shiftKey, e.altKey)) return; state.down = true; state.erasing = e.shiftKey; state.last = p; draw(); floorDab(p); return; }
       if (floorsOn()) { if (!floorBegin(p, e.shiftKey)) return; state.down = true; state.erasing = e.shiftKey; state.last = p; draw(); floorDab(p); return; }
@@ -1085,6 +1376,10 @@ export function createMapPainting(ctx) {
       if (!state.down && e.target !== view) { hideHover(); if (state.at) { state.at = null; draw(); } return; } const p = at(e); state.at = p; if (!state.down) state.erasing = e.shiftKey; draw();
       if (hz.drag) { e.stopImmediatePropagation(); hz.drag.ramp.b = p; refreshHeights(); return; }
       if (hz.open) { e.stopImmediatePropagation(); const last = hz.open.circles.at(-1); if (Math.hypot(p.x - last.x, p.y - last.y) >= hz.open.r * 0.5) { hz.open.circles.push({ x: Math.round(p.x), y: Math.round(p.y), r: Math.round(hz.open.r) }); refreshHeights(); } return; }
+      if (selectOn()) { hideHover(); if (sl.drag || sl.box) e.stopImmediatePropagation(); selectMove(p, e); draw(); return; }
+      if (pathsOn() && pt.box) { e.stopImmediatePropagation(); pt.box.b = pathSnap(p, e.shiftKey); draw(); return; }
+      if (pathsOn() && pt.grab != null) { e.stopImmediatePropagation(); pt.points[pt.grab] = pathSnap(p, e.shiftKey); draw(); return; }
+      if (pathsOn()) { hideHover(); if (pt.dragging) { e.stopImmediatePropagation(); pathDrag(p, e.shiftKey); draw(); } return; }
       if (wallsOn()) { if (state.down && (wl.points || wl.move || wl.rubbing)) { e.stopImmediatePropagation(); wallsMove(p); } else hideHover(); return; }
       if (!state.down && heightsOn()) { hideHover(); heightsHover(p); return; }
       if (!state.down) { if (floorsOn() && fl.map && !e.shiftKey) hoverFloor(p); else hideHover(); return; } e.stopImmediatePropagation();
@@ -1092,20 +1387,38 @@ export function createMapPainting(ctx) {
       if (fl.stroke) { const step = sizeNow() * grid() / 6, dist = Math.hypot(p.x - state.last.x, p.y - state.last.y); if (dist < step) return; for (let s = step; s <= dist; s += step) floorDab({ x: state.last.x + ((p.x - state.last.x) * s) / dist, y: state.last.y + ((p.y - state.last.y) * s) / dist }); state.last = p; return; }
       if (Math.hypot(p.x - state.last.x, p.y - state.last.y) > sizeNow() * grid() * 0.35) { state.last = p; dab(p, e.shiftKey); }
     };
-    const up = (e) => { if (wl.rubbing) { e.stopImmediatePropagation(); state.down = false; wl.rubbing = false;
+    const up = (e) => { if (sl.drag || sl.box) { e.stopImmediatePropagation(); selectUp(); draw(); refreshStatus(); return; }
+      if (pt.box) { e.stopImmediatePropagation(); void pathBoxFinish().then(refreshStatus); return; }
+      if (pt.grab != null) { e.stopImmediatePropagation(); pt.grab = null; draw(); refreshStatus(); return; }
+      if (pt.dragging) { e.stopImmediatePropagation(); pt.dragging = false; draw(); refreshStatus(); return; }
+      if (wl.rubbing) { e.stopImmediatePropagation(); state.down = false; wl.rubbing = false;
         // One stroke, one step: a drag that rubbed out a dozen walls is taken back in one go.
         if (wl.gone.length) { rememberDecorStep({ kind: "walls", made: [], gone: wl.gone }); wl.gone = []; }
         refreshStatus(); return; }
       if (wl.move) { e.stopImmediatePropagation(); state.down = false; const move = wl.move; wl.move = null; wl.overlay.clear(); void buildingMove(move).then(refreshStatus); return; }
-      if (wl.points) { e.stopImmediatePropagation(); state.down = false; const run = wl.points, ring = !!wl.round || !!wl.rect; wl.points = null; wl.round = null; wl.rect = null; wl.overlay.clear(); void wallsLay(run, ring).then(refreshStatus); return; }
+      if (wl.points) { e.stopImmediatePropagation(); state.down = false; const run = wl.points, ring = !!wl.round || !!wl.rect, house = wl.house; wl.points = null; wl.round = null; wl.rect = null; wl.house = null; wl.overlay.clear(); void (house ? houseLay(run, house.from, at(e)) : wallsLay(run, ring)).then(refreshStatus); return; }
       if (hz.open) { e.stopImmediatePropagation(); state.down = false; const open = hz.open; hz.open = null; void saveOpenEdges(open); return; } if (hz.drag) { e.stopImmediatePropagation(); state.down = false; const drag = hz.drag; hz.drag = null; void layRamp(drag); return; } if (!state.down) return; e.stopImmediatePropagation(); state.down = false; draw(); if (fl.stroke) void floorFinish(); else void finish().then(refreshStatus); };
     const key = (e) => {
-      if (e.target?.closest?.("input, textarea")) return;
+      // Typing in a field is typing. A tick or a slider that was just clicked still has the focus, though, and is no
+      // place to type: Enter after ticking "Blocks movement" has to lay the fence, not vanish into the tick.
+      const field = e.target?.closest?.("input, textarea");
+      if (field && !["checkbox", "range", "color", "button"].includes(field.type)) return;
       // Ctrl+Z takes back the last stroke, Ctrl+Shift+Z or Ctrl+Y puts it back (Foundry's own undo waits while the brush is out).
       const z = e.key === "z" || e.key === "Z", undo = (e.ctrlKey || e.metaKey) && z && !e.shiftKey, redo = (e.ctrlKey || e.metaKey) && ((z && e.shiftKey) || e.key === "y" || e.key === "Y");
       if (undo || redo) { e.preventDefault(); e.stopImmediatePropagation(); if (!state.down) void (undo ? undoDecorStep() : redoDecorStep()).then(refreshStatus); return; }
       // 1, 2 and 3 switch the tabs (kept from Foundry's macro bar while the brush is out).
-      if ((e.key === "1" || e.key === "2" || e.key === "3") && !(e.ctrlKey || e.metaKey || e.altKey)) { e.preventDefault(); e.stopImmediatePropagation(); state.bar?.setTab(e.key === "1" ? "floors" : e.key === "2" ? "decor" : "heights"); return; }
+      if (["1", "2", "3", "4", "5", "6"].includes(e.key) && !(e.ctrlKey || e.metaKey || e.altKey)) { e.preventDefault(); e.stopImmediatePropagation(); state.bar?.setTab({ 1: "floors", 2: "decor", 3: "heights", 4: "walls", 5: "paths", 6: "select" }[e.key]); return; }
+      // Something picked up: the arrows nudge it (Shift: a whole square), Delete takes it off the map, Ctrl+D copies it,
+      // Ctrl+A picks all of its kind in its region, and Esc lets go of it (and only then, with nothing held, puts the brush away).
+      if (selectOn() && sl.placing && e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); sl.placing = null; draw(); refreshStatus(); return; }
+      if (selectOn() && sl.picked.length) {
+        const step = (e.shiftKey ? 1 : 0.1) * grid(), nudge = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key], ctrl = e.ctrlKey || e.metaKey;
+        const act = e.key === "Delete" || e.key === "Backspace" ? "remove" : ctrl && (e.key === "d" || e.key === "D") ? "copy" : ctrl && (e.key === "a" || e.key === "A") ? "all" : !ctrl && (e.key === "f" || e.key === "F") ? "flip" : null;
+        if (nudge || act || e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); if (nudge) selectEdit((ds) => ds.map((d) => movedBy(d, nudge[0], nudge[1]))); else if (act) selectAct(act); else { sl.picked = []; draw(); refreshStatus(); } return; }
+      }
+      // A path being drawn: Enter lays it, Backspace takes its last point back, Esc starts it again (and only then, with
+      // nothing drawn, puts the brush away).
+      if (pathsOn() && pt.points.length && (e.key === "Enter" || e.key === "Backspace" || e.key === "Escape")) { e.preventDefault(); e.stopImmediatePropagation(); if (e.key === "Enter") void pathFinish().then(refreshStatus); else { if (e.key === "Backspace") { if (!pt.edit) pt.points.pop(); else if (pt.points.length > 2) { pt.points.splice(Math.min(pt.touched ?? pt.points.length - 1, pt.points.length - 1), 1); pt.touched = null; } } else pathClear(); draw(); refreshStatus(); } return; }
       if (e.key === "Escape") stopDecorBrush();
       else if (e.key === "[" || e.key === "]") { const next = Math.min(DECOR_BRUSH.max, Math.max(DECOR_BRUSH.min, sizeNow() + (e.key === "]" ? DECOR_BRUSH.step : -DECOR_BRUSH.step))); state.bar?.setSize(next); draw(); }
     };
@@ -1117,6 +1430,8 @@ export function createMapPainting(ctx) {
       if (e.target !== view || !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey)) return;
       e.preventDefault(); e.stopImmediatePropagation();
       const up = (e.deltaY || e.deltaX) < 0;
+      // On Select the wheel is for what is picked: Ctrl+wheel turns it, Alt+wheel makes it bigger or smaller.
+      if (selectOn()) { if (sl.picked.length && !e.shiftKey) selectAct(e.altKey ? (up ? "bigger" : "smaller") : (up ? "turnLeft" : "turnRight")); return; }
       // On Walls there is no brush to size, so the wheel moves what the mode is about instead: Ctrl+wheel a wider
       // doorway or a thicker wall, Shift+wheel the years on it. A mode with nothing to move leaves the wheel alone.
       if (wallsOn()) {
@@ -1139,7 +1454,7 @@ export function createMapPainting(ctx) {
     // It is put away with Esc, or with the cross on the bar (Roi: "it only needs to be closed with Esc").
     const menu = (e) => { state.rightAt = null; e.preventDefault(); };
     window.addEventListener("pointerdown", down, true); window.addEventListener("pointermove", move, true); window.addEventListener("pointerup", up, true); window.addEventListener("keydown", key, true); view.addEventListener("contextmenu", menu, true); window.addEventListener("wheel", wheel, { capture: true, passive: false });
-    state.stop = () => { flushWheel(); window.removeEventListener("pointerdown", down, true); window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", key, true); view.removeEventListener("contextmenu", menu, true); window.removeEventListener("wheel", wheel, { capture: true }); for (const [hook, id] of regionHooks) Hooks.off(hook, id); try { ring.destroy(); ghost.destroy({ children: true }); fl.overlay.destroy(); hz.overlay.destroy(); hz.labels.destroy({ children: true }); fl.preview?.destroy({ texture: true, baseTexture: true }); clearTimeout(hoverTimer); clearTimeout(fl.hoverAsk); fl.hover?.destroy({ texture: true, baseTexture: true }); top.parent?.removeChild(top); top.destroy(); if (sam.ready) void sam.ready.seg.drop(sam.ready.view); } catch { /* gone */ } state.bar?.close(); };
+    state.stop = () => { flushWheel(); window.removeEventListener("pointerdown", down, true); window.removeEventListener("pointermove", move, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", key, true); view.removeEventListener("contextmenu", menu, true); window.removeEventListener("wheel", wheel, { capture: true }); for (const [hook, id] of regionHooks) Hooks.off(hook, id); try { ring.destroy(); ghost.destroy({ children: true }); fl.overlay.destroy(); hz.overlay.destroy(); hz.labels.destroy({ children: true }); pt.overlay.destroy(); sl.overlay.destroy(); sl.ghost?.destroy({ children: true }); fl.preview?.destroy({ texture: true, baseTexture: true }); clearTimeout(hoverTimer); clearTimeout(fl.hoverAsk); fl.hover?.destroy({ texture: true, baseTexture: true }); top.parent?.removeChild(top); top.destroy(); if (sam.ready) void sam.ready.seg.drop(sam.ready.view); } catch { /* gone */ } state.bar?.close(); };
     if (floorsOn()) void readMap().then(refreshStatus);
     if (heightsOn()) { void readMap(); refreshHeights(); }
     refreshStatus();
@@ -1168,7 +1483,7 @@ export function createMapPainting(ctx) {
     for (const wall of scene.walls ?? []) { const of = wall.flags?.[ID]?.trunkOf; if (!of) continue; if (!have.has(of)) have.set(of, []); have.get(of).push(wall); }
     const gone = [], made = [];
     for (const [id, walls] of have) { const w = want.get(id); if (!w || trunkKey(walls) !== trunkKey(w.walls)) gone.push(...walls.map((x) => x.id)); }
-    for (const [id, w] of want) { const had = have.get(id); if (had && trunkKey(had) === trunkKey(w.walls)) continue; for (const { c } of w.walls) made.push({ c, move: CONST.WALL_MOVEMENT_TYPES.NORMAL, sight: 20, light: 20, sound: 0, levels: w.levels, flags: { [ID]: { trunkOf: id } } }); }
+    for (const [id, w] of want) { const had = have.get(id); if (had && trunkKey(had) === trunkKey(w.walls)) continue; for (const { c, low } of w.walls) made.push({ c, move: CONST.WALL_MOVEMENT_TYPES.NORMAL, sight: low ? 0 : 20, light: low ? 0 : 20, sound: 0, levels: w.levels, flags: { [ID]: { trunkOf: id } } }); }
     try { if (gone.length) await scene.deleteEmbeddedDocuments("Wall", gone); if (made.length) await scene.createEmbeddedDocuments("Wall", made); }
     catch (err) { console.warn("Animater | trunk walls", err); }
   };
@@ -1224,6 +1539,11 @@ export function createMapPainting(ctx) {
       else if (step.kind === "open") { for (const c of step.changed) await decorRegion(c.id)?.update({ [`flags.${ID}.openEdges`]: c.before }); }
       else if (step.kind === "height") await decorRegion(step.id)?.update({ [`flags.${ID}.height`]: step.before, ...(/^Raised\b/.test(decorRegion(step.id)?.name ?? "") ? { name: heightName(step.before, heightUnits()) } : {}) });
       else if (step.kind === "edit") await decorRegion(step.id)?.update({ flags: { [ID]: { decor: step.before } } }, { render: false });
+      else if (step.kind === "roofs") await canvas.scene?.update({ [`flags.${ID}.roofs`]: step.before });
+      // (A whole building: its walls, its floor and its roof go together, as they came.)
+      else if (step.kind === "building") { await wallsBack(step.walls, []); for (const r of step.regions) await decorRegion(r.id)?.delete(); await canvas.scene?.update({ [`flags.${ID}.roofs`]: step.roofsBefore }); }
+      // (Select's: every region it touched, and a region it grew goes back to the shape it had.)
+      else if (step.kind === "edits") { for (const c of step.changed) await decorRegion(c.id)?.update({ flags: { [ID]: { decor: c.before } }, ...(c.shapesBefore ? { shapes: c.shapesBefore } : {}) }, { render: false }); }
       else await decorRegion(step.id)?.delete();
       decorSteps.redo.push(step);
     } catch (err) { console.warn("Animater | decorations undo", err); }
@@ -1237,6 +1557,9 @@ export function createMapPainting(ctx) {
       else if (step.kind === "open") { for (const c of step.changed) await decorRegion(c.id)?.update({ [`flags.${ID}.openEdges`]: c.after }); }
       else if (step.kind === "height") await decorRegion(step.id)?.update({ [`flags.${ID}.height`]: step.after, ...(/^Raised\b/.test(decorRegion(step.id)?.name ?? "") ? { name: heightName(step.after, heightUnits()) } : {}) });
       else if (step.kind === "edit") await decorRegion(step.id)?.update({ flags: { [ID]: { decor: step.after } } }, { render: false });
+      else if (step.kind === "roofs") await canvas.scene?.update({ [`flags.${ID}.roofs`]: step.after });
+      else if (step.kind === "building") { await wallsBack([], step.walls); for (const r of step.regions) { const [made] = await canvas.scene.createEmbeddedDocuments("Region", [r.data]); if (made) r.id = made.id; } await canvas.scene?.update({ [`flags.${ID}.roofs`]: step.roofsAfter }); }
+      else if (step.kind === "edits") { for (const c of step.changed) await decorRegion(c.id)?.update({ flags: { [ID]: { decor: c.after } }, ...(c.shapesAfter ? { shapes: c.shapesAfter } : {}) }, { render: false }); }
       else { const [made] = await canvas.scene.createEmbeddedDocuments("Region", [step.data]); if (made) step.id = made.id; }
       decorSteps.undo.push(step);
     } catch (err) { console.warn("Animater | decorations redo", err); }

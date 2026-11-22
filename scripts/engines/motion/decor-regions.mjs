@@ -4,7 +4,7 @@
 // decor: { on, where ('surface' | 'cave'), density, scale, seed, kinds: { [kind]: { size, amount } } (a kind listed is ticked),
 //          brushed: [placement] (put down by hand), erased: [[x, y, r]] (rubbed out: the scatter leaves those spots bare) }
 
-import { DECOR_KINDS, hashText, scatterDecor, trunkRadius } from './decor-paint.mjs';
+import { DECOR_KINDS, hashText, scatterDecor, trunkRadius, runLine } from './decor-paint.mjs';
 import { cleanDecorProp } from '../props/decor-options.mjs';
 
 export const DECOR_DEFAULT_KINDS = Object.freeze({
@@ -42,6 +42,9 @@ export function decorSettings(raw) {
 export function trunkWalls(placements = [], grid = 100, sides = 8) {
   const out = [];
   for (const d of placements) {
+    // A fence is a barrier along its length, and a low one (`low`): it stops movement and lets sight, light and sound over.
+    const line = runLine(d, grid, d.fixed ? d.turn : (d.turn ?? 0) * 0.4);
+    if (line) { out.push({ c: line, low: true }); continue; }
     const r = trunkRadius(d.kind, d.size); if (!r) continue;
     const rad = Math.max(0.1, r) * grid, turn = ((d.seed ?? 0) % 360) * (Math.PI / 180), pts = Array.from({ length: sides }, (_, i) => [Math.round(d.x + Math.cos(turn + (i / sides) * 2 * Math.PI) * rad), Math.round(d.y + Math.sin(turn + (i / sides) * 2 * Math.PI) * rad)]);
     for (let i = 0; i < sides; i++) out.push({ c: [...pts[i], ...pts[(i + 1) % sides]] });

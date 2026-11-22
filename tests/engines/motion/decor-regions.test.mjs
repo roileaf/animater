@@ -120,7 +120,8 @@ test('the lead GM keeps trunk walls in step, walls marked as the region\'s, bloc
   // The GM who changed the region builds them; on a scene shown afresh, the lead GM checks them.
   assert.match(main, /if \(!canvas\?\.ready \|\| !game\.user\?\.isGM \|\| !\(mine \|\| leadGM\(\)\)\) return;/);
   assert.match(main, /trunkWallsSoon\(userId === game\.user\?\.id\)/);
-  assert.match(main, /move: CONST\.WALL_MOVEMENT_TYPES\.NORMAL, sight: 20, light: 20, sound: 0, levels: w\.levels, flags: \{ \[ID\]: \{ trunkOf: id \} \}/);
+  // (A trunk stops sight and light as it always did; a fence in the same region is low, and stops only movement.)
+  assert.match(main, /move: CONST\.WALL_MOVEMENT_TYPES\.NORMAL, sight: low \? 0 : 20, light: low \? 0 : 20, sound: 0, levels: w\.levels, flags: \{ \[ID\]: \{ trunkOf: id \} \}/);
   assert.match(main, /const of = wall\.flags\?\.\[ID\]\?\.trunkOf; if \(!of\) continue;/);
   // The region panel no longer offers the switch (Roi, 2026-11-10: its Decorations section keeps only breaking and Repair);
   // a region already set to block keeps its trunk walls.

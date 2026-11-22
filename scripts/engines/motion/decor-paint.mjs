@@ -1141,9 +1141,11 @@ const DRAFTS = {
       out.push(sack); }
     return out;
   } },
-  fence: { label: 'Fences', size: 2.0, height: 0.8, paint(g, s, rng, o) {
+  // (`lean`: how far its picture may lean, drawn first from its seed; `run`: how much of its size lies between its end posts.
+  // A run of them laid along a line (mapbuild/path-lay.mjs) turns each back by its lean and sets them end post on end post.)
+  fence: { label: 'Fences', size: 2.0, height: 0.8, lean: 0.3, run: 0.9, barrier: true, paint(g, s, rng, o) {
     // As the village barn's: one squared brown rail, grain along it, square posts at either end and between with a ring on their tops.
-    const turn = (rng() - 0.5) * 0.3, out = [], rail = boxAt(0, 0, s * 0.96, s * 0.045, turn); softShadow(g, rail, o, 0.35);
+    const turn = (rng() - 0.5) * KINDS.fence.lean, out = [], rail = boxAt(0, 0, s * 0.96, s * 0.045, turn); softShadow(g, rail, o, 0.35);
     inked(g, rng, rail, '#6a5236', o, { sharp: true, grain: turn, lines: 8, hatch: 0.45, ink: 1.4 }); out.push(rail);
     for (let i = 0; i < 3; i++) { const u = -s * 0.9 + i * s * 0.9, x = Math.cos(turn) * u, y = Math.sin(turn) * u, post = boxAt(x, y, s * 0.085, s * 0.085, turn + (rng() - 0.5) * 0.2);
       inked(g, rng, post, '#5e4a32', o, { sharp: true, grain: rng() * 3, lines: 4, hatch: 0.35, ink: 1.5 });
@@ -1266,9 +1268,9 @@ const DRAFTS = {
     return null;
   } },
   // --- Underground and dungeons ---------------------------------------------------------------------------------------------------------
-  rails: { label: 'Mine rails', size: 2.0, height: 0, flat: true, paint(g, s, rng, o) {
+  rails: { label: 'Mine rails', size: 2.0, height: 0, flat: true, lean: 0.3, paint(g, s, rng, o) {
     // As the collapsed mine's track: pale timber sleepers with ink grain and nail heads, some split, two dark iron rails over them.
-    const turn = (rng() - 0.5) * 0.3, c = Math.cos(turn), sn = Math.sin(turn), at = (u, v) => [c * u - sn * v, sn * u + c * v], gauge = s * 0.24;
+    const turn = (rng() - 0.5) * KINDS.rails.lean, c = Math.cos(turn), sn = Math.sin(turn), at = (u, v) => [c * u - sn * v, sn * u + c * v], gauge = s * 0.24;
     for (let u = -s * 0.92; u < s * 0.95; u += s * (0.2 + rng() * 0.06)) { const w = s * (0.06 + rng() * 0.025), sl = boxAt(...at(u + (rng() - 0.5) * s * 0.03, 0), w, gauge * 1.55 * (rng() < 0.15 ? 0.6 : 1), turn + 1.57 * 0 + (rng() - 0.5) * 0.08);
       inked(g, rng, sl.map(([x, y]) => [x, y]), shade('#a88a5a', (rng() - 0.5) * 0.2), o, { sharp: true, grain: turn + 1.57, lines: 5, hatch: 0.45, ink: 1.3 });
       for (const v of [-gauge, gauge]) { g.beginPath(); g.arc(...at(u, v), Math.max(1, s * 0.012), 0, 6.283); g.fillStyle = '#2a2622'; g.fill(); } }
@@ -1435,9 +1437,9 @@ const DRAFTS = {
       out.push(beam); }
     return out;
   } },
-  stakeFence: { label: 'Stake fences', size: 2.0, height: 0.7, paint(g, s, rng, o) {
+  stakeFence: { label: 'Stake fences', size: 2.0, height: 0.7, lean: 0.4, run: 0.85, barrier: true, paint(g, s, rng, o) {
     // As Sootscale's: sharpened stakes driven in a row, their round tops banded, a rope looped from one to the next and sagging between.
-    const a = (rng() - 0.5) * 0.4, c = Math.cos(a), sn = Math.sin(a), n = 4, tops = [], out = [];
+    const a = (rng() - 0.5) * KINDS.stakeFence.lean, c = Math.cos(a), sn = Math.sin(a), n = 4, tops = [], out = [];
     for (let i = 0; i < n; i++) { const u = -s * 0.85 + (i / (n - 1)) * s * 1.7, v = (rng() - 0.5) * s * 0.06; tops.push([c * u - sn * v, sn * u + c * v]); }
     for (let i = 1; i < n; i++) { const [x0, y0] = tops[i - 1], [x1, y1] = tops[i], mx = (x0 + x1) / 2 - sn * s * 0.08, my = (y0 + y1) / 2 + c * s * 0.08; for (const [col, w] of [[INKD, o.ink * 3], ['#a08a5a', o.ink * 1.6]]) { g.beginPath(); g.moveTo(x0, y0); g.quadraticCurveTo(mx, my, x1, y1); g.strokeStyle = col; g.lineWidth = w; g.stroke(); } for (let k = 1; k < 8; k++) { const t = k / 8, px = (1 - t) ** 2 * x0 + 2 * (1 - t) * t * mx + t * t * x1, py = (1 - t) ** 2 * y0 + 2 * (1 - t) * t * my + t * t * y1; line(g, [[px - c * o.ink, py - sn * o.ink], [px + c * o.ink * 0.5 + sn * o.ink, py + sn * o.ink * 0.5 - c * o.ink]], 'rgba(30,20,8,0.7)', Math.max(0.5, o.ink * 0.6)); } }
     for (const [x, y] of tops) { const top = blob(rng, x, y, s * 0.1, s * 0.1, 12, 0.06); softShadow(g, top, o, 0.45); inked(g, rng, top, '#8a5428', o, { band: 0.45, lit: 0.08, ink: 1.7 }); for (let k = 1; k <= 2; k++) { g.beginPath(); g.arc(x, y, s * 0.033 * k, 0, 6.283); g.strokeStyle = 'rgba(40,20,6,0.6)'; g.lineWidth = Math.max(0.5, o.ink * 0.5); g.stroke(); } g.beginPath(); g.arc(x, y, s * 0.1, 0, 6.283); g.strokeStyle = 'rgba(200,150,90,0.6)'; g.lineWidth = o.ink * 0.7; g.stroke(); out.push(top); }
@@ -1814,9 +1816,9 @@ const DRAFTS = {
     if (o.season !== 'winter') speckle(g, rng, -R * 0.2, -R * 0.2, R * 0.4, R * 0.3, 16, MOSS[o.season] ?? MOSS.summer, o.unit * 0.008);
     return [rock];
   } },
-  steppingStones: { label: 'Stepping stones', size: 2.6, height: 0.1, paint(g, s, rng, o) {
+  steppingStones: { label: 'Stepping stones', size: 2.6, height: 0.1, spin: 6.28, paint(g, s, rng, o) {
     // As the swamp village's: flat mossy stones in a crooked line across the water, lime moss on their tops, small pebbles round them.
-    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), out = [], n = 4 + Math.floor(rng() * 2);
+    const a = rng() * KINDS.steppingStones.spin, c = Math.cos(a), sn = Math.sin(a), out = [], n = 4 + Math.floor(rng() * 2);
     for (let i = 0; i < n; i++) { const u = (i / (n - 1) - 0.5) * s * 1.6, v = (rng() - 0.5) * s * 0.25, x = c * u - sn * v, y = sn * u + c * v, r = s * (0.14 + rng() * 0.05), st = blob(rng, x, y, r, r * 0.75, 10, 0.12);
       trace(g, moved(st, x, y, 1.25)); g.strokeStyle = 'rgba(210,230,220,0.2)'; g.lineWidth = Math.max(0.8, o.ink); g.stroke();
       painted(g, rng, st, pick(rng, ['#5e5a4c', '#565246']), o, { band: 0.5, lit: 0.08, ink: 1.5, grain: rng() * 3, lines: 4, hatch: 0.25 });
@@ -1857,9 +1859,9 @@ const DRAFTS = {
     }
     return [hull];
   } },
-  dock: { label: 'Dock sections', size: 2.0, height: 0.3, paint(g, s, rng, o) {
+  dock: { label: 'Dock sections', size: 2.0, height: 0.3, spin: 6.28, run: 0.9, paint(g, s, rng, o) {
     // As the Nettles' crossing pier: weathered grey-brown planks across two beams, round log posts at the corners, a plank or two loose.
-    const a = rng() * 6.28, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.9, W = s * 0.42, out = [];
+    const a = rng() * KINDS.dock.spin, c = Math.cos(a), sn = Math.sin(a), at = (u, v) => [c * u - sn * v, sn * u + c * v], L = s * 0.9, W = s * 0.42, out = [];
     softShadow(g, boxAt(0, 0, L, W, a), o, 0.55);
     for (let u = -L; u < L - L * 0.1; u += L * 0.14) { if (rng() < 0.06) continue; const plank = boxAt(...at(u + L * 0.065, (rng() - 0.5) * W * 0.05), L * 0.062, W * (0.96 + rng() * 0.08), a + (rng() - 0.5) * 0.04); painted(g, rng, plank, shade(pick(rng, ['#7a6e5a', '#6e6250', '#86786a']), (rng() - 0.5) * 0.15), o, { sharp: true, grain: a + 1.57, lines: 4, hatch: 0.45, band: 0.3, ink: 1.3 }); for (const v of [-0.7, 0.7]) { g.beginPath(); g.arc(...at(u + L * 0.065, v * W), Math.max(1, s * 0.012), 0, 6.283); g.fillStyle = '#2a2622'; g.fill(); } out.push(plank); }
     for (const [u, v] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const post = blob(rng, ...at(u * L * 1.02, v * W * 1.05), s * 0.07, s * 0.07, 12, 0.05); painted(g, rng, post, '#5a4632', o, { band: 0.4, ink: 1.5 }); woodEnd(g, rng, ...at(u * L * 1.02, v * W * 1.05), s * 0.05, s * 0.05, o); out.push(post); }
@@ -1883,12 +1885,15 @@ const DRAFTS = {
   } },
 };
 // Drafts taken in: drawn close enough to the maps' own to offer.
-for (const id of ["lampPost","brazier","well","haystack","fence","sacks","cobbles","tombstone","sarcophagus","coffin","rails","pickaxe","treasure","papers","cage","brokenPillar","anvil","urns","timbers","stakeFence","strawBed","boneRubble","produce","tent","washtub","trough","planter","tableStools","marketStall","bench","bedroll","bed","rug","bookshelf","strongbox","hearth","desk","throne","altar","statue","pottedPlant","bathtub","counter","brokenFurniture","lilyPads","cattails","streamRock","steppingStones","rowboat","dock","mooringPost","waterDebris"]) { KINDS[id] = DRAFTS[id]; delete DRAFTS[id]; }
+for (const id of ["lampPost","brazier","well","haystack","fence","sacks","cobbles","tombstone","sarcophagus","coffin","rails","pickaxe","treasure","papers","cage","brokenPillar","anvil","urns","timbers","stakeFence","strawBed","boneRubble","produce","tent","washtub","trough","planter","tableStools","marketStall","bench","bedroll","bed","rug","bookshelf","strongbox","hearth","desk","throne","altar","statue","pottedPlant","bathtub","counter","brokenFurniture","lilyPads","cattails","streamRock","steppingStones","rowboat","dock","mooringPost","waterDebris",
+  // The rest of them (Roi, building a map from nothing: "yes, all"): every draft that was drawn is offered.
+  "candles","firewood","choppingBlock","cart","signpost","rubbish","nest","beehive","burrow","anthill","carcass","feathers","tracks","mineCart","oreVein","chains","hangingRoots","dripSpot","bloodstain","hitchingPost","washingLine","pump","kennel","weaponRack"]) { if (!DRAFTS[id]) continue; KINDS[id] = DRAFTS[id]; delete DRAFTS[id]; }
 /** The draft kinds, for the mock: id → { label, size, height, flat, light }. */
 export const DECOR_DRAFTS = Object.freeze(Object.fromEntries(Object.entries(DRAFTS).map(([id, k]) => [id, Object.freeze({ id, label: k.label, size: k.size, height: k.height, flat: !!k.flat, light: k.light ?? null })])));
 
 // Where each kind belongs: above ground, below it, or both (stone, bones, crates and the like). Unlisted: above ground.
-const SETS = { rock: 'both', boulder: 'both', pebbles: 'both', mushrooms: 'both', bones: 'both', crate: 'both', barrel: 'both', campfire: 'both', roots: 'both', crystals: 'both', brazier: 'both', sacks: 'both', sarcophagus: 'both', coffin: 'both', rails: 'both', pickaxe: 'both', treasure: 'both', papers: 'both', cage: 'both', brokenPillar: 'both', anvil: 'both', urns: 'both', timbers: 'both', stakeFence: 'both', strawBed: 'both', boneRubble: 'both', produce: 'both', bedroll: 'both', bed: 'both', rug: 'both', bookshelf: 'both', strongbox: 'both', hearth: 'both', desk: 'both', throne: 'both', altar: 'both', statue: 'both', pottedPlant: 'both', bathtub: 'both', counter: 'both', brokenFurniture: 'both', streamRock: 'both', steppingStones: 'both' };
+const SETS = { rock: 'both', boulder: 'both', pebbles: 'both', mushrooms: 'both', bones: 'both', crate: 'both', barrel: 'both', campfire: 'both', roots: 'both', crystals: 'both', brazier: 'both', sacks: 'both', sarcophagus: 'both', coffin: 'both', rails: 'both', pickaxe: 'both', treasure: 'both', papers: 'both', cage: 'both', brokenPillar: 'both', anvil: 'both', urns: 'both', timbers: 'both', stakeFence: 'both', strawBed: 'both', boneRubble: 'both', produce: 'both', bedroll: 'both', bed: 'both', rug: 'both', bookshelf: 'both', strongbox: 'both', hearth: 'both', desk: 'both', throne: 'both', altar: 'both', statue: 'both', pottedPlant: 'both', bathtub: 'both', counter: 'both', brokenFurniture: 'both', streamRock: 'both', steppingStones: 'both',
+  candles: 'both', chains: 'both', bloodstain: 'both', carcass: 'both', rubbish: 'both', weaponRack: 'both', firewood: 'both', tracks: 'both', mineCart: 'cave', oreVein: 'cave', hangingRoots: 'cave', dripSpot: 'cave' };
 const setOf = (id) => KINDS[id].set ?? SETS[id] ?? 'surface';
 export const DECOR_KINDS = Object.freeze(Object.fromEntries(Object.entries(KINDS).map(([id, k]) => [id, Object.freeze({ id, label: k.label, size: k.size, height: k.height, flat: !!k.flat, tree: !!k.tree, set: setOf(id), water: k.water ?? null, light: k.light ?? null, cloth: k.cloth ?? false, glow: k.glow ?? (id === 'crystals' ? { color: '#9ac8f0', radius: 1.2 } : null) })])));
 export const DECOR_IDS = Object.freeze(Object.keys(KINDS));
@@ -1911,6 +1916,24 @@ export const paintedMaterial = (kind, seed) => (Object.hasOwn(PAINTED, kind) ? P
 export const DECOR_VARIANTS = 6;
 /** The seed a decoration's picture is painted from (pure): the same for every decoration of its kind and look. */
 export const paintSeedOf = (d) => 7919 * (((d.seed >>> 0) % DECOR_VARIANTS) + 1) + d.kind.length;
+/** How far a decoration's own picture leans, in radians (pure): for the kinds painted leaning a little, what its painter drew first from its seed. */
+// (`lean`: a little either way. `spin`: any way at all — a pier section or a line of stepping stones is painted lying
+// whichever way its seed says, so laid along a line each is turned back by the whole of it.)
+export const bakedLean = (d) => { const k = KINDS[d?.kind]; return k?.lean ? (seeded(paintSeedOf(d))() - 0.5) * k.lean : k?.spin ? seeded(paintSeedOf(d))() * k.spin : 0; };
+/** How much of a kind's size lies between its two ends (pure): the step from one to the next when they are laid end to end. */
+export const runSpan = (kind) => KINDS[kind]?.run ?? 0.9;
+/** Whether a kind is a barrier laid in a run (a fence): one that can be made to stop movement along its length. */
+export const runBlocks = (kind) => !!KINDS[kind]?.barrier;
+/**
+ * The line a barrier piece stands along (pure): [x0, y0, x1, y1] in scene pixels, end post to end post, or null for a
+ * kind that is no barrier. `shown` the turn it is drawn at (decorations.mjs turnOf); its picture's own lean is added
+ * back, since the posts stand where they were painted.
+ */
+export function runLine(d, grid = 100, shown = d?.turn ?? 0) {
+  if (!runBlocks(d?.kind) || !(d.size > 0)) return null;
+  const a = shown + bakedLean(d), half = (d.size * runSpan(d.kind) * grid) / 2, dx = Math.cos(a) * half, dy = Math.sin(a) * half;
+  return [Math.round(d.x - dx), Math.round(d.y - dy), Math.round(d.x + dx), Math.round(d.y + dy)];
+}
 export function paintDecor(kind, seed, px, look = {}, make = defaultCanvas) {
   const k = KINDS[kind] ?? DRAFTS[kind]; if (!k) return null;
   const size = Math.max(8, Math.ceil(px)), pad = Math.ceil(size * 0.12), w = size + pad * 2;

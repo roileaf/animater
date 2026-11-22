@@ -2,7 +2,7 @@
 // Three tabs: Floors (a swatch per floor, Smart edges), Decorations (the place, a picture per kind, density) and Heights
 // (raise what is under a click, or drag a ramp: engines/regions/heights.mjs), each with its rarer choices under More. It only holds the choices; main.mjs paints with them. Kept between uses on this screen.
 
-import { DECOR_IDS, DECOR_KINDS } from '../engines/motion/decor-paint.mjs';
+import { DECOR_IDS, DECOR_KINDS, runBlocks } from '../engines/motion/decor-paint.mjs';
 import { DECOR_DEFAULT_KINDS } from '../engines/motion/decor-regions.mjs';
 import { decorPropRows } from './decor-prop-options.mjs';
 import { AREA_FLOORS, floorColour, floorName, caveColour } from '../engines/regions/floor-detect.mjs';
@@ -17,6 +17,8 @@ import { ROOF_CHOICES, ROOF_FORM_CHOICES, roofShape, paintRoof } from '../engine
 import { DRESSING_COLOURS_MOST as HOLIDAY_COLOURS, DRESSING_PLAIN as HOLIDAY_PLAIN } from '../engines/motion/holiday-dressing.mjs';
 import { floorTilePixels } from '../engines/motion/floor-looks.mjs';
 import { DRESSING_CHOICES } from '../engines/motion/dressing-paint.mjs';
+import { PATH_KINDS, PATH_IDS, PATH_WIDE, PATH_PIECE, pathWideOf, DRAW_SHAPES } from '../engines/mapbuild/path-lay.mjs';
+import { ROOM_CHOICES } from '../engines/mapbuild/furnish.mjs';
 
 /** How thick a drawn wall is, in squares, and how many years are on it. */
 export const WALL_WIDTH = Object.freeze({ min: 0.08, max: 0.4, usual: WALL_THICK, step: 0.01 });
@@ -24,12 +26,13 @@ export const WALL_AGE = Object.freeze({ min: 0, max: 1, usual: 0, step: 0.05 });
 /** How wide a doorway is cut, in squares: a cupboard door up to a pair of gates. */
 export const DOOR_WIDE = Object.freeze({ min: 0.5, max: 3, usual: 1, step: 0.25 });
 /** What a drag on the Structures tab does: lay stone, cut a doorway, set a window in, or rub out. */
-const WALL_MODES = Object.freeze([['draw', 'Wall'], ['rect', 'Rectangle room'], ['round', 'Round room'], ['door', 'Doorway'], ['window', 'Window'], ['roof', 'Roof'], ['region', 'Region'], ['move', 'Move building'], ['erase', 'Erase']]);
+const WALL_MODES = Object.freeze([['draw', 'Wall'], ['rect', 'Rectangle room'], ['house', 'Whole building'], ['round', 'Round room'], ['door', 'Doorway'], ['window', 'Window'], ['roof', 'Roof'], ['furnish', 'Furnish'], ['region', 'Region'], ['move', 'Move building'], ['erase', 'Erase']]);
 // What the wheel moves on the Structures tab, where there is no brush to size: the number the mode is mostly about, and
 // the one behind it. A doorway is mostly how wide it is, a wall how thick, a roof how long it has stood.
 const WALL_WHEEL = Object.freeze({
   draw: { main: ['wallWidth', WALL_WIDTH], second: ['wallAge', WALL_AGE] },
   rect: { main: ['wallWidth', WALL_WIDTH], second: ['wallAge', WALL_AGE] },
+  house: { main: ['wallWidth', WALL_WIDTH], second: ['wallAge', WALL_AGE] },
   round: { main: ['wallWidth', WALL_WIDTH], second: ['wallAge', WALL_AGE] },
   door: { main: ['doorWide', DOOR_WIDE] },
   window: { main: ['doorWide', DOOR_WIDE] },
@@ -149,11 +152,13 @@ export const EDGE_CHOICES = Object.freeze([
 ]);
 // The bar's three places. Town is above ground (it paints and looks as outdoors does) with the built things a town has, and the
 // little that grows or lies about in its streets; outdoors keeps to the wild, underground to caves and dungeons.
-const TOWN = ['lampPost', 'well', 'haystack', 'fence', 'sacks', 'cobbles', 'tombstone', 'coffin', 'brazier', 'marketStall', 'tableStools', 'bench', 'trough', 'planter', 'washtub', 'produce', 'anvil', 'crate', 'barrel', 'campfire', 'pickaxe', 'papers', 'puddle', 'pebbles', 'rubble', 'grass', 'flowers', 'leaves', 'moss'];
+const TOWN = ['lampPost', 'well', 'haystack', 'fence', 'sacks', 'cobbles', 'tombstone', 'coffin', 'brazier', 'marketStall', 'tableStools', 'bench', 'trough', 'planter', 'washtub', 'produce', 'anvil', 'crate', 'barrel', 'campfire', 'pickaxe', 'papers', 'puddle', 'pebbles', 'rubble', 'grass', 'flowers', 'leaves', 'moss',
+  'cart', 'signpost', 'hitchingPost', 'pump', 'washingLine', 'kennel', 'firewood', 'choppingBlock', 'beehive', 'rubbish', 'weaponRack'];
 // Kept out of the wild: the town's built things, and a dungeon's (a tomb, a hoard, a cage).
-const BUILT = new Set(['bed', 'rug', 'bookshelf', 'strongbox', 'hearth', 'desk', 'throne', 'altar', 'statue', 'pottedPlant', 'bathtub', 'counter', 'brokenFurniture', 'lilyPads', 'cattails', 'streamRock', 'steppingStones', 'rowboat', 'dock', 'mooringPost', 'waterDebris', 'marketStall', 'tableStools', 'bench', 'trough', 'planter', 'washtub', 'produce', 'anvil', 'urns', 'lampPost', 'well', 'haystack', 'fence', 'sacks', 'cobbles', 'tombstone', 'brazier', 'papers', 'sarcophagus', 'coffin', 'treasure', 'cage']);
+const BUILT = new Set(['bed', 'rug', 'bookshelf', 'strongbox', 'hearth', 'desk', 'throne', 'altar', 'statue', 'pottedPlant', 'bathtub', 'counter', 'brokenFurniture', 'lilyPads', 'cattails', 'streamRock', 'steppingStones', 'rowboat', 'dock', 'mooringPost', 'waterDebris', 'marketStall', 'tableStools', 'bench', 'trough', 'planter', 'washtub', 'produce', 'anvil', 'urns', 'lampPost', 'well', 'haystack', 'fence', 'sacks', 'cobbles', 'tombstone', 'brazier', 'papers', 'sarcophagus', 'coffin', 'treasure', 'cage',
+  'cart', 'signpost', 'hitchingPost', 'pump', 'washingLine', 'kennel', 'firewood', 'choppingBlock', 'beehive', 'rubbish', 'weaponRack', 'candles', 'chains']);
 // Indoors: a room's furnishings and its clutter; Water: what floats, stands or is moored in a pond, a river or a harbour.
-const INDOOR = ["bed","rug","bookshelf","strongbox","hearth","desk","throne","altar","statue","pottedPlant","bathtub","counter","brokenFurniture","crate","barrel","sacks","papers","candles","chains","tableStools","bench","washtub","urns","anvil","cage"];
+const INDOOR = ["bed","rug","bookshelf","strongbox","hearth","desk","throne","altar","statue","pottedPlant","bathtub","counter","brokenFurniture","crate","barrel","sacks","papers","candles","chains","tableStools","bench","washtub","urns","anvil","cage","weaponRack","firewood","bloodstain"];
 const WATER = ["lilyPads","cattails","streamRock","steppingStones","rowboat","dock","mooringPost","waterDebris","reeds","puddle","log","rock","boulder","pebbles","moss"];
 export const BRUSH_PLACES = Object.freeze([['surface', 'Outdoors'], ['town', 'Town'], ['indoor', 'Indoors'], ['water', 'Waterside'], ['cave', 'Underground']]);
 const placeWhere = (place) => (place === 'cave' ? 'cave' : 'surface');
@@ -171,7 +176,10 @@ export const BRUSH_TURN_STEP = Math.PI / 12;
 export const brushChoices = () => { const kinds = remembered.lock ? [remembered.lock.pick] : [...remembered.kinds[remembered.where]]; return { where: remembered.lock?.where ?? placeWhere(remembered.where), place: remembered.lock ? null : remembered.where, kinds, size: remembered.size, thick: remembered.thick, scale: remembered.scale, tall: remembered.tall, turn: remembered.turn, prop: brushPropFor(kinds[0]), tab: remembered.lock ? 'decor' : remembered.tab, floor: remembered.floor, smart: remembered.edges !== 'off', edges: remembered.edges, edgesChosen: remembered.edgesChosen, tol: remembered.tol, edge: remembered.edge, texture: remembered.texture, overWater: remembered.overWater && canStandOverWater(remembered.floor), heightMode: remembered.heightMode, crossKind: remembered.crossKind, cave: remembered.floor === 'cavern' ? caveChoice() : null, waterKind: remembered.waterKind, pattern: remembered.styles[remembered.floor] ?? '',
   wallMaterial: remembered.wallMaterial, wallWidth: remembered.wallWidth, wallAge: remembered.wallAge, wallMode: remembered.wallMode, wallCurve: remembered.wallCurve === true, doorKind: remembered.doorKind || null, doorFlip: remembered.doorFlip === true, doorDouble: remembered.doorDouble === true, doorWide: remembered.doorWide, windowKind: remembered.windowKind || null, windowWalk: remembered.windowWalk === true, swing: remembered.swing === 'out' ? 'out' : 'in',
   roofKind: remembered.roofKind || null, roofForm: remembered.roofForm || null, roofAge: remembered.roofAge, roofChimney: remembered.roofChimney || null, roofDressed: remembered.roofDressed === true,
-  wallTint: remembered.wallTint || null, roofTint: remembered.roofTint || null, dressingKind: remembered.dressingKind || 'garlands' }; };
+  wallTint: remembered.wallTint || null, roofTint: remembered.roofTint || null, dressingKind: remembered.dressingKind || 'garlands',
+  pathShape: DRAW_SHAPES.some(([k]) => k === remembered.pathShape) ? remembered.pathShape : 'line', areaFloor: AREA_FLOORS.includes(remembered.areaFloor) ? remembered.areaFloor : 'grass', areaStyle: remembered.styles[AREA_FLOORS.includes(remembered.areaFloor) ? remembered.areaFloor : 'grass'] ?? '',
+  pathBlocks: remembered.pathBlocks === true, furnishKind: ROOM_CHOICES.some(([id]) => id === remembered.furnishKind) ? remembered.furnishKind : ROOM_CHOICES[0][0],
+  pathKind: PATH_KINDS[remembered.pathKind] ? remembered.pathKind : 'road', pathWide: pathWideOf(remembered.pathKind, remembered.pathWide), pathSmooth: remembered.pathSmooth !== false }; };
 // What Cave lays (pure copy): the growth as its `cavern` word, and its stage, size and how many as the region panel saves
 // them (null while at their usual: the last stage, 100%).
 const caveMenuNow = () => caveMenu({ cavern: remembered.cave, caveStep: remembered.caveStep, caveSize: remembered.caveSize, caveAmount: remembered.caveAmount }, 'cavern');
@@ -199,14 +207,31 @@ export const kindMatches = (id, query) => {
 // Heights: what the pointer does. Raise: a brush, as Floors' is, painting raised ground (the wheel over it sets its height).
 // Ramp: a drag up across a raised edge lays a ramp.
 export const HEIGHT_MODES = Object.freeze([['raise', 'Raise', 'Paint raised ground with the brush (Edges keeps it to what is under the pointer): a stroke on a raised part grows it, on lower ground raises it a step. The wheel over a raised part raises or lowers it; Shift-drag rubs it out.'], ['ramp', 'Crossing', 'Drag a way between heights: a ramp, ladder or rope up across a raised edge, or a bridge from one raised part to another. Shift-click removes one.']]);
-const TAB_KEYS = { floors: 1, decor: 2, heights: 3, walls: 4 };
+/** The most kinds the Decorations brush lays as a mix. */
+export const MIX_MOST = 8;
+const TAB_KEYS = { floors: 1, decor: 2, heights: 3, walls: 4, paths: 5, select: 6 };
+// What the Select tab's buttons do to what is picked: [what, icon, label, hint].
+export const SELECT_ACTS = Object.freeze([
+  ['turnLeft', 'fa-solid fa-rotate-left', 'Turn', 'Turn what is picked a step to the left (Ctrl+wheel)'],
+  ['turnRight', 'fa-solid fa-rotate-right', 'Turn', 'Turn what is picked a step to the right (Ctrl+wheel)'],
+  ['smaller', 'fa-solid fa-minus', 'Smaller', 'Make what is picked smaller (Alt+wheel)'],
+  ['bigger', 'fa-solid fa-plus', 'Bigger', 'Make what is picked bigger (Alt+wheel)'],
+  ['flip', 'fa-solid fa-left-right', 'Flip', 'Mirror what is picked left for right: several together become their mirror image (F)'],
+  ['copy', 'fa-solid fa-clone', 'Copy', 'A copy of what is picked, beside it, picked in its place (Ctrl+D)'],
+  ['remove', 'fa-solid fa-trash', 'Remove', 'Take what is picked off the map (Delete)'],
+  ['all', 'fa-solid fa-object-group', 'All of its kind here', 'Pick everything of the same kind in the same region: a whole fence, every tree of a wood (Ctrl+A)'],
+]);
+const SELECT_HINT = 'Click a decoration to pick it up · Shift-click adds one · Drag on open ground: a box · Drag what is picked to move it · Arrows nudge · Ctrl+wheel turns · Alt+wheel sizes · Ctrl+D copies · Delete removes · Esc lets go · 1–6: tabs';
+const AREA_HINT = 'Area: click round its outline, Enter or double-click fills it · Box: drag from corner to corner · Whole map: the button · Backspace: back a point · Esc: start again · Shift: on the grid · Ctrl+Z takes it back';
+const EDIT_HINT = 'Click a path to take hold of it · Drag a point to move it · Click the line between two to add one · Backspace: take away the point last touched · Enter lays it again along its new line · Esc leaves it as it was · Shift: on the grid';
+const PATH_HINT = 'Click along the map, point by point, or drag to draw freehand · Enter or double-click lays it · Backspace: back a point · Esc: start again · Shift: on the grid · Ctrl+Z takes it back · 1–5: tabs';
 
 /** Opens the Map painting bar; `onClose` when it is closed with its × or Esc. `onChange` whenever a choice changes, `onTab`
  *  when the tab does, `onUndo` / `onRedo` for its two buttons, `onReadMap` for the Floors tab's "Read the whole map…" (left out
  *  when not given), `sceneTicks` ({ get() → { walls, shadows }, set(key, on) }) the Heights tab's two choices kept on the scene, `thumb(kind)` a small canvas of a decoration kind for its picture (or null). `region` ({ name, where, kinds })
  *  for a region's own brush: its place only, and only its ticked kinds to pick from.
  *  Returns { close, setSize, setThick, setScale, setTol, turnBy, setTab, setStatus(text, { undo, redo }), element }. */
-export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = () => {}, onUndo = () => {}, onRedo = () => {}, onReadMap = null, thumb = () => null, region = null, sceneTicks = null, sceneHoliday = null } = {}) {
+export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = () => {}, onUndo = () => {}, onRedo = () => {}, onSelectAct = () => {}, prefabs = () => [], onReadMap = null, thumb = () => null, region = null, sceneTicks = null, sceneHoliday = null } = {}) {
   document.getElementById('an-decor-brush')?.remove();
   if (region) { const kinds = region.kinds?.length ? region.kinds : brushKindsFor(region.where), had = remembered.kinds[region.where]?.[0]; remembered.lock = { where: region.where, kinds, name: region.name, pick: kinds.includes(had) ? had : kinds[0] }; remembered.tab = 'decor'; }
   else remembered.lock = null;
@@ -221,10 +246,10 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
     // (Drawn afresh on every change; the search keeps its text, and its focus while typing in it.)
     const typing = document.activeElement?.classList?.contains('an-db-search') && bar.contains(document.activeElement);
     bar.replaceChildren();
-    const floors = remembered.tab === 'floors' && !lock, heights = remembered.tab === 'heights' && !lock, walls = remembered.tab === 'walls' && !lock;
+    const floors = remembered.tab === 'floors' && !lock, heights = remembered.tab === 'heights' && !lock, walls = remembered.tab === 'walls' && !lock, paths = remembered.tab === 'paths' && !lock, select = remembered.tab === 'select' && !lock;
     // The header: the tabs, what is on the map, undo and redo, and close.
     const head = el('div', 'an-db-head an-mp-head');
-    for (const [key, icon, label] of [['floors', 'fa-solid fa-layer-group', 'Floors'], ['decor', 'fa-solid fa-tree', 'Decorations'], ['walls', 'fa-solid fa-grip-lines', 'Structures'], ['heights', 'fa-solid fa-mountain', 'Heights']]) {
+    for (const [key, icon, label] of [['floors', 'fa-solid fa-layer-group', 'Floors'], ['decor', 'fa-solid fa-tree', 'Decorations'], ['walls', 'fa-solid fa-grip-lines', 'Structures'], ['heights', 'fa-solid fa-mountain', 'Heights'], ['paths', 'fa-solid fa-route', 'Paths'], ['select', 'fa-solid fa-arrow-pointer', 'Select']]) {
       if (lock && key !== 'decor') continue;
       const t = el('button', remembered.tab === key ? 'an-mp-tab is-on' : 'an-mp-tab'); t.type = 'button'; t.setAttribute('aria-pressed', String(remembered.tab === key)); t.dataset.tab = key;
       t.innerHTML = `<i class="${icon}"></i>`; t.append(el('span', '', lock && key === 'decor' ? `Decorations: ${lock.name || 'region'}` : label));
@@ -369,6 +394,11 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
       row.append(seg('Opens', [['in', 'Inside'], ['out', 'Outside']], remembered.swing, (v) => { remembered.swing = v; }, 'swing'));
       row.append(tick('Double doors', 'doorDouble', 'Two leaves meeting in the middle of the opening, each hung at its own end: a hall, a barn, a temple. Each half opens on its own, as a real pair does.'));
       row.append(tick('Hinge the far end', 'doorFlip', 'The door hangs on the other end of the opening. Which end it hangs on and which way it opens are two different things. A pair hangs at both ends, so this changes nothing for one.'));
+    } else if (walls && remembered.wallMode === 'furnish') {
+      // Furnish: what the room is. A click inside it sets out what such a room holds; another click sets it out afresh.
+      modes.append(seg('', WALL_MODES, remembered.wallMode, (v) => { remembered.wallMode = v; }, 'wallMode'));
+      const as = ROOM_CHOICES.some(([id]) => id === remembered.furnishKind) ? remembered.furnishKind : ROOM_CHOICES[0][0];
+      row.append(seg('Furnish as', ROOM_CHOICES, as, (v) => { remembered.furnishKind = v; }, 'furnish'));
     } else if (walls) {
       // Walls: what the next wall is made of, how thick it is drawn and how long it has stood. Dragging on the map
       // lays it — a wall of Foundry's own, which is what the vision needs, carrying the material that paints it.
@@ -383,6 +413,49 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
       row.append(slider('Years on it', WALL_AGE, 'wallAge', WALL_AGE.step, '', (v) => (v < 0.05 ? 'kept' : v < 0.5 ? 'lived in' : v < 0.85 ? 'abandoned' : 'ruined')));
       row.append(tick('Curved', 'wallCurve', 'The run bends through the corners you drag instead of turning at them: a round tower, an apse, a cave mouth. The walls themselves become short chords along the curve, so sight and movement follow it exactly.'));
       extra.append(tintPick('Colour', 'wallTint', 'A colour mixed into the stuff this wall is made of: whitewash, red sandstone, a painted timber house. Mixed in, not laid over, so it is still stone with all its blotches and grain — and the walls already up keep the colour they were drawn in.'));
+    } else if (select) {
+      // Select: nothing to choose before picking something up; what can be done to what is picked, as buttons.
+      for (const [act, icon, label, tip] of SELECT_ACTS) { const b = el('button', 'an-mp-act'); b.type = 'button'; b.dataset.selectAct = act; b.title = tip; b.innerHTML = `<i class="${icon}"></i>`; b.append(el('span', '', label)); b.addEventListener('click', () => onSelectAct(act)); row.append(b); }
+      // Prefabs: what is picked saved under a name, and any saved one set down again with a click on the map.
+      const act = (name, icon, label, tip) => { const b = el('button', 'an-mp-act'); b.type = 'button'; b.dataset.selectAct = name.split(':')[0]; b.title = tip; b.innerHTML = `<i class="${icon}"></i>`; b.append(el('span', '', label)); b.addEventListener('click', () => onSelectAct(name)); return b; };
+      const saved = prefabs() ?? [], which = Math.min(Math.max(0, Number(remembered.prefab) || 0), Math.max(0, saved.length - 1));
+      row.append(act('savePrefab', 'fa-solid fa-floppy-disk', 'Save as prefab', 'Saves what is picked under a name, as its pieces stand to each other now: a furnished room, a camp, a market. Kept with you, for every map.'));
+      if (saved.length) row.append(choice('Prefab', saved.map((name, i) => [String(i), name]), String(which), (v) => { remembered.prefab = v; }), act(`placePrefab:${which}`, 'fa-solid fa-stamp', 'Set down', 'Then click the map where it goes. Shift keeps it to the grid.'), act(`dropPrefab:${which}`, 'fa-solid fa-trash', 'Forget', 'Takes this prefab off your list. What was set down from it stays on the maps.'));
+    } else if (paths) {
+      // Paths: what the line is laid as, a tile each under its sort; how wide (or how big each piece); smooth or cornered.
+      const now = PATH_KINDS[remembered.pathKind] ? remembered.pathKind : 'road', kind = PATH_KINDS[now];
+      const shape = DRAW_SHAPES.some(([k]) => k === remembered.pathShape) ? remembered.pathShape : 'line';
+      modes.append(seg('Draw', DRAW_SHAPES, shape, (v) => { remembered.pathShape = v; }, 'pathShape'));
+      if (shape === 'edit') {
+        // A path already laid, its points moved: nothing to choose, it stays what it was.
+        row.append(el('span', 'an-mp-note', 'Click a road, stream or fence laid here to take hold of its points.'));
+      } else if (shape !== 'line') {
+        // Ground filled in: any floor, its pattern, how soft its edge. The whole map at a click.
+        const floor = AREA_FLOORS.includes(remembered.areaFloor) ? remembered.areaFloor : 'grass';
+        for (const id of AREA_FLOORS) {
+          const on = id === floor, t = el('button', on ? 'an-mp-tile an-db-on' : 'an-mp-tile'); t.type = 'button'; t.setAttribute('aria-pressed', String(on)); t.dataset.areaFloor = id;
+          const sw = el('span', 'an-mp-swatch'), base = tileColour(id, remembered.cave); sw.style.background = base; floorSwatchSoon(sw, id, base);
+          t.append(sw, el('span', '', tileName(id))); t.addEventListener('click', () => { remembered.areaFloor = id; draw(); onChange(); }); grid.append(t);
+        }
+        const styles = TEXTURE_STYLES[floor];
+        if (styles) row.append(choice('Style', styles, remembered.styles[floor] || styles[0][0], (v) => { remembered.styles[floor] = v; }));
+        if (shape === 'all') { const fill = el('button', 'an-mp-act an-mp-fill'); fill.type = 'button'; fill.dataset.selectAct = 'fillMap'; fill.title = 'Lays this floor under the whole map. Laid again, it takes the place of the last.'; fill.innerHTML = '<i class="fa-solid fa-fill-drip"></i>'; fill.append(el('span', '', `Lay ${tileName(floor).toLowerCase()} under the whole map`)); fill.addEventListener('click', () => onSelectAct('fillMap')); row.append(fill); }
+        else row.append(slider('Soft edge', BRUSH_EDGE, 'edge', 0.1, ' sq'));
+      } else {
+      for (const id of PATH_IDS) {
+        const k = PATH_KINDS[id], on = id === now, t = el('button', on ? 'an-mp-tile an-db-on' : 'an-mp-tile'); t.type = 'button'; t.setAttribute('aria-pressed', String(on)); t.dataset.path = id; t.title = `${k.group}: ${k.label}`;
+        const sw = el('span', 'an-mp-swatch');
+        if (k.type === 'pieces') { const pic = thumb(k.kind); if (pic) { const img = el('canvas'); img.width = pic.width; img.height = pic.height; img.getContext('2d')?.drawImage(pic, 0, 0); sw.append(img); } else sw.style.background = '#6a5236'; }
+        else { const floor = k.type === 'water' ? 'water' : k.floor, base = tileColour(floor, remembered.cave); sw.style.background = base; floorSwatchSoon(sw, floor, base); }
+        t.append(sw, el('span', '', k.label));
+        t.addEventListener('click', () => { remembered.pathKind = id; remembered.pathWide = PATH_KINDS[id].wide; draw(); onChange(); }); grid.append(t);
+      }
+      remembered.pathWide = pathWideOf(now, remembered.pathWide);
+      row.append(kind.type === 'pieces' ? slider('Size', PATH_PIECE, 'pathWide', PATH_PIECE.step, '', (v) => `${Math.round(v * 100)}%`) : slider('Width', PATH_WIDE, 'pathWide', PATH_WIDE.step, ' sq'));
+      if (remembered.pathSmooth === undefined) remembered.pathSmooth = true;
+      if (!kind.rigid) row.append(tick('Smooth', 'pathSmooth', 'Rounds the corners off, so a road winds and a hedge curves. Off: it turns sharply where you clicked.'));
+      if (kind.type === 'pieces' && runBlocks(kind.kind)) row.append(tick('Blocks movement', 'pathBlocks', 'A wall along it that stops movement and nothing else: sight, light and sound pass over a fence. Kept in step with the fence as it is moved or taken away.'));
+      }
     } else if (floors) {
       // Floors: a swatch each; the brush and Smart edges; the rest under More.
       for (const id of BRUSH_FLOORS) {
@@ -429,12 +502,16 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
       pickRow.append(search); body.append(pickRow);
       const chips = grid, ticked = brushChoices().kinds;
       const pick = (id) => { if (lock) lock.pick = id; else remembered.kinds[remembered.where] = [id]; draw(); onChange(); };
+      const mix = (id) => { const now = remembered.kinds[remembered.where] ?? [], next = now.includes(id) ? now.filter((k) => k !== id) : [...now, id]; remembered.kinds[remembered.where] = next.length ? next.slice(-MIX_MOST) : now; draw(); onChange(); };
       for (const id of lock ? lock.kinds : brushKindsFor(remembered.where)) {
         const on = ticked.includes(id), c = el('button', on ? 'an-db-chip an-mp-tile an-db-on' : 'an-db-chip an-mp-tile'); c.type = 'button'; c.setAttribute('aria-pressed', String(on)); c.dataset.kind = id; c.title = DECOR_KINDS[id].label;
         const pic = thumb(id); if (pic) { const img = el('canvas', 'an-mp-pic'); img.width = 48; img.height = 40; try { const g = img.getContext('2d'); const s = Math.min(48 / pic.width, 40 / pic.height); g.drawImage(pic, (48 - pic.width * s) / 2, (40 - pic.height * s) / 2, pic.width * s, pic.height * s); } catch { /* no picture */ } c.append(img); }
         c.append(el('span', '', DECOR_KINDS[id].label));
-        // One kind at a time: picking one puts out the other.
-        c.addEventListener('click', () => pick(id));
+        // One kind at a time: picking one puts out the other. Ctrl- or Shift-click adds a kind to those picked (or
+        // takes it out again), and the brush then lays a mix of them: a wood of oak and birch, a market's crates and
+        // barrels. One is always left picked.
+        c.addEventListener('click', (e) => { if ((e.ctrlKey || e.metaKey || e.shiftKey) && !lock) mix(id); else pick(id); });
+        if (ticked.length > 1) c.title = `${DECOR_KINDS[id].label} · ${on ? 'one of the mix' : 'Ctrl-click to add to the mix'}`;
         chips.append(c);
       }
       // A search over the kinds: typing hides the tiles that don't match; Enter picks the first one left, Esc clears it.
@@ -465,7 +542,7 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
     more.addEventListener('click', () => { remembered.more = !remembered.more; draw(); });
     row.append(more); extra.hidden = !remembered.more;
     body.append(modes, grid, row, extra);
-    const keys = el('div', 'an-db-hint an-mp-keys', walls ? (remembered.wallMode === 'roof'
+    const keys = el('div', 'an-db-hint an-mp-keys', select ? SELECT_HINT : paths ? (remembered.pathShape === 'edit' ? EDIT_HINT : remembered.pathShape && remembered.pathShape !== 'line' ? AREA_HINT : PATH_HINT) : walls ? (remembered.wallMode === 'roof'
       ? 'Click inside a room the walls close in: a roof goes over it · Shift-click: one roof over the whole building, inside walls and all · Click a roof to take it off · Ctrl+wheel: the years on it · 1 / 2 / 3 / 4: tabs'
       : remembered.wallMode === 'window'
       ? 'Click a painted wall: an opening is cut there and the window set into it · Click an opening that is already there to put this in it instead · 1 / 2 / 3 / 4: tabs'
@@ -475,6 +552,10 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
       ? 'Drag from inside a building: its walls, its doorways and windows, and the roof over it all go together · Drag a wall itself to move just that one · It lands on the grid · Ctrl+Z puts it back · 1 / 2 / 3 / 4: tabs'
       : remembered.wallMode === 'round'
       ? 'Drag from the middle of the room outwards: a ring of walls, as round as a tower · Drag further for a wider one · A room this round takes a conical roof · 1 / 2 / 3 / 4: tabs'
+      : remembered.wallMode === 'furnish'
+      ? 'Click inside a room the walls close in: it is furnished as what you picked, clear of its doors · Click it again for another arrangement · Ctrl+Z takes it back · Then Select moves any piece · 1 / 2 / 3 / 4: tabs'
+      : remembered.wallMode === 'house'
+      ?'Drag a box: a whole building — walls, a door, windows, its floor and a roof, all at once · Drag down the map and its door faces south, drag up and it faces north · The door, window and roof picked on their own modes are the ones used · Ctrl+Z takes the whole of it back · 1 / 2 / 3 / 4: tabs'
       : remembered.wallMode === 'rect'
       ? 'Drag from one corner of the room to the far one: four walls, closed · The corner you started at stays put · Ctrl+wheel: how thick · 1 / 2 / 3 / 4: tabs'
       : remembered.wallMode === 'region'
@@ -482,11 +563,13 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
       : remembered.wallMode === 'erase'
       ? 'Click or drag over a painted wall: it goes · Only walls painted here — never the map’s own · Shift: draw instead · 1 / 2 / 3 / 4: tabs'
       : `Drag along the map: a wall${remembered.wallCurve ? ', bending through your corners' : ', turning where you turn'} · Drag back over a corner to take that leg off · Shift: rub out · Ctrl+wheel: how thick · 1 / 2 / 3 / 4: tabs`) : heights ? (remembered.heightMode === 'ramp' ? (remembered.crossKind === 'bridge' ? 'Drag from one raised part to another: a bridge as wide as the brush' : `Drag up across a raised edge: a ${remembered.crossKind}${remembered.crossKind === 'ramp' ? ' as wide as the brush' : ''}`) + ' · Shift-click removes one · 1 / 2 / 3: tabs · Saved as you go' : 'Drag: raise the ground · Wheel over it: higher or lower · Shift-drag rubs out · Alt-drag along an edge: open it (Alt+Shift closes) · 1 / 2 / 3: tabs') : `Drag to paint · Shift-drag rubs out${floors ? (remembered.floor === 'cavern' ? ' the picked growth' : ' the picked floor') : ''} · Ctrl+wheel: brush size · 1 / 2 / 3: tabs · Saved as you paint`);
-    keys.title = walls ? 'Ctrl+wheel: the number this mode is about (how wide, how thick, how old) · Shift+wheel: the years on it · Ctrl+Z undo · Ctrl+Shift+Z redo · Esc stops' : heights ? 'Ctrl+Z undo · Ctrl+Shift+Z redo · Esc stops' : floors ? 'Ctrl+wheel: size · Alt+wheel: how alike · Ctrl+Z undo · Ctrl+Shift+Z redo · Esc stops' : 'Ctrl+wheel: size · Shift+wheel: rotate · Ctrl+Shift+wheel: density · Alt+wheel: decoration size · Ctrl+Z undo · Esc stops';
+    keys.title = select ? 'Picks up what was laid by the brush, a path or Build a map — not what a region scatters by itself, and not walls · Ctrl+Z undo · Ctrl+Shift+Z redo' : paths ?'A path is saved as a region of its own: drag that region with Foundry\'s Region tools to move the whole road or fence · Ctrl+Z undo · Ctrl+Shift+Z redo · Esc stops' : walls ? 'Ctrl+wheel: the number this mode is about (how wide, how thick, how old) · Shift+wheel: the years on it · Ctrl+Z undo · Ctrl+Shift+Z redo · Esc stops' : heights ? 'Ctrl+Z undo · Ctrl+Shift+Z redo · Esc stops' : floors ? 'Ctrl+wheel: size · Alt+wheel: how alike · Ctrl+Z undo · Ctrl+Shift+Z redo · Esc stops' : 'Ctrl+wheel: size · Shift+wheel: rotate · Ctrl+Shift+wheel: density · Alt+wheel: decoration size · Ctrl+Z undo · Esc stops';
     bar.append(head, body, keys);
     if (typing) { const s = bar.querySelector('.an-db-search'); s?.focus(); s?.setSelectionRange(s.value.length, s.value.length); }
   };
   const api = { element: bar, close: () => { bar.remove(); if (remembered.lock === lock) remembered.lock = null; },
+    // Drawn afresh: for what the bar shows that is not its own to remember (the saved prefabs).
+    refresh: () => draw(),
     // Ctrl+wheel moves it by the same step the slider does, and lands on it exactly (0.1 + 0.2 is not 0.3 in binary).
     setSize: (v) => { remembered.size = Math.min(BRUSH_SIZE.max, Math.max(BRUSH_SIZE.min, Math.round(v / BRUSH_SIZE.step) * BRUSH_SIZE.step)); draw(); },
     setThick: (v) => { remembered.thick = Math.min(BRUSH_THICK.max, Math.max(BRUSH_THICK.min, Math.round(v * 10) / 10)); draw(); },
@@ -511,7 +594,7 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
     },
     // Turns the brush a step either way (from upright when it was random).
     turnBy: (dir) => { remembered.turn = (((remembered.turn ?? 0) + dir * BRUSH_TURN_STEP) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2); draw(); },
-    setTab: (tab) => { const next = (tab === 'floors' || tab === 'heights' || tab === 'walls') && !lock ? tab : 'decor'; if (next === remembered.tab) return; remembered.tab = next; draw(); onTab(next); onChange(); },
+    setTab: (tab) => { const next = (tab === 'floors' || tab === 'heights' || tab === 'walls' || tab === 'paths' || tab === 'select') && !lock ? tab : 'decor'; if (next === remembered.tab) return; remembered.tab = next; draw(); onTab(next); onChange(); },
     // (From a raised part's panel, Add crossing: Heights, crossing mode, that kind.)
     setCrossing: (kind) => { if (lock) return; remembered.heightMode = 'ramp'; if (CROSSING_KINDS.some(([k]) => k === kind)) remembered.crossKind = kind; const tabbed = remembered.tab !== 'heights'; remembered.tab = 'heights'; draw(); if (tabbed) onTab('heights'); onChange(); },
     // The line changes where it stands. (It is set as the pointer moves over the map and whenever a choice changes, so
