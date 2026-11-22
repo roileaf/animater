@@ -62,6 +62,24 @@ export function reliefPixels(rgba, w, h, opts) {
   return out;
 }
 
+/**
+ * How much of a picture shines (pure, 0-1): the share of it whose relief (reliefPixels) says it throws light back.
+ * A bush, a boulder, a sack have none, and a picture with none gains nothing from being drawn lit — which is not
+ * free: a lit piece is drawn on its own, where plain ones are drawn many at a go. Measured with a thousand tiles on
+ * a map, drawing every one lit cost five milliseconds a frame, and nine in ten of them had nothing to glint.
+ */
+export function shineShare(relief, w, h, least = 40) {
+  let lit = 0, seen = 0;
+  for (let i = 0; i < w * h; i++) { if (relief[i * 4 + 3] < 40) continue; seen++; if (relief[i * 4 + 1] >= least) lit++; }
+  return seen ? lit / seen : 0;
+}
+/**
+ * How much of a picture must shine for it to be worth drawing lit. Set against real pictures: a barrel's hoops are a
+ * twentieth of it, a keg's bands a tenth, a crate's fittings a thirtieth; a table, a boulder and a campfire's stones
+ * come in under a fiftieth and a bush, a cart and a sack at nothing.
+ */
+export const SHINES_ENOUGH = 0.02;
+
 /** A picture's outline filled white (pure): what the engines cast its shadows from, as paintDecor gives them. */
 export function silhouettePixels(rgba, w, h, threshold = 0.12) {
   const out = new Uint8ClampedArray(w * h * 4);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readRelief, reliefPixels, silhouettePixels, greenShare, burningShare, snowCover, underConditions, decorationFromArt } from '../../../scripts/engines/motion/decor-from-art.mjs';
+import { readRelief, reliefPixels, silhouettePixels, greenShare, burningShare, snowCover, underConditions, decorationFromArt, shineShare, SHINES_ENOUGH } from '../../../scripts/engines/motion/decor-from-art.mjs';
 
 // A picture W by H: a disc of one colour on nothing, with a darker cross cut into it (a join between boards).
 const W = 64, H = 64;
@@ -37,6 +37,17 @@ test('the relief for the shader holds height in red, shine in green and the outl
   const px = reliefPixels(disc(GREY), W, H);
   assert.equal(px[at(2, 2) * 4 + 3], 0); assert.equal(px[at(40, 40) * 4 + 3], 255);
   assert.ok(px[at(40, 40) * 4] > 60 && px[at(40, 40) * 4 + 1] > 60 && px[at(40, 40) * 4 + 2] === 0);
+});
+
+test('how much of a picture shines says whether it is worth drawing lit: iron does, wood and leaves do not', () => {
+  const of = (colour) => shineShare(reliefPixels(disc(colour, { cross: false }), W, H), W, H);
+  assert.ok(of(GREY) > 0.5, 'grey iron'); assert.equal(of(BROWN), 0); assert.equal(of(GREEN), 0);
+  assert.ok(of(GREY) >= SHINES_ENOUGH && of(BROWN) < SHINES_ENOUGH);
+  // A barrel: wood with one iron hoop across it.
+  const barrel = disc(BROWN, { cross: false }); for (let y = 30; y < 34; y++) for (let x = 12; x < 52; x++) { const i = (y * W + x) * 4; if (barrel[i + 3]) { barrel[i] = 128; barrel[i + 1] = 130; barrel[i + 2] = 133; } }
+  const share = shineShare(reliefPixels(barrel, W, H), W, H);
+  assert.ok(share >= SHINES_ENOUGH && share < 0.3, `a hoop is enough (${share})`);
+  assert.equal(shineShare(new Uint8ClampedArray(W * H * 4), W, H), 0, 'an empty picture shines nowhere');
 });
 
 test('the outline for shadows is white where the picture is and nothing where it is not', () => {

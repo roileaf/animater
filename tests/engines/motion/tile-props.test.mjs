@@ -149,6 +149,19 @@ test('with its relief a tile is drawn lit: only its glints by default, the sun a
   decorations.lamps([]); assert.equal(amounts(mesh)[1], 0, 'carried away again');
 });
 
+test('lamps told again unchanged are not worked through again; a lamp moved, or a tile, is', () => {
+  const { layers, decorations } = litWorld(), maps = texture();
+  decorations.props([piece({ maps })]);
+  const lamp = { x: 900, y: 800, radius: 600, strength: 1 }, mesh = () => layers.ground.children[0];
+  decorations.lamps([lamp]); const first = mesh().shader.uniforms.uCol;
+  decorations.lamps([{ ...lamp }]); assert.equal(mesh().shader.uniforms.uCol, first, 'the same lamps: nothing done');
+  decorations.lamps([{ ...lamp, x: 950 }]); assert.notEqual(mesh().shader.uniforms.uCol, first, 'a lamp carried along: worked through');
+  const moved = mesh().shader.uniforms.uCol;
+  decorations.props([piece({ maps, x: 1100 })]); decorations.lamps([{ ...lamp, x: 950 }]);
+  assert.notEqual(mesh().shader.uniforms.uCol, moved, 'a tile moved: the same lamps are worked through for it');
+  assert.ok(amounts(mesh())[0] > 0);
+});
+
 test('by day a lamp throws no shadow of a tile but its metal still answers the flame', () => {
   const { layers, decorations } = litWorld(), maps = texture();
   decorations.props([piece({ maps })]);
@@ -182,17 +195,23 @@ test('nothing is rebuilt when nothing changed, and the regions\' own sync leaves
   decorations.props([]); assert.equal(decorations.busy, false);
 });
 
-test('main wires it: a scene switch off by default, a tile\'s own choice, and tiles told to be things kept from the canopy', () => {
+test('main wires it: a scene switch on unless turned off, a tile\'s own choice, and tiles told to be things kept from the canopy', () => {
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
-  assert.match(main, /flags\?\.\[ID\]\?\.tileProps === true/);
+  // (On unless the scene says no: only `false` turns it off, so a scene that never heard of it has it.)
+  assert.match(main, /const tilePropsHere = \(\) => canvas\?\.scene\?\.flags\?\.\[ID\]\?\.tileProps !== false;/);
+  assert.match(main, /tileProps !== false \? " checked" : ""/); assert.equal(/tileProps === true/.test(main), false);
   assert.match(main, /name="flags\.\$\{ID\}\.tileProps"/);
   assert.match(main, /\[PROP_CHOICE, "Object: its own shadow, snow and rain"\]/);
   assert.match(main, /sunlight === PROP_CHOICE\) continue;/);
   assert.match(main, /decorations\.sync\(list\);\r?\n  syncTileProps\(\);/);
   // The sun's own colour goes with it, so what glints is gold at dusk and silver under the moon.
   assert.match(main, /directSun\(skyCoverNow\), color: sunlightColor\(\) \} : null;/);
+  // Only a tile that shines is drawn lit, unless the scene asks for the shading of form as well.
+  assert.match(main, /maps = relief && \(relief\.animaterShines \|\| formShade > 0\) \? relief : null/);
+  assert.match(main, /maps\.animaterShines = shineShare\(relief, w, h\) >= SHINES_ENOUGH;/);
+  assert.match(main, /maps: relief\?\.animaterShines \? relief : null/);
   // Its relief read from its picture, and the scene's own Relief (nothing by default).
-  assert.match(main, /reliefPixels\(ctx\.getImageData\(0, 0, w, h\)\.data, w, h\)/);
+  assert.match(main, /const relief = reliefPixels\(ctx\.getImageData\(0, 0, w, h\)\.data, w, h\);/);
   assert.match(main, /name="flags\.\$\{ID\}\.tileRelief"/);
   assert.match(main, /Number\(canvas\?\.scene\?\.flags\?\.\[ID\]\?\.tileRelief\) \|\| 0/);
   // A growing tile turns with the season: only mostly-green ones, never a big one, summer left as it is.

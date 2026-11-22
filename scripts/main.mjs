@@ -255,7 +255,7 @@ import { lightAround, litKey, litPreset, lightDance } from "./engines/playback/s
 import { WINDOW_PATTERN, patternScaleOf, shaftOf, GLAZED, skyWindowOf, duskOf, sunsetTint, eraseRooms, openRooms, wallShadowQuads, wallShadowReach, shadeAcross, createWallShadows, wallSpan, windowShafts, createWindowShafts, windowGlows, createWindowGlow, windowFlashes, windowsFacing, keepToSight } from "./engines/motion/wall-shadows.mjs";
 import { tileSunlight, tileHeight, tileLeaves, solidShare, leafShare, canopyFall, directSun, createCanopyLight, createTreeSway } from "./engines/motion/canopy-light.mjs";
 import { tileProps, PROP_CHOICE } from "./engines/motion/tile-props.mjs";
-import { greenShare, reliefPixels, underConditions } from "./engines/motion/decor-from-art.mjs";
+import { greenShare, reliefPixels, shineShare, SHINES_ENOUGH, underConditions } from "./engines/motion/decor-from-art.mjs";
 import { createCovers } from "./engines/motion/roof-cover.mjs";
 import { TREE_KINDS, createTreePatterns, treeKindOf } from "./engines/motion/tree-kinds.mjs";
 import { STRIKE_LIGHT_SQUARES, openingStrike, strikePlace, strikeAngle as strikeFrom, boltDue, createLightningBolts } from "./engines/motion/lightning-bolt.mjs";
@@ -2715,7 +2715,8 @@ const ownDecorArt = Object.assign((url, look) => {
   if (!texture || texture.destroyed || texture.baseTexture?.destroyed) { texture = globalThis.PIXI.Texture.from(cover.image); decorArtTextures.set(url, texture); }
   // (These are read as they are asked for, not a few a pass as the scene's tiles are: a decoration waits on its picture.)
   tileSeasonLeft = Math.max(tileSeasonLeft, 2);
-  return { texture, art: tileInSeason(texture, look?.season) ?? texture, maps: tileRelief(texture) };
+  const relief = tileRelief(texture);
+  return { texture, art: tileInSeason(texture, look?.season) ?? texture, maps: relief?.animaterShines ? relief : null };
 }, { state: (url) => decorCovers.state(url) });
 Hooks.on("canvasTearDown", () => { for (const t of decorArtTextures.values()) { try { t?.destroy(true); } catch { /* gone */ } } decorArtTextures.clear(); });
 const decorations = createDecorations({ PIXI: globalThis.PIXI, ownArt: ownDecorArt, flat: decorDrawRoot("decorFlat"), shadows: decorDrawRoot("decorShadows"), ground: decorDrawRoot("decorations"), above: decorDrawRoot("decorCrowns"), grid: () => canvas.grid?.size ?? 100, render: (object, renderTexture, transform = null) => canvas.app.renderer.render(object, { renderTexture, clear: true, ...(transform ? { transform } : {}) }) });
@@ -2760,9 +2761,12 @@ const decorUnderCover = (areas) => {
 };
 // The tiles that stand on the map as things (engines/motion/tile-props.mjs): a barrel, a cart or a bush laid down as a tile —
 // with an asset pack's own placing tool, say — given the decorations' shadows, snow and rain. Each tile's own say (Tile
-// configuration → Animater → Sunlight → Object) always counts; the rest only where the GM has turned it on for the scene
-// (Scene configuration → Animater), since a map built of tiles for floors and walls wants none of it.
-const tilePropsHere = () => canvas?.scene?.flags?.[ID]?.tileProps === true;
+// configuration → Animater → Sunlight → Object or None) always counts; the rest wherever the GM has not turned it off
+// for the scene (Scene configuration → Animater), as they may for a map that wants none of it.
+// (On unless the GM turns it off for the scene. It began off, as map-specific things do; Roi, once it worked: "Tiles
+// stand as objects should default to on". What keeps that safe is that it only takes what is a thing: floors, rugs,
+// roofs, trees and anything big are left alone whatever the switch says.)
+const tilePropsHere = () => canvas?.scene?.flags?.[ID]?.tileProps !== false;
 // A tile that grows — a bush, a hedge: mostly leaf-green — in the season's colours (decor-from-art.mjs): its picture read
 // once a season and kept. Only a few new ones a pass (the rest a moment later), never a big one, and one whose picture
 // cannot be read (another site's) keeps its summer look.
@@ -2805,8 +2809,11 @@ const tileRelief = (texture) => {
       tileSeasonLeft--;
       const c = document.createElement("canvas"); c.width = w; c.height = h;
       const ctx = c.getContext("2d", { willReadFrequently: true }); ctx.drawImage(source, 0, 0, w, h);
-      ctx.putImageData(new ImageData(reliefPixels(ctx.getImageData(0, 0, w, h).data, w, h), w, h), 0, 0);
+      const relief = reliefPixels(ctx.getImageData(0, 0, w, h).data, w, h);
+      ctx.putImageData(new ImageData(relief, w, h), 0, 0);
       maps = PIXI.Texture.from(c);
+      // (Whether any of it shines: one that does not is drawn plain, which is far cheaper — decor-from-art.mjs shineShare.)
+      maps.animaterShines = shineShare(relief, w, h) >= SHINES_ENOUGH;
     }
   } catch { /* another site's picture: unreadable, it is drawn as it is */ }
   tileReliefs.set(key, maps);
@@ -2829,8 +2836,8 @@ const syncTileProps = () => {
       tiles.push({ id: d.id, src: d.texture?.src, choice, own: d.flags?.[ID]?.sunHeight ?? null, hidden: d.hidden, overhead: (Number(d.elevation) || 0) > base, solid: tileSolid(mesh.texture).solid, texture: mesh.texture, x: mesh.x, y: mesh.y, width: mesh.width * (mesh.scale?.x < 0 ? -1 : 1), height: mesh.height * (mesh.scale?.y < 0 ? -1 : 1), rotation: (mesh.rotation * 180) / Math.PI, alpha: Number(d.alpha ?? 1) || 1, indoors: underCeiling({ x: mesh.x, y: mesh.y }) });
     }
     let wet = 0; try { wet = wetOn() && groundOf().now.wet > DECOR_WET ? 1 : 0; } catch { /* dry */ }
-    const season = undergroundScene() ? null : seasonNow(); tileSeasonLeft = TILE_SEASON_A_PASS;
-    decorations.props(shadowsOffHere() ? [] : tileProps(tiles, { on, grid: canvas.grid?.size ?? 100, per: Number(canvas.grid?.distance) || 5 }).map((p) => { const art = tileInSeason(p.texture, season), maps = tileRelief(p.texture); return art || maps ? { ...p, ...(art ? { art } : {}), ...(maps ? { maps } : {}) } : p; }), { wet, shade: tileReliefHere() });
+    const season = undergroundScene() ? null : seasonNow(), formShade = tileReliefHere(); tileSeasonLeft = TILE_SEASON_A_PASS;
+    decorations.props(shadowsOffHere() ? [] : tileProps(tiles, { on, grid: canvas.grid?.size ?? 100, per: Number(canvas.grid?.distance) || 5 }).map((p) => { const art = tileInSeason(p.texture, season), relief = tileRelief(p.texture), maps = relief && (relief.animaterShines || formShade > 0) ? relief : null; return art || maps ? { ...p, ...(art ? { art } : {}), ...(maps ? { maps } : {}) } : p; }), { wet, shade: formShade });
   } catch (err) { runtime?.trace?.("decorations", `tile props: ${err?.message ?? err}`); }
 };
 // (A moment after a tile changes: its picture is drawn a little after its document says so.)
@@ -15301,7 +15308,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
   tab.append(noShadows);
   const tileProps = document.createElement("div");
   tileProps.className = "form-group";
-  tileProps.innerHTML = `<label>Tiles stand as objects</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.tileProps"${app.document?.flags?.[ID]?.tileProps === true ? " checked" : ""}></div><p class="hint">For a map dressed with tiles (barrels, carts, bushes from an asset pack, placed with any tool): each one that is a thing gets a shadow from the sun or moon that turns with the hour, one from every torch near it, the dark at its foot, and the ground's snow and rain. Floors, rugs, stains, roofs and trees are left alone. One tile can be set either way in its own configuration (Animater → Sunlight). If the tiles already carry a drawn drop shadow from their placing tool, turn that off there, or there will be two.</p>`;
+  tileProps.innerHTML = `<label>Tiles stand as objects</label><div class="form-fields"><input type="checkbox" name="flags.${ID}.tileProps"${app.document?.flags?.[ID]?.tileProps !== false ? " checked" : ""}></div><p class="hint">For a map dressed with tiles (barrels, carts, bushes from an asset pack, placed with any tool): each one that is a thing gets a shadow from the sun or moon that turns with the hour, one from every torch near it, the dark at its foot, and the ground's snow and rain. Floors, rugs, stains, roofs and trees are left alone. One tile can be set either way in its own configuration (Animater → Sunlight). If the tiles already carry a drawn drop shadow from their placing tool, turn that off there, or there will be two.</p>`;
   tab.append(tileProps);
   const tileRelief = document.createElement("div");
   tileRelief.className = "form-group";
@@ -15568,7 +15575,7 @@ Hooks.on("renderTileConfig", (app, html) => {
     <div class="form-group"><label>Leaves</label><div class="form-fields"><select name="flags.${ID}.sunLeaves">${[["", "Auto (by its name and picture)"], ["sparse", "Sparse: light shade, many flecks"], ["medium", "Medium"], ["dense", "Dense: deep shade, few flecks"]].map(([o, l]) => `<option value="${o}"${o === leaves ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>
     <div class="form-group"><label>Tree type</label><div class="form-fields"><select name="flags.${ID}.sunTree">${TREE_KINDS.map(([o, l]) => `<option value="${o}"${o === treeKind ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>
     <div class="form-group"><label>Height (${units})</label><div class="form-fields"><input type="number" min="0" step="any" name="flags.${ID}.sunHeight" value="${Number(height) > 0 ? height : ""}" placeholder="Auto"></div></div>
-    <p class="hint">How the sun passes this overhead tile. A tree's shade falls on the ground away from the sun, dappled with moving sun flecks; a roof casts a building's solid shadow outside and lets the sun in only through its holes. Auto: a tile named as a tree (tree, oak, pine, canopy, foliage…) is a tree; one named as a building (roof, house, tower, tent…) or drawn solid is a roof; anything else (fog, birds) lets the sun be; a tile that restricts light or weather is a roof. An object (a barrel, a cart, a statue laid as a tile) stands on the ground: its shadow turns with the sun and with any torch near it, and snow and rain lie on it; Auto does this only where the scene has "Tiles stand as objects" on. Height: how tall it stands, so how far its shade reaches. Auto: a roof as tall as its level's storey, a tree by its name (an oak or pine 30 ft, a bush or hedge 6 ft, other trees 25 ft). Leaves (a tree's): how thick its crown is. Auto: by its name (a birch, willow or palm sparse; an oak, pine or fir dense), else by the gaps in its picture. Tree type: the pattern of its shade, a broadleaf's clumps, a pine's needles, a palm's fronds, a birch's lace, a bare tree's branches or a willow's strands. Auto: by its name, else a broadleaf.</p>`;
+    <p class="hint">How the sun passes this overhead tile. A tree's shade falls on the ground away from the sun, dappled with moving sun flecks; a roof casts a building's solid shadow outside and lets the sun in only through its holes. Auto: a tile named as a tree (tree, oak, pine, canopy, foliage…) is a tree; one named as a building (roof, house, tower, tent…) or drawn solid is a roof; anything else (fog, birds) lets the sun be; a tile that restricts light or weather is a roof. An object (a barrel, a cart, a statue laid as a tile) stands on the ground: its shadow turns with the sun and with any torch near it, and snow and rain lie on it; Auto does this unless the scene has "Tiles stand as objects" turned off. Height: how tall it stands, so how far its shade reaches. Auto: a roof as tall as its level's storey, a tree by its name (an oak or pine 30 ft, a bush or hedge 6 ft, other trees 25 ft). Leaves (a tree's): how thick its crown is. Auto: by its name (a birch, willow or palm sparse; an oak, pine or fir dense), else by the gaps in its picture. Tree type: the pattern of its shade, a broadleaf's clumps, a pine's needles, a palm's fronds, a birch's lace, a bare tree's branches or a willow's strands. Auto: by its name, else a broadleaf.</p>`;
   const tab = root.querySelector('.tab[data-tab="overhead"]') ?? root.querySelector('.tab[data-tab="appearance"]') ?? root.querySelector(".tab.active") ?? root.querySelector("form, .window-content") ?? root;
   tab.append(set);
 });

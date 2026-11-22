@@ -112,7 +112,7 @@ test('the season is asked of the picture, so a bush of the GM\'s turns with the 
 
 test('main, the bar and the brush carry it', () => {
   const read = (p) => readFileSync(new URL(`../../../scripts/${p}`, import.meta.url), 'utf8'), main = read('main.mjs'), bar = read('ui/decor-brush-bar.mjs'), shell = read('shell/map-painting.mjs');
-  assert.match(main, /createDecorations\(\{ PIXI: globalThis\.PIXI, ownArt: ownDecorArt,/); assert.match(main, /art: tileInSeason\(texture, look\?\.season\) \?\? texture, maps: tileRelief\(texture\)/);
+  assert.match(main, /createDecorations\(\{ PIXI: globalThis\.PIXI, ownArt: ownDecorArt,/); assert.match(main, /art: tileInSeason\(texture, look\?\.season\) \?\? texture, maps: relief\?\.animaterShines \? relief : null/);
   assert.ok(bar.includes("ownTiles('decor', 'ownDecor')")); assert.ok(bar.includes("seg('Stands', [['flat', 'Flat'], ['low', 'Low'], ['waist', 'Waist'], ['tall', 'Tall']]")); assert.ok(bar.includes('ownDecor: remembered.ownDecor?.url ? remembered.ownDecor : null'));
   assert.equal(bar.split('remembered.ownDecor = null;').length - 1, 2, 'picking one of ours lets the GM\'s go');
   assert.ok(shell.includes('const stampAny = (given) => (given.own ? stampOwn(given) : stampDecor(given));')); assert.equal(shell.split('stampAny({ own').length - 1, 2, 'the ghost and the dab alike');

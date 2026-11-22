@@ -380,6 +380,7 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
     return { pic: pictures.get(p.key), scale: d.size / p.size };
   };
   const dropRegion = (r) => {
+    lampsKey = null;
     dropContactBake(r);
     for (const s of r.sprites) { try { s.parent?.removeChild(s); s.destroy({ children: true }); } catch { /* gone with the canvas */ } }
     r.sprites = [];
@@ -419,7 +420,9 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
   // its own. The brush adds to a region dab by dab; without this the whole region — every sprite, every shadow — was thrown
   // away and built again ten times a second, which is what made painting into a full region stutter.
   // The light on the tiles drawn lit (props()): the sun or moon, unless it stands under a roof, and the lamps near it.
-  let lampsNow = [];
+  // (`lampsKey`: the lamps as last worked through. They are told seven times a second and nearly always the same; every
+  // caster on the map against every lamp is a lot to do again for nothing. Forgotten whenever what stands here changes.)
+  let lampsNow = [], lampsKey = null;
   const relight = (r) => { if (!r?.lit?.length) return; const g = grid(); for (const m of r.lit) { try { aimLit(m, litUniforms({ at: m.decor, sun: m.indoors ? null : sun, lamps: lampsNow, grid: g })); } catch { /* gone with the canvas */ } } };
   const drawOne = (d, r, look, where, g, contact, cast) => {
     const role = decorRole(d, where); if (!role || role === 'cavern') return null;
@@ -519,7 +522,7 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
           had.key = key; had.restKey = restKey; had.brushedCount = fresh.length; had.prop = spec.settings?.prop;
           // A room can be roofed or opened while the map is up, so this is taken again rather than kept from before.
           had.indoors = spec.indoors === true;
-          aim(had); relight(had); if (!spec.live) bakeContact(had); at = null;
+          lampsKey = null; aim(had); relight(had); if (!spec.live) bakeContact(had); at = null;
           continue;
         }
         if (had) dropRegion(had);
@@ -538,7 +541,7 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
         // Snow on the standing ones (not underground). (A tree's crown carries its own, painted, as it opens over the creatures.)
         // (Not while a stroke still paints it (`live`): baked once, when the stroke ends.)
         if (where !== 'cave' && !spec.live) { const standing = shown.filter((d) => decorRole(d, where) === 'standing' && !DECOR_KINDS[d.kind].light).map((d) => ({ d, ...picture(d, { ...spec.look, snow: 0 }) })).filter((it) => it.pic); try { r.snow = bakeSnow(r, standing); } catch (err) { console.warn('Animater | decoration snow', err); } }
-        regions.set(spec.id, r); aim(r); relight(r); if (!spec.live) bakeContact(r); at = null;
+        regions.set(spec.id, r); lampsKey = null; aim(r); relight(r); if (!spec.live) bakeContact(r); at = null;
       }
       for (const [id, r] of regions) if (!seen.has(id) && id !== PROPS) { dropRegion(r); regions.delete(id); }
       // (Pictures for looks no longer shown let go once there are many: out of PIXI's cache, not destroyed, so a wreck or the
@@ -591,7 +594,7 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
       }
       floor.contact.addChild(contact); floor.cast.addChild(cast); floor.lamp.addChild(lampLayer); floor.count++; r.sprites.push(contact, cast, lampLayer);
       try { r.snow = bakeSnow(r, snowed); } catch (err) { console.warn('Animater | tile snow', err); }
-      regions.set(PROPS, r); aim(r); relight(r); bakeContact(r);
+      regions.set(PROPS, r); lampsKey = null; aim(r); relight(r); bakeContact(r);
     },
     // snowAmount 0-1: how much snow lies now (as the ground's), its light from the same sun or moon (moon: its cooler colour).
     light({ sun: now = null, treesByCanopy = false, snowAmount = 0, moon = false } = {}) {
@@ -603,6 +606,9 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
     // from it, the two nearest lights each. A few times a second, as lights move with the creatures carrying them.
     lamps(list = []) {
       const g = grid(), lights = list.filter((l) => l && l.radius > 0 && (l.strength ?? 1) > 0.03);
+      const key = list.map((l) => (l && l.radius > 0 ? `${Math.round(l.x)},${Math.round(l.y)},${Math.round(l.radius)},${Math.round((l.strength ?? 1) * 50)}` : '')).join('|');
+      if (key === lampsKey) return;
+      lampsKey = key;
       // (Every lamp, not only those strong enough against the sky to throw a shadow: see LAMP_GLINT_LEAST.)
       lampsNow = list.filter((l) => l && l.radius > 0).map((l) => ({ x: l.x, y: l.y, radius: l.radius, strength: Math.max(LAMP_GLINT_LEAST, Math.min(1, Number(l.strength ?? 1) || 0)), color: l.color ?? [1, 0.74, 0.46], height: g * LAMP_HEIGHT * 0.6 })); for (const r of regions.values()) relight(r);
       for (const r of regions.values()) {
