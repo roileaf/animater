@@ -11,8 +11,15 @@
 // from the module's own segmentation model, ui/smart-model.mjs, which the Map painting brush already asks.)
 
 /** How a lifted thing stands, in squares: how long its shadow is. A hollow, a stain or a rug lies flat and casts none. */
-export const LIFT_STANDS = Object.freeze({ flat: 0, low: 0.3, waist: 0.6, tall: 1, tree: 1.6 });
-export const LIFT_CHOICES = Object.freeze([['flat', 'Flat'], ['low', 'Low'], ['waist', 'Waist'], ['tall', 'Tall'], ['tree', 'A tree']]);
+export const LIFT_STANDS = Object.freeze({ flat: 0, low: 0.3, waist: 0.6, tall: 1, bush: 1.2, tree: 5 });
+export const LIFT_CHOICES = Object.freeze([['flat', 'Flat'], ['low', 'Low'], ['waist', 'Waist'], ['tall', 'Tall'], ['bush', 'A bush'], ['tree', 'A tree']]);
+/**
+ * The ones that grow: a bush or a tree is not an object with a hard shadow but a crown the sun comes through. Its tile
+ * is a tree tile (canopy-light.mjs): shade dappled in its own kind's pattern, flecks of sun that move, and all of it
+ * swaying with the wind. Which kind of tree (tree-kinds.mjs TREE_KINDS) is the GM's to say; a broadleaf unless told.
+ */
+export const LIFT_GROWS = Object.freeze(['bush', 'tree']);
+export const LIFT_TREES = Object.freeze([['broadleaf', 'Broadleaf'], ['pine', 'Pine'], ['spruce', 'Spruce'], ['palm', 'Palm'], ['birch', 'Birch'], ['blossom', 'Blossom'], ['bare', 'Bare'], ['willow', 'Willow']]);
 /** The most pixels a side a cut picture is kept at: bigger is scaled down, since it is laid at its own size anyway. */
 export const LIFT_MOST = 2048;
 
@@ -84,14 +91,14 @@ export function cutPixels(rgba, cw, ch, mask, mw, mh, box) {
 /**
  * The tile a lifted thing is laid as (pure): its picture, where it was painted, and told to stand as an object so the
  * engines take it (flags.animater.sunlight: 'prop'), as tall as `stands` says in the scene's own units (`per` to a
- * square). A tile's place is its middle. `levelId` the level it is on, `elevation` that level's floor.
+ * square). One that grows (LIFT_GROWS) is told to be a tree instead (sunlight: 'tree', sunTree: its kind `tree`). A tile's place is its middle. `levelId` the level it is on, `elevation` that level's floor.
  */
-export function liftTileData({ src, scene, stands = 'waist', per = 5, levelId = null, elevation = 0 } = {}) {
+export function liftTileData({ src, scene, stands = 'waist', tree = 'broadleaf', per = 5, levelId = null, elevation = 0 } = {}) {
   if (typeof src !== 'string' || !src || !(scene?.width > 0) || !(scene?.height > 0)) return null;
-  const high = LIFT_STANDS[stands] ?? LIFT_STANDS.waist;
+  const high = LIFT_STANDS[stands] ?? LIFT_STANDS.waist, grows = LIFT_GROWS.includes(stands), kind = LIFT_TREES.some(([k]) => k === tree) ? tree : 'broadleaf';
   return {
     texture: { src, anchorX: 0.5, anchorY: 0.5 }, x: Math.round(scene.x + scene.width / 2), y: Math.round(scene.y + scene.height / 2), width: Math.round(scene.width), height: Math.round(scene.height), rotation: 0,
     elevation: Number(elevation) || 0, ...(levelId ? { levels: [levelId] } : {}),
-    flags: { animater: { sunlight: 'prop', sunHeight: +(high * (Number(per) || 5)).toFixed(2), lifted: true } },
+    flags: { animater: { sunlight: grows ? 'tree' : 'prop', ...(grows ? { sunTree: kind } : {}), sunHeight: +(high * (Number(per) || 5)).toFixed(2), lifted: true } },
   };
 }

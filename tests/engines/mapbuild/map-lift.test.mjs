@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { LIFT_CHOICES, LIFT_MOST, LIFT_STANDS, cutPixels, liftMask, liftPlaces, liftTileData, maskBox, roomyBox } from '../../../scripts/engines/mapbuild/map-lift.mjs';
+import { LIFT_CHOICES, LIFT_GROWS, LIFT_MOST, LIFT_STANDS, LIFT_TREES, cutPixels, liftMask, liftPlaces, liftTileData, maskBox, roomyBox } from '../../../scripts/engines/mapbuild/map-lift.mjs';
 
 const blob = (w, h, x0, y0, x1, y1) => { const m = new Uint8Array(w * h); for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) m[y * w + x] = 1; return m; };
 
@@ -65,6 +65,23 @@ test('a lifted thing is laid as an object tile over where it was painted', () =>
   assert.equal(plain.flags.animater.sunHeight, 3); assert.equal('levels' in plain, false);
   assert.equal(liftTileData({ src: '', scene: { x: 0, y: 0, width: 10, height: 10 } }), null);
   assert.equal(liftTileData({ src: 'a.webp', scene: { x: 0, y: 0, width: 0, height: 10 } }), null);
+});
+
+test('a bush or a tree is lifted as a tree tile of its kind, not as an object', () => {
+  const at = { x: 0, y: 0, width: 300, height: 300 };
+  assert.deepEqual(liftTileData({ src: 'a.webp', scene: at, stands: 'tree', tree: 'willow', per: 5 }).flags.animater, { sunlight: 'tree', sunTree: 'willow', sunHeight: 25, lifted: true });
+  assert.deepEqual(liftTileData({ src: 'a.webp', scene: at, stands: 'bush', tree: 'pine', per: 5 }).flags.animater, { sunlight: 'tree', sunTree: 'pine', sunHeight: 6, lifted: true });
+  // No kind said, or one there is not: a broadleaf.
+  assert.equal(liftTileData({ src: 'a.webp', scene: at, stands: 'tree', tree: 'cactus' }).flags.animater.sunTree, 'broadleaf');
+  assert.equal(liftTileData({ src: 'a.webp', scene: at, stands: 'tree' }).flags.animater.sunTree, 'broadleaf');
+  // An object is given no kind of tree.
+  assert.equal('sunTree' in liftTileData({ src: 'a.webp', scene: at, stands: 'tall', tree: 'pine' }).flags.animater, false);
+});
+
+test('the kinds offered are the tree engine\'s own', async () => {
+  const { TREE_DARK } = await import('../../../scripts/engines/motion/tree-kinds.mjs');
+  assert.deepEqual(LIFT_TREES.map(([k]) => k).sort(), Object.keys(TREE_DARK).sort());
+  for (const k of LIFT_GROWS) assert.ok(k in LIFT_STANDS, k);
 });
 
 test('every choice offered is one that stands', () => {
