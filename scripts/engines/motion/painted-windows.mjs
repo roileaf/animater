@@ -56,7 +56,7 @@ export function createPaintedWindows({ PIXI, root, grid = () => 100, make = unde
     const kind = WINDOW_ART[window.kind] ? window.kind : windowFor(window.material);
     // A wall's thickness is measured from its middle out, a window's across the whole opening, so the one is twice
     // the other: set into a wall drawn 0.17 thick, a window was coming out half the wall's width.
-    const look = { grid: grid(), thick: window.thick > 0 ? window.thick * 2 : undefined, seed: window.id?.length ?? 4, slats: window.slats };
+    const look = { grid: grid(), thick: window.thick > 0 ? window.thick * 2 : undefined, seed: window.id?.length ?? 4, slats: window.slats, cover: window.cover && typeof window.cover === 'object' ? window.cover : null };
     const frameArt = paintWindowFrame(kind, window.length, look, make);
     if (!frameArt) return false;
     dropOne(window.key);

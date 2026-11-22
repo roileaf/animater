@@ -13,7 +13,7 @@
 // "i dont see many users will use eyedrop feature".) All pure.
 
 /** What a picture can be picked for. */
-export const OWN_ART_KINDS = Object.freeze(['wall', 'door', 'roof']);
+export const OWN_ART_KINDS = Object.freeze(['wall', 'door', 'roof', 'window']);
 /** How many are kept of each: the row on the bar is a row, not a library. */
 export const OWN_ART_MOST = 16;
 
@@ -65,6 +65,11 @@ export function artSuits(what, art = {}) {
     if (!/door|gate/i.test(name)) return { ok: false, why: 'That does not look like a door. Pick a door leaf, seen from above.' };
     return { ok: true, why: '' };
   }
+  if (what === 'window') {
+    if (/sill|frame|broken|shard|curtain_rod/i.test(name)) return { ok: false, why: 'A window wants the window itself, seen from above: not its sill or frame alone, nor one broken.' };
+    if (!/window/i.test(name)) return { ok: false, why: 'That does not look like a window. Pick a window, seen from above.' };
+    return { ok: true, why: '' };
+  }
   if (what === 'roof') {
     if (!/roof|shingle|slate|thatch|hay|tile|corrugated/i.test(name)) return { ok: false, why: 'A roof wants roofing: a tile, slate, shingle or thatch texture.' };
     if (sized && (w > h * 2.5 || h > w * 2.5)) return { ok: false, why: 'A roof wants a square of roofing, not a strip.' };
@@ -81,6 +86,8 @@ export function weathersAs(what, name = '') {
   const n = String(name).toLowerCase();
   if (what === 'wall') return /brick/.test(n) ? 'brick' : /plaster|adobe|clay|mud/.test(n) ? 'adobe' : /palisade|log/.test(n) ? 'palisade' : /wood|timber|plank|shack/.test(n) && !/stone/.test(n) ? 'timber' : /field|rubble|rough/.test(n) ? 'fieldstone' : 'dressed';
   if (what === 'roof') return /hay|thatch|straw/.test(n) ? 'thatch' : /slate/.test(n) ? 'slate' : /shingle|wood/.test(n) ? 'shingle' : /metal|corrugated|lead|copper/.test(n) ? 'lead' : 'tile';
+  // (A window's is which of our own windows it behaves as: whether it opens, what comes through it.)
+  if (what === 'window') return /stained|mosaic|colou?r/.test(n) ? 'mosaicWindow' : /wired|lead|lattice|diamond/.test(n) ? 'leadedWindow' : /shutter/.test(n) ? 'shutterWindow' : /bar(red|s)\b|grate|grill/.test(n) ? 'barredWindow' : /frost|paper/.test(n) ? 'frostedWindow' : /wood|shack|board/.test(n) && !/glass/.test(n) ? 'woodWindow' : 'glassWindow';
   return '';
 }
 
@@ -98,8 +105,8 @@ export function ownArtList(raw) {
 /** The list with one more picture at its head (pure); one already there moves to the head. No more than OWN_ART_MOST of a kind. */
 export function withOwnArt(raw, item) {
   const [one] = ownArtList([item]); if (!one) return ownArtList(raw);
-  const rest = ownArtList(raw).filter((it) => !(it.what === one.what && it.url === one.url)), kept = { wall: 0, door: 0, roof: 0 };
-  return [one, ...rest].filter((it) => ++kept[it.what] <= OWN_ART_MOST);
+  const rest = ownArtList(raw).filter((it) => !(it.what === one.what && it.url === one.url)), kept = {};
+  return [one, ...rest].filter((it) => (kept[it.what] = (kept[it.what] ?? 0) + 1) <= OWN_ART_MOST);
 }
 /** The list without one (pure). */
 export const withoutOwnArt = (raw, what, url) => ownArtList(raw).filter((it) => !(it.what === what && it.url === url));

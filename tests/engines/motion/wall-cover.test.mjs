@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { coverBand, createCovers } from '../../../scripts/engines/motion/roof-cover.mjs';
-import { paintRunPicture } from '../../../scripts/engines/motion/wall-paint.mjs';
+import { paintRunPicture, COVER_SIDE } from '../../../scripts/engines/motion/wall-paint.mjs';
 import { paintDoorLeaf } from '../../../scripts/engines/motion/door-paint.mjs';
 import { wallRuns, wallDoors } from '../../../scripts/engines/motion/wall-looks.mjs';
 
@@ -51,6 +51,14 @@ test('a long stretch takes the strip more than once, its courses carried on roun
   assert.ok(calls.drawImage.length >= 4); assert.ok(xs.some((x) => Math.abs(((x % w) + w) % w) > 1), 'the second stretch does not start the strip afresh');
 });
 
+test('the side of a covered wall is dark with no colour of its own, never the material\'s or the picture\'s', () => {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(COVER_SIDE.slice(i, i + 2), 16));
+  assert.ok(Math.max(r, g, b) < 40, 'dark'); assert.ok(Math.max(r, g, b) - Math.min(r, g, b) <= 4, 'and neither brown nor any other colour');
+  const paint = readFileSync(new URL('../../../scripts/engines/motion/wall-paint.mjs', import.meta.url), 'utf8');
+  assert.match(paint, /g\.fillStyle = cover \? COVER_SIDE : mix\(m\.edge, '#0b0a08', 0\.3\)/);
+  assert.equal(/cover\.base/.test(paint), false, 'the picture\'s own colour is not used for it: warm grey darkens to brown');
+});
+
 test('without a picture a wall is painted as it always was', () => {
   const { calls, make } = counting();
   paintRunPicture(ELBOW, 'brick', { grid: 100 }, make); assert.equal(calls.drawImage.length, 0);
@@ -88,6 +96,8 @@ test('the shell hands walls and doors their pictures and the bar offers a picker
   const shell = readFileSync(new URL('../../../scripts/shell/painted-buildings.mjs', import.meta.url), 'utf8');
   assert.ok(shell.includes('${litKey}${coverKey(run)}`, look: {') && shell.includes('lit, cover: run.cover ? covers.get(run.cover) : null } };'));
   assert.match(shell, /\$\{litKey\}\$\{coverKey\(d\)\}`, lit, cover: d\.cover \? covers\.get\(d\.cover\) : null/);
+  // A covered wall is drawn flat on its line, and what is cut into it is not lifted either.
+  assert.ok(shell.includes('const height = run.cover ? 0 : thin ?') && shell.includes('lift: d.flat ? 0 : lift') && shell.includes('lift: w.flat ? 0 : lift'));
   const bar = readFileSync(new URL('../../../scripts/ui/decor-brush-bar.mjs', import.meta.url), 'utf8'), paints = readFileSync(new URL('../../../scripts/shell/map-painting.mjs', import.meta.url), 'utf8');
   for (const [what, key] of [['roof', 'roofCover'], ['wall', 'wallCover'], ['door', 'doorCover']]) { assert.ok(bar.includes(`ownTiles('${what}', '${key}'`), what); assert.ok(bar.includes(`${key}: remembered.${key} || null`), key); }
   assert.match(paints, /choice\.wallCover \? \{ cover: String\(choice\.wallCover\)\.slice\(0, 400\) \}/);

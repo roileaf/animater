@@ -179,7 +179,7 @@ export const BRUSH_TURN_STEP = Math.PI / 12;
 export const brushChoices = () => { const kinds = remembered.lock ? [remembered.lock.pick] : [...remembered.kinds[remembered.where]]; return { where: remembered.lock?.where ?? placeWhere(remembered.where), place: remembered.lock ? null : remembered.where, kinds, size: remembered.size, thick: remembered.thick, scale: remembered.scale, tall: remembered.tall, turn: remembered.turn, prop: brushPropFor(kinds[0]), tab: remembered.lock ? 'decor' : remembered.tab, floor: remembered.floor, smart: remembered.edges !== 'off', edges: remembered.edges, edgesChosen: remembered.edgesChosen, tol: remembered.tol, edge: remembered.edge, texture: remembered.texture, overWater: remembered.overWater && canStandOverWater(remembered.floor), heightMode: remembered.heightMode, crossKind: remembered.crossKind, cave: remembered.floor === 'cavern' ? caveChoice() : null, waterKind: remembered.waterKind, pattern: remembered.styles[remembered.floor] ?? '',
   wallMaterial: remembered.wallMaterial, wallWidth: remembered.wallWidth, wallAge: remembered.wallAge, wallMode: remembered.wallMode, wallCurve: remembered.wallCurve === true, doorKind: remembered.doorKind || null, doorFlip: remembered.doorFlip === true, doorDouble: remembered.doorDouble === true, doorWide: remembered.doorWide, windowKind: remembered.windowKind || null, windowWalk: remembered.windowWalk === true, swing: remembered.swing === 'out' ? 'out' : 'in',
   roofKind: remembered.roofKind || null, roofForm: remembered.roofForm || null, roofAge: remembered.roofAge, roofChimney: remembered.roofChimney || null, roofDressed: remembered.roofDressed === true,
-  wallTint: remembered.wallTint || null, roofTint: remembered.roofTint || null, roofCover: remembered.roofCover || null, wallCover: remembered.wallCover || null, doorCover: remembered.doorCover || null, dressingKind: remembered.dressingKind || 'garlands',
+  wallTint: remembered.wallTint || null, roofTint: remembered.roofTint || null, roofCover: remembered.roofCover || null, wallCover: remembered.wallCover || null, doorCover: remembered.doorCover || null, windowCover: remembered.windowCover || null, dressingKind: remembered.dressingKind || 'garlands',
   pathShape: DRAW_SHAPES.some(([k]) => k === remembered.pathShape) ? remembered.pathShape : 'line', areaFloor: AREA_FLOORS.includes(remembered.areaFloor) ? remembered.areaFloor : 'grass', areaStyle: remembered.styles[AREA_FLOORS.includes(remembered.areaFloor) ? remembered.areaFloor : 'grass'] ?? '',
   pathBlocks: remembered.pathBlocks === true, furnishKind: ROOM_CHOICES.some(([id]) => id === remembered.furnishKind) ? remembered.furnishKind : ROOM_CHOICES[0][0],
   pathKind: PATH_KINDS[remembered.pathKind] ? remembered.pathKind : 'road', pathWide: pathWideOf(remembered.pathKind, remembered.pathWide), pathSmooth: remembered.pathSmooth !== false }; };
@@ -371,7 +371,7 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
         grid.append(t);
       }
       const adder = (label, tip, how, data) => { const t = el('button', 'an-mp-tile'); t.type = 'button'; t.dataset.ownAdd = data; t.title = tip; t.style.borderStyle = 'dashed'; const sw = el('span', 'an-mp-swatch', '+'); sw.style.cssText = 'display:flex;align-items:center;justify-content:center;font-size:18px;background:transparent'; t.append(sw, el('span', '', label)); t.addEventListener('click', async () => { const it = await how(what); if (it?.url) chosen(it); else draw(); }); grid.append(t); };
-      const noun = what === 'wall' ? 'a strip of wall' : what === 'door' ? 'a door leaf' : 'roofing';
+      const noun = what === 'wall' ? 'a strip of wall' : what === 'door' ? 'a door leaf' : what === 'window' ? 'a window' : 'roofing';
       if (ownArt.browser?.()) adder('Pick in Nexus', `Opens your asset browser: click ${noun} there and it joins this row. Esc: not now.`, ownArt.pick, 'browser');
       adder('From a file', `Foundry's file browser: a picture of ${noun} kept on your disk.`, ownArt.file, 'file');
     };
@@ -423,12 +423,15 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
     } else if (walls && remembered.wallMode === 'window') {
       // Openings: which window, and a click on a painted wall cuts the opening and sets it in.
       for (const { id, label, about, opens } of [{ id: '', label: 'To match', about: 'The window the wall it is cut into would have.', opens: false }, ...WINDOW_CHOICES]) {
-        const on = (remembered.windowKind ?? '') === id, t = el('button', on ? 'an-mp-tile an-db-on' : 'an-mp-tile');
+        const on = !remembered.windowCover && (remembered.windowKind ?? '') === id, t = el('button', on ? 'an-mp-tile an-db-on' : 'an-mp-tile');
         t.type = 'button'; t.setAttribute('aria-pressed', String(on)); t.dataset.windowKind = id;
         t.title = `${about}${opens ? ' It opens and closes.' : ''}`;
         const sw = el('span', 'an-mp-swatch'); showSwatch(sw, id ? windowSwatch(id) : null, opens ? '#8aa6b4' : '#6e6c64'); t.append(sw, el('span', '', label));
-        t.addEventListener('click', () => { remembered.windowKind = id; draw(); onChange(); }); grid.append(t);
+        t.addEventListener('click', () => { remembered.windowKind = id; remembered.windowCover = ''; draw(); onChange(); }); grid.append(t);
       }
+      ownTiles('window', 'windowCover', (as) => { if (WINDOW_CHOICES.some((c) => c.id === as)) remembered.windowKind = as; });
+      // (A picture cannot say whether it opens or what comes through it: one of our own windows says that for it.)
+      if (remembered.windowCover) row.append(choice('Opens as', WINDOW_CHOICES.map((c) => [c.id, `${c.label}${c.opens ? '' : ' (fixed)'}`]), remembered.windowKind || 'glassWindow', (v) => { remembered.windowKind = v; ownArt?.as?.('window', remembered.windowCover, v); }));
       modes.append(...wallModeSegs());
       row.append(slider('Wide', DOOR_WIDE, 'doorWide', DOOR_WIDE.step, '', (v) => (v === 1 ? 'one square' : `${Math.round(v * 100) / 100} squares`)));
       row.append(seg('Opens', [['in', 'Inside'], ['out', 'Outside']], remembered.swing, (v) => { remembered.swing = v; }, 'swing'));

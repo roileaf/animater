@@ -287,6 +287,8 @@ export function wallDoors(walls) {
       id: part ? `${w.id}${part}` : w.id,
       key: `${w.id}${part}:${w.animater?.door ?? ''}:${w.animater?.material}:${thick ?? ''}:${Math.round(x1)},${Math.round(y1)},${Math.round(x2)},${Math.round(y2)}:${flip ? 'f' : 'n'}${out ? 'o' : 'i'}${cover ? `:~${cover}` : ''}`,
       hinge, far, thick, cover,
+      // (Cut into a wall covered with a picture, which is drawn flat on its line: the leaf is not lifted either.)
+      flat: typeof w.animater?.cover === 'string' && w.animater.cover.length > 0,
       length: Math.hypot(far[0] - hinge[0], far[1] - hinge[1]),
       along: Math.atan2(far[1] - hinge[1], far[0] - hinge[0]),
       way: (flip ? -1 : 1) * (out ? -1 : 1),
@@ -329,10 +331,13 @@ export function wallWindows(walls) {
     const way = w.animater?.swing === 'out' ? -1 : 1;
     // A window is set into a wall, so it is as thick as that wall: its own drawn thickness, not a figure of its own.
     const thick = Number(w.animater?.thick) || 0;
+    // A picture of a window it is hung with in place of our painted one (roof-cover.mjs).
+    const cover = typeof w.animater?.windowCover === 'string' && w.animater.windowCover.length > 0 && w.animater.windowCover.length <= 400 ? w.animater.windowCover : null;
     return {
       id: w.id,
-      thick: thick || undefined,
-      key: `${w.id}:${w.animater.window}:${w.animater.material}:${Math.round(x1)},${Math.round(y1)},${Math.round(x2)},${Math.round(y2)}:${way}`,
+      thick: thick || undefined, cover,
+      flat: typeof w.animater?.cover === 'string' && w.animater.cover.length > 0,
+      key: `${w.id}:${w.animater.window}:${w.animater.material}:${Math.round(x1)},${Math.round(y1)},${Math.round(x2)},${Math.round(y2)}:${way}${cover ? `:~${cover}` : ''}`,
       way,
       middle: [(x1 + x2) / 2, (y1 + y2) / 2],
       along: Math.atan2(y2 - y1, x2 - x1),

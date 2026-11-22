@@ -431,6 +431,8 @@ export const WORKED = Object.freeze({ faced: 0.035, cut: 0.06, raw: 0.16 });
  * courses carried on from the stretch before, and each stretch cut to a mitre where it meets the next, which holds
  * at any angle. (The pack's own corner pieces were tried and left gaps: they are made for corners on the grid.)
  */
+/** The side of a wall covered with a picture: dark, and no colour. */
+export const COVER_SIDE = '#17171a';
 function layStrip(g, segs, half, cover, closed) {
   const [top, bottom] = Array.isArray(cover.band) ? cover.band : [0, cover.height];
   const k = (half * 2) / Math.max(1, bottom - top), w = cover.width * k, h = cover.height * k, mid = ((top + bottom) / 2) * k;
@@ -478,9 +480,13 @@ function paintRunLit(g, points, material, o) {
   g.save(); g.filter = `blur(${Math.max(2, o.unit * 0.05)}px)`; poly(g, edge); g.fillStyle = 'rgba(12,10,7,0.4)'; g.fill(); g.restore();
 
   // The sliver of side it shows: the gap between its foot and its lifted top.
-  g.save(); poly(g, edge); g.clip(); g.fillStyle = mix(m.edge, '#0b0a08', 0.3); poly(g, edge); g.fill(); g.restore();
+  // (Under a covering picture the side is plain dark, the colour of the picture's own drawn outline. In our material's
+  // colour it was a brown band lying on a grey wall — Roi: "whats that brown shadow on the walls?" — and in the
+  // picture's own colour gone dark it was still brown, since warm grey stone darkens to brown: "i still see brown
+  // strip". Dark with no colour of its own, it is the wall's depth and nothing else.)
+  g.save(); poly(g, edge); g.clip(); g.fillStyle = cover ? COVER_SIDE : mix(m.edge, '#0b0a08', 0.3); poly(g, edge); g.fill(); g.restore();
 
-  if (cover) { poly(g, face); g.fillStyle = mix(m.edge, '#0b0a08', 0.5); g.fill(); } else faceStone(g, rng, face, m.base, o, { grain: m.grain });
+  if (cover) { poly(g, face); g.fillStyle = COVER_SIDE; g.fill(); } else faceStone(g, rng, face, m.base, o, { grain: m.grain });
   const lifted = segs.map((s) => wallSeg([s.a[0] + LIGHT.at[0] * lift, s.a[1] + LIGHT.at[1] * lift], [s.b[0] + LIGHT.at[0] * lift, s.b[1] + LIGHT.at[1] * lift]));
   g.save(); poly(g, face); g.clip();
   if (cover) layStrip(g, lifted, half, cover, ring); else m.face(g, rng, lifted, half, o);

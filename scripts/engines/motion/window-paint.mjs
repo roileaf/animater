@@ -252,12 +252,25 @@ const sized = (length, look) => {
   return { unit, len, thick, pad, o: { unit, ink: Math.max(0.7, unit / 90) } };
 };
 
+// A window hung with a picture the GM owns (roof-cover.mjs) in place of our painted one. Such a picture is one
+// window, shut: a pane with a jamb at each end. Ours is an opening that stays and leaves that move, so the picture is
+// taken apart where it says to be: its jambs are painted with the opening and stay in the wall, and the pane between
+// them is the leaves — halved at its middle for a pair, each half hung at its own jamb. The whole of it is laid to
+// the opening's own length, jamb to jamb. (Roi, of the pack's windows: "it needs to suuport opening and closing
+// windows and double leaves".) What kind of window it is — whether it opens, how many leaves — stays ours to say.
+const coverOf = (look) => (look?.cover?.image && look.cover.width > 0 && look.cover.height > 0 ? look.cover : null);
+const jambsOf = (c) => { const j = c.jambs ?? {}, x0 = Number.isFinite(j.x0) ? j.x0 : 0, x1 = Number.isFinite(j.x1) && j.x1 > x0 ? j.x1 : c.width; return { x0, x1, a: Number.isFinite(j.a) ? Math.max(x0, Math.min(x1, j.a)) : x0, b: Number.isFinite(j.b) ? Math.max(x0, Math.min(x1, j.b)) : x1, tall: Number.isFinite(j.tall) && j.tall > 0 ? j.tall : c.height }; };
+/** A stretch of a covering picture's columns, laid where the whole picture would put them: `left` where its first painted column goes. */
+const coverPiece = (g, c, from, to, left, k) => { if (to - from > 0.5) g.drawImage(c.image, from, 0, to - from, c.height, left + (from - jambsOf(c).x0) * k, -(c.height * k) / 2, (to - from) * k, c.height * k); };
+
 /**
  * The opening itself, with nothing in it: the dark of the gap and the ledge it was cut with. It never moves, so it
  * is painted once and left; whatever fills it hangs over it.
  */
 export function paintWindowFrame(kind, length, look = {}, make = defaultCanvas) {
-  const { len, thick, pad, o } = sized(length, look);
+  const cover = coverOf(look), size = sized(length, look), { len, thick, o } = size;
+  // (Room for a picture's jambs, which may stand prouder of the wall than our own ledge does.)
+  const scale = cover ? len / (jambsOf(cover).x1 - jambsOf(cover).x0) : 0, pad = cover ? Math.max(size.pad, Math.ceil((jambsOf(cover).tall * scale - thick) / 2) + 2) : size.pad;
   const w0 = Math.ceil(len + pad * 2), h0 = Math.ceil(thick + pad * 2), k = sharpOf(look);
   const canvas = make(Math.ceil(w0 * k), Math.ceil(h0 * k)), g = canvas.getContext('2d');
   if (!g) return null;
@@ -265,7 +278,12 @@ export function paintWindowFrame(kind, length, look = {}, make = defaultCanvas) 
   g.scale(k, k);
   g.translate(pad + len / 2, pad + thick / 2);
   opening(g, len, thick);
-  sill(g, rng, o, len, thick, STONE);
+  if (cover) {
+    // Its jambs; and all of it, where the window is of a kind with nothing to open.
+    const j = jambsOf(cover), leaves = WINDOW_MOTION[kind]?.parts > 0 && j.b - j.a > 2;
+    if (leaves) { coverPiece(g, cover, j.x0, j.a, -len / 2, scale); coverPiece(g, cover, j.b, j.x1, -len / 2, scale); }
+    else coverPiece(g, cover, j.x0, j.x1, -len / 2, scale);
+  } else sill(g, rng, o, len, thick, STONE);
   return { canvas, middle: [pad + len / 2, pad + thick / 2], length: len, thick, pad, box: { w: w0, h: h0 } };
 }
 
@@ -277,14 +295,20 @@ export function paintWindowLeaf(kind, length, look = {}, make = defaultCanvas) {
   const w = WINDOW_ART[kind] ?? WINDOW_ART.sillWindow;
   const paint = w.leaf ?? w.pane;
   if (!paint || !WINDOW_MOTION[kind]?.parts) return null;
-  const { len, thick, pad, o } = sized(length, look);
+  const cover = coverOf(look), size = sized(length, look), { len, thick, o } = size;
+  // A picture's pane, or the half of it this leaf is: the whole window is `parts` leaves long, and this leaf hangs at
+  // the opening's end, so its pane begins where the picture's jamb leaves off.
+  const parts = WINDOW_MOTION[kind].parts, j = cover ? jambsOf(cover) : null, scale = cover ? (len * parts) / (j.x1 - j.x0) : 0;
+  if (cover && !(j.b - j.a > 2)) return null;
+  const pad = cover ? Math.max(size.pad, Math.ceil((cover.height * scale - thick) / 2) + 2) : size.pad;
   const w0 = Math.ceil(len + pad * 2), h0 = Math.ceil(thick + pad * 2), k = sharpOf(look);
   const canvas = make(Math.ceil(w0 * k), Math.ceil(h0 * k)), g = canvas.getContext('2d');
   if (!g) return null;
   const rng = seeded(look.seed ?? 4);
   g.scale(k, k);
   g.translate(pad + len / 2, pad + thick / 2);
-  paint.call(w, g, rng, o, { len, thick, slats: look.slats === true, open: 0 });
+  if (cover) coverPiece(g, cover, j.a, parts > 1 ? (j.a + j.b) / 2 : j.b, -len / 2, scale);
+  else paint.call(w, g, rng, o, { len, thick, slats: look.slats === true, open: 0 });
   return { canvas, hinge: [pad, pad + thick / 2], length: len, thick, pad, box: { w: w0, h: h0 } };
 }
 

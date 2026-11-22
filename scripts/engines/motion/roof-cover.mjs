@@ -50,6 +50,24 @@ export function coverBand(rgba, w, h) {
   return on(top) ? [top, bottom + 1] : [0, h];
 }
 
+/**
+ * Where a picture of a window shut comes apart (pure): such a picture is a pane across its middle with a jamb at
+ * each end, and a jamb stands taller across the wall than the pane does. { x0, x1 } the columns it is painted from
+ * and to (x1 past the last), { a, b } where its left jamb ends and its right one begins, `tall` the most rows any
+ * column of it is painted. A picture with no jambs to find answers a = x0 and b = x1: all pane.
+ */
+export function coverJambs(rgba, w, h) {
+  const tall = new Array(w).fill(0); let x0 = w, x1 = -1, most = 0;
+  for (let x = 0; x < w; x++) { let n = 0; for (let y = 0; y < h; y++) if (rgba[(y * w + x) * 4 + 3] > 128) n++; tall[x] = n; if (n) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); most = Math.max(most, n); } }
+  if (x1 < x0) return { x0: 0, x1: w, a: 0, b: w, tall: h };
+  const span = x1 - x0, mid = tall.slice(Math.round(x0 + span * 0.3), Math.round(x0 + span * 0.45) + 1).sort((p, q) => p - q), pane = Math.max(1, mid[Math.floor(mid.length / 2)] || 1);
+  // (Looked for within the outer quarter at each end, from the inside out: a jamb's own outer edge is thin and soft.)
+  const q = Math.round(span * 0.25); let a = x0, b = x1 + 1;
+  for (let x = x0 + q; x >= x0; x--) if (tall[x] > pane * 1.35) { a = x + 1; break; }
+  for (let x = x1 - q; x <= x1; x++) if (tall[x] > pane * 1.35) { b = x; break; }
+  return { x0, x1: x1 + 1, a, b, tall: most };
+}
+
 /** How many of a roofing picture's pixels make one grid square, unless the roof says otherwise: the packs' own scale. */
 export const COVER_PER_SQUARE = 200;
 
@@ -89,7 +107,7 @@ export function createRoofCovers({ load, read, changed = () => {}, most = 24 } =
       const entry = { cover: null, failed: false }; kept.set(src, entry);
       Promise.resolve().then(() => load(src)).then((image) => {
         const px = read(image); if (!px?.data || !(px.width > 0) || !(px.height > 0)) throw new Error('unreadable');
-        entry.cover = { image, width: px.width, height: px.height, solidTo: coverSolidTo(px.data, px.width, px.height), band: coverBand(px.data, px.width, px.height), base: coverBase(px.data, px.width, px.height), per: COVER_PER_SQUARE };
+        entry.cover = { image, width: px.width, height: px.height, solidTo: coverSolidTo(px.data, px.width, px.height), band: coverBand(px.data, px.width, px.height), jambs: coverJambs(px.data, px.width, px.height), base: coverBase(px.data, px.width, px.height), per: COVER_PER_SQUARE };
         changed(src);
       }).catch(() => { entry.failed = true; });
       return null;

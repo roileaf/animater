@@ -66,7 +66,7 @@ export function createMapPainting(ctx) {
     const keep = (list) => { held = list; try { void game.user?.setFlag?.(ID, "ownArt", list); } catch { /* kept for this sitting */ } };
     const add = (item) => { keep(withOwnArt(now(), item)); return now().find((it) => it.what === item.what && it.url === item.url) ?? null; };
     const browserOn = () => game.modules?.get?.("fa-nexus")?.active === true && typeof globalThis.faNexus?.open === "function";
-    const TAB = { wall: "paths", roof: "textures", door: "assets" }, FIND = { wall: "Wall", roof: "Roof", door: "Door" }, NOUN = { wall: "a strip of wall", roof: "roofing", door: "a door leaf" };
+    const TAB = { wall: "paths", roof: "textures", door: "assets", window: "assets" }, FIND = { wall: "Wall", roof: "Roof", door: "Door", window: "Window" }, NOUN = { wall: "a strip of wall", roof: "roofing", door: "a door leaf", window: "a window" };
     const pause = (ms) => new Promise((r) => setTimeout(r, ms));
     const pick = (what) => new Promise((done) => {
       const TYPES = ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick", "dragstart"], win = () => document.getElementById("fa-nexus-app");
@@ -999,7 +999,7 @@ export function createMapPainting(ctx) {
     // through it; an arrow slit is deep enough that sound does not.
     const windowDoc = (c, keep, choice) => {
       const kind = WINDOW_ART[choice.windowKind] ? choice.windowKind : windowFor(keep.material);
-      const flags = { ...keep, window: kind, windowOpen: false, windowSlats: false, windowWalk: choice.windowWalk === true, swing: choice.swing === "out" ? "out" : "in" };
+      const flags = { ...keep, window: kind, windowOpen: false, windowSlats: false, windowWalk: choice.windowWalk === true, swing: choice.swing === "out" ? "out" : "in", ...(choice.windowCover ? { windowCover: String(choice.windowCover).slice(0, 400) } : {}) };
       const doc = { c, flags: { [ID]: flags } };
       // (0 is NONE: it lets that sense through. The named constants are a deprecated proxy that warns on every read,
       // so the numbers are used here as engines/motion/window-state.mjs uses them.)
@@ -1027,7 +1027,7 @@ export function createMapPainting(ctx) {
         change = {
           door: 0, ds: 0, sight: opens ? NORMAL : 0, sound: opens || kind === "arrowWindow" ? NORMAL : 0,
           [`flags.${ID}.window`]: kind, [`flags.${ID}.windowOpen`]: false, [`flags.${ID}.windowSlats`]: false,
-          [`flags.${ID}.windowWalk`]: choice.windowWalk === true, [`flags.${ID}.swing`]: swing,
+          [`flags.${ID}.windowWalk`]: choice.windowWalk === true, [`flags.${ID}.swing`]: swing, [`flags.${ID}.windowCover`]: choice.windowCover ? String(choice.windowCover).slice(0, 400) : null,
           ...forget("door", "hinge"),
         };
       } else {

@@ -44,7 +44,7 @@ test('a door wants the leaf, a roof wants roofing, and a locked one suits nothin
   assert.equal(artSuits('roof', { path: 'Crops_Wheat_Dry_A.jpg', width: 1400, height: 1400 }).ok, false);
   assert.equal(artSuits('roof', { path: 'Roof_Edge_Tile.webp', width: 1400, height: 200 }).ok, false, 'a strip is not a covering');
   assert.equal(artSuits('wall', { path: WALL, locked: true }).ok, false);
-  assert.equal(artSuits('window', { path: WALL }).ok, false);
+  assert.equal(artSuits('gate', { path: WALL }).ok, false);
 });
 
 test('what it is made of is guessed from its name', () => {
@@ -55,7 +55,7 @@ test('what it is made of is guessed from its name', () => {
 });
 
 test('the GM\'s list is kept clean: only what can be used, none twice', () => {
-  const list = ownArtList([{ what: 'wall', url: 'a.webp', name: 'A' }, { what: 'wall', url: 'a.webp' }, { what: 'window', url: 'b.webp' }, { what: 'roof', url: '' }, { what: 'door', url: 'javascript:alert(1)' }, null, { what: 'roof', url: 'Roof_Texture_Slate_Blue.webp', thumb: 'data:x' }]);
+  const list = ownArtList([{ what: 'wall', url: 'a.webp', name: 'A' }, { what: 'wall', url: 'a.webp' }, { what: 'gate', url: 'b.webp' }, { what: 'roof', url: '' }, { what: 'door', url: 'javascript:alert(1)' }, null, { what: 'roof', url: 'Roof_Texture_Slate_Blue.webp', thumb: 'data:x' }]);
   assert.deepEqual(list.map((it) => `${it.what}:${it.url}`), ['wall:a.webp', 'roof:Roof_Texture_Slate_Blue.webp']);
   assert.equal(list[1].name, 'Roof Texture Slate Blue'); assert.equal(list[1].as, 'slate'); assert.equal(list[1].thumb, '');
   assert.deepEqual(ownArtList('nonsense'), []);

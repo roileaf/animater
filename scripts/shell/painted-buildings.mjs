@@ -228,7 +228,11 @@ export function createPaintedBuildings(ctx) {
     const runs = wallRuns(list, said).map((run) => {
       const thin = insideWall(run.points);
       const thick = thin ? Math.max(0.05, (run.thick ?? WALL_THICK) * PARTITION_THIN) : run.thick;
-      const height = thin ? WALL_LIFT * PARTITION_THIN : undefined;
+      // A wall covered with a picture is drawn flat on its line, with no side showing under a lifted top. That side is
+      // ours, not the picture's, and under somebody else's art it read as a strip of shadow painted on the wall (Roi:
+      // "is it part of the asset? can we remove it... we have our own shadow engine"). The height is the cast
+      // shadows' to show.
+      const height = run.cover ? 0 : thin ? WALL_LIFT * PARTITION_THIN : undefined;
       return { ...run, thick, height, under: thin, key: `${run.key}${thin ? ':p' : ''}${litKey}${coverKey(run)}`, look: { ...wallLook({ ...said, age: run.age }, { season }), lit, cover: run.cover ? covers.get(run.cover) : null } };
     });
     saw = { walls: list.length, runs: runs.length, season, said };
@@ -246,12 +250,12 @@ export function createPaintedBuildings(ctx) {
     };
     doors.populate({ doors: wallDoors(list).map((d) => {
       const { thick, lift, p } = thinOpening([d.hinge, d.far], d.thick ?? WALL_THICK);
-      return { ...d, thick, lift, key: `${d.key}${p}${litKey}${coverKey(d)}`, lit, cover: d.cover ? covers.get(d.cover) : null };
+      return { ...d, thick, lift: d.flat ? 0 : lift, key: `${d.key}${p}${d.flat ? ':f' : ''}${litKey}${coverKey(d)}`, lit, cover: d.cover ? covers.get(d.cover) : null };
     }) });
     windows.populate({ windows: wallWindows(list).map((w) => {
       const half = w.length / 2, dx = Math.cos(w.along) * half, dy = Math.sin(w.along) * half;
       const { thick, lift, p } = thinOpening([[w.middle[0] - dx, w.middle[1] - dy], [w.middle[0] + dx, w.middle[1] + dy]], w.thick ?? WALL_THICK);
-      return { ...w, thick, lift, lit, key: `${w.key}${p}${litKey}` };
+      return { ...w, thick, lift: w.flat ? 0 : lift, lit, key: `${w.key}${p}${w.flat ? ':f' : ''}${litKey}${coverKey(w)}`, cover: w.cover ? covers.get(w.cover) : null };
     }) });
     // Roofs are the scene's own, not walls: it keeps them, and each takes the year as its own age says. The weather
     // belongs in the key as much as the sun does — a picture of a bare roof does not become a snowy one by being
