@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.8.1
+
+- **D&D 5e: your customized spell plays again after the system split its activity.** D&D 5e 6.1 gave some spells a separate activity for placing their area: Spirit Guardians (2024) now has *Cast Spell*, which lays the emanation, beside its save. The catalog's own animation still found it, but a version you had customized stayed tied to the old activity and never played — the catalog's played in its place, or nothing at all once the spell was left out of Plug & play, while its card said *Your version plays*. Your customized version now plays wherever the catalog's design does. Pausing it still silences the spell, and a later save roll does not play the area again.
+
 ## 4.8.0
 
 - **A map from an empty scene.** Until now a map had to arrive as a picture. **Build a map**, a new button beside Map painting, lays one out from a seed on your own computer: a village, a roadside inn, a forest camp, a farm, a graveyard, a harbour, a ruin, a dungeon or a cave. What it writes is an ordinary painted map — floor regions, painted walls, roofs, decorations, fires — all marked as built, so building again or clearing takes away only that and never anything you laid yourself.
