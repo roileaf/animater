@@ -77,7 +77,7 @@ export function snappedDrag(d, dx, dy, grid = 100) {
  */
 export function prefabOf(ds = [], name = '') {
   const c = centreOf(ds);
-  return { name: String(name).trim().slice(0, 60) || 'Prefab', items: ds.filter((d) => DECOR_KINDS[d.kind]).slice(0, PREFAB_MOST).map((d) => ({ kind: d.kind, dx: Math.round(d.x - c.x), dy: Math.round(d.y - c.y), size: d.size, turn: turnOf(d), ...(d.mirror ? { mirror: true } : {}), ...(d.flip ? { flip: true } : {}), ...(d.tall ? { tall: d.tall } : {}), ...(d.prop ? { prop: d.prop } : {}) })) };
+  return { name: String(name).trim().slice(0, 60) || 'Prefab', items: ds.filter((d) => DECOR_KINDS[d.kind]).slice(0, PREFAB_MOST).map((d) => ({ kind: d.kind, dx: Math.round(d.x - c.x), dy: Math.round(d.y - c.y), size: d.size, turn: turnOf(d), ...(d.mirror ? { mirror: true } : {}), ...(d.flip ? { flip: true } : {}), ...(d.tall ? { tall: d.tall } : {}), ...(d.prop ? { prop: d.prop } : {}), ...(d.art ? { art: d.art, ...(Number.isFinite(d.high) ? { high: d.high } : {}) } : {}) })) };
 }
 /** The most one prefab holds. */
 export const PREFAB_MOST = 200;

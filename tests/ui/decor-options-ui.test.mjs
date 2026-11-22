@@ -74,7 +74,7 @@ test('the brush bar remembers each kind\'s choices and the brush saves them on e
   const main = `${read('scripts/main.mjs')}\n${read('scripts/shell/map-painting.mjs')}`;
   assert.match(main, /const withProp = \(d\) => \{ const c = brushChoices\(\),[^\n]*\{ \.\.\.look, prop: c\.prop \}/);
   assert.match(main, /const d = withProp\(\{ \.\.\.g, x: Math\.round\(p\.x \+ g\.x\)/);
-  assert.match(main, /const d = withProp\(stampDecor\(\{ x: p\.x, y: p\.y/);
+  assert.match(main, /const d = withProp\(stampAny\(\{ own, x: p\.x, y: p\.y/);
 });
 
 test('the GM wires decorations into the tile paths: lights out, lamp oil fire, a powder blast from the decoration, Repair relights', () => {

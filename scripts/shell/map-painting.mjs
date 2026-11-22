@@ -16,7 +16,7 @@ import { buildingAt as buildingPlanAt, roomCells, roomOutline } from "../engines
 import { rectRoom, roundRoom } from "../engines/motion/room-shapes.mjs";
 import { DRESSING_COLOURS_MOST } from "../engines/motion/holiday-dressing.mjs";
 import { ROOF_IDS, ROOF_FORM_IDS, roofFor, formFits } from "../engines/motion/roof-paint.mjs";
-import { artName, artSuits, cardAsset, ownArtAs, ownArtList, weathersAs, withOwnArt, withoutOwnArt } from "../engines/mapbuild/own-art.mjs";
+import { artName, artSuits, cardAsset, ownArtAs, ownArtList, stampOwn, weathersAs, withOwnArt, withoutOwnArt } from "../engines/mapbuild/own-art.mjs";
 import { WINDOW_ART, windowFor } from "../engines/motion/window-paint.mjs";
 import { alongStretch } from "../engines/motion/wall-looks.mjs";
 import { WALL_MATERIAL_CHOICES, WALL_MATERIAL_IDS, WALL_THICK, WALL_LIFT, smoothRun } from "../engines/motion/wall-paint.mjs";
@@ -66,7 +66,7 @@ export function createMapPainting(ctx) {
     const keep = (list) => { held = list; try { void game.user?.setFlag?.(ID, "ownArt", list); } catch { /* kept for this sitting */ } };
     const add = (item) => { keep(withOwnArt(now(), item)); return now().find((it) => it.what === item.what && it.url === item.url) ?? null; };
     const browserOn = () => game.modules?.get?.("fa-nexus")?.active === true && typeof globalThis.faNexus?.open === "function";
-    const TAB = { wall: "paths", roof: "textures", door: "assets", window: "assets" }, FIND = { wall: "Wall", roof: "Roof", door: "Door", window: "Window" }, NOUN = { wall: "a strip of wall", roof: "roofing", door: "a door leaf", window: "a window" };
+    const TAB = { wall: "paths", roof: "textures", door: "assets", window: "assets", decor: "assets", ground: "textures" }, FIND = { wall: "Wall", roof: "Roof", door: "Door", window: "Window", decor: "", ground: "" }, NOUN = { wall: "a strip of wall", roof: "roofing", door: "a door leaf", window: "a window", decor: "an asset", ground: "a ground texture" };
     const pause = (ms) => new Promise((r) => setTimeout(r, ms));
     const pick = (what) => new Promise((done) => {
       const TYPES = ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "dblclick", "dragstart"], win = () => document.getElementById("fa-nexus-app");
@@ -82,7 +82,8 @@ export function createMapPainting(ctx) {
         const fit = artSuits(what, art);
         if (!fit.ok) { ui.notifications?.warn(`Animater: ${fit.why}`); return; }
         if (!art.url) { ui.notifications?.warn("Animater: that one's picture could not be found. Set it down as a tile and pick its file instead."); return; }
-        const item = add({ what, url: art.url, name: art.name, thumb: art.thumb, as: weathersAs(what, `${art.path} ${art.name}`) });
+        // (An asset pack's pictures are 200 to the square: its longer side says how big it is laid.)
+        const item = add({ what, url: art.url, name: art.name, thumb: art.thumb, as: weathersAs(what, what === "decor" ? art.path : `${art.path} ${art.name}`), ...(Math.max(art.width, art.height) > 0 ? { size: Math.max(art.width, art.height) / 200 } : {}) });
         try { void foundry.applications.instances?.get?.("fa-nexus-app")?.close?.(); } catch { /* it stays open */ }
         end(item);
       };
@@ -91,7 +92,7 @@ export function createMapPainting(ctx) {
         await pause(700);
         try { win()?.querySelector(`.fa-nexus-tab[data-nexus-tab="${TAB[what]}"]`)?.click(); } catch { /* whichever tab it is on */ }
         await pause(500);
-        try { const s = win()?.querySelector('input[type="search"], input[placeholder^="Search"]'); if (s && !s.value) { s.value = FIND[what]; s.dispatchEvent(new Event("input", { bubbles: true })); } } catch { /* unsearched */ }
+        try { const s = win()?.querySelector('input[type="search"], input[placeholder^="Search"]'); if (s && !s.value && FIND[what]) { s.value = FIND[what]; s.dispatchEvent(new Event("input", { bubbles: true })); } } catch { /* unsearched */ }
         if (!win()) { end(null); return; }
         ui.notifications?.info(`Animater: click ${NOUN[what]} in the asset browser to use it here. Esc: not now.`);
         for (const type of TYPES) document.addEventListener(type, on, true);
@@ -231,8 +232,8 @@ export function createMapPainting(ctx) {
       if (pt.edit) return pathRelay();
       const drawn = pt.points; pathClear();
       const c = brushChoices(), levelId = canvas.level?.id ?? null;
-      const data = c.pathShape === "area" ? areaRegion(c.areaFloor, { points: drawn, style: c.areaStyle, edge: c.edge, levelId })
-        : c.pathShape === "line" ? pathRegion(c.pathKind, drawn, { grid: grid(), wide: c.pathWide, smooth: c.pathSmooth, seed: state.seed++, levelId, blocks: c.pathBlocks }) : null;
+      const data = c.pathShape === "area" ? areaRegion(c.areaFloor, { points: drawn, style: c.areaStyle, edge: c.edge, levelId, image: c.pathImage || "" })
+        : c.pathShape === "line" ? pathRegion(c.pathKind, drawn, { grid: grid(), wide: c.pathWide, smooth: c.pathSmooth, seed: state.seed++, levelId, blocks: c.pathBlocks, image: c.pathImage || "" }) : null;
       if (!data) return;
       try { const [made] = await canvas.scene.createEmbeddedDocuments("Region", [data]); if (made) rememberDecorStep({ kind: "create", id: made.id, data }); }
       catch (err) { console.warn("Animater | paths", err); ui.notifications?.warn?.("The path could not be saved."); }
@@ -242,7 +243,7 @@ export function createMapPainting(ctx) {
       const box = pt.box; pt.box = null; pt.overlay.clear();
       const c = brushChoices(), x = Math.min(box.a[0], box.b[0]), y = Math.min(box.a[1], box.b[1]), width = Math.abs(box.b[0] - box.a[0]), height = Math.abs(box.b[1] - box.a[1]);
       if (width < grid() * 0.3 || height < grid() * 0.3) return;
-      const data = areaRegion(c.areaFloor, { box: { x, y, width, height }, style: c.areaStyle, edge: c.edge, levelId: canvas.level?.id ?? null });
+      const data = areaRegion(c.areaFloor, { box: { x, y, width, height }, style: c.areaStyle, edge: c.edge, levelId: canvas.level?.id ?? null, image: c.pathImage || "" });
       try { const [made] = await canvas.scene.createEmbeddedDocuments("Region", [data]); if (made) rememberDecorStep({ kind: "create", id: made.id, data }); }
       catch (err) { console.warn("Animater | paths", err); ui.notifications?.warn?.("The ground could not be saved."); }
     };
@@ -250,7 +251,7 @@ export function createMapPainting(ctx) {
     // this, or by Build a map). It lies under every other floor, being the biggest.
     const pathFillMap = async () => {
       const rect = canvas.dimensions?.sceneRect, c = brushChoices(); if (!rect) return;
-      const data = areaRegion(c.areaFloor, { box: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, style: c.areaStyle, whole: true, levelId: canvas.level?.id ?? null });
+      const data = areaRegion(c.areaFloor, { box: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, style: c.areaStyle, whole: true, levelId: canvas.level?.id ?? null, image: c.pathImage || "" });
       if (!data) return;
       try {
         const removes = regionsHere().filter((r) => r.flags?.[ID]?.wholeMap === true).map((r) => ({ id: r.id, data: r.toObject() }));
@@ -869,7 +870,7 @@ export function createMapPainting(ctx) {
       state.ghostKey = key;
       for (const c of ghost.removeChildren()) { try { c.destroy(); } catch { /* gone */ } }
       const placed = [];
-      for (let i = 0, n = dabCount(using.density); i < n; i++) { const d = stampDecor({ x: 0, y: 0, radius, grid: grid(), kinds: using.kinds, seed: state.ghostSeed * 131 + i * 7919, existing: placed, scale: using.scale, turn: using.turn }); if (d) placed.push(d); }
+      for (let i = 0, n = dabCount(using.density); i < n; i++) { const d = stampAny({ own: using.own, x: 0, y: 0, radius, grid: grid(), kinds: using.kinds, seed: state.ghostSeed * 131 + i * 7919, existing: placed, scale: using.scale, turn: using.turn }); if (d) placed.push(d); }
       state.ghostItems = placed;
       const look = decorLook({ where: brushChoices().where });
       for (const d of [...placed].sort((a, b) => (DECOR_KINDS[a.kind].flat ? 0 : 1) - (DECOR_KINDS[b.kind].flat ? 0 : 1) || a.size - b.size)) { const s = decorations.sprite(d, look); if (s) ghost.addChild(s); }
@@ -909,8 +910,10 @@ export function createMapPainting(ctx) {
       // The kind picked on the bar, at the bar's size. (Into a region, its own Size and the kind's size there apply as it is drawn, so
       // turning them later scales what was painted too.)
       const c = brushChoices();
-      return { kinds: c.kinds.filter((id) => DECOR_KINDS[id]).map((id) => ({ id, size: 1, amount: 1 })), density: c.thick, scale: c.scale, turn: c.turn };
+      // (One of the GM's own pictures, when that is what is picked: laid in place of a kind of ours.)
+      return { kinds: c.kinds.filter((id) => DECOR_KINDS[id]).map((id) => ({ id, size: 1, amount: 1 })), density: c.thick, scale: c.scale, turn: c.turn, own: c.ownDecor?.url ? { url: c.ownDecor.url, size: c.ownDecor.size, as: c.ownDecor.as } : null };
     };
+    const stampAny = (given) => (given.own ? stampOwn(given) : stampDecor(given));
     const dabCount = (density) => Math.max(1, Math.round(sizeNow() * Math.max(0.2, density) * 1.5));
     // How it breaks, as picked on the bar for the kind (decor-options.mjs): saved on each one laid, never moving where it stands.
     // And the bar's Decoration height (how long its shadows reach), when it isn't the usual.
@@ -920,10 +923,10 @@ export function createMapPainting(ctx) {
       if (erase) { state.brushed = state.brushed.filter((b) => (b.x - p.x) ** 2 + (b.y - p.y) ** 2 > radius * radius); if (state.doc) state.erased.push([Math.round(p.x), Math.round(p.y), Math.round(radius)]); }
       else {
         if (!state.doc) state.circles.push([Math.round(p.x), Math.round(p.y), Math.round(radius)]);
-        const areas = state.doc ? regionAreas(state.doc) : null, { kinds, density, scale, turn } = paintWith();
+        const areas = state.doc ? regionAreas(state.doc) : null, { kinds, density, scale, turn, own } = paintWith();
         // A click lays exactly what its ghost showed; then a new ghost is dealt for the next.
         if (first && state.ghostItems.length) { for (const g of state.ghostItems) { const d = withProp({ ...g, x: Math.round(p.x + g.x), y: Math.round(p.y + g.y), seed: (g.seed ^ state.seed++) >>> 0 }); if (!areas || regionPointIn(d, areas)) state.brushed.push(d); } state.ghostSeed++; }
-        else for (let i = 0, n = dabCount(density); i < n; i++) { const d = withProp(stampDecor({ x: p.x, y: p.y, radius, grid: grid(), kinds, seed: state.seed++, existing: state.brushed, scale, turn })); if (d && (!areas || regionPointIn(d, areas))) state.brushed.push(d); }
+        else for (let i = 0, n = dabCount(density); i < n; i++) { const d = withProp(stampAny({ own, x: p.x, y: p.y, radius, grid: grid(), kinds, seed: state.seed++, existing: state.brushed, scale, turn })); if (d && (!areas || regionPointIn(d, areas))) state.brushed.push(d); }
       }
       decorBrushSyncSoon();
     };

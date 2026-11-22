@@ -52,13 +52,13 @@ test('the brush bar offers each place its own kinds and remembers what is ticked
   // It paints one kind at a time: picking a chip puts out the one lit before.
   assert.equal(c.kinds.length, 1);
   const bar = read('scripts/ui/decor-brush-bar.mjs');
-  assert.match(bar, /const pick = \(id\) => \{ if \(lock\) lock\.pick = id; else remembered\.kinds\[remembered\.where\] = \[id\]; draw\(\); onChange\(\); \};/);
+  assert.match(bar, /const pick = \(id\) => \{ if \(lock\) lock\.pick = id; else remembered\.kinds\[remembered\.where\] = \[id\]; remembered\.ownDecor = null; draw\(\); onChange\(\); \};/);
   assert.doesNotMatch(bar, /Select all/);
   // Its Decoration size scales what it lays, on open ground and on top of a region's own scale.
   assert.equal(c.scale, 1);
   assert.match(bar, /slider\('Decoration size', BRUSH_SCALE, 'scale', 0\.1\)/);
   const main = shell();
-  assert.match(main, /density: c\.thick, scale: c\.scale, turn: c\.turn \}/);
+  assert.match(main, /density: c\.thick, scale: c\.scale, turn: c\.turn, own: /);
 });
 
 test('the Decorations tool sits in Animater\'s controls and can be hidden', () => {
@@ -187,7 +187,7 @@ test('the brush bar has a search over its kinds', async () => {
   assert.ok(kindMatches('glowShrooms', 'glow') && kindMatches('mushrooms', 'mush'));
   const bar = read('scripts/ui/decor-brush-bar.mjs');
   assert.match(bar, /search\.placeholder = 'Search kinds…'/);
-  assert.match(bar, /if \(e\.key === 'Enter'\) \{ e\.preventDefault\(\); const first = \[\.\.\.chips\.children\]\.find\(\(c\) => !c\.hidden\); if \(first\) pick\(first\.dataset\.kind\); \}/);
+  assert.match(bar, /if \(e\.key === 'Enter'\) \{ e\.preventDefault\(\); const first = \[\.\.\.chips\.children\]\.find\(\(c\) => !c\.hidden && c\.dataset\.kind\); if \(first\) pick\(first\.dataset\.kind\); \}/);
   // While typing in it the brush's own keys ([, ], Esc, Ctrl+Z) stay out of the way.
   // (A tick or a slider just clicked keeps the focus and is no place to type: the keys still work past those.)
   assert.match(shell(), /const field = e\.target\?\.closest\?\.\("input, textarea"\);\n\s+if \(field && !\["checkbox", "range", "color", "button"\]\.includes\(field\.type\)\) return;/);

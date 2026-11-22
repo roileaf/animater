@@ -1051,6 +1051,8 @@ const bladesOf = (PIXI, areas, box, style, size, mask, peak, random = Math.rando
  * shows its floor at once; a new floor fades in over the old. tick(seconds) while `busy`; clear().
  * `extract(renderTexture)` reads a texture out to a canvas, for a tile that can be repeated and scaled cleanly.
  */
+/** How many of an own ground picture's pixels make one grid square: the asset packs' own scale. */
+export const OWN_TILE_PER_SQUARE = 200;
 export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid = () => 100, tileReady = () => {}, tileSize = () => 1024 }) {
   const known = new Map(), tiles = new Map(), roofed = new Set(), waiting = [];
   let lastList = [];
@@ -1088,6 +1090,25 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
     return new PIXI.Texture(PIXI.BaseTexture.fromBuffer(data, side, side, { wrapMode: PIXI.WRAP_MODES.REPEAT, mipmap: PIXI.MIPMAP_MODES.ON, anisotropicLevel: 8, scaleMode: PIXI.SCALE_MODES.LINEAR, alphaMode: PIXI.ALPHA_MODES.NPM }));
   };
   let scaleNow = 1;
+  // A floor laid with a picture the GM owns (an asset pack's ground: its dirt, its cobbles) in place of the tile we
+  // paint for it. Everything else of the floor is still ours — its shape, its soft edge, the sun and the lamps on it —
+  // because the picture only takes the tile's place: repeated across the floor at the size it was painted for (such
+  // a pack paints 200 pixels to the square). One still on its way leaves the floor as it was until it arrives; one
+  // that cannot be had leaves the floor to our own tile. (Roi: "paths should also support fa nexus textures".)
+  const ownTiles = new Map(); let imageNow = '', ownArrived = false;
+  const ownTile = (url) => {
+    let had = ownTiles.get(url);
+    if (!had) {
+      let texture = null;
+      try { texture = PIXI.Texture.from(url, { wrapMode: PIXI.WRAP_MODES?.REPEAT, mipmap: PIXI.MIPMAP_MODES?.ON, anisotropicLevel: 8 }); } catch { texture = null; }
+      had = { texture, failed: !texture }; ownTiles.set(url, had);
+      const base = texture?.baseTexture;
+      if (base && !base.valid) { base.once?.('loaded', () => { ownArrived = true; }); base.once?.('error', () => { had.failed = true; ownArrived = true; }); }
+    }
+    return had.failed ? false : had.texture?.baseTexture?.valid ? had.texture : null;
+  };
+  /** The picture a floor asks for, where it can be had ('' where it asks for none, or it could not be read). */
+  const ownImage = (spec) => (typeof spec?.image === 'string' && spec.image && ownTile(spec.image) !== false ? spec.image : '');
   const drop = (mesh) => { if (!mesh) return; const mask = mesh.animaterMask; try { mesh.parent?.removeChild(mesh); mesh.destroy({ children: true }); mask?.destroy(true); } catch { /* gone */ } };
   const paint = (areas, floor, edge, style, useBlades, shineOn, parent = null, spec = null) => {
     const size = grid() || 100, box = boxOf(areas, size * Math.max(1, edge));
@@ -1096,7 +1117,8 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
     // Four squares to a tile: a blade of grass, a board or a flagstone at its right size for the map, and sharp.
     const made = surfaceShine(floor, style), shine = shineOn ? made : { ...made, gloss: 0, glitter: 0, lift: 0, relief: 0, ripple: 0, wets: 0 }, answers = shine.gloss + shine.glitter + shine.lift + shine.relief > 0;
     skyAt = 0;
-    const mesh = quadOf(PIXI, box, SHOW_FRAG, { ...sunUniforms(PIXI), uTile: tileOf(floor, style), uTileSize: size * 4 * scaleNow, uGrid: size, uAlpha: 1, uShape: answers ? tileOf(floor, style, true) : PIXI.Texture.WHITE, uTwo: shine.still ? 0 : 1, uToSun: [1, 0], uSunColor: [1, 1, 1], uGlare: [0, 0], uLights: new Float32Array(MOST_FLOOR_LIGHTS * 4), uLightColors: new Float32Array(MOST_FLOOR_LIGHTS * 3), uLightCount: 0, uWet: 0, uRipple: shine.ripple, uSun: 0, uGloss: shine.gloss, uSharp: shine.sharp, uGlitter: shine.glitter, uLift: shine.lift, uRelief: shine.relief, uSway: swaysInWind(floor) ? 1 : 0, uTime: 0, uWind: 0, uWindDir: [1, 0], uMask: mask, uPeak: peakOf(pixels, mask), uTight: edge === 0 ? 2 : floor === 'water' ? 1 : 0, uBox: [box.x, box.y, box.w, box.h] });
+    const own = imageNow ? ownTile(imageNow) : null;
+    const mesh = quadOf(PIXI, box, SHOW_FRAG, { ...sunUniforms(PIXI), uTile: own || tileOf(floor, style), uTileSize: size * (own ? own.width / OWN_TILE_PER_SQUARE : 4) * scaleNow, uGrid: size, uAlpha: 1, uShape: answers ? tileOf(floor, style, true) : PIXI.Texture.WHITE, uTwo: shine.still ? 0 : 1, uToSun: [1, 0], uSunColor: [1, 1, 1], uGlare: [0, 0], uLights: new Float32Array(MOST_FLOOR_LIGHTS * 4), uLightColors: new Float32Array(MOST_FLOOR_LIGHTS * 3), uLightCount: 0, uWet: 0, uRipple: shine.ripple, uSun: 0, uGloss: shine.gloss, uSharp: shine.sharp, uGlitter: shine.glitter, uLift: shine.lift, uRelief: shine.relief, uSway: swaysInWind(floor) ? 1 : 0, uTime: 0, uWind: 0, uWindDir: [1, 0], uMask: mask, uPeak: peakOf(pixels, mask), uTight: edge === 0 ? 2 : floor === 'water' ? 1 : 0, uBox: [box.x, box.y, box.w, box.h] });
     mesh.animaterMask = mask; mesh.animaterWets = !!shine.wets;
     const host = parent ?? root(spec);
     if (spec?.plane?.zIndex != null) mesh.zIndex = spec.plane.zIndex;
@@ -1133,24 +1155,26 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
       for (const spec of list) {
         seen.add(spec.id);
         if (spec.roofed) roofed.add(spec.id); else roofed.delete(spec.id);
-        const shape = shapeKey(spec.areas) + shapeKey(spec.under), edge = spec.edge ?? 1, style = spec.style ?? '', useBlades = spec.blades !== false, shineOn = spec.shine !== false, entry = known.get(spec.id);
+        const shape = shapeKey(spec.areas) + shapeKey(spec.under), edge = spec.edge ?? 1, style = spec.style ?? '', image = ownImage(spec), useBlades = spec.blades !== false && !image, shineOn = spec.shine !== false && !image, entry = known.get(spec.id);
         // How much it covers the map (the region's Texture opacity): what its alpha stands at once faded in.
         const opacity = Math.min(1, Math.max(0, Number(spec.opacity ?? 1)));
         scaleNow = spec.scale ?? 1;
         const parent = root(spec);
         const held = [entry?.mesh, entry?.old].filter(Boolean);
-        if (entry && held.every((mesh) => mesh.parent === parent) && entry.floor === spec.floor && entry.style === style && entry.shape === shape && entry.edge === edge && entry.useBlades === useBlades && entry.shineOn === shineOn) { for (const mesh of held) mesh.shader.uniforms.uTileSize = (grid() || 100) * 4 * scaleNow; if (entry.opacity !== opacity) { entry.opacity = opacity; if (!entry.old) showAt(entry.mesh, opacity); } continue; }
+        if (entry && held.every((mesh) => mesh.parent === parent) && entry.floor === spec.floor && entry.style === style && (entry.image ?? '') === image && entry.shape === shape && entry.edge === edge && entry.useBlades === useBlades && entry.shineOn === shineOn) { for (const mesh of held) mesh.shader.uniforms.uTileSize = (grid() || 100) * (entry.squares ?? 4) * scaleNow; if (entry.opacity !== opacity) { entry.opacity = opacity; if (!entry.old) showAt(entry.mesh, opacity); } continue; }
         // Not made yet: what is there stays, and it comes when its tiles are ready.
-        const wants = surfaceShine(spec.floor, style), base = tileOf(spec.floor, style), surface = !shineOn || !(wants.gloss + wants.glitter + wants.lift + wants.relief > 0) || tileOf(spec.floor, style, true);
+        const tile = image ? ownTile(image) : null, squares = tile ? tile.width / OWN_TILE_PER_SQUARE : 4;
+        const wants = surfaceShine(spec.floor, style), base = image ? tile : tileOf(spec.floor, style), surface = !shineOn || !(wants.gloss + wants.glitter + wants.lift + wants.relief > 0) || tileOf(spec.floor, style, true);
         if (!base || !surface) continue;
         let mesh = null;
-        try { mesh = paint(spec.areas, spec.floor, edge, style, useBlades, shineOn, null, spec); } catch (error) { console.warn('Animater | floor texture', error); }
+        imageNow = image;
+        try { mesh = paint(spec.areas, spec.floor, edge, style, useBlades, shineOn, null, spec); } catch (error) { console.warn('Animater | floor texture', error); } finally { imageNow = ''; }
         if (!mesh) continue;
         const moved = held.some((mesh) => mesh.parent !== parent);
-        if (!entry || moved || entry.shape !== shape || entry.edge !== edge || !(spec.seconds > 0)) { drop(entry?.old); drop(entry?.mesh); showAt(mesh, opacity); known.set(spec.id, { mesh, old: null, floor: spec.floor, style, shape, edge, useBlades, shineOn, seconds: 0, opacity }); continue; }
+        if (!entry || moved || entry.shape !== shape || entry.edge !== edge || !(spec.seconds > 0)) { drop(entry?.old); drop(entry?.mesh); showAt(mesh, opacity); known.set(spec.id, { mesh, old: null, floor: spec.floor, style, image, squares, shape, edge, useBlades, shineOn, seconds: 0, opacity }); continue; }
         drop(entry.old);
         showAt(mesh, 0);
-        known.set(spec.id, { mesh, old: entry.mesh, floor: spec.floor, style, shape, edge, useBlades, shineOn, seconds: spec.seconds, opacity });
+        known.set(spec.id, { mesh, old: entry.mesh, floor: spec.floor, style, image, squares, shape, edge, useBlades, shineOn, seconds: spec.seconds, opacity });
       }
       for (const [id, entry] of known) if (!seen.has(id)) { drop(entry.old); drop(entry.mesh); known.delete(id); }
       inOrder(list);
@@ -1160,6 +1184,7 @@ export function createFloorTextures({ PIXI, root, render, renderer, pixels, grid
       lastShade = shadeNow;
       clock += seconds;
       if (waiting.length && makeWaiting()) { this.sync(lastList); tileReady(); }
+      if (ownArrived) { ownArrived = false; this.sync(lastList); tileReady(); }
       // Who is standing in the grass: looked at thirty times a second, and only with blades out.
       let pressed = null;
       if (clock >= pressAt) { pressAt = clock + PRESS_EVERY; const fields = [...known.values()].filter((e) => e.mesh.animaterBlades).map((e) => e.mesh.shader.uniforms.uBox); if (fields.length) pressed = presses.step(tokens().filter((t) => fields.some(([x, y, w, h]) => t.x > x && t.y > y && t.x < x + w && t.y < y + h)), clock, grid() || 100); }

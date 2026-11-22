@@ -57,6 +57,8 @@ export const VARIANTS = DECOR_VARIANTS;
 const SIZE_STEPS = [0.6, 0.85, 1.2, 1.7];
 /** Which painted picture a decoration uses (pure): its kind, one of a few looks, and the size step nearest its own. */
 export function pictureOf(d, look = {}) {
+  // (One of the GM's own pictures is itself, at its own size: there is one of it, in each season.)
+  if (d?.art) return { variant: 0, step: 1, size: d.size, key: `own|${d.art}|${look.season ?? ''}` };
   const k = DECOR_KINDS[d.kind], rel = d.size / k.size, step = SIZE_STEPS.reduce((best, s) => (Math.abs(s - rel) < Math.abs(best - rel) ? s : best), SIZE_STEPS[0]);
   return { variant: (d.seed >>> 0) % VARIANTS, step, size: k.size * step, key: `${d.kind}|${(d.seed >>> 0) % VARIANTS}|${step}|${look.season ?? ''}|${look.wet ? 1 : 0}|${look.snow ? Math.round(look.snow * 4) : 0}|${look.cave ? 1 : 0}|${look.night ? 1 : 0}` };
 }
@@ -161,6 +163,13 @@ export const decorHeight = (d) => {
 // How high a light stands, in squares (a torch in a hand, a lantern on a post), for how long the shadows it throws are.
 export const LAMP_HEIGHT = 1.6;
 /**
+ * The least a lamp counts for on what shines, whatever the sky is doing. A lamp's shadow is lost in daylight, and so
+ * its strength against the sky falls to nothing by day — but a flame still shows in a brass hoop at noon: what shines
+ * throws back the brightest thing near it, and daylight does not put that out. With no least, the tiles' metal
+ * answered a torch only after dark (Roi: "why i dont see lighting reflected from tiles anymore? only when it's dark?").
+ */
+export const LAMP_GLINT_LEAST = 0.4;
+/**
  * The shadow a light throws of a decoration (pure), or null: `d` it ({ x, y }), `height` its height in squares, `light`
  * { x, y, radius, strength (against the sky, 0-1) }. Away from the light, as long as the thing is tall against the light's own
  * height and as far as it stands from it (never past the light's reach), as dark as the light is strong and near.
@@ -245,7 +254,11 @@ export function crownOpen(d, creatures = [], grid = 100) {
 const hasTrees = (spec) => Object.keys(spec.settings?.kinds ?? {}).some((k) => DECOR_KINDS[k]?.tree) || (spec.settings?.brushed ?? []).some((d) => DECOR_KINDS[d?.kind]?.tree);
 export const lookKey = (spec) => (hasTrees(spec) ? spec.look : { ...(spec.look ?? {}), snow: 0 });
 
-export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, above: aboveOf, flat: flatOf = groundOf, grid = () => 100, make = null, render = null }) {
+export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, above: aboveOf, flat: flatOf = groundOf, grid = () => 100, make = null, render = null, ownArt = null }) {
+  // (`ownArt(where, look)`: a picture the GM owns, ready to draw — { texture, art (it under the season), maps (its
+  // relief) } — or null while it is on its way; `ownArt.state(where)` says which, so a region is drawn again when one
+  // arrives. Decorations whose `art` says where such a picture is kept are drawn from it instead of painted.)
+  const artsOf = (list) => (ownArt?.state ? [...new Set((list ?? []).filter((d) => d?.art).map((d) => d.art))].map((u) => ownArt.state(u)).join() : '');
   // (Each layer asked for the region being drawn (`at`, its spec): on a raised floor tile its decorations go on that tile, not
   // under it. Set while sync draws a region; null otherwise.)
   let at = null;
@@ -352,6 +365,12 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
   const canvasOf = make ?? ((w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; });
   // A picture: its painting and silhouette as textures, made the first time it is asked for and kept.
   const picture = (d, look) => {
+    if (d?.art) {
+      // Not painted: the GM's own picture, when it has arrived. Its shadows are that same picture made dark.
+      let own = null; try { own = ownArt ? ownArt(d.art, look) : null; } catch { own = null; }
+      const t = own?.texture; if (!t || t.destroyed || !(t.width > 0) || !(t.height > 0)) return { pic: null, scale: 1 };
+      return { pic: { art: own.art ?? t, shadow: t, maps: own.maps ?? null, trunk: null, cloth: null, width: t.width, painted: d.size, canvas: null, own: true }, scale: (d.size * grid()) / Math.max(t.width, t.height) };
+    }
     const p = pictureOf(d, look);
     if (!pictures.has(p.key)) {
       const art = paintDecor(d.kind, paintSeedOf(d), p.size * grid(), { ...look, unit: grid(), liveWater: true }, canvasOf);
@@ -428,7 +447,14 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
     // Flat ones (moss, flowers, a puddle's mud) lie on the ground itself, under the lying snow; the rest stand over it.
     } else if (DECOR_KINDS[d.kind].cloth && pic.cloth && where !== 'cave' && PIXI.Mesh) { const mesh = (role === 'flat' ? flat() : ground()).addChild(clothMesh(pic, d, scale, DECOR_KINDS[d.kind].cloth === 'paper' ? 'paper' : 'cloth')); r.sprites.push(mesh); r.cloth.push(mesh); mine.inLayers.push(mesh); }
     else if (PLANTS.has(d.kind) && where !== 'cave' && PIXI.Mesh) { const mesh = (role === 'flat' ? flat() : ground()).addChild(clothMesh(pic, d, scale, 'plant')); r.sprites.push(mesh); r.cloth.push(mesh); mine.inLayers.push(mesh); }
-    else { const sprite = (role === 'flat' ? flat() : ground()).addChild(place(new PIXI.Sprite(pic.art), d, pic, scale)); r.sprites.push(sprite); mine.inLayers.push(sprite); }
+    else if (pic.own && pic.maps && !pic.maps.destroyed && role !== 'flat' && PIXI.Mesh && PIXI.Geometry && PIXI.Shader) {
+      // One of the GM's own, with its relief: drawn lit, as the tiles that stand as things are — its metal glinting
+      // toward the sun and a torch, and nothing else of it changed.
+      const mesh = createLitMesh(PIXI, { art: pic.art, maps: pic.maps, relief: 8, mirror: !!d.mirror, shade: 0, glint: 2.4, tint: look?.wet ? [0.78, 0.8, 0.83] : [1, 1, 1] });
+      mesh.position.set(d.x, d.y); mesh.rotation = turnOf(d); mesh.scale.set((d.mirror ? -1 : 1) * scale, scale); mesh.decor = d; mesh.indoors = r.indoors === true;
+      ground().addChild(mesh); r.sprites.push(mesh); (r.lit ??= []).push(mesh); mine.inLayers.push(mesh);
+    }
+    else { const sprite = (role === 'flat' ? flat() : ground()).addChild(place(new PIXI.Sprite(pic.art), d, pic, scale)); if (pic.own && look?.wet) sprite.tint = 0xc7ccd4; r.sprites.push(sprite); mine.inLayers.push(sprite); }
     r.drawn.push(mine);
     return mine;
   };
@@ -441,6 +467,7 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
     r.shadowSprites = r.shadowSprites.filter((s) => !gone.has(s));
     r.crowns = r.crowns.filter((s) => !gone.has(s));
     r.cloth = r.cloth.filter((s) => !gone.has(s));
+    if (r.lit) r.lit = r.lit.filter((s) => !gone.has(s));
     if (mine.caster) r.casters = r.casters.filter((c) => c !== mine.caster);
     r.drawn = r.drawn.filter((m) => m !== mine);
     r.shown = r.shown.filter((d) => d !== mine.d);
@@ -466,12 +493,13 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
         const { canBreak: _switch, prop: _options, ...drawn } = spec.settings ?? {};
         // (An area's holes are a property of its array, which JSON drops: written out, so a new hole rebuilds too.)
         const shape = (spec.areas ?? []).map((a) => [Array.from(a), a.holes ?? []]);
-        const key = JSON.stringify([drawn, shape, lookKey(spec), g, spec.broken ?? [], !!spec.live]), had = regions.get(spec.id);
+        const arts = artsOf(spec.settings?.brushed);
+        const key = JSON.stringify([drawn, shape, lookKey(spec), g, spec.broken ?? [], !!spec.live, arts]), had = regions.get(spec.id);
         if (had?.key === key) { had.prop = spec.settings?.prop; continue; }
         // What the region is apart from what the brush has laid by hand: while a stroke paints, this is all that must match
         // for the dabs so far to stand as they are.
         const { brushed: fresh = [], ...rest } = drawn;
-        const restKey = JSON.stringify([rest, shape, lookKey(spec), g, spec.broken ?? [], !!spec.live]);
+        const restKey = JSON.stringify([rest, shape, lookKey(spec), g, spec.broken ?? [], !!spec.live, arts]);
         // A stroke adding to what it has already laid (the brush pushes onto one array; rubbing out makes a new one): draw
         // only the new dabs and clear what they cover, rather than building the whole region again on every dab.
         if (spec.live && had?.restKey === restKey && had.brushedRef === fresh && fresh.length > had.brushedCount) {
@@ -491,7 +519,7 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
           had.key = key; had.restKey = restKey; had.brushedCount = fresh.length; had.prop = spec.settings?.prop;
           // A room can be roofed or opened while the map is up, so this is taken again rather than kept from before.
           had.indoors = spec.indoors === true;
-          aim(had); if (!spec.live) bakeContact(had); at = null;
+          aim(had); relight(had); if (!spec.live) bakeContact(had); at = null;
           continue;
         }
         if (had) dropRegion(had);
@@ -510,7 +538,7 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
         // Snow on the standing ones (not underground). (A tree's crown carries its own, painted, as it opens over the creatures.)
         // (Not while a stroke still paints it (`live`): baked once, when the stroke ends.)
         if (where !== 'cave' && !spec.live) { const standing = shown.filter((d) => decorRole(d, where) === 'standing' && !DECOR_KINDS[d.kind].light).map((d) => ({ d, ...picture(d, { ...spec.look, snow: 0 }) })).filter((it) => it.pic); try { r.snow = bakeSnow(r, standing); } catch (err) { console.warn('Animater | decoration snow', err); } }
-        regions.set(spec.id, r); aim(r); if (!spec.live) bakeContact(r); at = null;
+        regions.set(spec.id, r); aim(r); relight(r); if (!spec.live) bakeContact(r); at = null;
       }
       for (const [id, r] of regions) if (!seen.has(id) && id !== PROPS) { dropRegion(r); regions.delete(id); }
       // (Pictures for looks no longer shown let go once there are many: out of PIXI's cache, not destroyed, so a wreck or the
@@ -575,7 +603,8 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
     // from it, the two nearest lights each. A few times a second, as lights move with the creatures carrying them.
     lamps(list = []) {
       const g = grid(), lights = list.filter((l) => l && l.radius > 0 && (l.strength ?? 1) > 0.03);
-      lampsNow = lights.map((l) => ({ x: l.x, y: l.y, radius: l.radius, strength: l.strength ?? 1, color: l.color ?? [1, 0.74, 0.46], height: g * LAMP_HEIGHT * 0.6 })); relight(regions.get(PROPS));
+      // (Every lamp, not only those strong enough against the sky to throw a shadow: see LAMP_GLINT_LEAST.)
+      lampsNow = list.filter((l) => l && l.radius > 0).map((l) => ({ x: l.x, y: l.y, radius: l.radius, strength: Math.max(LAMP_GLINT_LEAST, Math.min(1, Number(l.strength ?? 1) || 0)), color: l.color ?? [1, 0.74, 0.46], height: g * LAMP_HEIGHT * 0.6 })); for (const r of regions.values()) relight(r);
       for (const r of regions.values()) {
         if (!r.lampLayer) continue;
         for (const c of r.casters) {

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { tileProp, propHeight, propBurning, tileProps, PROP_CHOICE, PROP_MOST_SQUARES } from '../../../scripts/engines/motion/tile-props.mjs';
-import { createDecorations, decorHeight } from '../../../scripts/engines/motion/decorations.mjs';
+import { createDecorations, decorHeight, LAMP_GLINT_LEAST } from '../../../scripts/engines/motion/decorations.mjs';
 
 const FA = 'https://example.test/assets/!Core_Settlements/Storage/';
 
@@ -141,12 +141,25 @@ test('with its relief a tile is drawn lit: only its glints by default, the sun a
   assert.equal(mesh.lit, true); assert.equal(u.uMaps, maps); assert.equal(u.uShade, 0, 'no shading of its form unless asked'); assert.ok(u.uGlint > 1, 'its metal still glints'); assert.ok(u.uRelief > 0);
   assert.equal(mesh.position.x, 1000); assert.equal(mesh.scale.x, 0.5);
   assert.deepEqual(amounts(mesh), [0, 0, 0, 0], 'no light yet');
-  decorations.light({ sun: { angle: 0, length: 1, strength: 0.8 } });
-  assert.ok(Math.abs(amounts(mesh)[0] - 0.8) < 1e-6, 'the sun'); assert.ok(u.uDir[0] < 0, 'which stands the other way from its shadows');
+  decorations.light({ sun: { angle: 0, length: 1, strength: 0.8, color: [1, 0.6, 0.3] } });
+  assert.ok(Math.abs(amounts(mesh)[0] - 0.8) < 1e-6, 'the sun'); assert.deepEqual([0, 1, 2].map((i) => +u.uCol[i].toFixed(2)), [1, 0.6, 0.3], 'in its own colour'); assert.ok(u.uDir[0] < 0, 'which stands the other way from its shadows');
   assert.deepEqual(amounts(roofed), [0, 0, 0, 0], 'none under a roof');
   decorations.lamps([{ x: 900, y: 800, radius: 600, strength: 1 }]);
   assert.ok(amounts(mesh)[1] > 0.3, 'and a torch near it'); assert.ok(amounts(roofed)[0] === 0, 'too far for the other');
   decorations.lamps([]); assert.equal(amounts(mesh)[1], 0, 'carried away again');
+});
+
+test('by day a lamp throws no shadow of a tile but its metal still answers the flame', () => {
+  const { layers, decorations } = litWorld(), maps = texture();
+  decorations.props([piece({ maps })]);
+  // (Against a noon sky a lamp's strength is next to nothing.)
+  decorations.lamps([{ x: 900, y: 800, radius: 600, strength: 0.01 }]);
+  assert.equal(layers.shadows.children[2].children[0].children.length, 0, 'no shadow from it');
+  const day = amounts(layers.ground.children[0])[0];
+  assert.ok(day > 0.2, `the flame in its metal (${day})`);
+  decorations.lamps([{ x: 900, y: 800, radius: 600, strength: 1 }]);
+  assert.ok(amounts(layers.ground.children[0])[0] > day, 'and more of it after dark');
+  assert.ok(LAMP_GLINT_LEAST > 0.2 && LAMP_GLINT_LEAST < 0.7);
 });
 
 test('the scene\'s relief is how much of the shading is laid on, and rain goes into the lit picture', () => {
@@ -176,6 +189,8 @@ test('main wires it: a scene switch off by default, a tile\'s own choice, and ti
   assert.match(main, /\[PROP_CHOICE, "Object: its own shadow, snow and rain"\]/);
   assert.match(main, /sunlight === PROP_CHOICE\) continue;/);
   assert.match(main, /decorations\.sync\(list\);\r?\n  syncTileProps\(\);/);
+  // The sun's own colour goes with it, so what glints is gold at dusk and silver under the moon.
+  assert.match(main, /directSun\(skyCoverNow\), color: sunlightColor\(\) \} : null;/);
   // Its relief read from its picture, and the scene's own Relief (nothing by default).
   assert.match(main, /reliefPixels\(ctx\.getImageData\(0, 0, w, h\)\.data, w, h\)/);
   assert.match(main, /name="flags\.\$\{ID\}\.tileRelief"/);

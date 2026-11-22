@@ -56,6 +56,10 @@ export function propHeight({ src = '', own = null, per = 5, squares = 1 } = {}) 
   return Math.min(guess, Math.max(0.15, (Number(squares) || 1) * 1.2));
 }
 
+/** How a picture is taken to stand, by what it is called (pure): 'flat', 'low', 'waist' or 'tall'; and each in squares. */
+export const STANDS = Object.freeze({ flat: 0, low: 0.3, waist: 0.6, tall: 1 });
+export const standsAs = (src) => { const name = nameOf(src); return TALL.test(name) ? 'tall' : FLAT.test(name) ? 'flat' : LOW.test(name) ? 'low' : 'waist'; };
+
 /** Whether a tile is a fire burning (pure), by what it is called: no snow lies on it. */
 export const propBurning = (src) => { const name = nameOf(src); return FIRE.test(name) && !UNLIT.test(name); };
 

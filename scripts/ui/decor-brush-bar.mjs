@@ -179,7 +179,7 @@ export const BRUSH_TURN_STEP = Math.PI / 12;
 export const brushChoices = () => { const kinds = remembered.lock ? [remembered.lock.pick] : [...remembered.kinds[remembered.where]]; return { where: remembered.lock?.where ?? placeWhere(remembered.where), place: remembered.lock ? null : remembered.where, kinds, size: remembered.size, thick: remembered.thick, scale: remembered.scale, tall: remembered.tall, turn: remembered.turn, prop: brushPropFor(kinds[0]), tab: remembered.lock ? 'decor' : remembered.tab, floor: remembered.floor, smart: remembered.edges !== 'off', edges: remembered.edges, edgesChosen: remembered.edgesChosen, tol: remembered.tol, edge: remembered.edge, texture: remembered.texture, overWater: remembered.overWater && canStandOverWater(remembered.floor), heightMode: remembered.heightMode, crossKind: remembered.crossKind, cave: remembered.floor === 'cavern' ? caveChoice() : null, waterKind: remembered.waterKind, pattern: remembered.styles[remembered.floor] ?? '',
   wallMaterial: remembered.wallMaterial, wallWidth: remembered.wallWidth, wallAge: remembered.wallAge, wallMode: remembered.wallMode, wallCurve: remembered.wallCurve === true, doorKind: remembered.doorKind || null, doorFlip: remembered.doorFlip === true, doorDouble: remembered.doorDouble === true, doorWide: remembered.doorWide, windowKind: remembered.windowKind || null, windowWalk: remembered.windowWalk === true, swing: remembered.swing === 'out' ? 'out' : 'in',
   roofKind: remembered.roofKind || null, roofForm: remembered.roofForm || null, roofAge: remembered.roofAge, roofChimney: remembered.roofChimney || null, roofDressed: remembered.roofDressed === true,
-  wallTint: remembered.wallTint || null, roofTint: remembered.roofTint || null, roofCover: remembered.roofCover || null, wallCover: remembered.wallCover || null, doorCover: remembered.doorCover || null, windowCover: remembered.windowCover || null, dressingKind: remembered.dressingKind || 'garlands',
+  wallTint: remembered.wallTint || null, roofTint: remembered.roofTint || null, roofCover: remembered.roofCover || null, wallCover: remembered.wallCover || null, doorCover: remembered.doorCover || null, windowCover: remembered.windowCover || null, ownDecor: remembered.ownDecor?.url ? remembered.ownDecor : null, pathImage: remembered.pathImage || null, dressingKind: remembered.dressingKind || 'garlands',
   pathShape: DRAW_SHAPES.some(([k]) => k === remembered.pathShape) ? remembered.pathShape : 'line', areaFloor: AREA_FLOORS.includes(remembered.areaFloor) ? remembered.areaFloor : 'grass', areaStyle: remembered.styles[AREA_FLOORS.includes(remembered.areaFloor) ? remembered.areaFloor : 'grass'] ?? '',
   pathBlocks: remembered.pathBlocks === true, furnishKind: ROOM_CHOICES.some(([id]) => id === remembered.furnishKind) ? remembered.furnishKind : ROOM_CHOICES[0][0],
   pathKind: PATH_KINDS[remembered.pathKind] ? remembered.pathKind : 'road', pathWide: pathWideOf(remembered.pathKind, remembered.pathWide), pathSmooth: remembered.pathSmooth !== false }; };
@@ -358,20 +358,22 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
     // one, else from a file. 'key' is what the brush remembers of it; 'took' is told what it is taken to be made of.
     const ownTiles = (what, key, took = () => {}) => {
       if (!ownArt) return;
-      const mine = ownArt.list(what) ?? [], chosen = (it) => { remembered[key] = it.url; took(it.as); draw(); onChange(); };
+      // (A decoration is remembered whole — its size and how it stands go onto every one laid; the rest by where they are kept.)
+      const whole = what === 'decor', held = () => (whole ? remembered[key]?.url : remembered[key]);
+      const mine = ownArt.list(what) ?? [], chosen = (it) => { remembered[key] = whole ? { url: it.url, size: it.size ?? 1, as: it.as, name: it.name } : it.url; took(it.as); draw(); onChange(); };
       const mark = el('span', 'an-mp-yours', 'Yours'); mark.style.cssText = 'align-self:center;writing-mode:vertical-rl;transform:rotate(180deg);font-size:10px;letter-spacing:.08em;text-transform:uppercase;opacity:.55;margin:0 2px 0 6px;border-right:1px solid currentColor;padding-right:5px';
       grid.append(mark);
       for (const it of mine) {
-        const on = remembered[key] === it.url, t = el('button', on ? 'an-mp-tile an-db-on' : 'an-mp-tile');
+        const on = held() === it.url, t = el('button', on ? 'an-mp-tile an-db-on' : 'an-mp-tile');
         t.type = 'button'; t.setAttribute('aria-pressed', String(on)); t.dataset.ownArt = what; t.title = `${it.name} · your own picture. Right-click: take it off this row (what is already on maps keeps it).`; t.style.position = 'relative';
         const sw = el('span', 'an-mp-swatch'); showSwatch(sw, it.thumb || it.url, '#6e6c64'); if (what === 'wall') sw.style.backgroundSize = 'auto 260%';
         t.append(sw, el('span', '', it.name.split(' ').slice(0, 3).join(' ')));
         t.addEventListener('click', () => chosen(it));
-        t.addEventListener('contextmenu', (e) => { e.preventDefault(); ownArt.drop(what, it.url); if (remembered[key] === it.url) remembered[key] = ''; draw(); onChange(); });
+        t.addEventListener('contextmenu', (e) => { e.preventDefault(); ownArt.drop(what, it.url); if (held() === it.url) remembered[key] = whole ? null : ''; draw(); onChange(); });
         grid.append(t);
       }
       const adder = (label, tip, how, data) => { const t = el('button', 'an-mp-tile'); t.type = 'button'; t.dataset.ownAdd = data; t.title = tip; t.style.borderStyle = 'dashed'; const sw = el('span', 'an-mp-swatch', '+'); sw.style.cssText = 'display:flex;align-items:center;justify-content:center;font-size:18px;background:transparent'; t.append(sw, el('span', '', label)); t.addEventListener('click', async () => { const it = await how(what); if (it?.url) chosen(it); else draw(); }); grid.append(t); };
-      const noun = what === 'wall' ? 'a strip of wall' : what === 'door' ? 'a door leaf' : what === 'window' ? 'a window' : 'roofing';
+      const noun = what === 'wall' ? 'a strip of wall' : what === 'door' ? 'a door leaf' : what === 'window' ? 'a window' : what === 'decor' ? 'anything: a barrel, a cart, a bush, a rug' : what === 'ground' ? 'a ground texture: dirt, cobbles, grass' : 'roofing';
       if (ownArt.browser?.()) adder('Pick in Nexus', `Opens your asset browser: click ${noun} there and it joins this row. Esc: not now.`, ownArt.pick, 'browser');
       adder('From a file', `Foundry's file browser: a picture of ${noun} kept on your disk.`, ownArt.file, 'file');
     };
@@ -492,21 +494,28 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
         for (const id of AREA_FLOORS) {
           const on = id === floor, t = el('button', on ? 'an-mp-tile an-db-on' : 'an-mp-tile'); t.type = 'button'; t.setAttribute('aria-pressed', String(on)); t.dataset.areaFloor = id;
           const sw = el('span', 'an-mp-swatch'), base = tileColour(id, remembered.cave); sw.style.background = base; floorSwatchSoon(sw, id, base);
-          t.append(sw, el('span', '', tileName(id))); t.addEventListener('click', () => { remembered.areaFloor = id; draw(); onChange(); }); grid.append(t);
+          t.append(sw, el('span', '', tileName(id))); t.addEventListener('click', () => { remembered.areaFloor = id; remembered.pathImage = ''; draw(); onChange(); }); grid.append(t);
         }
+        // (The GM's own ground: laid as the floor its kind of path is, with its picture in place of our painted one.)
+        ownTiles('ground', 'pathImage', (as) => { const laid = PATH_KINDS[as]?.floor; if (AREA_FLOORS.includes(laid)) remembered.areaFloor = laid; });
         const styles = TEXTURE_STYLES[floor];
         if (styles) row.append(choice('Style', styles, remembered.styles[floor] || styles[0][0], (v) => { remembered.styles[floor] = v; }));
         if (shape === 'all') { const fill = el('button', 'an-mp-act an-mp-fill'); fill.type = 'button'; fill.dataset.selectAct = 'fillMap'; fill.title = 'Lays this floor under the whole map. Laid again, it takes the place of the last.'; fill.innerHTML = '<i class="fa-solid fa-fill-drip"></i>'; fill.append(el('span', '', `Lay ${tileName(floor).toLowerCase()} under the whole map`)); fill.addEventListener('click', () => onSelectAct('fillMap')); row.append(fill); }
         else row.append(slider('Soft edge', BRUSH_EDGE, 'edge', 0.1, ' sq'));
       } else {
       for (const id of PATH_IDS) {
-        const k = PATH_KINDS[id], on = id === now, t = el('button', on ? 'an-mp-tile an-db-on' : 'an-mp-tile'); t.type = 'button'; t.setAttribute('aria-pressed', String(on)); t.dataset.path = id; t.title = `${k.group}: ${k.label}`;
+        const k = PATH_KINDS[id], on = id === now && !remembered.pathImage, t = el('button', on ? 'an-mp-tile an-db-on' : 'an-mp-tile'); t.type = 'button'; t.setAttribute('aria-pressed', String(on)); t.dataset.path = id; t.title = `${k.group}: ${k.label}`;
         const sw = el('span', 'an-mp-swatch');
         if (k.type === 'pieces') { const pic = thumb(k.kind); if (pic) { const img = el('canvas'); img.width = pic.width; img.height = pic.height; img.getContext('2d')?.drawImage(pic, 0, 0); sw.append(img); } else sw.style.background = '#6a5236'; }
         else { const floor = k.type === 'water' ? 'water' : k.floor, base = tileColour(floor, remembered.cave); sw.style.background = base; floorSwatchSoon(sw, floor, base); }
         t.append(sw, el('span', '', k.label));
-        t.addEventListener('click', () => { remembered.pathKind = id; remembered.pathWide = PATH_KINDS[id].wide; draw(); onChange(); }); grid.append(t);
+        t.addEventListener('click', () => { remembered.pathKind = id; remembered.pathWide = PATH_KINDS[id].wide; remembered.pathImage = ''; draw(); onChange(); }); grid.append(t);
       }
+      // The GM's own ground along the line: a road or a street as ever — its width, its soft edge, the sun on it —
+      // with their picture in place of our painted one. Which of our paths it is laid as says the rest.
+      const GROUND_PATHS = PATH_IDS.filter((id) => PATH_KINDS[id].type === 'floor');
+      ownTiles('ground', 'pathImage', (as) => { if (GROUND_PATHS.includes(as)) { remembered.pathKind = as; remembered.pathWide = PATH_KINDS[as].wide; } });
+      if (remembered.pathImage) { if (kind.type !== 'floor') { remembered.pathKind = 'road'; remembered.pathWide = PATH_KINDS.road.wide; } row.append(choice('Laid as', GROUND_PATHS.map((id) => [id, PATH_KINDS[id].label]), GROUND_PATHS.includes(now) ? now : 'road', (v) => { remembered.pathKind = v; remembered.pathWide = PATH_KINDS[v].wide; ownArt?.as?.('ground', remembered.pathImage, v); })); }
       remembered.pathWide = pathWideOf(now, remembered.pathWide);
       row.append(kind.type === 'pieces' ? slider('Size', PATH_PIECE, 'pathWide', PATH_PIECE.step, '', (v) => `${Math.round(v * 100)}%`) : slider('Width', PATH_WIDE, 'pathWide', PATH_WIDE.step, ' sq'));
       if (remembered.pathSmooth === undefined) remembered.pathSmooth = true;
@@ -558,10 +567,10 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
       if (!lock) pickRow.append(where);
       pickRow.append(search); body.append(pickRow);
       const chips = grid, ticked = brushChoices().kinds;
-      const pick = (id) => { if (lock) lock.pick = id; else remembered.kinds[remembered.where] = [id]; draw(); onChange(); };
-      const mix = (id) => { const now = remembered.kinds[remembered.where] ?? [], next = now.includes(id) ? now.filter((k) => k !== id) : [...now, id]; remembered.kinds[remembered.where] = next.length ? next.slice(-MIX_MOST) : now; draw(); onChange(); };
+      const pick = (id) => { if (lock) lock.pick = id; else remembered.kinds[remembered.where] = [id]; remembered.ownDecor = null; draw(); onChange(); };
+      const mix = (id) => { const now = remembered.kinds[remembered.where] ?? [], next = now.includes(id) ? now.filter((k) => k !== id) : [...now, id]; remembered.kinds[remembered.where] = next.length ? next.slice(-MIX_MOST) : now; remembered.ownDecor = null; draw(); onChange(); };
       for (const id of lock ? lock.kinds : brushKindsFor(remembered.where)) {
-        const on = ticked.includes(id), c = el('button', on ? 'an-db-chip an-mp-tile an-db-on' : 'an-db-chip an-mp-tile'); c.type = 'button'; c.setAttribute('aria-pressed', String(on)); c.dataset.kind = id; c.title = DECOR_KINDS[id].label;
+        const on = ticked.includes(id) && !(remembered.ownDecor && !lock), c = el('button', on ? 'an-db-chip an-mp-tile an-db-on' : 'an-db-chip an-mp-tile'); c.type = 'button'; c.setAttribute('aria-pressed', String(on)); c.dataset.kind = id; c.title = DECOR_KINDS[id].label;
         const pic = thumb(id); if (pic) { const img = el('canvas', 'an-mp-pic'); img.width = 48; img.height = 40; try { const g = img.getContext('2d'); const s = Math.min(48 / pic.width, 40 / pic.height); g.drawImage(pic, (48 - pic.width * s) / 2, (40 - pic.height * s) / 2, pic.width * s, pic.height * s); } catch { /* no picture */ } c.append(img); }
         c.append(el('span', '', DECOR_KINDS[id].label));
         // One kind at a time: picking one puts out the other. Ctrl- or Shift-click adds a kind to those picked (or
@@ -571,10 +580,16 @@ export function openBrushBar({ onClose = () => {}, onChange = () => {}, onTab = 
         if (ticked.length > 1) c.title = `${DECOR_KINDS[id].label} · ${on ? 'one of the mix' : 'Ctrl-click to add to the mix'}`;
         chips.append(c);
       }
+      // The GM's own pictures as decorations, after ours: laid, picked up, moved and kept in prefabs like any other,
+      // with the engines' shadows, light, snow, rain and season on them. How one stands is how long its shadow is.
+      if (!lock) {
+        ownTiles('decor', 'ownDecor');
+        if (remembered.ownDecor) row.append(seg('Stands', [['flat', 'Flat'], ['low', 'Low'], ['waist', 'Waist'], ['tall', 'Tall']], remembered.ownDecor.as || 'waist', (v) => { remembered.ownDecor = { ...remembered.ownDecor, as: v }; ownArt?.as?.('decor', remembered.ownDecor.url, v); }, 'ownStands'));
+      }
       // A search over the kinds: typing hides the tiles that don't match; Enter picks the first one left, Esc clears it.
-      const filter = () => { const q = query.trim().toLowerCase(); for (const c of chips.children) c.hidden = !!q && !kindMatches(c.dataset.kind, q); };
+      const filter = () => { const q = query.trim().toLowerCase(); for (const c of chips.children) c.hidden = !!q && !!c.dataset.kind && !kindMatches(c.dataset.kind, q); };
       search.addEventListener('input', () => { query = search.value; filter(); });
-      search.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const first = [...chips.children].find((c) => !c.hidden); if (first) pick(first.dataset.kind); } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); query = ''; search.value = ''; filter(); } });
+      search.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const first = [...chips.children].find((c) => !c.hidden && c.dataset.kind); if (first) pick(first.dataset.kind); } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); query = ''; search.value = ''; filter(); } });
       filter();
       row.append(slider('Brush', BRUSH_SIZE, 'size', BRUSH_SIZE.step, ' sq'), slider('Density', BRUSH_THICK, 'thick', 0.1));
       extra.append(slider('Decoration size', BRUSH_SCALE, 'scale', 0.1), slider('Decoration height', BRUSH_TALL, 'tall', 0.1));

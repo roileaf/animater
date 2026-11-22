@@ -1897,7 +1897,15 @@ export const DECOR_DRAFTS = Object.freeze(Object.fromEntries(Object.entries(DRAF
 const SETS = { rock: 'both', boulder: 'both', pebbles: 'both', mushrooms: 'both', bones: 'both', crate: 'both', barrel: 'both', campfire: 'both', roots: 'both', crystals: 'both', brazier: 'both', sacks: 'both', sarcophagus: 'both', coffin: 'both', rails: 'both', pickaxe: 'both', treasure: 'both', papers: 'both', cage: 'both', brokenPillar: 'both', anvil: 'both', urns: 'both', timbers: 'both', stakeFence: 'both', strawBed: 'both', boneRubble: 'both', produce: 'both', bedroll: 'both', bed: 'both', rug: 'both', bookshelf: 'both', strongbox: 'both', hearth: 'both', desk: 'both', throne: 'both', altar: 'both', statue: 'both', pottedPlant: 'both', bathtub: 'both', counter: 'both', brokenFurniture: 'both', streamRock: 'both', steppingStones: 'both',
   candles: 'both', chains: 'both', bloodstain: 'both', carcass: 'both', rubbish: 'both', weaponRack: 'both', firewood: 'both', tracks: 'both', mineCart: 'cave', oreVein: 'cave', hangingRoots: 'cave', dripSpot: 'cave' };
 const setOf = (id) => KINDS[id].set ?? SETS[id] ?? 'surface';
-export const DECOR_KINDS = Object.freeze(Object.fromEntries(Object.entries(KINDS).map(([id, k]) => [id, Object.freeze({ id, label: k.label, size: k.size, height: k.height, flat: !!k.flat, tree: !!k.tree, set: setOf(id), water: k.water ?? null, light: k.light ?? null, cloth: k.cloth ?? false, glow: k.glow ?? (id === 'crystals' ? { color: '#9ac8f0', radius: 1.2 } : null) })])));
+/**
+ * The kinds a decoration has when it is no painting of ours but a picture the GM owns (its `art`: where that picture
+ * is kept): one that stands and one that lies flat. They are kinds so that everything which asks a decoration what
+ * it is — whether it lies flat, how it is laid, picked up, kept in a prefab — has an answer; they are in no scatter
+ * and no list of ours (their `set` is nobody's), and nothing here paints them.
+ */
+export const OWN_KINDS = Object.freeze(['ownArt', 'ownArtFlat']);
+const ownKind = (id, flat) => Object.freeze({ id, label: 'Your picture', size: 1, height: flat ? 0 : 0.6, flat, tree: false, set: 'own', water: null, light: null, cloth: false, glow: null, own: true });
+export const DECOR_KINDS = Object.freeze({ ...Object.fromEntries(Object.entries(KINDS).map(([id, k]) => [id, Object.freeze({ id, label: k.label, size: k.size, height: k.height, flat: !!k.flat, tree: !!k.tree, set: setOf(id), water: k.water ?? null, light: k.light ?? null, cloth: k.cloth ?? false, glow: k.glow ?? (id === 'crystals' ? { color: '#9ac8f0', radius: 1.2 } : null) })])), ownArt: ownKind('ownArt', false), ownArtFlat: ownKind('ownArtFlat', true) });
 export const DECOR_IDS = Object.freeze(Object.keys(KINDS));
 
 

@@ -111,7 +111,7 @@ export const DRAW_SHAPES = Object.freeze([['line', 'Line'], ['area', 'Area'], ['
  * squares (0: hard); `whole` marks the ground under a whole map, which is replaced when another is laid. Water is a
  * still pool. Nothing here reads a map picture: this is how ground is laid on a scene that has none.
  */
-export function areaRegion(floor, { points = null, box = null, style = '', edge = 1, whole = false, name = '', levelId = null } = {}) {
+export function areaRegion(floor, { points = null, box = null, style = '', edge = 1, whole = false, name = '', levelId = null, image = '' } = {}) {
   const outline = points ? tidyLine(points, 2) : null;
   const shape = outline?.length >= 3 ? { type: 'polygon', points: outline.flat().map((v) => Math.round(v)), hole: false }
     : box && box.width > 0 && box.height > 0 ? { type: 'rectangle', x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height), rotation: 0, hole: false } : null;
@@ -120,14 +120,16 @@ export function areaRegion(floor, { points = null, box = null, style = '', edge 
   const own = floor === 'water'
     ? { floor, waterKind: 'still', flowTo: '', current: '', waterDepth: 'shallow', texture: 'on', textureStyles: { water: style || 'shallow' }, ...soft }
     : { floor, texture: 'on', ...(style ? { textureStyles: { [floor]: style } } : {}), ...soft };
-  return { name: name || (whole ? 'Ground' : floor === 'water' ? 'Pond' : 'Ground patch'), color: floorColour(floor), levels: levelId ? [levelId] : [], shapes: [shape], flags: { animater: { ...own, ...(whole ? { wholeMap: true } : {}) } } };
+  // (A picture of ground the GM owns, laid in place of our own painted one: where it is kept. Never over water.)
+  const pictured = floor !== 'water' && typeof image === 'string' && image ? { textureImage: image.slice(0, 400) } : {};
+  return { name: name || (whole ? 'Ground' : floor === 'water' ? 'Pond' : 'Ground patch'), color: floorColour(floor), levels: levelId ? [levelId] : [], shapes: [shape], flags: { animater: { ...own, ...pictured, ...(whole ? { wholeMap: true } : {}) } } };
 }
 
 /**
  * The region a drawn path is saved as (pure), or null when the line is too short to be one. `wide` squares for a
  * floor or water, times-usual for pieces; `levelId` the level being painted on.
  */
-export function pathRegion(id, drawn, { grid = 100, wide = null, smooth = true, seed = 1, levelId = null, blocks = false } = {}) {
+export function pathRegion(id, drawn, { grid = 100, wide = null, smooth = true, seed = 1, levelId = null, blocks = false, image = '' } = {}) {
   const k = pathKind(id), points = tidyLine(drawn, grid * 0.1), w = pathWideOf(id, wide);
   if (points.length < 2 || length(points[0], points.at(-1)) + points.length < 3) return null;
   const levels = levelId ? [levelId] : [];
@@ -147,7 +149,7 @@ export function pathRegion(id, drawn, { grid = 100, wide = null, smooth = true, 
   const floor = k.type === 'water' ? 'water' : k.floor, edge = k.edge > 0 ? { stepEdge: k.edge } : { stepEdgeOff: true };
   const own = k.type === 'water'
     ? { floor, waterKind: k.waterKind, flowTo: flowAlong(points), current: '', waterDepth: k.depth, texture: 'on', textureStyles: { water: k.style }, ...edge }
-    : { floor, texture: 'on', textureStyles: { [floor]: k.style }, ...edge, ...(k.overWater ? { overWater: true } : {}) };
+    : { floor, texture: 'on', textureStyles: { [floor]: k.style }, ...edge, ...(k.overWater ? { overWater: true } : {}), ...(typeof image === 'string' && image ? { textureImage: image.slice(0, 400) } : {}) };
   return { name: k.label, color: floorColour(floor), levels, shapes, flags: { animater: { ...own, ...drawnAs } } };
 }
 

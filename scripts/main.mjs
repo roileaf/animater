@@ -256,6 +256,7 @@ import { WINDOW_PATTERN, patternScaleOf, shaftOf, GLAZED, skyWindowOf, duskOf, s
 import { tileSunlight, tileHeight, tileLeaves, solidShare, leafShare, canopyFall, directSun, createCanopyLight, createTreeSway } from "./engines/motion/canopy-light.mjs";
 import { tileProps, PROP_CHOICE } from "./engines/motion/tile-props.mjs";
 import { greenShare, reliefPixels, underConditions } from "./engines/motion/decor-from-art.mjs";
+import { createCovers } from "./engines/motion/roof-cover.mjs";
 import { TREE_KINDS, createTreePatterns, treeKindOf } from "./engines/motion/tree-kinds.mjs";
 import { STRIKE_LIGHT_SQUARES, openingStrike, strikePlace, strikeAngle as strikeFrom, boltDue, createLightningBolts } from "./engines/motion/lightning-bolt.mjs";
 import { ARRIVALS, ARRIVAL_MS, arrivalHere, arrivalAt, arrivalShake, arrivalFlash, arrivalWords } from "./engines/motion/scene-arrival.mjs";
@@ -2697,7 +2698,27 @@ const decorLights = createDecorLights({
   centre: () => (canvas?.stage ? { x: canvas.stage.pivot.x, y: canvas.stage.pivot.y } : null),
   max: DECOR_LIGHTS_MOST,
 });
-const decorations = createDecorations({ PIXI: globalThis.PIXI, flat: decorDrawRoot("decorFlat"), shadows: decorDrawRoot("decorShadows"), ground: decorDrawRoot("decorations"), above: decorDrawRoot("decorCrowns"), grid: () => canvas.grid?.size ?? 100, render: (object, renderTexture, transform = null) => canvas.app.renderer.render(object, { renderTexture, clear: true, ...(transform ? { transform } : {}) }) });
+// The GM's own pictures laid as decorations (a decoration's `art`: an asset pack's barrel, cart or bush, picked on the
+// Decorate bar): read from where they are kept, once each, and handed to the decorations ready to draw — the picture,
+// it under the season where it is something that grows, and its relief for the light. One not yet arrived is left
+// undrawn and the decorations are drawn again when it has.
+const decorCovers = createCovers({
+  load: (src) => new Promise((done, fail) => { const img = new Image(); img.crossOrigin = "anonymous"; img.onload = () => done(img); img.onerror = () => fail(new Error("no picture")); img.src = src; }),
+  read: (img) => { const w = img.naturalWidth, h = img.naturalHeight, c = document.createElement("canvas"); c.width = Math.min(w, 64); c.height = Math.min(h, 64); const g = c.getContext("2d", { willReadFrequently: true }); g.drawImage(img, 0, 0, c.width, c.height); return { data: g.getImageData(0, 0, c.width, c.height).data, width: c.width, height: c.height }; },
+  changed: () => { setTimeout(() => { try { syncDecorations(); } catch (err) { runtime?.trace?.("decorations", `own art: ${err?.message ?? err}`); } }, 0); },
+  most: 96,
+});
+const decorArtTextures = new Map();
+const ownDecorArt = Object.assign((url, look) => {
+  const cover = decorCovers.get(url); if (!cover) return null;
+  let texture = decorArtTextures.get(url);
+  if (!texture || texture.destroyed || texture.baseTexture?.destroyed) { texture = globalThis.PIXI.Texture.from(cover.image); decorArtTextures.set(url, texture); }
+  // (These are read as they are asked for, not a few a pass as the scene's tiles are: a decoration waits on its picture.)
+  tileSeasonLeft = Math.max(tileSeasonLeft, 2);
+  return { texture, art: tileInSeason(texture, look?.season) ?? texture, maps: tileRelief(texture) };
+}, { state: (url) => decorCovers.state(url) });
+Hooks.on("canvasTearDown", () => { for (const t of decorArtTextures.values()) { try { t?.destroy(true); } catch { /* gone */ } } decorArtTextures.clear(); });
+const decorations = createDecorations({ PIXI: globalThis.PIXI, ownArt: ownDecorArt, flat: decorDrawRoot("decorFlat"), shadows: decorDrawRoot("decorShadows"), ground: decorDrawRoot("decorations"), above: decorDrawRoot("decorCrowns"), grid: () => canvas.grid?.size ?? 100, render: (object, renderTexture, transform = null) => canvas.app.renderer.render(object, { renderTexture, clear: true, ...(transform ? { transform } : {}) }) });
 // (Past the cap on lit decorations, those nearest the middle of the view are lit: chosen again a moment after the view moves, not
 // only when the decorations are drawn again, so panning away never leaves the wrong lamps lit. The audit's finding.)
 let decorPanTimer = null;
@@ -3304,7 +3325,7 @@ Hooks.on("updateScene", (scene, change, options, userId) => { if (scene?.id !== 
 // The sun or moon aims their shadows: away from it, as long as it is low.
 const lightDecorations = () => {
   if (!decorations.busy) return;
-  const sun = sunNow && !shadowsOffHere() ? { angle: (((Number(sunNow.angle) || 0) + 180) * Math.PI) / 180, length: Math.min(3, 1 / Math.tan((Math.max(6, Number(sunNow.height) || 55) * Math.PI) / 180)), strength: (Number.isFinite(Number(sunNow.strength)) ? Math.max(0, Math.min(1, Number(sunNow.strength))) : 1) * directSun(skyCoverNow) } : null;
+  const sun = sunNow && !shadowsOffHere() ? { angle: (((Number(sunNow.angle) || 0) + 180) * Math.PI) / 180, length: Math.min(3, 1 / Math.tan((Math.max(6, Number(sunNow.height) || 55) * Math.PI) / 180)), strength: (Number.isFinite(Number(sunNow.strength)) ? Math.max(0, Math.min(1, Number(sunNow.strength))) : 1) * directSun(skyCoverNow), color: sunlightColor() } : null;
   // (The snow on them is the ground's: as much as lies, lit by the same sun or moon.)
   let snowAmount = 0; try { snowAmount = snowCoverOn() ? Number(groundOf().now.snow) || 0 : 0; } catch { /* none */ }
   decorations.light({ sun, treesByCanopy: canopyOn() && !!canopyLight.treeShade, snowAmount: undergroundScene() ? 0 : snowAmount, moon: !!sunNow?.moon });
@@ -3380,7 +3401,9 @@ const syncFloorLooks = () => {
       if (notOnFloor(own, bound)) continue;
       const floor = plainFloorOf(region);
       if (floor && showsTexture(own, sceneChoice) && !movingIds.has(region.id)) {
-        const spec = { id: region.id, areas: iceAreas(region), over: own.overWater === true, floor: textureFloor(own, floor), style: textureStyleOf(own, textureFloor(own, floor)), seconds: stepLook(own, floor).seconds, edge: stepEdge(own), scale: stepScale(own), opacity: textureOpacity(own), blades: floorLevel.blades, shine: floorLevel.shine, roofed: roofedRegion(regionAreas(region)) };
+        const spec = { id: region.id, areas: iceAreas(region), over: own.overWater === true, floor: textureFloor(own, floor), style: textureStyleOf(own, textureFloor(own, floor)), seconds: stepLook(own, floor).seconds, edge: stepEdge(own), scale: stepScale(own), opacity: textureOpacity(own), blades: floorLevel.blades, shine: floorLevel.shine, roofed: roofedRegion(regionAreas(region)),
+          // (A picture of ground the GM owns, laid in place of the tile painted for this floor: floor-looks.mjs.)
+          image: typeof own.textureImage === "string" ? own.textureImage : "" };
         const home = floorPlaneOf(bound);
         if (home) spec.plane = { ...home, zIndex: MAP_SORT.floorTextures };
         painted.push(spec);
