@@ -18,8 +18,8 @@ const blowingFrom = (bearing) => ((bearing + 180 - 90) * Math.PI) / 180;
 // Calendaria's weather (its getCurrentWeather) and the scene's own: how windy (0 still – 1 a gale), which way the wind
 // blows (radians, the way it goes), how hot (°C, null when unknown), whether a storm throws lightning and how fierce it
 // is (`severity`, 0 none – 1 the worst: stormSeverity). `own`: the scene's own wind ({ wind, windFrom }: a SCENE_WINDS
-// key or 'sheltered', a WIND_FROM key), over the weather's. `fx`: FXMaster's effects on the scene, `fxFilters` its filters.
-export function weatherOf({ calendaria = null, scene = '', fx = {}, fxFilters = {}, own = null } = {}) {
+// key or 'sheltered', a WIND_FROM key), over the weather's.
+export function weatherOf({ calendaria = null, scene = '', own = null } = {}) {
   const speed = Number(calendaria?.wind?.speed);
   // Calendaria gives its wind as a force from 0 to 5, or a speed in km/h.
   let wind = Number.isFinite(speed) ? Math.min(1, speed <= 5 ? speed / 5 : speed / 60) : /storm|blizzard/i.test(scene) ? 0.8 : /rain|snow/i.test(scene) ? 0.4 : 0.2;
@@ -33,21 +33,16 @@ export function weatherOf({ calendaria = null, scene = '', fx = {}, fxFilters = 
   const windAngle = blowingFrom(own?.windFrom in WIND_FROM ? WIND_FROM[own.windFrom] : Number.isFinite(toward) ? toward : WIND_FROM.nw);
   const temperature = Number.isFinite(Number(calendaria?.temperature)) && calendaria?.temperature !== null ? Number(calendaria.temperature) : null;
   const named = `${calendaria?.id ?? ''} ${calendaria?.label ?? ''} ${scene ?? ''}`;
-  const fxLightning = Object.values(fxFilters ?? {}).find((f) => /lightning/i.test(String(f?.type ?? '')));
-  const storm = /thunder|lightning|storm/i.test(named.replace(/(sand|dust|snow|fire)[- ]?storm/gi, '')) && !/sand|dust|snow|blizzard/i.test(calendaria?.id ?? '')
-    || Object.values(fx ?? {}).some((e) => /lightning/i.test(String(e?.type ?? ''))) || !!fxLightning;
-  return { wind, windStated, windAngle, temperature, storm, severity: storm ? stormSeverity({ calendaria, wind, fxLightning }) : 0 };
+  const storm = /thunder|lightning|storm/i.test(named.replace(/(sand|dust|snow|fire)[- ]?storm/gi, '')) && !/sand|dust|snow|blizzard/i.test(calendaria?.id ?? '');
+  return { wind, windStated, windAngle, temperature, storm, severity: storm ? stormSeverity({ calendaria, wind }) : 0 };
 }
 
 // How fierce a storm is (0.15 – 1): Calendaria's rain (its precipitation intensity, 0–1) and wind (0–1) when it gives
-// them; else how often FXMaster's own lightning flashes (`fxLightning`, its filter: `options.frequency` ms apart, 1.5 s
-// the worst, 15 s and slower the mildest); else a middling storm.
-export function stormSeverity({ calendaria = null, wind = 0, fxLightning = null } = {}) {
+// them; else a middling storm.
+export function stormSeverity({ calendaria = null, wind = 0 } = {}) {
   const clamp = (v) => Math.min(1, Math.max(0.15, v));
   const rain = Number(calendaria?.precipitation?.intensity);
   if (Number.isFinite(rain) && rain > 0) return clamp(0.2 + 0.55 * rain + 0.25 * (Number(wind) || 0));
-  const every = Number(fxLightning?.options?.frequency ?? fxLightning?.frequency);
-  if (Number.isFinite(every) && every > 0) return clamp(1 - (every - 1500) / 13500);
   return 0.55;
 }
 
@@ -213,9 +208,6 @@ uniform vec4 uBow;      // a rainbow: its centre (x, y, scene pixels), radius an
 uniform vec2 uBowDir;   // the way it faces: away from the sun
 uniform vec4 uAmbient;  // the open air's colour at this time of day (rgb), and how strongly (a)
 uniform vec4 uVeil;     // the weather's light outdoors (rgb), and how strongly (a): a dark wash in its colour over everything
-uniform sampler2D uFxClouds; // FXMaster's clouds as drawn now (their shapes), and where their shadows fall from them
-uniform vec2 uFxShift;
-uniform float uFxOn;
 // The weather on the map (sky-weather.mjs weatherScene): two things falling or blowing (kind, amount, size; their colour),
 // fog, the clouds seen from above (their colour, how thick; uCover how much of the sky), where a cloud's shadow falls from
 // it, a light over all, aurora, sparks, wisps (rgb, amount), and the odd ones: rays, static, meteors, a swirl (kind, amount).
@@ -740,11 +732,7 @@ void main(){
     float cloud = 0.0, deckDark = 0.0; vec3 deckAdd = vec3(0.0);
     // (The sun between the clouds is the clear sky's: uStrength is already dimmed by the cover.)
     float sun = min(1.0, uStrength / max(0.1, 1.0 - uClouds));
-    if (uFxOn > 0.5 && uStrength > 0.005) {
-      // FXMaster's clouds drawn over the map: each casts its own shadow, thrown away from the sun.
-      // (Their puffs are soft and overlap: the shadow takes their denser middles, with a firm edge.)
-      cloud = smoothstep(0.12, 0.3, texture2D(uFxClouds, vUv - uFxShift).a) * 0.5 * sun * over;
-    } else if (uClouds > 0.05 && uStrength > 0.005) {
+    if (uClouds > 0.05 && uStrength > 0.005) {
       // (A cloud's shadow lies uCloudShift away from it: the cloud drawn above it, where the sun throws it.)
       float edge = mix(0.74, 0.3, uDeck.x), d = cloudDeck(px - uCloudShift, t, uCloudRun, uWindDir, uWind, uGrid);
       vec3 lit = vec3(1.1, 1.06, 0.97) * (1.0 - 0.38 * uDeck.y), under = mix(vec3(0.56, 0.6, 0.68), vec3(0.47, 0.5, 0.57), min(1.0, uDeck.y * 0.5 + smoothstep(edge, edge + 0.24, d) * (0.45 + 0.5 * uDeck.y)));
@@ -1205,7 +1193,7 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
   // The rainbow comes and goes over some seconds, never at once: `bow` where it is now, `bowTo` where look wants it.
   let bow = 0, bowTo = 0;
   // The pass over the roofs: the weather's light (`casting`) and the clouds' shadows (`clouding`).
-  let casting = false, tinting = false, clouding = false, weathering = false, fxOn = false, fxShadow = null;
+  let casting = false, tinting = false, clouding = false, weathering = false;
   // The clocks outlast the meshes: built again, the clouds and what falls carry on from where they are.
   const clocks = { time: 0, run: 0, fall: 0 };
   // The regions with weather of their own, drawn in their own shape over the map's air.
@@ -1218,8 +1206,7 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
     for (const m of meshes) { try { m.parent?.removeChild(m); m.destroy(); } catch { /* gone with the canvas */ } }
     for (const m of masks) { try { m.destroy(true); } catch { /* gone */ } }
     try { roofShown?.destroy(true); } catch { /* gone */ }
-    try { fxShadow?.destroy(true); } catch { /* gone */ }
-    meshes = []; masks = []; own = []; area = null; roofShown = null; fxShadow = null; fxOn = false; lampMask = null; lampKey = null;
+    meshes = []; masks = []; own = []; area = null; roofShown = null; lampMask = null; lampKey = null;
   };
   // The roofs as drawn now (each faded as far as Foundry fades it), into a small picture the birds' pass reads.
   const drawRoofs = (roofs) => {
@@ -1329,7 +1316,7 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
         uWater: bake(water, 1), uLow: bakeWidened(), uFrozen: bake(frozen, 2), uFreeze: (bakeMarks = (green) => bake(freezes, 1, [], icy, openRoofed, green, 0x000000))(null), uFlow: flows.length ? bakeFlow(flows) : PIXI.Texture.EMPTY, uIndoor: bake(indoors, 1, open, [], [], null, 0xffffff, indoorSoft),
         uGrass: bake(grass, 2), uTinted: tinted.length ? bake(tinted, grid * k * 0.3) : PIXI.Texture.EMPTY, uBare: bake(bare, 2), uRoofShown: PIXI.Texture.EMPTY, uSunlit: PIXI.Texture.WHITE, uTreeShade: PIXI.Texture.EMPTY, uCrowns: PIXI.Texture.EMPTY,
         uSize: [bounds.width, bounds.height], uWindDir: [Math.SQRT1_2, Math.SQRT1_2], uBird: [0, 0, 0, 0], uTime: clocks.time, uCloudRun: clocks.run, uWind: 0.3, uStrength: 0, uClouds: 0,
-        uGrid: grid, uMovingWater: movingWater ? 1 : 0, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMelt: new Float32Array(16), uMist: 0, uFireflies: 0, uRain: 0, uPuddles: 1, uSplashes: 1, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uAmbient: [1, 1, 1, 0], uVeil: [1, 1, 1, 0], uFxClouds: PIXI.Texture.EMPTY, uFxShift: [0, 0], uFxOn: 0, uFallA: [0, 0, 1, 0], uFallAColor: [1, 1, 1, 1], uFallB: [0, 0, 1, 0], uFallBColor: [1, 1, 1, 1], uFogW: [1, 1, 1, 0], uCloudSky: [1, 1, 1, 0], uGlow: [1, 1, 1, 0], uAurora: [0, 0, 0, 0], uSparks: [0, 0, 0, 0], uWisps: [0, 0, 0, 0], uOdd: [0, 0, 0, 0], uCloudShift: [0, 0], uCover: 0, uSwirlAmount: 0, uFallsDown: 0, uFallTime: clocks.fall, uGloom: 0, uGloomLift: 0, uEye: [0, 0, 1000], uSnowRelief: PIXI.Texture.WHITE, uLampReach: PIXI.Texture.WHITE, uHasSnowGround: 0, uSnowSun: [-0.6, -0.5, 0.5, 0.8], uSnowSunColor: [1, 0.97, 0.9], uSnowLights: new Float32Array(16), uSnowLightColor: new Float32Array(12), uDeck: [0, 0, 0, 1], uSky: [0, 0, 0, 0], uSky2: [0, 0, 0, 0], uColor: [1, 0.95, 0.84],
+        uGrid: grid, uMovingWater: movingWater ? 1 : 0, uMode: 0, uFrozenAll: frozenAll ? 1 : 0, uGrassAll: grassAll ? 1 : 0, uWet: 0, uSnow: 0, uMelt: new Float32Array(16), uMist: 0, uFireflies: 0, uRain: 0, uPuddles: 1, uSplashes: 1, uIce: 0, uLitter: 0, uSeason: [0, 0, 0, 0], uMoon: 0, uBow: [0, 0, 1, 0], uBowDir: [0, 1], uAmbient: [1, 1, 1, 0], uVeil: [1, 1, 1, 0], uFallA: [0, 0, 1, 0], uFallAColor: [1, 1, 1, 1], uFallB: [0, 0, 1, 0], uFallBColor: [1, 1, 1, 1], uFogW: [1, 1, 1, 0], uCloudSky: [1, 1, 1, 0], uGlow: [1, 1, 1, 0], uAurora: [0, 0, 0, 0], uSparks: [0, 0, 0, 0], uWisps: [0, 0, 0, 0], uOdd: [0, 0, 0, 0], uCloudShift: [0, 0], uCover: 0, uSwirlAmount: 0, uFallsDown: 0, uFallTime: clocks.fall, uGloom: 0, uGloomLift: 0, uEye: [0, 0, 1000], uSnowRelief: PIXI.Texture.WHITE, uLampReach: PIXI.Texture.WHITE, uHasSnowGround: 0, uSnowSun: [-0.6, -0.5, 0.5, 0.8], uSnowSunColor: [1, 0.97, 0.9], uSnowLights: new Float32Array(16), uSnowLightColor: new Float32Array(12), uDeck: [0, 0, 0, 1], uSky: [0, 0, 0, 0], uSky2: [0, 0, 0, 0], uColor: [1, 0.95, 0.84],
       };
       const geometry = new PIXI.Geometry()
         .addAttribute('aVertexPosition', [bounds.x, bounds.y, bounds.x + bounds.width, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height, bounds.x, bounds.y + bounds.height], 2)
@@ -1375,7 +1362,7 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
         uBow: area ? [area.bounds.width / 2 + Math.cos(bowSun) * area.bounds.width * 0.3, area.bounds.height / 2 + Math.sin(bowSun) * area.bounds.height * 0.3, Math.min(area.bounds.width, area.bounds.height) * 0.45 * bowSize, bow] : [0, 0, 1, 0],
         uBowDir: [-Math.cos(bowSun), -Math.sin(bowSun)] });
       meshes[0].visible = wet > 0.02 || (season?.[3] ?? 0) > 0.005 || litter > 0.01;
-      clouding = light > 0.005 && (clouds > 0.05 || fxOn);
+      clouding = light > 0.005 && clouds > 0.05;
       gloomy = gloom > 0.005;
       meshes[4].visible = clouding || casting || weathering || gloomy;
       meshes[3].visible = sunny && own[0].uBird[3] > 0.01;
@@ -1409,21 +1396,6 @@ export function createSurfaceLight({ PIXI, root, render, above = root, renderAt 
       if (tinting) drawRoofs(roofs);
       for (const u of own) u.uAmbient = tinting ? colour : [1, 1, 1, 0];
       meshes[6].visible = tinting;
-    },
-    // FXMaster's clouds (`clouds` their particles' container, null none): drawn small into a picture of the map, their
-    // shadows thrown `shift` ({ x, y } scene pixels) away from the sun. Called a few times a second while they show.
-    fxClouds(clouds = null, shift = { x: 0, y: 0 }) {
-      if (!own.length || !area) return;
-      fxOn = !!clouds && !!renderAt;
-      if (fxOn) {
-        fxShadow ??= PIXI.RenderTexture.create({ width: area.w, height: area.h });
-        const { k, bounds } = area, keep = clouds.filters;
-        clouds.filters = null;
-        try { renderAt(clouds, fxShadow, new PIXI.Matrix(k, 0, 0, k, -bounds.x * k, -bounds.y * k)); } catch { fxOn = false; } finally { clouds.filters = keep; }
-      }
-      set({ uFxClouds: fxOn ? fxShadow : PIXI.Texture.EMPTY, uFxOn: fxOn ? 1 : 0, uFxShift: [shift.x / area.bounds.width, shift.y / area.bounds.height] });
-      clouding = own[0].uStrength > 0.005 && (own[0].uClouds > 0.05 || fxOn);
-      meshes[4].visible = casting || clouding || weathering || fades.size > 0;
     },
     bird(flock, roofs = []) {
       if (!own.length) return;
@@ -1933,16 +1905,6 @@ export function weatherLight({ kind = '', rain = 0, snow = 0, storm = false, sev
   if (!casts.length) return [1, 1, 1, 0];
   const [r, g, b, s] = casts.reduce((m, c) => (c[3] > m[3] ? c : m));
   return [r, g, b, s * (0.35 + 0.65 * clamp(day))];
-}
-
-// FXMaster's clouds on a scene (its effects: { id: { type, options } }), as the cloud shadows should follow them: the way
-// they drift (`angle`, radians on the map), how fast (`speed` 0–1 as a wind) and whether they shadow themselves (`shadows`:
-// then the map's cloud shadows give way to theirs, which lie under the clouds you see). null: none.
-export function fxClouds(effects = {}) {
-  const cloud = Object.values(effects ?? {}).find((e) => e?.type === 'clouds');
-  if (!cloud) return null;
-  const o = cloud.options ?? {}, num = (v, d) => (Number.isFinite(Number(v?.value ?? v)) ? Number(v?.value ?? v) : d);
-  return { angle: (num(o.direction, 0) * Math.PI) / 180, speed: Math.min(1, Math.max(0, num(o.speed, 0.5))), shadows: (o.dropShadow?.value ?? o.dropShadow) === true };
 }
 
 // What it draws with, for warming ahead of the first frame (scene-shaders.mjs).

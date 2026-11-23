@@ -16,7 +16,7 @@ test('weatherOf reads Calendaria’s wind, heat and storm, else the scene’s we
   assert.equal(weatherOf({ calendaria: { id: 'thunderstorm', wind: { speed: 4 } } }).storm, true);
   assert.equal(weatherOf({ calendaria: { id: 'sandstorm', wind: { speed: 4 } } }).storm, false, 'no lightning in a sandstorm');
   assert.equal(weatherOf({ scene: 'rainStorm' }).storm, true);
-  assert.equal(weatherOf({ fx: { a: { type: 'lightning' } } }).storm, true, 'FXMaster’s lightning');
+  assert.equal(weatherOf({ fx: { a: { type: 'lightning' } }, fxFilters: { b: { type: 'lightning' } } }).storm, false, 'FXMaster’s lightning is its own: no storm of ours');
   assert.equal(weatherOf({}).temperature, null);
 });
 
@@ -108,7 +108,7 @@ test('the tiles\' snow: one mesh a roof or tree, drawn only while snow lies, fad
   assert.ok(added.every((m) => m.destroyed) && !layer.built);
 });
 
-test('a storm\'s severity: Calendaria\'s rain and wind, else FXMaster\'s lightning frequency, else middling; it sets how bright and how often', async () => {
+test('a storm\'s severity: Calendaria\'s rain and wind, else middling; it sets how bright and how often', async () => {
   const { weatherOf, stormSeverity, strikeStrength, doubleStrike } = await import('../../../scripts/engines/motion/sky-light.mjs');
   const fierce = weatherOf({ calendaria: { id: 'thunderstorm', precipitation: { type: 'rain', intensity: 1 }, wind: { speed: 5 } } });
   const mild = weatherOf({ calendaria: { id: 'thunderstorm', precipitation: { type: 'rain', intensity: 0.2 }, wind: { speed: 1 } } });
@@ -116,9 +116,7 @@ test('a storm\'s severity: Calendaria\'s rain and wind, else FXMaster\'s lightni
   assert.ok(mild.severity < 0.45 && mild.severity > 0.15);
   assert.equal(weatherOf({ calendaria: { id: 'clear' } }).severity, 0, 'no storm');
   assert.equal(weatherOf({ scene: 'rainStorm' }).severity, 0.55, 'the scene\'s storm alone: middling');
-  const fx = weatherOf({ fxFilters: { f0: { type: 'lightning', options: { frequency: 1500 } } } });
-  assert.ok(fx.storm && fx.severity === 1, 'FXMaster flashing every 1.5 s: the worst');
-  assert.ok(stormSeverity({ fxLightning: { options: { frequency: 20000 } } }) === 0.15, 'slow: the mildest');
+  assert.equal(stormSeverity({ fxLightning: { options: { frequency: 20000 } } }), 0.55, 'nothing of another module\'s is read');
   assert.ok(strikeStrength(1, 1) > strikeStrength(1, 0.2), 'brighter in a fierce storm');
   assert.ok(strikeStrength(0, 1) < strikeStrength(1, 1), 'a distant strike dimmer');
   assert.ok(doubleStrike(1) > doubleStrike(0.2));
@@ -183,13 +181,15 @@ test('the weather lights the outdoors its own way: a storm darkest, rain grey-bl
   assert.ok(weatherLight({ rain: 1, day: 0 })[3] < weatherLight({ rain: 1, day: 1 })[3], 'by night less');
 });
 
-test('cloud shadows follow the FXMaster clouds: their direction and speed, and give way to their own shadows', async () => {
-  const { fxClouds } = await import('../../../scripts/engines/motion/sky-light.mjs');
-  assert.equal(fxClouds({}), null);
-  assert.equal(fxClouds({ a: { type: 'rain', options: {} } }), null);
-  const c = fxClouds({ p: { type: 'clouds', options: { direction: 90, speed: 0.29, dropShadow: true } } });
-  assert.ok(Math.abs(c.angle - Math.PI / 2) < 1e-9 && c.speed === 0.29 && c.shadows === true);
-  assert.equal(fxClouds({ p: { type: 'clouds', options: { direction: 0 } } }).shadows, false);
+test('the sky follows no other module\'s weather: FXMaster\'s clouds, lightning and particles are left to FXMaster', async () => {
+  const sky = await import('../../../scripts/engines/motion/sky-light.mjs');
+  assert.equal(sky.fxClouds, undefined, 'its clouds are not read');
+  const { readFileSync } = await import('node:fs');
+  const read = (p) => readFileSync(new URL(`../../../scripts/${p}`, import.meta.url), 'utf8');
+  for (const p of ['engines/motion/sky-light.mjs', 'shell/sky-look.mjs', 'engines/motion/ground-trails.mjs', 'ui/weather-panel.mjs'])
+    assert.doesNotMatch(read(p), /flags\??\.fxmaster|globalThis\.FXMASTER|fxmaster\b.*=>|uFxClouds|syncFx/, p);
+  // Nothing of it is looked for every frame, hidden, or cast as shadows.
+  assert.doesNotMatch(read('main.mjs'), /castFxClouds|syncFxWeather|syncFxLightning|fxCloud\b|flags\?\.fxmaster/);
 });
 
 test('a river runs at the pace its region chose, gentle when unset', async () => {

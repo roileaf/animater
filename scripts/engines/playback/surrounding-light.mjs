@@ -91,8 +91,9 @@ export function litKey(light) {
 export function litPreset(light) {
   const [r, g, b] = rgb(light.color).map((v) => v / 255);
   const k = 0.45 * light.strength, mean = (r + g + b) / 3 || 1;
-  const params = [{ filterType: 'adjustment', red: 1 + k * (r / mean - 1), green: 1 + k * (g / mean - 1), blue: 1 + k * (b / mean - 1), brightness: 1 + 0.06 * light.strength }];
-  // The bevel lights the edge facing away from its rotation, so it points from the light toward the creature.
-  if (light.angle !== null) params.push({ filterType: 'bevel', rotation: light.angle + 180, thickness: 5, lightColor: light.color, lightAlpha: Math.min(0.9, 0.9 * light.strength * light.side), shadowColor: 0x000000, shadowAlpha: 0.25 * light.strength * light.side });
-  return { name: 'Lit by surroundings', library: 'tokenshade', params };
+  // One filter, so one pass a creature (tokenshade/filters/light.mjs `lit`): the tint, and the rim when the light has a
+  // side. The rim lights the edge facing away from its rotation, so it points from the light toward the creature.
+  const rim = light.angle !== null;
+  return { name: 'Lit by surroundings', library: 'tokenshade', params: [{ filterType: 'lit', red: 1 + k * (r / mean - 1), green: 1 + k * (g / mean - 1), blue: 1 + k * (b / mean - 1), brightness: 1 + 0.06 * light.strength,
+    rotation: rim ? light.angle + 180 : 0, thickness: 5, lightColor: light.color, lightAlpha: rim ? Math.min(0.9, 0.9 * light.strength * light.side) : 0, shadowColor: 0x000000, shadowAlpha: rim ? 0.25 * light.strength * light.side : 0 }] };
 }

@@ -26,12 +26,13 @@ test('small changes keep the look; the look tints and rims and builds as Tokensh
   assert.equal(litKey(a), litKey(b));
   assert.equal(litKey(null), null);
   const preset = litPreset(a);
-  assert.deepEqual(preset.params.map((p) => p.filterType), ['adjustment', 'bevel']);
+  // (One filter for both, so one pass a creature: tokenshade/filters/light.mjs `lit`.)
+  assert.deepEqual(preset.params.map((p) => p.filterType), ['lit']);
   assert.ok(preset.params[0].red > 1 && preset.params[0].blue < 1, 'warm tint');
-  assert.equal(preset.params[1].rotation, 180, 'the bevel points from the light toward the creature, lighting the side facing it');
-  assert.equal(litPreset({ ...a, angle: null }).params.length, 1);
+  assert.equal(preset.params[0].rotation, 180, 'the rim points from the light toward the creature, lighting the side facing it');
+  assert.equal(litPreset({ ...a, angle: null }).params[0].lightAlpha, 0, 'lit from all sides: no rim');
   const PIXI = { Filter: class { constructor(v, f, u) { this.uniforms = u; this.enabled = true; } destroy() {} }, Texture: { EMPTY: {} } };
-  assert.equal(presetFilters(PIXI, preset, { tokenSize: { width: 100, height: 100 } }).length, 2);
+  assert.equal(presetFilters(PIXI, preset, { tokenSize: { width: 100, height: 100 } }).length, 1);
 });
 
 test('the light reaching a point says how high and how far it is, weighted by strength', () => {

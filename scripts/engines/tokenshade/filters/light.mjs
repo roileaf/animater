@@ -85,7 +85,7 @@ void main() {
 
 // Chiselled edges lit from one side.
 const bevel = {
-  type: 'bevel', order: 650,
+  type: 'bevel', order: 650, paintOnly: true,
   defaults: { rotation: 45, thickness: 2, lightColor: 0xffffff, lightAlpha: 0.7, shadowColor: 0x000000, shadowAlpha: 0.7 },
   uniforms: {
     uDir: ['vec2', p => [Math.cos(deg(p.rotation)), Math.sin(deg(p.rotation))]], uThickness: ['float', p => clamp(p.thickness, 0.2, 40)],
@@ -106,6 +106,38 @@ void main() {
   vec3 col = unpremul(base);
   col = mix(col, uLight.rgb, lit);
   col = mix(col, uShade.rgb, shade);
+  gl_FragColor = vec4(col * base.a, base.a);
+}`,
+};
+
+// A creature lit by a light near it, in one pass (surrounding-light.mjs litPreset): its art tinted toward the light's
+// colour, and a rim of that colour on the side facing the light. It was an adjustment and then a bevel, and every
+// filter on a creature is a pass of its own over a texture of its own: on a map of thirty creatures by torchlight
+// that second pass was thirty a frame, for the commonest look there is. The sums are those two filters' own.
+const lit = {
+  type: 'lit', order: 650, paintOnly: true,
+  defaults: { red: 1, green: 1, blue: 1, brightness: 1, rotation: 45, thickness: 5, lightColor: 0xffffff, lightAlpha: 0, shadowColor: 0x000000, shadowAlpha: 0 },
+  uniforms: {
+    uChannels: ['vec3', p => [f(p.red) * f(p.brightness), f(p.green) * f(p.brightness), f(p.blue) * f(p.brightness)]],
+    uDir: ['vec2', p => [Math.cos(deg(p.rotation)), Math.sin(deg(p.rotation))]], uThickness: ['float', p => clamp(p.thickness, 0.2, 40)],
+    uLight: ['vec4', p => [...rgb(p.lightColor), clamp(p.lightAlpha, 0, 1)]], uShade: ['vec4', p => [...rgb(p.shadowColor), clamp(p.shadowAlpha, 0, 1)]],
+  },
+  reach: () => 0,
+  glsl: `
+void main() {
+  vec4 base = fxSample(vTextureCoord);
+  vec3 col = clamp(unpremul(base) * uChannels, 0.0, 1.0);
+  // (Lit from all sides there is no rim: the eight taps are not taken.)
+  if (uLight.a + uShade.a > 0.0) {
+    float lit = 0.0, shade = 0.0;
+    for (int i = 1; i <= 4; i++) {
+      float r = uThickness * float(i) / 4.0;
+      lit += base.a - fxAlphaAt(-uDir * r);
+      shade += base.a - fxAlphaAt(uDir * r);
+    }
+    col = mix(col, uLight.rgb, clamp(lit / 4.0, 0.0, 1.0) * uLight.a);
+    col = mix(col, uShade.rgb, clamp(shade / 4.0, 0.0, 1.0) * uShade.a);
+  }
   gl_FragColor = vec4(col * base.a, base.a);
 }`,
 };
@@ -241,4 +273,4 @@ void main() {
 }`,
 };
 
-export const LIGHT_SPECS = [glow, outline, bevel, shadow, xbloom, zapshadow, xglow];
+export const LIGHT_SPECS = [glow, outline, bevel, lit, shadow, xbloom, zapshadow, xglow];

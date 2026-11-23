@@ -266,7 +266,7 @@ import { ARRIVALS, ARRIVAL_MS, arrivalHere, arrivalAt, arrivalShake, arrivalFlas
 import { MOMENTS, WHERES, TETHERS, SWAYS, momentCall, momentsLeft, momentsWithout, momentRunning, momentAudience, momentMacro, momentNeeds, momentStyleKeys, momentSound, MOMENT_SOUNDS, presetCalls, presetFrom, presetsAll, screenFrom, thingSway, tetherPath } from "./engines/camera/screen-moments.mjs";
 import { momentsPanelHtml, momentsPanelMode, momentsPresetOptions, momentsReadout } from "./ui/moments-panel.mjs";
 import { floated } from "./ui/float-panel.mjs";
-import { fallWayHere, landedFlash, nearestLights, stormGloom, weatherOf, cloudCover, cloudLook, skyNeedsBuilding, heatOf, surfacesOf, riverCurrent, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, fxClouds, skyBuildKey } from "./engines/motion/sky-light.mjs";
+import { fallWayHere, landedFlash, nearestLights, stormGloom, weatherOf, cloudCover, cloudLook, skyNeedsBuilding, heatOf, surfacesOf, riverCurrent, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, skyBuildKey } from "./engines/motion/sky-light.mjs";
 import { weatherScene, WEATHERS, sceneWeatherId, weatherLabel, SCENE_WEATHER_PREFIX } from "./engines/motion/sky-weather.mjs";
 import { forecastWeather, forecastDays, BLOCK_HOURS } from "./engines/motion/weather-forecast.mjs";
 import { stormDarkAsked, stormDarkStep, stormDarkTarget } from "./engines/motion/storm-darkness.mjs";
@@ -854,7 +854,9 @@ const syncLitLooksNow = () => {
   const live = on && canvas?.ready && allowsTokenFx(localQuality());
   const seen = new Set();
   if (live) for (const token of canvas.tokens?.placeables ?? []) {
-    if (!token.actor || !token.mesh || !token.visible) continue;
+    // (One hidden from the players is a GM's note to themself, half clear: it takes no torchlight. A dungeon's worth
+    // of monsters set out ahead of time was a pass a frame each on the GM's screen, for a rim nobody else sees.)
+    if (!token.actor || !token.mesh || !token.visible || token.document?.hidden) continue;
     let darkness = canvas.environment?.darknessLevel ?? 0;
     try { darkness = canvas.effects?.getDarknessLevel?.({ x: token.center.x, y: token.center.y, elevation: token.document?.elevation ?? 0 }) ?? darkness; } catch { /* older Foundry */ }
     const light = lightAround(token.center, lightsReaching(token), Math.max(0.15, darkness));
@@ -1387,11 +1389,11 @@ const movementFeelFloor = (point, token) => {
   if (inIceHole(point, elevation)) return "water";
   return floor;
 };
-// The scene's weather (engines/motion/ground-trails.mjs sceneWeather): Foundry's own scene weather, else FXMaster's
-// rain or snow; none inside a region with a Suppress Weather behavior (a roof, a cave).
+// The scene's weather (engines/motion/ground-trails.mjs sceneWeather): Foundry's own scene weather; none inside a region
+// with a Suppress Weather behavior (a roof, a cave).
 const sceneWeatherNow = () => {
   const scene = canvas?.scene;
-  try { return sceneWeather({ weather: scene?.weather, fxmaster: scene?.flags?.fxmaster?.effects }); } catch { return null; }
+  try { return sceneWeather({ weather: scene?.weather }); } catch { return null; }
 };
 // The regions open to the sky here (kept as the sky is built): the weather comes through them, whatever would keep it out.
 let skyOpenRegions = [], skyOpenAreas = [];
@@ -2543,7 +2545,7 @@ const calendarWeather = (zone = null) => {
 const weatherNow = () => {
   const calendaria = calendarWeather();
   const own = canvas?.scene?.flags?.[ID] ?? {};
-  const weather = weatherOf({ calendaria, scene: weatherWordOf(canvas?.scene) ?? "", fx: canvas?.scene?.flags?.fxmaster?.effects ?? {}, fxFilters: canvas?.scene?.flags?.fxmaster?.filters ?? {}, own: { wind: own.wind, windFrom: levelOf(canvas?.scene).windFrom || own.windFrom || globalWeatherNow().windFrom } });
+  const weather = weatherOf({ calendaria, scene: weatherWordOf(canvas?.scene) ?? "", own: { wind: own.wind, windFrom: levelOf(canvas?.scene).windFrom || own.windFrom || globalWeatherNow().windFrom } });
   // The GM's own temperature (the Weather panel) over the calendar's.
   const degrees = weatherTuneNow().temperature;
   return degrees === null ? weather : { ...weather, temperature: degrees };
@@ -4279,12 +4281,17 @@ const paintCarrierRope = (rig, step, grid, art, ahead, beside, team) => {
 };
 // Foundry brings refreshToken round once for a whole journey, so the wheels are turned frame by frame off the canvas's
 // own ticker instead, reading where each carrier is drawn at that moment. Nothing happens on a scene with no carrier.
+// (Which tokens are carriers is looked for among them all a few times a second, not every frame: on a map of eighty
+// creatures and no wagon that search was the whole cost of this, every frame. The ones found are drawn every frame.)
+let carrierTokens = [], carrierLookedAt = -Infinity;
 const tickCarrierLooks = () => {
   if (!carriersOn()) return;
   const all = canvas?.tokens?.placeables;
-  if (!all?.length) return;
-  for (const token of all) {
-    try { if (kindOf(token.document) || carrierRigs.has(token.id)) drawCarrierLook(token); } catch { /* one wagon's trouble is not the scene's */ }
+  if (!all?.length) { carrierTokens = []; return; }
+  const now = performance.now();
+  if (now - carrierLookedAt > 250) { carrierLookedAt = now; carrierTokens = all.filter((token) => { try { return !!(kindOf(token.document) || carrierRigs.has(token.id)); } catch { return false; } }); }
+  for (const token of carrierTokens) {
+    try { if (!token.destroyed) drawCarrierLook(token); } catch { /* one wagon's trouble is not the scene's */ }
   }
   try { tickCarrierSounds(); } catch { /* a silent wagon still rolls */ }
 };
@@ -5456,10 +5463,10 @@ const openWeatherPanel = () => {
     saveLooks: (all) => game.settings.set(ID, "weatherLooks", all),
     setClimate: (climate) => game.settings.set(ID, "dateWeather", climate),
     active: () => {
-      const scene = canvas?.scene, fxOn = !!game.modules.get("fxmaster")?.active; let weather = null;
+      const scene = canvas?.scene; let weather = null;
       try { weather = calendarWeather(); } catch { /* not ready */ }
       const name = weather ? (weather.label ? game.i18n.localize(weather.label) : weather.id) : "", from = dateWeatherSource();
-      return { calendar: name ? { name, ...(from ? { detail: `Made from ${from === "Simple Calendar Reborn" ? "Simple Calendar Reborn's date" : "the game date"}`, source: "Animater" } : {}) } : null, dateWeather: from ? { climate: dateClimate(), from, week: dateWeek() } : null, stormDark: scene?.flags?.[ID]?.stormDark ?? null, fxEffects: fxOn ? scene?.flags?.fxmaster?.effects ?? null : null, fxFilters: fxOn ? scene?.flags?.fxmaster?.filters ?? null : null };
+      return { calendar: name ? { name, ...(from ? { detail: `Made from ${from === "Simple Calendar Reborn" ? "Simple Calendar Reborn's date" : "the game date"}`, source: "Animater" } : {}) } : null, dateWeather: from ? { climate: dateClimate(), from, week: dateWeek() } : null, stormDark: scene?.flags?.[ID]?.stormDark ?? null };
     },
     note: () => (undergroundScene() && !skyOpenRegions.length ? "This scene is underground: weather only shows in regions marked Open to the sky." : !weatherMapOn() ? 'Weather on the map is off in the Animater settings, so this will not show.' : ""),
   }))();
@@ -5486,7 +5493,7 @@ Hooks.on("canvasReady", () => { tuneDragged = null; if (weatherPanelApp?.rendere
 // Another module or GM changing the scene's weather: the list of what's active keeps up (not while a slider is being dragged).
 let weatherPanelSoon = null;
 const weatherPanelKeepUp = () => { if (!weatherPanelApp?.rendered || tuneDragged || weatherPanelSoon) return; weatherPanelSoon = setTimeout(() => { weatherPanelSoon = null; if (weatherPanelApp?.rendered && !tuneDragged) void weatherPanelApp.render(); }, 400); };
-Hooks.on("updateScene", (scene, change) => { if (scene?.id === canvas?.scene?.id && ("weather" in (change ?? {}) || change?.flags?.fxmaster || change?.flags?.[ID])) weatherPanelKeepUp(); });
+Hooks.on("updateScene", (scene, change) => { if (scene?.id === canvas?.scene?.id && ("weather" in (change ?? {}) || change?.flags?.[ID])) weatherPanelKeepUp(); });
 Hooks.on("updateSetting", (setting) => { if (setting?.key === "calendaria.currentWeather") weatherPanelKeepUp(); });
 // The Animals panel: the scene's own creature settings, and animals put down by hand, kept with the scene so every screen adds them.
 // How many of each kind a set of layers has now, by the Animals panel's names: the scene's own, or one region's.
@@ -7326,7 +7333,7 @@ const skyLook = createSkyLook({
   openToSky: () => skyOpenAreas, lastStrike: () => lastStrike, snowOf: () => snowNow,
 });
 const { drawnClouds, surfaceLight, tileSnow, treeSway, heatShimmer, lightningBolts, lightning,
-  swayTrees, rebuildTileSnow, tileSnowOn, syncFxWeather, syncFxLightning } = skyLook;
+  swayTrees, rebuildTileSnow, tileSnowOn } = skyLook;
 const cloudsOn = () => outdoorOn("cloudShadows") && !weatherOffHere(), glintsOn = () => outdoorOn("surfaceGlints");
 const shimmerOn = () => { try { return hotSetting("heatShimmer") !== false && canDistort(localQuality(), hotSetting("heatShimmerLocal")); } catch { return false; } };
 const lightningOn = () => weatherReaches("lightningFlashes");
@@ -7388,7 +7395,7 @@ const groundOf = () => {
 const awayWeather = (scene) => {
   const calendaria = calendarWeather(scene?.flags?.calendaria?.climateZoneOverride ?? null);
   const own = scene?.flags?.[ID] ?? {};
-  const weather = weatherOf({ calendaria, scene: weatherWordOf(scene), fx: scene?.flags?.fxmaster?.effects ?? {}, fxFilters: scene?.flags?.fxmaster?.filters ?? {}, own: { wind: own.wind, windFrom: own.windFrom || globalWeatherNow().windFrom } });
+  const weather = weatherOf({ calendaria, scene: weatherWordOf(scene), own: { wind: own.wind, windFrom: own.windFrom || globalWeatherNow().windFrom } });
   return { calendaria, weather };
 };
 // The scenes the party is not on carry on too: as the GM moves the clock, each scene with water (or ground already
@@ -7488,7 +7495,6 @@ const lookSky = () => {
     if (blastMelts.length) { blastMelts = meltsFilled(blastMelts, Number(game.time?.worldTime) || 0, groundOf().snowRate(groundIn)); blastMeltsAt = 0; if (!blastMelts.length) surfaceLight.melt([]); }
     const ground = noneHere ? { ...groundNow, wet: 0, snow: 0, ice: 0 } : groundNow;
     const fog = /fog|mist/i.test(`${calendaria?.id ?? ""} ${weatherWordOf(canvas?.scene) ?? ""}`);
-    const fxCloud = game.modules.get("fxmaster")?.active ? fxClouds(canvas?.scene?.flags?.fxmaster?.effects) : null;
     const sceneOwn = sceneWeatherId(weatherWordOf(canvas?.scene));
     // The weather Animater draws now (a preview's, the scene's own, else Calendaria's), and what it asks of the rest.
     const drawnId = weatherPreview?.preset || sceneOwn || calendaria?.id || null;
@@ -7496,7 +7502,7 @@ const lookSky = () => {
     if (drawn && !weatherCloudsOn()) drawn.deck = 0;
     const windFixed = tune.wind;
     drawnNow = drawn;
-    const windAsked = weatherPreview?.wind ?? fxCloud?.speed ?? weather.wind, sceneSaysWind = !["", "calm", undefined].includes(canvas?.scene?.flags?.[ID]?.wind), windNow = noneHere ? 0 : windFixed ?? ((weather.windStated && (!sceneOwn || sceneSaysWind)) || weatherPreview?.wind !== undefined ? windAsked : Math.max(drawn?.windMin ?? 0, windAsked));
+    const windAsked = weatherPreview?.wind ?? weather.wind, sceneSaysWind = !["", "calm", undefined].includes(canvas?.scene?.flags?.[ID]?.wind), windNow = noneHere ? 0 : windFixed ?? ((weather.windStated && (!sceneOwn || sceneSaysWind)) || weatherPreview?.wind !== undefined ? windAsked : Math.max(drawn?.windMin ?? 0, windAsked));
     // (A scene's own weather says how cloudy it is, whatever the clock's sky.)
     skyCoverNow = noneHere ? 0 : weatherPreview?.clouds ?? tune.cover ?? Math.max(cloudCover(sky), sceneOwn ? cloudCover(skyClear(sceneOwn)) : 0);
     floorWeather = { clouds: weatherPreview?.clouds ?? cloudCover(sky), wet: wetOn() ? ground.wet : 0, ice: frozenWaterOn() ? ground.ice : 0 };
@@ -7507,10 +7513,9 @@ const lookSky = () => {
     const cloudsDrawn = !noneHere && (Number(tune.drawnClouds) || 0) > 0 && (weatherCloudsOn() || cloudsBelow);
     // One sky: with no clouds drawn their shadows still fall, so drawing them puts them over those same shadows.
     const cloudLayerOn = cloudsDrawn || (!noneHere && (cloudsOn() || weatherPreview?.clouds !== undefined) && (tune.cover ?? skyCoverNow) > 0.05);
-    drawnClouds.look({ on: cloudLayerOn, drawn: cloudsDrawn, cover: tune.cover ?? skyCoverNow, transparency: tune.cloudClear ?? undefined, height: tune.cloudHeight ?? 1, wind: windNow, angle: weatherPreview?.windAngle ?? fxCloud?.angle ?? weather.windAngle, sunAngle: ((Number(sunNow?.angle) || 0) * Math.PI) / 180, sunHeight: Number(sunNow?.height) || 45, cast: cloudShiftNow(), sun: sunNow && !sunNow.moon ? Number(fall?.light) || 0 : cloudsBelow && skySunNow && !skySunNow.moon ? Number(skySunNow.strength) || 0 : 0, color: sunlightColor(), rain: falling.rain, dark: Number(canvas.environment?.darknessLevel) || 0 });
+    drawnClouds.look({ on: cloudLayerOn, drawn: cloudsDrawn, cover: tune.cover ?? skyCoverNow, transparency: tune.cloudClear ?? undefined, height: tune.cloudHeight ?? 1, wind: windNow, angle: weatherPreview?.windAngle ?? weather.windAngle, sunAngle: ((Number(sunNow?.angle) || 0) * Math.PI) / 180, sunHeight: Number(sunNow?.height) || 45, cast: cloudShiftNow(), sun: sunNow && !sunNow.moon ? Number(fall?.light) || 0 : cloudsBelow && skySunNow && !skySunNow.moon ? Number(skySunNow.strength) || 0 : 0, color: sunlightColor(), rain: falling.rain, dark: Number(canvas.environment?.darknessLevel) || 0 });
     surfaceLight.look({
-      // The cloud shadows drift with FXMaster's clouds when it draws some (then cast from their very shapes, in skyTick).
-      light: fall ? fall.light : 0, clouds: !cloudLayerOn && (cloudsOn() || weatherPreview?.clouds !== undefined) ? skyCoverNow : 0, color: sunlightColor(), wind: windNow, windAngle: weatherPreview?.windAngle ?? fxCloud?.angle ?? weather.windAngle,
+      light: fall ? fall.light : 0, clouds: !cloudLayerOn && (cloudsOn() || weatherPreview?.clouds !== undefined) ? skyCoverNow : 0, color: sunlightColor(), wind: windNow, windAngle: weatherPreview?.windAngle ?? weather.windAngle,
       wet: wetOn() ? ground.wet : 0, snow: snowCoverOn() ? ground.snow : 0,
       mist: !noneHere && mistOn() && clock && (fog || !(falling.rain > 0.05)) ? mistOf({ day: clock.day, sunrise: clock.sunrise, sunset: clock.sunset, sun: sunNow, fog }) : 0,
       fireflies: firefliesOn() && clock ? firefliesOf({ day: clock.day, sunset: clock.sunset, season, temperature: weather.temperature }) : 0,
@@ -7541,7 +7546,7 @@ const lookSky = () => {
     // The weather's light outdoors (over the roofs too; a room seen into keeps its own).
     weatherCast = weatherLightOn() ? weatherLight({ kind: `${drawnId ?? ""} ${calendaria?.id ?? ""} ${weatherWordOf(canvas?.scene) ?? ""}`, rain: falling.rain, snow: falling.snow, storm: weather.storm, severity: weather.severity, clouds: cloudCover(sky), day: sunNow && !sunNow.moon ? Math.min(1, (Number(sunNow.strength) || 0) / Math.max(0.1, Number.isFinite(sky) ? sky : 1)) : 0, ...(weatherPreview ?? {}) }) : null;
     surfaceLight.veil(weatherCast, weatherRoofs());
-    canopyLight.clouds({ deck: cloudLook(cloudsOn() || weatherPreview?.clouds !== undefined ? skyCoverNow : 0, falling.rain > 0.05), shift: cloudShiftNow(), angle: weatherPreview?.windAngle ?? fxCloud?.angle ?? weather.windAngle, wind: windNow, clouds: !cloudLayerOn && (cloudsOn() || weatherPreview?.clouds !== undefined) ? skyCoverNow : 0 });
+    canopyLight.clouds({ deck: cloudLook(cloudsOn() || weatherPreview?.clouds !== undefined ? skyCoverNow : 0, falling.rain > 0.05), shift: cloudShiftNow(), angle: weatherPreview?.windAngle ?? weather.windAngle, wind: windNow, clouds: !cloudLayerOn && (cloudsOn() || weatherPreview?.clouds !== undefined) ? skyCoverNow : 0 });
     refreshSunWash();
     // The roofs and trees hold the ground's snow (a tree less, and less in a wind).
     if (!(ground.snow > 0) && blastMelts.length) { blastMelts = []; surfaceLight.melt([]); }
@@ -8226,21 +8231,7 @@ const strikeNow = (level = 1, at = null) => {
   return place;
 };
 // The weather's light now (sky-light.mjs weatherLight), and when the roofs under it were last looked at.
-let weatherCast = null, weatherRoofsAt = 0, weatherPreview = null, fxCloudsAt = 0, fxCloudsHad = false;
-const castFxClouds = () => {
-  let box = null;
-  try {
-    if (cloudsOn() && game.modules.get("fxmaster")?.active && sunNow && !sunNow.moon) {
-      for (const e of canvas.particleeffects?.particleEffects?.values?.() ?? []) if (e?.constructor?.name === "CloudsParticleEffect" && e.visible !== false) { box = e.children?.[0] ?? null; break; }
-    }
-  } catch { box = null; }
-  if (!box && !fxCloudsHad) return;
-  fxCloudsHad = !!box;
-  // The shadow lands away from the sun: clouds stand high, so a little way even at noon, far at dusk.
-  const away = (((Number(sunNow?.angle) || 0) + 180) * Math.PI) / 180, grid = canvas.grid?.size ?? 100;
-  const reach = grid * (1.5 + 4 * (1 - Math.min(1, Math.max(0, (Number(sunNow?.height) || 45) / 90))));
-  surfaceLight.fxClouds(box, { x: Math.cos(away) * reach, y: Math.sin(away) * reach });
-};
+let weatherCast = null, weatherRoofsAt = 0, weatherPreview = null;
 const weatherRoofs = () => { try { return sunlitTiles().roof.map((t) => ({ ...t, shown: t.shown })); } catch { return []; } };
 // The leaves, water, dust, heat and storm move each frame: only while something of them shows.
 Hooks.on("canvasReady", () => { canvas.app.ticker.add(skyTick); });
@@ -8297,8 +8288,6 @@ function skyTick() {
     treeSway.tick(seconds);
   }
   // A roof fading for a creature inside shows the room in its own light (looked at a few times a second).
-  // FXMaster's clouds cast their shadows (a few times a second), away from the sun, further the lower it is.
-  { const now = performance.now(); if (now - fxCloudsAt > 120) { fxCloudsAt = now; castFxClouds(); } }
   if (surfaceLight.veiling) { const now = performance.now(); if (now - weatherRoofsAt > 300) { weatherRoofsAt = now; surfaceLight.veil(weatherCast, weatherRoofs()); } }
   // A roof fading for a creature inside takes its snow with it.
   if (tileSnow.showing) tileSnow.shown(skyLook.snowTiles().map(tileShown));
@@ -8363,9 +8352,7 @@ function skyTick() {
     heatShimmer.set({ heat: skyHeat, view: { x: wt.tx, y: wt.ty, scale: wt.a } });
     heatShimmer.tick(seconds);
   } else if (heatShimmer.on) heatShimmer.set({ heat: 0 });
-  syncFxLightning(performance.now());
   if (lightningBolts.busy) lightningBolts.tick(seconds);
-  syncFxWeather(performance.now());
   if (skyStorm > 0 && !thunderLoaded) readyThunder();
   const level = lightning.tick(performance.now(), canvas.scene ? skyStorm : 0);
   surfaceLight.flash(level);
@@ -13943,7 +13930,7 @@ Hooks.once("init", () => {
     hint:'A teleporting creature dissolves away in a look matched to the spell (sparkles, embers, shadow, light) and forms again where it lands. Off: it fades out quickly. Needs Tokenshade token filters on.',
     scope:'world',config:true,type:Boolean,default:true});
   registerSetting("weatherOnCreatures",{name:'Weather on creatures',
-    hint:'In rain every creature on the scene is soaked (darker, bluer, wet), in snow dusted with snow, from Foundry\u2019s scene weather or FXMaster\u2019s rain and snow. A creature under a roof (a Suppress Weather region) stays dry. Needs Tokenshade token filters on.',
+    hint:'In rain every creature on the scene is soaked (darker, bluer, wet), in snow dusted with snow, from Foundry\u2019s scene weather. A creature under a roof (a Suppress Weather region) stays dry. Needs Tokenshade token filters on.',
     scope:'world',config:true,type:Boolean,default:false,onChange:()=>setTimeout(syncWeatherLooks,0)});
   registerSetting("marksChangeFloor",{name:'Spells change the floor',
     hint:'Marks spells leave on the ground change what creatures walk on: frost is ice underfoot, acid a sludge, fire melts snow to water and burns grass bare, a blast leaves cracked stone. Footsteps and footprints follow. Needs Ground marks on.',
@@ -14342,7 +14329,7 @@ Hooks.once("init", () => {
   skyPair("morningMist", "morningMistLocal", "Morning mist", "Mist gathers before sunrise, thickest over water and low ground, and burns off as the sun climbs; in fog it lies all day.");
   skyPair("wetGround", "wetGroundLocal", "Wet ground after rain", "Rain darkens the open ground and leaves puddles that catch the sky; it dries over a few hours of game time, faster in sun and heat. Kept on each screen per scene.");
   skyPair("snowCover", "snowCoverLocal", "Snow cover", "Falling snow whitens the open ground within minutes of game time, first in patches, and melts within minutes once it is above freezing. Kept per scene.");
-  skyPair("weatherOnMap", "weatherOnMapLocal", "Weather on the map", "Animater draws Calendaria\u2019s weather itself: clouds seen from above with their shadows where the sun throws them, rain, drizzle, hail, snow and sleet blowing with the wind, fog, sand, ash, embers, petals and leaves, and the fantasy weathers (blood and acid rain, aurora, ley sparks, divine light, a black sun, static, spectral wisps, meteors, a tornado). All in one pass on the graphics card, whatever the weather. FXMaster\u2019s effects for Calendaria\u2019s weather are hidden on your screen while this is on (its settings are never changed).");
+  skyPair("weatherOnMap", "weatherOnMapLocal", "Weather on the map", "Animater draws Calendaria\u2019s weather itself: clouds seen from above with their shadows where the sun throws them, rain, drizzle, hail, snow and sleet blowing with the wind, fog, sand, ash, embers, petals and leaves, and the fantasy weathers (blood and acid rain, aurora, ley sparks, divine light, a black sun, static, spectral wisps, meteors, a tornado). All in one pass on the graphics card, whatever the weather. Another module\u2019s weather on the scene is not hidden: with one that also draws Calendaria\u2019s weather, turn its weather off.");
   registerSetting("lightningFlashStrength", { name: "Lightning flash strength", hint: "How bright lightning flashes are on your screen: 0 none, 1 as they come. A repeating bright flash can be hard on the eyes: this is yours to turn down.", scope: "client", config: true, type: Number, default: 1, range: { min: 0, max: 1, step: 0.05 } });
   // Arriving on a scene: what a scene does when it has not chosen for itself. Off, so nothing changes for anyone
   // until a GM asks a scene for it (engines/motion/scene-arrival.mjs).
@@ -14383,7 +14370,7 @@ Hooks.once("init", () => {
   skyPair("regionSteps", "regionStepsLocal", "Region steps", "The GM right-clicks a region on the map and moves it through its steps in its panel's Steps: grass goes from fresh to bloodied to burnt, a cave from dry to steam to lava. A region can also paint its floor for a bare map (Scene configuration, or its menu). A step can draw blood, wet or burnt on the floor, change what the floor walks as (its footsteps, sounds and prints), switch on a region effect such as mist or steam, and set a river's speed. The steps are set with Edit steps in the panel's Steps. Off stops the looks (the panel still opens); steps already chosen keep their floor and effects. Each screen's Animation quality sets how much it draws: Full and Light keep grass blades, moving flames and bubbles and shine on every look, Light with fewer torches; Balanced keeps floors catching the sun, moon and two lights; Low draws them still.");
   skyPair("waterMirror", "waterMirrorLocal", "Reflections on still water", "Creatures and tiles (trees, statues, walls of a ruin) on the bank mirror in still water and dripping pools, falling out across it from the nearest bank; nearby fires throw long lights across it, and the moon lays a broken path on it. Swift water shows none.");
   registerSetting("waterMirrorRings", { name: "Reflect token rings", hint: "A token with Foundry's dynamic ring mirrors whole in still water: its ring and background with the creature, as it is drawn on the map. Off: only the creature reflects.", scope: "world", config: true, type: Boolean, default: false });
-  skyPair("lightningFlashes", "lightningFlashesLocal", "Lightning flashes", "In a thunderstorm (Calendaria's weather, the scene's storm, or FXMaster's lightning), lightning flashes over the map now and then, throwing the creatures' shadows hard for a moment.");
+  skyPair("lightningFlashes", "lightningFlashesLocal", "Lightning flashes", "In a thunderstorm (Calendaria's weather or the scene's storm), lightning flashes over the map now and then, throwing the creatures' shadows hard for a moment.");
   registerSetting("wallShadowHeight", { name: "Wall height (squares)",
     hint: "How tall walls stand for their shadows, when neither the Wall Height module nor the scene's level gives a height.",
     scope: "world", config: true, type: Number, range: { min: 0.5, max: 10, step: 0.5 }, default: 2 });
@@ -14570,7 +14557,7 @@ Hooks.once("init", () => {
   registerSetting("bloodFootprints", { name: "Bloody footprints", hint: "A creature stepping in wet blood prints it, in that blood's colour, for its next few strides. Drops are too small to step in, and dried blood leaves nothing.", scope: "world", config: true, type: Boolean, default: true });
   registerSetting("weatherOnGround", {
     name: "Weather on the ground",
-    hint: "When it rains on the scene (Foundry's scene weather or FXMaster), every step splashes, dirt turns to mud (its sound and prints), stone, wood, grass and sand get puddles under each step, and prints on sand, dirt and mud look wet; when it snows, every step kicks up a light dusting. Never under a region that suppresses weather.",
+    hint: "When it rains on the scene (Foundry's scene weather), every step splashes, dirt turns to mud (its sound and prints), stone, wood, grass and sand get puddles under each step, and prints on sand, dirt and mud look wet; when it snows, every step kicks up a light dusting. Never under a region that suppresses weather.",
     scope: "world", config: true, type: Boolean, default: true,
   });
   registerSetting("idleLife", {

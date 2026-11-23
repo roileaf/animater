@@ -122,21 +122,14 @@ test('bloodColor: a Splatter colour flag (#rrggbb or #rrggbbaa) or the default',
   assert.equal(bloodColor(undefined), BLOOD_COLOR);
 });
 
-test('sceneWeather: Foundry scene weather and FXMaster effects map to rain or snow', () => {
+test('sceneWeather: Foundry scene weather maps to rain or snow; another module\'s particles wet nothing', () => {
   assert.equal(sceneWeather({ weather: 'rain' }), 'rain');
   assert.equal(sceneWeather({ weather: 'rainStorm' }), 'rain');
   assert.equal(sceneWeather({ weather: 'snow' }), 'snow');
   assert.equal(sceneWeather({ weather: 'blizzard' }), 'snow');
   for (const weather of ['', 'fog', 'leaves', undefined, null]) assert.equal(sceneWeather({ weather }), null, String(weather));
-  assert.equal(sceneWeather({ fxmaster: { core_rain: { type: 'rain' } } }), 'rain');
-  assert.equal(sceneWeather({ fxmaster: { core_snowstorm: { type: 'snowstorm' } } }), 'snow');
-  assert.equal(sceneWeather({ fxmaster: { core_snow: { type: 'snow' } } }), 'snow');
-  assert.equal(sceneWeather({ fxmaster: { core_hail: { type: 'hail' } } }), 'rain');
-  assert.equal(sceneWeather({ fxmaster: { core_birds: { type: 'birds' } } }), null);
-  assert.equal(sceneWeather({ fxmaster: [{ type: 'rain' }] }), 'rain');
-  // Snow in FXMaster alongside rain: the snow.
-  assert.equal(sceneWeather({ fxmaster: { a: { type: 'rain' }, b: { type: 'snow' } } }), 'snow');
-  // The scene's own weather first.
+  // FXMaster's effects on the scene are no longer read: they are that module's, and wet nothing of ours.
+  assert.equal(sceneWeather({ fxmaster: { core_rain: { type: 'rain' } } }), null);
   assert.equal(sceneWeather({ weather: 'rain', fxmaster: { b: { type: 'snow' } } }), 'rain');
   assert.equal(sceneWeather(), null);
 });

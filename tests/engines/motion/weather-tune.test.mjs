@@ -229,7 +229,7 @@ test('what is active names each thing and who says so', () => {
   assert.equal(activeWeather({ weather: 'rainStorm' })[0].source, 'Foundry');
 });
 
-test('what you set shows with its amount and can be turned off; other modules cannot', () => {
+test('what you set shows with its amount and can be turned off; another module\'s effects are not listed', () => {
   const rows = activeWeather({ tune: { cover: 0.9, rainbow: 0.5, fall: 'snow' }, stormDark: { base: 0.1, target: 0.6 }, fxEffects: { a: { type: 'heavy_fog' } }, fxFilters: { b: { type: 'lightning' } } });
   const of = (key) => rows.find((r) => r.key === key);
   assert.equal(of('cover').name, 'Cloud cover 90%');
@@ -239,15 +239,13 @@ test('what you set shows with its amount and can be turned off; other modules ca
   assert.equal(of('fall').action, 'setFall');
   assert.equal(of('stormDark').detail, 'Scene darkness raised to 0.6');
   assert.equal(of('stormDark').action, undefined);
-  assert.equal(of('fx-a').name, 'Heavy fog');
-  assert.equal(of('fx-a').source, 'FXMaster');
-  assert.equal(of('fx-a').action, undefined);
-  assert.equal(of('fx-b').name, 'Lightning');
+  assert.equal(of('fx-a'), undefined);
+  assert.equal(of('fx-b'), undefined);
 });
 
-test('no weather on the scene says so, and FXMaster still shows, being separate', () => {
+test('no weather on the scene says so, and nothing else', () => {
   const rows = activeWeather({ off: true, calendar: { name: 'Rain' }, tune: { cover: 1 }, fxEffects: { a: { type: 'rain' } } });
-  assert.deepEqual(rows.map((r) => r.key), ['off', 'fx-a']);
+  assert.deepEqual(rows.map((r) => r.key), ['off']);
   assert.equal(rows[0].action, 'setWeatherOff');
 });
 
@@ -255,7 +253,7 @@ test('the panel lists it, escaped, with a button only where it can act', () => {
   const html = weatherPanelHtml({ state: { tune: { cover: 0.5 } }, weathers: [], active: { calendar: { name: '<Rain>' }, fxEffects: { a: { type: 'fog' } } } });
   assert.ok(html.includes("What's active on this scene"));
   assert.ok(html.includes('&lt;Rain&gt;') && !html.includes('<Rain>'));
-  assert.ok(html.includes('3 effects'));
+  assert.ok(html.includes('2 effects'));
   assert.equal(html.match(/class="animater-wx-off"/g).length, 1, 'only cloud cover is ours');
   assert.ok(weatherPanelHtml({ state: {}, weathers: [] }).includes('No weather or effects on this scene.'));
 });

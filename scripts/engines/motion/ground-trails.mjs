@@ -98,22 +98,11 @@ export function bloodDrop(at, { seed = '', grid = 100, width = grid, color = BLO
   return out;
 }
 
-// The scene's weather on the ground: 'rain', 'snow' or null. Foundry's own scene weather (CONFIG.weatherEffects ids)
-// first, else FXMaster's particle effects (its scene flag `effects`, each with a `type`): any snow is snow, else any rain
-// (or hail) is rain.
+// The scene's weather on the ground: 'rain', 'snow' or null, from Foundry's own scene weather (CONFIG.weatherEffects
+// ids). (Another module's particles on the scene are its own affair: they wet nothing here.)
 const SCENE_WEATHER = { rain: 'rain', rainstorm: 'rain', snow: 'snow', blizzard: 'snow' };
-const FXMASTER_WEATHER = { rain: 'rain', rainsimple: 'rain', raintop: 'rain', hail: 'rain', snow: 'snow', snowstorm: 'snow', blizzard: 'snow' };
-export function sceneWeather({ weather, fxmaster } = {}) {
-  const own = SCENE_WEATHER[lower(weather)];
-  if (own) return own;
-  const effects = Array.isArray(fxmaster) ? fxmaster : fxmaster && typeof fxmaster === 'object' ? Object.values(fxmaster) : [];
-  let found = null;
-  for (const effect of effects) {
-    const kind = FXMASTER_WEATHER[lower(effect?.type)];
-    if (kind === 'snow') return 'snow';
-    if (kind) found = kind;
-  }
-  return found;
+export function sceneWeather({ weather } = {}) {
+  return SCENE_WEATHER[lower(weather)] ?? null;
 }
 // Rain on these floors leaves wet prints (darkening the floor's own prints, and printing dirt).
 const WET_FLOORS = new Set(['sand', 'mud', 'dirt']);

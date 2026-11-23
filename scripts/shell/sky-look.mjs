@@ -1,6 +1,6 @@
 // What the sky draws on the map: the clouds and the shadows they throw, the snow lying on the roofs and in the trees,
 // the trees swaying, the heat shimmer over hot ground, and the lightning — each its own layer, placed among the others.
-// It also keeps Calendaria's and FXMaster's own weather out of the way while Animater is drawing the sky itself.
+// It also keeps Calendaria's own lightning flash out of the way while Animater is drawing the sky itself.
 //
 // Only the drawing is here. What the weather IS at this moment stayed in main.mjs, because half the module reads it, and
 // so did the tick that moves all this, because that tick drives every living thing on the map and is the frame loop
@@ -90,46 +90,7 @@ export function createSkyLook(ctx) {
     } catch { /* Calendaria changed its insides: leave it be */ }
   };
   for (const hook of ["ready", "calendaria.ready", "calendaria.weatherChange", "updateSetting", "clientSettingChanged"]) Hooks.on(hook, (first) => { if (!isClockSave(first)) syncCalendariaFlash(); });
-  // FXMaster's own lightning (its Lightning filter, as Calendaria's thunderstorm puts on the scene) flashes the open map
-  // only, never through a window: while Animater's flashes are on, it is stopped on this screen (the scene keeps it, so it
-  // comes back when they are turned off). FXMaster makes its filters anew as the weather changes: looked at once a second.
-  let fxLightningAt = 0;
-  // While Animater draws Calendaria's weather ("Weather on the map"), FXMaster's effects for it (the ones Calendaria starts:
-  // apiPreset_…) are hidden on this screen, their filters off; nothing of FXMaster's own settings changes, and turning ours
-  // off brings them back.
-  let fxWeatherAt = 0;
-  const syncFxWeather = (now) => {
-    if (now - fxWeatherAt < 500) return;
-    fxWeatherAt = now;
-    try {
-      let ours = false;
-      // (No weather here means none of the calendar's by way of FXMaster either.)
-      try { ours = (weatherMapOn() || weatherOffHere()) && !!globalThis.CALENDARIA?.api?.getCurrentWeather?.(); } catch { ours = false; }
-      for (const [id, effect] of canvas.particleeffects?.particleEffects ?? []) {
-        if (!String(id).startsWith("apiPreset_")) continue;
-        if (ours) { if (!effect.animaterHidden) effect.animaterHidden = true; effect.visible = false; }
-        else if (effect.animaterHidden) { delete effect.animaterHidden; effect.visible = true; }
-      }
-      for (const [id, filter] of Object.entries(globalThis.FXMASTER?.filters?.filters ?? {})) {
-        if (!String(id).startsWith("apiPreset_") || filter?.constructor?.name === "LightningFilter") continue;
-        if (ours) { if (!filter.animaterHidden) filter.animaterHidden = true; filter.enabled = false; }
-        else if (filter.animaterHidden) { delete filter.animaterHidden; filter.enabled = true; }
-      }
-    } catch { /* FXMaster changed its insides: leave it be */ }
-  };
-  const syncFxLightning = (now) => {
-    if (now - fxLightningAt < 1000) return;
-    fxLightningAt = now;
-    try {
-      const ours = lightningOn();
-      for (const filter of Object.values(globalThis.FXMASTER?.filters?.filters ?? {})) {
-        if (filter?.constructor?.name !== "LightningFilter") continue;
-        if (ours) { if (!filter.animaterMuted) { filter.animaterMuted = true; filter.stop?.(); } filter.enabled = false; }
-        else if (filter.animaterMuted) { delete filter.animaterMuted; filter.enabled = true; filter.play?.(); }
-      }
-    } catch { /* FXMaster changed its insides: leave it be */ }
-  };
-  return { drawnClouds, surfaceLight, tileSnow, treeSway, heatShimmer, lightningBolts, lightning, swayTrees, rebuildTileSnow, tileSnowOn, syncFxWeather, syncFxLightning, snowTiles: () => snowTiles, clear: () => {
+  return { drawnClouds, surfaceLight, tileSnow, treeSway, heatShimmer, lightningBolts, lightning, swayTrees, rebuildTileSnow, tileSnowOn, snowTiles: () => snowTiles, clear: () => {
     drawnClouds.clear();
     try { cloudRoot?.destroy({ children: true }); } catch { /* gone with the canvas */ }
     cloudRoot = null;

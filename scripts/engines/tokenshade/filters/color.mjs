@@ -3,8 +3,10 @@ import { rgb, deg, clamp } from './util.mjs';
 
 const f = v => Number(v) || 0;
 
+// (paintOnly: it repaints the art and leaves its outline alone, so Foundry's second drawing of a token for its
+// outline goes without it — engine.mjs leanVoid. An adjustment that fades the art, alpha under 1, is drawn both times.)
 const adjustment = {
-  type: 'adjustment', order: 300,
+  type: 'adjustment', order: 300, paintOnly: true,
   defaults: { gamma: 1, saturation: 1, contrast: 1, brightness: 1, red: 1, green: 1, blue: 1, alpha: 1 },
   uniforms: {
     uGamma: ['float', p => Math.max(0.01, f(p.gamma))], uSaturation: ['float', p => f(p.saturation)],
@@ -26,7 +28,7 @@ void main() {
 
 // Colourise like a map-maker's tint: shading is kept, hue comes from the tint.
 const ddTint = {
-  type: 'ddTint', order: 300,
+  type: 'ddTint', order: 300, paintOnly: true,
   defaults: { tint: [1, 1, 1] },
   uniforms: { uTint: ['vec3', p => rgb(p.tint)] },
   reach: () => 0,

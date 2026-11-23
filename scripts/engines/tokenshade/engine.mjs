@@ -30,6 +30,36 @@ export const tokenFxSize = token => {
   return { width: w * k, height: h * k };
 };
 
+// Is a host's picture anywhere on the screen (pure)? `box` its bounds on the screen { x, y, width, height }, `view`
+// the screen { width, height }, `pad` how far its looks reach beyond it. Every filter on a creature is a pass over a
+// texture of its own whether or not a pixel of it can be seen, so one off the screen has its filters switched off: on
+// a big map most creatures are off the screen most of the time. The margin lets one that is sliding into view be
+// dressed before its first pixel shows (the bounds are the frame before's).
+export const FX_SCREEN_MARGIN = 160;
+export function onScreen(box, view, pad = 0) {
+  if (!box || !view || !(view.width > 0) || !(view.height > 0) || !Number.isFinite(box.x) || !Number.isFinite(box.y)) return true;
+  const m = FX_SCREEN_MARGIN + Math.max(0, Number(pad) || 0);
+  return box.x + (box.width || 0) >= -m && box.y + (box.height || 0) >= -m && box.x <= view.width + m && box.y <= view.height + m;
+}
+// Foundry draws every token a second time, from the token layer, to cut its outline out of what lies over it (its
+// "void", PrimarySpriteMesh._renderVoid) — and runs every filter on the token again to do it, each a pass over a
+// texture of its own. Only the outline of that second drawing is used. A look that only repaints the art (a tint, a
+// rim, a colour wash: its spec says `paintOnly`) leaves the outline as it was, so it is left out of that drawing: half
+// the passes of the commonest looks. A look that changes the outline (a glow, a tilt, a dissolve) is drawn both times.
+export const paintOnly = (f) => f?.spec?.paintOnly === true && !(Number(f.current?.alpha) < 1);
+const leaned = new WeakSet();
+export function leanVoid(mesh) {
+  if (!mesh || leaned.has(mesh) || typeof mesh._renderVoid !== 'function') return;
+  leaned.add(mesh);
+  const draw = mesh._renderVoid;
+  mesh._renderVoid = function (...args) {
+    const all = this.filters;
+    if (!all?.length || !all.some(paintOnly)) return draw.apply(this, args);
+    const rest = all.filter((f) => !paintOnly(f));
+    this.filters = rest.length ? rest : null;
+    try { return draw.apply(this, args); } finally { this.filters = all; }
+  };
+}
 // Live values eased toward their target over about this long, so a hit or a take-off shades in, never snaps.
 const DRIVE_EASE_MS = 400;
 // How strongly an effect shows while it fades in (from `start`) and out (from `leavingAt`) over `fadeMs`, 0..1.
@@ -45,8 +75,10 @@ export class TokenFxEngine {
   // crossfades (0: at once). `cutOut(token)`: its art is a top-down or pop-out creature on a clear background, which
   // shows each look's top-down form (top-down.mjs).
   constructor({ PIXI = null, ticker = () => globalThis.canvas?.app?.ticker,
-    now = () => performance.now(), world = () => globalThis.game?.time?.serverTime ?? Date.now(), enabled = () => true, drive = () => ({}), blendMs = () => 0, cutOut = () => false } = {}) {
-    Object.assign(this, { PIXI, ticker, now, world, enabled, drive, blendMs, cutOut });
+    now = () => performance.now(), world = () => globalThis.game?.time?.serverTime ?? Date.now(), enabled = () => true, drive = () => ({}), blendMs = () => 0, cutOut = () => false,
+    // `view()`: the screen { width, height }, so nothing is drawn for a host that is off it (onScreen).
+    view = () => globalThis.canvas?.app?.renderer?.screen ?? null } = {}) {
+    Object.assign(this, { PIXI, ticker, now, world, enabled, drive, blendMs, cutOut, view });
     this.entries = new Set();
     this.listening = null;
     // Animated art this engine has slowed or held still: its video, how it played before.
@@ -126,6 +158,7 @@ export class TokenFxEngine {
     const mesh = hostMesh(entry.token);
     if (!mesh || mesh.destroyed) return;
     entry.mesh = mesh;
+    leanVoid(mesh);
     const ours = new Set(entry.filters);
     const others = (mesh.filters ?? []).filter(f => !ours.has(f));
     const all = [...others, ...entry.filters];
@@ -163,6 +196,8 @@ export class TokenFxEngine {
   tick() {
     if (!this.entries.size) return;
     const time = this.now(), world = this.world(), on = this.enabled();
+    let view = null;
+    try { view = this.view(); } catch { /* drawn wherever it is */ }
     for (const entry of [...this.entries]) {
       const token = entry.token;
       if (!token || token.destroyed) { this.drop(entry); continue; }
@@ -173,12 +208,20 @@ export class TokenFxEngine {
       else if (entry.mesh && !entry.mesh.destroyed && !entry.mesh.filters?.includes(entry.filters[0])) this.attach(entry);
       const mesh = entry.mesh;
       if (!mesh) continue;
-      const visible = (on || entry.always) && token.visible !== false && mesh.visible !== false && mesh.renderable !== false && mesh.worldAlpha > 0;
+      const visible = (on || entry.always) && token.visible !== false && mesh.visible !== false && mesh.renderable !== false && mesh.worldAlpha > 0 && this.seen(entry, mesh, view);
       for (const f of entry.filters) f.enabled = visible;
       if (!visible) continue;
       this.advance(entry, time, world);
       for (const f of entry.filters) f.measure(mesh);
     }
+  }
+  // Whether any of the host's picture, with its looks' reach, is on the screen (onScreen). A host whose bounds cannot
+  // be read is drawn as before.
+  seen(entry, mesh, view) {
+    if (!view || typeof mesh.getBounds !== 'function') return true;
+    let box = null, pad = 0;
+    try { box = mesh.getBounds(true); for (const f of entry.filters) pad = Math.max(pad, f.padding || 0); } catch { return true; }
+    return onScreen(box, view, pad);
   }
   listen() {
     const ticker = this.ticker();

@@ -15,10 +15,11 @@ test('the manifest asks Foundry to install nothing beyond what Animater cannot r
   assert.deepEqual(requires.map((r) => r.id), ['sequencer'], 'Sequencer plays every effect; nothing else is required');
 });
 
-// Everything Animater does with FXMaster is guarded by whether it is active, so it must not be asked for.
+// All Animater does with FXMaster is play its effects from a recipe stage, guarded by whether it is active, so it must
+// not be asked for. (Its weather is its own: Animater no longer reads, follows or hides it.)
 test('FXMaster is never asked for, in any relationship', () => {
   const all = [...(manifest.relationships?.requires ?? []), ...(manifest.relationships?.recommends ?? []), ...(manifest.relationships?.conflicts ?? [])];
   assert.ok(!all.some((r) => r.id === 'fxmaster'), 'its scene effects are a bonus, not a dependency');
-  const main = readFileSync(new URL('../../scripts/main.mjs', import.meta.url), 'utf8');
-  assert.match(main, /game\.modules\.get\("fxmaster"\)\?\.active/, 'and the code checks for it rather than assuming it');
+  const fx = readFileSync(new URL('../../scripts/engines/playback/optional-fx.mjs', import.meta.url), 'utf8');
+  assert.match(fx, /modules\?\.get\('fxmaster'\)\?\.active/, 'and the code checks for it rather than assuming it');
 });
