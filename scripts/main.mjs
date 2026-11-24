@@ -162,7 +162,7 @@ import { createTownLife, lightsOutAt } from "./engines/motion/town-life.mjs";
 import { dayShift, chorusGap, chorusSpot } from "./engines/motion/day-shift.mjs";
 import { flameWind } from "./engines/motion/flame-wind.mjs";
 import { createOldTracks, trackMode, trackHours, stepsAlong, pruneTracks } from "./engines/motion/old-tracks.mjs";
-import { LOCK_TOOLS, listedClientSettings, organizeConfigCategory } from "./ui/settings-config-listing.mjs";
+import { LOCK_TOOLS, listedClientSettings, organizeConfigCategory, syncConfigFields } from "./ui/settings-config-listing.mjs";
 import { peakOf } from "./engines/sound/hit-timing.mjs";
 const soundPeaks = new Map();
 // What "choose your immersion" is showing (ui/immersion-setup.mjs): values that count on this screen while it is open, never saved.
@@ -1483,8 +1483,9 @@ const bodyLift = new Map();
 // `at` and `key`: the light somewhere other than the token's own middle, kept under its own key — a wagon's team
 // stands two squares in front of its token, and a torch beside the wagon is not in the same direction from the horse.
 const flierLight = (t, at = null, key = null) => {
-  const now = performance.now(), had = flierLights.get(key ?? t.id), c = at ?? t.center;
+  const now = performance.now(), had = flierLights.get(key ?? t.id);
   if (had && now - had.at < 150) return had.value;
+  const held = at ? null : heldSizeOf(t), c = at ?? { x: t.x + held.cx, y: t.y + held.cy };
   if (had && had.age === lightingAge && had.x === c.x && had.y === c.y && now - had.at < 2000) return had.value;
   let value = null;
   try {
@@ -2674,8 +2675,21 @@ const floorTextures = createFloorTextures({ PIXI: globalThis.PIXI, root: floorDr
 // Where the creatures are drawn now, for the grass they walk through.
 // (Made once a frame, however many ask: frameOf is the canvas ticker's own time for the frame.)
 const frameOf = () => canvas?.app?.ticker?.lastTime ?? NaN;
+// A token's drawn size and where its middle lies from its corner: asked of Foundry once and kept until its size, its
+// shape or the grid changes (each ask measures the token against the grid again, and these were asked several times a
+// token every frame).
+const tokenSizes = new WeakMap();
+const heldSizeOf = (t) => {
+  const d = t.document, grid = canvas.grid?.size, type = canvas.grid?.type;
+  let s = tokenSizes.get(d);
+  if (!s || s.width !== d.width || s.height !== d.height || s.shape !== d.shape || s.grid !== grid || s.type !== type) {
+    const c = d.getCenterPoint();
+    tokenSizes.set(d, s = { width: d.width, height: d.height, shape: d.shape, grid, type, w: t.w, h: t.h, cx: c.x - d.x, cy: c.y - d.y });
+  }
+  return s;
+};
 let floorTokensAt = NaN, floorTokensHeld = [];
-const tokensOnFloor = () => { const frame = frameOf(); if (frame === floorTokensAt) return floorTokensHeld; const out = []; for (const t of canvas.tokens?.placeables ?? []) { if (!t.visible || !t.actor || t.document?.hidden) continue; const at = t.mesh?.position ?? t.center; out.push({ id: t.id, x: at.x, y: at.y, width: t.w }); } floorTokensAt = frame; return floorTokensHeld = out; };
+const tokensOnFloor = () => { const frame = frameOf(); if (frame === floorTokensAt) return floorTokensHeld; const out = []; for (const t of canvas.tokens?.placeables ?? []) { if (!t.visible || !t.actor || t.document?.hidden) continue; const at = t.mesh?.position ?? t.center; out.push({ id: t.id, x: at.x, y: at.y, width: heldSizeOf(t).w }); } floorTokensAt = frame; return floorTokensHeld = out; };
 const floorMotion = createFloorMotion({ PIXI: globalThis.PIXI, root: floorLayer("floorMotion", 420), grid: () => canvas.grid?.size ?? 100 });
 // Decorations (engines/motion/decorations.mjs): each region's painted rocks, trees, puddles and the rest (the region's right-click
 // panel → Decorations). Their shadows and they themselves on the ground, over the tiles (a rock on a painted rug) and under the
@@ -7358,7 +7372,7 @@ Hooks.on("canvasTearDown", () => { for (const voice of fireVoices.values()) stop
 Hooks.on("canvasTearDown", () => { try { decorations.clear(); decorLights.clear(); } catch { /* gone */ } decorTreesKey = ""; });
 // (Asked for by the rats, the caverns, the moths, the wildlife and more in the same frame: made once a frame.)
 let creaturesAt = NaN, creaturesHeld = [];
-const creaturesNow = () => { const frame = frameOf(); if (frame === creaturesAt) return creaturesHeld; const out = []; for (const t of canvas.tokens?.placeables ?? []) if (t.visible && t.actor) out.push({ id: t.id, x: t.x + t.w / 2, y: t.y + t.h / 2, width: t.w }); creaturesAt = frame; return creaturesHeld = out; };
+const creaturesNow = () => { const frame = frameOf(); if (frame === creaturesAt) return creaturesHeld; const out = []; for (const t of canvas.tokens?.placeables ?? []) if (t.visible && t.actor && t.document?.hidden !== true) { const size = heldSizeOf(t); out.push({ id: t.id, x: t.x + size.w / 2, y: t.y + size.h / 2, width: size.w }); } creaturesAt = frame; return creaturesHeld = out; };
 // What the sky draws on the map — the clouds and the shadows they throw, the snow lying on the roofs and in the trees,
 // the trees swaying, the heat shimmer and the lightning — is shell/sky-look.mjs. Everything it needs from here is the
 // list below, and what it draws with comes back under the same names it had, so no call site moved when it went.
@@ -8367,13 +8381,32 @@ const tickAir = (now) => {
   }
   surfaceLight.seep(shapes);
 };
+// What each part of skyTick costs, when asked (api.skyCost): each part's time a frame and its worst frame. Nothing is
+// timed until it is asked for.
+let skyProbe = null;
+const skyMark = (name) => {
+  const p = skyProbe; if (!p) return;
+  const now = performance.now();
+  if (p.name) { const spent = now - p.at, row = (p.rows[p.name] ??= { total: 0, worst: 0 }); row.total += spent; if (spent > row.worst) row.worst = spent; }
+  if (name === null) p.frames++;
+  p.name = name; p.at = now;
+};
+const skyCost = (ms = 3000) => new Promise((resolve) => {
+  const p = skyProbe = { rows: {}, name: null, at: 0, frames: 0 };
+  setTimeout(() => {
+    if (skyProbe === p) skyProbe = null;
+    resolve(Object.entries(p.rows).map(([part, r]) => ({ part, msPerFrame: Math.round((r.total / Math.max(1, p.frames)) * 1000) / 1000, worstMs: Math.round(r.worst * 100) / 100 })).sort((a, b) => b.worstMs - a.worstMs));
+  }, Math.min(60000, Math.max(100, Number(ms) || 3000)));
+});
 function skyTick() {
   const seconds = (canvas.app.ticker.deltaMS || 16) / 1000;
+  skyMark("light and air");
   lightAnimals();
   { const stage = canvas.stage, screen = canvas.app.renderer.screen; surfaceLight.eye({ x: stage.pivot.x, y: stage.pivot.y, reach: Math.hypot(screen.width, screen.height) / 2 / (stage.scale.x || 1) });
     const now = performance.now(); tickBlastMelts(now); if (now - snowLightsAt > 250) { snowLightsAt = now; surfaceLight.snowLights(floorLightSources, stage.pivot, floorLevel.lights ?? 3, lampReach); if (tileSnow.showing) { try { tileSnow.lights(nearestLights(floorLightSources().filter((l) => !underCeiling(l)), stage.pivot, Math.min(4, floorLevel.lights ?? 4))); } catch { /* no lights yet */ } } }
     if (tileSnow.showing) tileSnow.tick(seconds);
     try { tickAir(now); } catch { /* not built yet */ } }
+  skyMark("canopy, trees, clouds");
   if (canopyLight.shown) canopyLight.tick(seconds);
   // The trees sway with the wind and keep up with the camera.
   if (treeSway.swaying) {
@@ -8388,19 +8421,26 @@ function skyTick() {
   if (surfaceLight.shown) surfaceLight.tick(seconds);
   if (drawnClouds.busy) { try { lookCloudAreas(); drawnClouds.tick(seconds); } catch (error) { console.warn("Animater | drawn clouds", error); drawnClouds.look({ on: false }); } }
   if (canopyLight.shown) canopyLight.cloudClock(surfaceLight.clock, surfaceLight.cloudRun);
+  skyMark("lamp air and dust");
   if (lampLights.length) { lookLampAir(performance.now()); if (lampAir.shown) { lampAir.tick(seconds); tickSmoke(seconds); } }
   if (smoke.roomAir()) tickRoomAir();
   if (ceilingDust.busy) ceilingDust.tick(seconds);
+  skyMark("wildlife");
   if (wildlife.busy || pondLife.busy || fieldLife.busy) wildTick(seconds);
+  skyMark("door bursts");
   if (doorBursts.busy) doorBursts.tick(seconds, { seen: (x, y) => canvas.visibility?.testVisibility?.({ x, y }, { tolerance: canvas.grid.size * 0.2 }) !== false, light: nearestLamp });
+  skyMark("rats and bats");
   if (vermin.count) vermin.tick(seconds, { near: creaturesNow(), lit: litForRats, blocked: ratBlocks, ahead: ratAhead, shut: ratShut, batBlocked: batBlocks, view: viewNow(), light: nearestLamp, sound: critterSound, tokenAt: animalTokenAt });
+  skyMark("blood");
   tickFloorBlood(seconds);
+  skyMark("water and floors");
   if (waterEngine.busy) waterEngine.tick(seconds, { shade: sunReachNow, sky: () => sunNow, view: viewNow, lights: floorLightSources, weather: () => floorWeather, flash: () => flashSun, wind: skyWindNow, angle: skyWindAngle, mostLights: floorLevel.lights, fish: () => wildlife.fishBeneath, fishLook: () => wildlife.fishLook });
   if (iceBreakLook.busy) iceBreakLook.tick(fireNow());
   if (floorLooks.busy) floorLooks.tick(seconds, { shade: sunReachNow, sky: () => sunNow, view: viewNow, lights: floorLightSources, weather: () => floorWeather, flash: () => flashSun, wind: skyWindNow, mostLights: floorLevel.lights });
   if (floorMotion.busy) floorMotion.tick(seconds, viewNow(), skyForFloors(sunNow).strength);
   if (floorShadows.busy) { floorShadows.tick(seconds, { shade: sunReachNow, sky: () => sunNow, view: viewNow, weather: () => floorWeather }); for (const p of floorShadows.ripples(seconds)) waterEngine.addRing({ x: p.x, y: p.y, size: 0.4, keep: false }); }
   if (floorTextures.busy) floorTextures.tick(seconds, { shade: sunReachNow, wind: skyWindNow, angle: skyWindAngle, sky: () => sunNow, tokens: tokensOnFloor, view: viewNow, lights: floorLightSources, weather: () => floorWeather, flash: () => flashSun, mostLights: floorLevel.lights });
+  skyMark("blasts, drips, rivers, night");
   if (energyBlasts.busy) energyBlasts.tick(seconds);
   if (blastReactions.busy) blastReactions.tick(seconds);
   if (drips.count) { drips.tick(seconds, dripLanded); tickPools(); }
@@ -8408,15 +8448,22 @@ function skyTick() {
   if (riverRegions.length || riverVoices.gentle.sound || riverVoices.swift.sound || riverVoices.swamp.sound || riverVoices.lake.sound) tickRivers();
   if (wildOpen || nightVoice.sound) tickNight();
   if (wildOpen) tickChorus(seconds);
+  skyMark("aftermath");
   tickAftermath(seconds);
+  skyMark("fire sounds");
   tickFireSounds();
+  skyMark("town, farm, regions, coast");
   if (townLife.busy) tickTown(seconds);
   tickSceneFarm(Math.min(seconds, 0.1));
   if (regionLife.size) regionTick(seconds);
   if (coast.busy || beachLife.busy || waterfalls.busy || calmWater.length || glintWater.length) tickWater(seconds);
+  skyMark("places");
   tickPlaces();
+  skyMark("weather sound");
   tickWeatherSound();
+  skyMark("light flames");
   { const now = performance.now(); if (now - lightFlamesAt > (now - gustAt < 8000 ? 100 : 500)) { lightFlamesAt = now; syncLightFlames(); } if (lightFlames.count) lightFlames.tick(now / 1000); }
+  skyMark("swimmers, ripples, cavern, webs");
   if (swimmers.size) tickSwimmers();
   if (stepRipples.busy) stepRipples.tick(seconds);
   if (wakeRipples.busy) wakeRipples.tick(seconds);
@@ -8425,20 +8472,25 @@ function skyTick() {
   // The decorations' crowns open over the creatures beneath them.
   // The raised ground, once a second, as its snow and wetness change: drawn again only if they moved (its own check: the
   // decorations' runs only where there are decorations).
+  skyMark("sway and heights");
   swayTick();
   heightsWeatherAt += seconds; if (heightsWeatherAt >= 1) { heightsWeatherAt = 0; const hw = heightsWeather(), hk = `${hw.wet}|${hw.snow}`; if (hk !== heightsWeatherKey) { heightsWeatherKey = hk; heightShadowsSoon(); } }
+  skyMark("decorations");
   if (decorations.busy) {
     decorations.creatures(tokensOnFloor()); decorations.wind({ strength: undergroundScene() ? 0 : skyWindNow, angle: skyWindAngle }); decorations.tick(seconds, viewNow());
     // The lights' shadows of them, a few times a second (lights move with the creatures carrying them), as strong as each light is against the sky.
     decorWeatherAt += seconds; if (decorWeatherAt >= 1) { decorWeatherAt = 0; const key = decorWeatherNow(); if (key !== decorWeatherKey) { decorWeatherKey = key; try { syncDecorations(); } catch { /* not built yet */ } } }
     decorLampsAt += seconds; if (decorLampsAt >= 0.15) { decorLampsAt = 0; try { decorations.lamps(shadowsOffHere() ? [] : floorLightSources()); } catch { /* no lights now */ } }
   }
+  skyMark("under life");
   if (underWanted || mothsSetOn || underLife.busy) tickUnderLife(seconds);
+  skyMark("window light");
   windowShaftLayer.tick(seconds);
   // Again next frame while a creature's silhouette is still being made.
   // A creature hovering in a glow: its shadow moves with it, drawn a dozen times a second.
   if (!glowShadowsDirty && bodyLift.size && windowGlowLayer.built && performance.now() - glowBobAt > 80) { for (const id of bodyLift.keys()) if (windowGlowLayer.casts(id)) { glowShadowsDirty = true; glowBobAt = performance.now(); break; } }
   if (glowShadowsDirty && windowGlowLayer.built) glowShadowsDirty = windowGlowLayer.shadows(glowCreatures(), wallsHere()) === true;
+  skyMark("heat and lightning");
   if (skyHeat > 0) {
     const t = canvas.stage.transform;
     t.updateLocalTransform();
@@ -8453,6 +8505,7 @@ function skyTick() {
   surfaceLight.flash(level);
   if (level > 0.3) { if (!flashSun) strikeNow(level); flashSun = { angle: strikeAngle, height: 35, strength: level }; }
   else flashSun = null;
+  skyMark(null);
 }
 const wallShadowsSoon = () => { if (!wallShadowTimer) wallShadowTimer = setTimeout(rebuildWallShadows, 150); };
 for (const hook of ["canvasReady", "createWall", "updateWall", "deleteWall", "createRegion", "updateRegion", "deleteRegion", "updateWorldTime", "updateSetting", "clientSettingChanged", "calendaria.dateTimeChange", "calendaria.ready", "calendaria.weatherChange", "simple-calendar-date-time-change", "simple-calendar-ready"]) Hooks.on(hook, (first, changes, options) => { if (!quietSave(first, changes, options)) wallShadowsSoon(); });
@@ -8597,21 +8650,25 @@ const movementFeel = createMovementFeel({
     if (!placeables?.length) return [];
     const base = canvas.level?.elevation?.base ?? 0, level = canvas.level?.id, time = performance.now();
     return placeables.map((t) => {
-      const d = t.document, c = d.getCenterPoint();
+      const d = t.document, size = heldSizeOf(t), cx = d.x + size.cx, cy = d.y + size.cy;
       const until = feelSkip.get(d.id);
       if (until !== undefined && until <= time) feelSkip.delete(d.id);
       // Teleporting (gone: no shadow while it slides unseen), or playing an animation (skip: no steps or dust).
       const gone = (until ?? 0) > time, skip = gone || motions?.active?.has?.(t) === true;
-      const action = actionNow(t), signature = [c.x, c.y, t.w, d.elevation, base, level, action, t.visible, d.hidden, t.controlled, t.isOwner, t.isPreview, d.flags?.[ID]?.noShadow];
-      const cached = movementViews.get(d.id);
-      if (cached && cached.token === t && time - cached.at < 500 && signature.every((value, i) => value === cached.signature[i])) {
+      const action = actionNow(t), noShadow = d.flags?.[ID]?.noShadow;
+      const cached = movementViews.get(d.id), was = cached?.signature;
+      // (Looked at afresh every half second whatever the hooks say; one hidden from the players every two: what that
+      // catches is a change nothing announced, and on a creature nobody but the GM sees it can wait.)
+      if (cached && cached.token === t && time - cached.at < (d.hidden === true ? 2000 : 500) && was[0] === cx && was[1] === cy && was[2] === size.w && was[3] === d.elevation && was[4] === base && was[5] === level && was[6] === action
+        && was[7] === t.visible && was[8] === d.hidden && was[9] === t.controlled && was[10] === t.isOwner && was[11] === t.isPreview && was[12] === noShadow) {
         cached.view.skip = skip; cached.view.gone = gone;
         return cached.view;
       }
+      const c = { x: cx, y: cy }, signature = [cx, cy, size.w, d.elevation, base, level, action, t.visible, d.hidden, t.controlled, t.isOwner, t.isPreview, noShadow];
       const sound = movementSoundMix(d.flags?.[ID]?.movementSound);
       const soundBody = sound.body === 'none' ? null : sound.body || movementFeelBody(d);
       const view = {
-        id: d.id, x: c.x, y: c.y, width: t.w ?? 100, elevation: d.elevation ?? 0, base, action, deck: bridgeDeckAt(c, d.elevation ?? 0, base, level), stand: standingOn(c, d.elevation ?? 0, base, level),
+        id: d.id, x: c.x, y: c.y, width: size.w ?? 100, elevation: d.elevation ?? 0, base, action, deck: bridgeDeckAt(c, d.elevation ?? 0, base, level), stand: standingOn(c, d.elevation ?? 0, base, level),
         ...((d.elevation??0)<base?{floor:movementFeelFloor(c,d)}:{}),
         statuses: d.actor?.statuses, gait: sound.gait || movementFeelGait(d), printShape: printShape(sound.gait || movementFeelGait(d), { actor: d.actor, name: d.name }), bulk: movementFeelBulk(d),
         body: soundBody, flight: sound.flight || (['air', 'fire', 'water'].includes(soundBody) ? 'flight' : movementFeelFlight(d)), sound,
@@ -9255,9 +9312,9 @@ const breathVapor = createBreathVapor({
     const out = [];
     for (const { t, cold } of vaporList) {
       if (!t || t.destroyed || !t.document) continue;
-      const d = t.document, c = d.getCenterPoint();
+      const d = t.document, size = heldSizeOf(t), c = { x: d.x + size.cx, y: d.y + size.cy };
       // Fallen over, its mouth lies lower down.
-      out.push({ id: d.id, x: c.x, y: c.y + (movementFeelBlood(d).prone === true ? (t.w ?? 100) * 0.12 : 0), width: t.w ?? 100, rotation: d.rotation ?? 0, visible: t.visible === true && !d.hidden, breathes: true, cold,
+      out.push({ id: d.id, x: c.x, y: c.y + (movementFeelBlood(d).prone === true ? (size.w ?? 100) * 0.12 : 0), width: size.w ?? 100, rotation: d.rotation ?? 0, visible: t.visible === true && !d.hidden, breathes: true, cold,
         // Portrait or top-down art decides where the mouth is.
         art: vaporArt({ ring: d.ring?.enabled === true, lockRotation: d.lockRotation === true, rotation: d.rotation ?? 0 }),
         // Token configuration's Breath from: where this token's art has its mouth.
@@ -15094,6 +15151,15 @@ Hooks.once("init", () => {
     const setting = key === "quality" ? null : game.settings.settings?.get?.(`${ID}.${key}`);
     if (setting) try { setting.config = false; } catch (error) { console.warn(`Animater | ${key} stays in Configure Settings`, error); }
   }
+  // An open Configure Settings follows a setting saved anywhere else (Animater's own settings window saves at once):
+  // its Save Changes writes every field it holds, and wrote the old value back over the new one.
+  for (const hook of ["clientSettingChanged", "updateSetting"]) Hooks.on(hook, (first) => {
+    try {
+      const full = typeof first === "string" ? first : typeof first?.key === "string" ? first.key : null;
+      if (full && !full.startsWith(`${ID}.`)) return;
+      for (const section of document.querySelectorAll(`section[data-category="${ID}"]`)) syncConfigFields(section, (key) => game.settings.get(ID, key), ID, full ? full.slice(ID.length + 1) : null);
+    } catch (error) { console.warn("Animater | Configure Settings not brought up to date", error); }
+  });
   // With a settings-lock module (BBMM), each player's own settings are listed in Configure Settings as well,
   // grouped by the window's tabs, so a GM can lock them there (ui/settings-config-listing.mjs).
   if (LOCK_TOOLS.some((module) => game.modules.get(module)?.active)) {
@@ -16623,6 +16689,8 @@ Hooks.once("ready", () => {
     // on this screen, a quality that leaves it out, underground), for a weather it does not know, or for a player where
     // the GM has turned players' bursts off. The same weather again carries it on.
     weatherBurst: (asked = {}) => weatherBurstHere(asked),
+    // What each part of the ambient frame (skyTick) costs over `ms`: [{ part, msPerFrame, worstMs }], worst first.
+    skyCost: (ms) => skyCost(ms),
     stopMoments: () => { if (!game.user?.isGM) return false; momentsStopEverywhere(); return true; },
     moments: () => clone(MOMENTS),
     creatureShowcase:tokenId=>clone(showcaseTools.snapshot(tokenId)),

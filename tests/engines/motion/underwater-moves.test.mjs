@@ -77,7 +77,9 @@ test('marks and sounds go by the waypoint being animated, not the token\'s chose
   const main = read('scripts/main.mjs');
   assert.match(main, /const actionNow = \(t\) => \(t\.movementAnimationPromise && movingAction\.get\(t\)\) \|\| t\.document\?\.movementAction;/);
   assert.match(main, /if \(context\?\.name === this\.movementAnimationName && typeof options\?\.action === "string"\) movingAction\.set\(this, options\.action\);/);
-  assert.match(main, /const action = actionNow\(t\), signature = \[/);
+  assert.match(main, /const action = actionNow\(t\), noShadow = /);
+  assert.match(main, /was\[6\] === action/);
+  assert.match(main, /signature = \[cx, cy, size\.w, d\.elevation, base, level, action,/);
   assert.match(main, /elevation: d\.elevation \?\? 0, base, action,/);
   assert.match(main, /Hooks\.once\("setup", installMoveAction\);/);
 });

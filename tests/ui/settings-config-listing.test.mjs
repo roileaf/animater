@@ -57,3 +57,33 @@ test("the listed rows go under a heading per tab, after Animater's own entries, 
   assert.deepEqual(order(section), expected, "no doubled headings");
   assert.equal(organizeConfigCategory(null, tabs), 0);
 });
+
+// Reported: Animation quality set to Off in Animater settings, then Save Changes pressed in the Configure Settings
+// window open behind it, and it was Full again.
+test("an open Configure Settings follows a setting saved elsewhere, so Save Changes does not write the old value back", async () => {
+  const { syncConfigFields } = await import("../../scripts/ui/settings-config-listing.mjs");
+  const fields = [
+    { name: "animater.quality", tagName: "SELECT", value: "full" },
+    { name: "animater.screenTintLocal", type: "checkbox", checked: true },
+    { name: "animater.screenTintStrength", tagName: "RANGE-PICKER", value: 1 },
+    { name: "animater.lastingMode", tagName: "INPUT", value: "x" },
+  ];
+  const section = { querySelectorAll: (q) => (q === '[name^="animater."]' ? fields : []) };
+  const now = { quality: "off", screenTintLocal: false, screenTintStrength: 1, lastingMode: { a: 1 } };
+  // Only the one that changed, when it is known which.
+  assert.equal(syncConfigFields(section, (k) => now[k], "animater", "quality"), 1);
+  assert.equal(fields[0].value, "off");
+  assert.equal(fields[1].checked, true, "another field is left as the user has it");
+  // All of them otherwise; what is already right, or cannot be shown, is not touched.
+  assert.equal(syncConfigFields(section, (k) => now[k]), 1);
+  assert.equal(fields[1].checked, false);
+  assert.equal(fields[3].value, "x");
+  assert.equal(syncConfigFields(section, () => { throw new Error("not registered"); }), 0);
+  assert.equal(syncConfigFields(null, (k) => now[k]), 0);
+  const { readFileSync } = await import("node:fs");
+  const main = readFileSync(new URL("../../scripts/main.mjs", import.meta.url), "utf8");
+  // Whether or not a lock module lists the rest: Animation quality is always in Configure Settings.
+  const at = main.indexOf('for (const hook of ["clientSettingChanged", "updateSetting"]) Hooks.on(hook, (first) => {');
+  assert.ok(at > 0 && at < main.indexOf("if (LOCK_TOOLS.some((module) => game.modules.get(module)?.active)) {"));
+  assert.match(main, /syncConfigFields\(section, \(key\) => game\.settings\.get\(ID, key\), ID, full \? full\.slice\(ID\.length \+ 1\) : null\);/);
+});

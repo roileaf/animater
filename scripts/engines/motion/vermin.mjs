@@ -25,6 +25,10 @@ export const creatureSize = (v, all = 100) => Math.min(4, Math.max(0.05, (sizePe
 // asks `ahead` once for half a square past its snout and runs that far on the answer, asking only `shut` each frame.
 // Anything in that stretch and it asks `blocked` about its snout every frame, as it does without them.
 export const RAT_CLEAR = 0.5;
+// A rat further than RAT_FAR squares outside what this screen shows steps one frame in RAT_FAR_EVERY, by no more than
+// RAT_FAR_STEP seconds at a time (pure: `view` { x, y, w, h } in pixels, none when the whole map is taken as seen).
+export const RAT_FAR = 3, RAT_FAR_EVERY = 6, RAT_FAR_STEP = 0.25;
+export const ratFar = (at, view, grid = 100) => !!view && (at.x < view.x - grid * RAT_FAR || at.y < view.y - grid * RAT_FAR || at.x > view.x + view.w + grid * RAT_FAR || at.y > view.y + view.h + grid * RAT_FAR);
 export function ratStep(rat, { dt = 1 / 60, grid = 100, lit = () => 0, near = [], blocked = () => false, ahead = null, shut = null, random = Math.random } = {}) {
   const r = { ...rat };
   r.wait -= dt;
@@ -407,9 +411,18 @@ export function createVermin({ PIXI, root, batsRoot = root, restyle = null }) {
       const k = (grid / 100) * size, kb = (grid / 100) * batSize, rt = ratFrames(), bt = batFrames();
       // One told where to go (animal-orders.mjs) is set on its way first, and nobody frightens it off it.
       const told = (kind, o) => (o.order ? orderPrep(kind, o, orderAim(o.order, { tokenAt, grid, time, phase: o.orderPhase ?? 0, from: o }), { grid }) : o);
+      const frameDt = dt;
       rats = rats.map((was, i) => {
         // Its HUD open: it stays put.
         if (handles.held(was)) return was;
+        // Well out of sight and on no errand, it wanders on in coarser steps: one frame in RAT_FAR_EVERY, each in its
+        // turn, with the time it is owed. Nobody is looking, and a rat asks about walls and lights every step it takes.
+        let dt = frameDt;
+        if (view && !(was.under > 0) && !was.order && !was.chasing && !was.toHole && ratFar(was, view, grid)) {
+          const owed = (was.owed ?? 0) + frameDt;
+          if ((frame + i) % RAT_FAR_EVERY) { was.owed = owed; return was; }
+          dt = Math.min(RAT_FAR_STEP, owed); was.owed = 0;
+        }
         // Down a hole: out of sight under the floor until it comes up out of another one, somewhere else on the map.
         if (was.under > 0) {
           const u = { ...was, under: was.under - dt };

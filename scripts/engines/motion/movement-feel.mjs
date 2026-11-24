@@ -1588,6 +1588,10 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     if (token.visible) lay(puffsFor(floor, feet, { seed: token.id, grid: size, density: rate, width: token.width || size, gait: token.gait ?? 'boots', amount: kickAmount() }), time, floor);
     sound(floor, feet, token, 'land');
   };
+  // What a resting token is known by, beside its view: a caller may hand the same view in again with these changed.
+  const REST_FIELDS = ['x', 'y', 'elevation', 'base', 'action', 'visible', 'shadow', 'prone', 'floor', 'gait', 'width'];
+  const restSame = (move, token) => { const k = move.restKey; if (!k || k.statuses !== token.statuses?.size) return false; for (const f of REST_FIELDS) if (k[f] !== token[f]) return false; return true; };
+  const restKeyOf = (token) => { const k = { statuses: token.statuses?.size }; for (const f of REST_FIELDS) k[f] = token[f]; return k; };
   const tick = () => {
     const rate = enabled() ? density() : 0;
     if (!(rate > 0)) { if (particles.size || shadows.size || known.size) clear(); return; }
@@ -1610,6 +1614,13 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
         if (!token.visible) unseen.add(id);
         const point = { x: token.x, y: token.y };
         seen.add(id);
+        // At rest, as it was when last looked at in full (the same view handed in again: the caller makes a new one
+        // when anything about the token changes, and every half second besides), and casting no shadow: nothing to do.
+        const rest = moves.get(id);
+        if (rest && rest.rest === token && restSame(rest, token) && !token.skip && !token.gone && (!rest.restShade || !groundShadows())) {
+          if (rest.restStanding) standing.push(rest.restStanding);
+          continue;
+        }
         const below=Number(token.elevation)<Number(token.base??0);
         const medium=movementEnvironment(token,token.floor??(below?floorOf(point,token):null));
         const under = medium.underground;
@@ -1704,9 +1715,15 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
           }
           // Off the ground: no marks. Keep the chosen winged/wingless sound; stationary hovering stays silent.
           if (kind !== null) for (const at of tracker.step(id, point)) { const feet = feetOf(token, at); sound(floorOf(feet, token), feet, token, kind); }
+          move.rest = !move.moving && !token.skip && (!token.visible || token.shadow === false) ? token : null; move.restKey = restKeyOf(token); move.restShade = false; move.restStanding = null;
           continue;
         }
-        if (token.visible && !under) standing.push({ id, x: point.x, y: point.y, width: token.width, elevation: Number(token.elevation) || 0, ring: token.ring || false, order: orderOf(token) });
+        const stands = token.visible && !under ? { id, x: point.x, y: point.y, width: token.width, elevation: Number(token.elevation) || 0, ring: token.ring || false, order: orderOf(token) } : null;
+        if (stands) standing.push(stands);
+        // Whether it would cast a shadow were "Shadows under every token" on: one that would is looked at every frame
+        // while it is (its lights move), one that would not rests until something about it changes.
+        const shades = token.visible && token.shadow !== false && !under && !medium.submerged;
+        move.rest = null;
         // Standing on the ground: its shadows when "Shadows under every token" is on. Under the water or the earth it casts
         // none: nothing of it stands in the light.
         if (groundShadows() && token.visible && token.shadow !== false && !under && !medium.submerged) {
@@ -1790,6 +1807,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
           }
         } else dropShadow(id);
         for (const at of tracker.step(id, point)) emit(token, at, time, size, rate, kind, move);
+        if (!move.moving && !token.skip && (!shades || !groundShadows())) { move.rest = token; move.restKey = restKeyOf(token); move.restShade = shades; move.restStanding = stands; }
       } catch (error) {
         if (id !== undefined) { tracker.forget(id); dropShadow(id); moves.delete(id); }
         // One creature's trouble is not the scene's, so this is swallowed — but swallowed in silence it reads as

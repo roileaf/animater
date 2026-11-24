@@ -21,6 +21,26 @@ export function listedClientSettings({ id = "animater", registry, systemId = "",
   })).filter((tab) => tab.keys.length);
 }
 
+// Configure Settings holds every field as it was when the window opened, and its Save Changes writes all of them. An
+// Animater setting saved elsewhere meanwhile (its own settings window saves at once) was written back to what it had
+// been: a player set Animation quality to Off there, pressed Save Changes in the window behind, and it was Full again.
+// So each of Animater's fields in an open Configure Settings is set to what the setting now is: `section` its
+// category there, `get(key)` the current value, `only` one key (all of them when not given). Returns how many changed.
+export function syncConfigFields(section, get, id = "animater", only = null) {
+  if (!section) return 0;
+  let changed = 0;
+  for (const field of section.querySelectorAll(`[name^="${id}."]`)) {
+    const key = String(field.name ?? "").slice(id.length + 1);
+    if (!key || (only && key !== only)) continue;
+    let value;
+    try { value = get(key); } catch { continue; }
+    if (value === undefined || value === null || typeof value === "object") continue;
+    if (field.type === "checkbox") { if (field.checked !== (value === true)) { field.checked = value === true; changed++; } }
+    else if (String(field.value) !== String(value)) { field.value = field.tagName === "SELECT" ? String(value) : value; changed++; }
+  }
+  return changed;
+}
+
 const esc = (text) => String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 // Puts the listed rows of Animater's section of Configure Settings under a heading per tab, after its own entries
 // (the menus and animation quality). Safe to run again on a re-render.
