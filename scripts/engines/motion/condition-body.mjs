@@ -99,13 +99,20 @@ export function bodyPose(kind, t, strength = 1, { period, dir } = {}) {
 }
 
 
+// What is done to a creature where it is: it is struck, shaken, pressed, made to flinch. One lying on the floor takes
+// these lying down. (Every other motion is the creature doing something — a lunge, a leap, a throw — and it is shown
+// on its feet for that, as before.) Reported from a table: a creature toppled prone, then its failed saving throw's
+// stagger stood it up for a second and laid it down again.
+export const FLOOR_MOTIONS = new Set(['stagger', 'shake', 'recoil', 'brace', 'cower', 'press', 'squash', 'electrocute']);
+
 export class ConditionBody {
   // `follow(token, dx, dy)`: the body moved this far from its place (0, 0 when it is back), for what rides on it.
   // `cutOut(token)`: its art is a top-down or pop-out creature on a clear background (lies flat when prone).
   // `carried()`: tokens something else moves them with (a rocking ship's deck), and `carry(token)` how far, { x, y } px and
   // `r` radians, added over whatever pose it shows here, so the two never fight over its sprite.
-  constructor({ tokenFx = () => null, now = () => performance.now(), frame = nextFrame, cancel = cancelFrame, busy = () => false, enabled = () => true, follow = () => {}, cutOut = () => false, carried = () => [], carry = () => null } = {}) {
-    Object.assign(this, { tokenFx, now, frame, cancel, busy, enabled, follow, cutOut, carried, carry });
+  // `staysDown(token)`: the motion playing on it now is one a fallen creature takes lying down (FLOOR_MOTIONS).
+  constructor({ tokenFx = () => null, now = () => performance.now(), frame = nextFrame, cancel = cancelFrame, busy = () => false, staysDown = () => false, enabled = () => true, follow = () => {}, cutOut = () => false, carried = () => [], carry = () => null } = {}) {
+    Object.assign(this, { tokenFx, now, frame, cancel, busy, staysDown, enabled, follow, cutOut, carried, carry });
     this.riders = new Set();
     this.records = new Map();
     // One pose per token: several conditions (PF2e Dying brings Unconscious) must not
@@ -163,6 +170,12 @@ export class ConditionBody {
   // Something began carrying tokens (a ship's deck started rocking): tick if not already.
   wake() { if (!this.handle) this.handle = this.frame(() => this.tick()); }
   clear() { for (const name of [...this.records.keys()]) this.remove(name, { immediate: true }); }
+  // Is this token shown lying on the floor now (fallen, not getting up, and nothing that outranks it holding it)?
+  fallen(token) {
+    if (!this.enabled()) return false;
+    const list = [...this.records.values()].filter(r => r.token === token);
+    return shownTreatment(list.map(r => r.kind)) === 'prone' && list.some(r => r.kind === 'prone' && r.leaving === undefined);
+  }
   // Is a treatment moving this token's sprite right now (stone and stillness hold it still)?
   moves(token) { return shownTreatment([...this.records.values()].filter(r => r.token === token && !IDLE_KINDS.has(r.kind)).map(r => r.kind)) !== null; }
   // Undo only what this treatment set; if the token refreshed in between, its
@@ -210,7 +223,9 @@ export class ConditionBody {
       if (kind) shown.set(token, list.findLast((r) => r.kind === kind));
     }
     // A fallen creature not shown fallen (still, stone, an animation playing) stands as it was.
-    for (const r of this.records.values()) if (r.tipFilter && (shown.get(r.token) !== r || !on || this.busy(r.token))) r.tipFilter.current.amount = 0;
+    // (But for a motion it takes lying down: struck or shaken on the floor, it stays there.)
+    const down = (token) => { try { return this.staysDown(token) === true; } catch { return false; } };
+    for (const r of this.records.values()) if (r.tipFilter && (shown.get(r.token) !== r || !on || (this.busy(r.token) && !down(r.token)))) r.tipFilter.current.amount = 0;
     for (const token of new Set([...this.records.values()].map(r => r.token))) if (!shown.has(token) && !rides.has(token)) this.restore(token);
     for (const token of this.riders) if (!rides.has(token) && !shown.has(token)) this.restore(token);
     const posed = new Map(shown);
@@ -218,6 +233,12 @@ export class ConditionBody {
     for (const [token, r] of posed) {
       const mesh = token?.mesh;
       if (!mesh || mesh.destroyed || token.destroyed) continue;
+      // Struck where it lies: it stays as it lies (still falling, it goes on falling) and the motion has its sprite
+      // until it ends; the pose kept here is taken up again from there.
+      if (on && r?.kind === 'prone' && this.busy(token) && down(token)) {
+        if (r.tipFilter) r.tipFilter.current.amount = proneTip((time - r.start) / 1000, r.leaving === undefined ? null : (time - r.leaving) / 1000);
+        continue;
+      }
       if (!on || this.busy(token)) { this.restore(token); continue; }
       const a = this.poses.get(token);
       // Natural pose: what Foundry last set, minus our own delta if still in place.

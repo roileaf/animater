@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ConditionBody, bodyTreatment, bodyPose, shownTreatment, BODY_PRIORITY, proneTip } from "../../../scripts/engines/motion/condition-body.mjs";
+import { ConditionBody, bodyTreatment, bodyPose, shownTreatment, BODY_PRIORITY, proneTip, FLOOR_MOTIONS } from "../../../scripts/engines/motion/condition-body.mjs";
 
 const token = () => ({ w: 100, mesh: { position: { x: 500, y: 300 }, rotation: 0, scale: { x: 1, y: 1 }, filters: null } });
 function runner(extra = {}) {
@@ -316,4 +316,61 @@ test("a carried token moves with what carries it, over its own pose, and returns
   off = { x: 4, y: -2, r: 0.01 };
   riding = []; step(16);
   assert.deepEqual([t.mesh.position.x, t.mesh.position.y, t.mesh.rotation], [500, 300, 0], "let go: back where it stands");
+});
+
+// A table's report: toppled prone, the creature's failed save then staggered it — standing it up for a second and
+// laying it down again. What is done to a creature where it is, it takes lying down.
+test('a fallen creature struck or shaken stays on the floor; one that acts is shown on its feet', () => {
+  for (const m of ['stagger', 'shake', 'recoil', 'brace', 'cower', 'press', 'squash', 'electrocute']) assert.ok(FLOOR_MOTIONS.has(m), m);
+  for (const m of ['lunge', 'leap', 'rush', 'throw', 'spin', 'collapse', 'dodge', 'roll', 'push', 'pull', 'levitate']) assert.ok(!FLOOR_MOTIONS.has(m), m);
+  let now = 0, busy = false, down = false; const queue = []; const filter = { current: { amount: 0 } };
+  const remove = () => {}; remove.filters = [filter];
+  const t = { w: 100, h: 100, center: { x: 50, y: 50 }, mesh: { destroyed: false, parent: { sortDirty: false }, sort: 5, rotation: 0, position: { x: 50, y: 50 }, scale: { x: 1, y: 1 } } };
+  const body = new ConditionBody({ now: () => now, frame: (f) => { queue.push(f); return queue.length; }, cancel: () => {}, tokenFx: () => ({ apply: () => remove }), busy: () => busy, staysDown: () => down });
+  const step = (ms) => { now += ms; const q = queue.splice(0); for (const f of q) f(); };
+  body.add('prone', t, 'prone'); step(16); step(800);
+  assert.ok(filter.current.amount > 0.9 && t.mesh.sort < 5 && body.fallen(t), 'lying');
+  // A stagger plays on it: it stays down, under anyone standing, and the motion has its sprite (nothing written here).
+  busy = true; down = true; t.mesh.position.x = 63; step(16); step(300);
+  assert.ok(filter.current.amount > 0.9, 'still on the floor');
+  assert.ok(t.mesh.sort < 5, 'still under anyone standing');
+  assert.equal(t.mesh.position.x, 63, 'the motion\'s own offset is left alone');
+  // The motion over, it lies as it lay.
+  busy = false; down = false; t.mesh.position.x = 50; step(16);
+  assert.ok(filter.current.amount > 0.9 && t.mesh.sort < 5 && t.mesh.position.x === 50);
+  // A lunge of its own: shown on its feet for that, as before, and down again after.
+  busy = true; step(16);
+  assert.equal(filter.current.amount, 0, 'up for its own action');
+  assert.equal(t.mesh.sort, 5);
+  busy = false; step(16);
+  assert.ok(filter.current.amount > 0.9, 'and down again');
+  // Getting up, it is no longer fallen: a stagger then does not hold it down.
+  body.remove('prone'); assert.equal(body.fallen(t), false);
+});
+
+test('with no shader engine a fallen creature lies on its side, and is left there by what is done to it', () => {
+  let now = 0, busy = false, down = false; const queue = [];
+  const t = { w: 100, h: 100, center: { x: 50, y: 50 }, document: { rotation: 0 }, mesh: { destroyed: false, rotation: 0, position: { x: 50, y: 50 }, scale: { x: 1, y: 1 } } };
+  const body = new ConditionBody({ now: () => now, frame: (f) => { queue.push(f); return queue.length; }, cancel: () => {}, tokenFx: () => null, busy: () => busy, staysDown: () => down });
+  const step = (ms) => { now += ms; const q = queue.splice(0); for (const f of q) f(); };
+  body.add('prone', t, 'prone'); step(16); step(800);
+  const lying = t.mesh.rotation;
+  assert.ok(lying > 1.3, 'on its side');
+  busy = true; down = true; step(16); step(200);
+  assert.equal(t.mesh.rotation, lying, 'not stood up');
+  busy = false; down = false; step(16);
+  assert.equal(t.mesh.rotation, lying, 'and not turned a second time');
+  body.remove('prone', { immediate: true });
+  assert.equal(t.mesh.rotation, 0, 'upright again when it ends');
+});
+
+test('the map leaves a fallen creature down for those motions, and saving throw reactions can be turned off', async () => {
+  const { readFileSync } = await import('node:fs');
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /beforeStart: \(token, stage\) => \{ if \(!\(FLOOR_MOTIONS\.has\(stage\?\.motion\) && conditionBody\?\.fallen\(token\)\)\) conditionBody\?\.restore\(token\); \},/);
+  assert.match(main, /staysDown: \(token\) => \{ const tracks = motions\.active\.get\(token\)\?\.tracks; return !!tracks\?\.length && tracks\.every\(\(t\) => FLOOR_MOTIONS\.has\(t\.stage\?\.motion\)\); \},/);
+  const motion = readFileSync(new URL('../../../scripts/engines/motion/motion.mjs', import.meta.url), 'utf8');
+  assert.match(motion, /if \(!existing\) this\.beforeStart\(token, stage\);/);
+  assert.match(main, /if \(hotSetting\(SAVE_REACTIONS_SETTING\) === false\) return;/);
+  assert.match(main, /registerSetting\(SAVE_REACTIONS_SETTING, \{\r?\n    name: "Saving throw reactions",/);
 });

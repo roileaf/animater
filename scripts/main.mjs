@@ -371,7 +371,7 @@ import { CROSSOVER_CATALOG, crossoverSystem, crossoverResolve, crossoverSettingT
 import { DH_KINDS, DAGGERHEART_SOURCE, dhEntries, dhEntry, dhRecipe, normalizeDhCatalogState, resolveDaggerheartAutomaticRecipe, findDhEntry } from "./catalogs/daggerheart/daggerheart-catalog.mjs";
 import {QUALITY_CHOICES,qualityRank,allowsMotion,allowsTokenFx,floorDetail, lightenEffect,stateBudget,usersForTier,usersForSound} from './core/quality.mjs';
 import { separateBatchBuffers, gpuName } from './core/apple-gpu.mjs';
-import {ConditionBody,bodyTreatment} from './engines/motion/condition-body.mjs';
+import {ConditionBody,bodyTreatment,FLOOR_MOTIONS} from './engines/motion/condition-body.mjs';
 import { IdleLife, breathes, idleKind, pickIdle } from "./engines/motion/idle-life.mjs";
 import { seaStrength, rollSeed, shipRoll, onDeck, carriedBy, deckShade, hullWash, tileMiddle } from "./engines/motion/ship-roll.mjs";
 import { ABOARD, KIND as CARRIER_KIND, STOW as CARRIER_STOW, RIDING as CARRIER_RIDING, SEATS as CARRIER_SEATS, CARRIER_KINDS, carrierKind, kindLabel, pulledOff, boardList, stillAboard, ridePlan, landPlan, boardLabel, capacityOf, overCapacity, tooBig, seatsOf, seatsLeft } from "./engines/motion/carriers.mjs";
@@ -10168,6 +10168,7 @@ function playTest(recipe, context, options = {}) {
 // Dice So Nice: an attack or damage animation waits until that roll's 3D dice land
 // (never longer than DICE_WAIT_LIMIT, and not at all when Dice So Nice shows none).
 const WAIT_FOR_DICE = "waitForDice", DICE_WAIT_LIMIT = 8000;
+const SAVE_REACTIONS_SETTING = "saveReactions";
 const SUBTLE_LASTING = "subtleLasting", DAMAGE_REACTIONS = "damageReactions",DRAMATIC_DEATHS = "dramaticDeaths", TELEPORT_TOKENS = "teleportTokens", DEFAULT_FINISHER = "defaultFinisher", DEFAULT_FINISHER_ENDING = "defaultFinisherEnding", DUALITY_ACCENT = "daggerheartDualityAccent";
 const COLLAPSE = { id: "animater-collapse", name: "Dropped to 0 HP", trigger: "manual", stages: [{ stageId: "collapse", kind: "motion", motion: "collapse", subject: "source", duration: 1800, distance: 0.25, intensity: 0.8, assets: [] }] };
 async function afterDice(event) {
@@ -10180,6 +10181,8 @@ async function afterDice(event) {
 }
 async function playSaveReaction(outcome, tokenId, messageId, sceneId) {
   if (!acceptsEvents() || (sceneId && sceneId !== canvas.scene?.id)) return;
+  // ("Saving throw reactions": off, a creature does not move for its saves.)
+  try { if (hotSetting(SAVE_REACTIONS_SETTING) === false) return; } catch { /* not registered yet */ }
   const token = canvas.tokens?.get(tokenId), recipe = saveReaction(outcome);
   if (!token || !recipe) return;
   await afterDice({ type: "save", messageId });
@@ -14981,6 +14984,11 @@ Hooks.once("init", () => {
     hint: "Animater's sounds from beyond a wall sound muffled, as Foundry's own sounds do.",
     scope: "client", config: true, type: Boolean, default: true,
   });
+  registerSetting(SAVE_REACTIONS_SETTING, {
+    name: "Saving throw reactions",
+    hint: "A creature reacts to its own saving throw against a spell or effect: it shrugs it off, resists, or staggers as it takes the brunt (Activity shows it as \"Saving throw: ...\"). Off: nothing moves for a save. One lying on the floor takes it lying down either way.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
   registerSetting(DAMAGE_REACTIONS, {
     name: "Damage reactions",
     hint: "A token that takes energy damage (fire, cold, lightning, acid, poison and so on) flashes in that damage's look. Physical damage keeps its weapon animation only.",
@@ -16087,7 +16095,7 @@ Hooks.once("ready", () => {
       if (token) afterimages.streak(token.mesh, trail.tint, streakLayout(trail.from, trail.to));
     } catch (error) { console.warn("Animater afterimages:", error?.message ?? error); }
   });
-  motions = new TokenMotionPlayer({ beforeStart: (token) => conditionBody?.restore(token), grid: () => canvas.grid?.size ?? 100, fragments: { start: (...args) => createFragmentRenderer({ PIXI: globalThis.PIXI, grid: () => canvas.grid?.size ?? 100,
+  motions = new TokenMotionPlayer({ beforeStart: (token, stage) => { if (!(FLOOR_MOTIONS.has(stage?.motion) && conditionBody?.fallen(token))) conditionBody?.restore(token); }, grid: () => canvas.grid?.size ?? 100, fragments: { start: (...args) => createFragmentRenderer({ PIXI: globalThis.PIXI, grid: () => canvas.grid?.size ?? 100,
     // A fragments stage's Tokenshade look, by preset name (none while token filters are off on this screen).
     tokenshade: (name) => (allowsTokenFx(localQuality()) ? tokenFx.getPresets("tokenshade").find((p) => p.name === name) ?? tokenFx.getPresets("tokenshade-custom").find((p) => p.name === name) ?? null : null) }).start(...args) }, afterimages });
   // Lasting conditions move the creature itself; one-off motions take priority.
@@ -16112,7 +16120,9 @@ Hooks.once("ready", () => {
       e.pivot.set(-dx / (e.scale?.x || 1), -dy / (e.scale?.y || 1));
     }
   };
-  conditionBody = new ConditionBody({ tokenFx: () => tokenFx, busy: (token) => motions.active.has(token), enabled: () => allowsMotion(localQuality()), follow: followBody, cutOut: (token) => tokenCutOut(token),
+  conditionBody = new ConditionBody({ tokenFx: () => tokenFx, busy: (token) => motions.active.has(token),
+    // Every motion playing on it is one taken lying down: a fallen creature struck or shaken stays on the floor.
+    staysDown: (token) => { const tracks = motions.active.get(token)?.tracks; return !!tracks?.length && tracks.every((t) => FLOOR_MOTIONS.has(t.stage?.motion)); }, enabled: () => allowsMotion(localQuality()), follow: followBody, cutOut: (token) => tokenCutOut(token),
     carried: () => shipRiders.keys(), carry: (token) => { const s = shipRiders.get(token); return s ? carriedBy(s.at, s.centre, s.roll, canvas.grid?.size ?? 100, 0.8) : null; } });
   // Idle life: creatures in view breathe or hover through ConditionBody's lowest kinds.
   idleLife = new IdleLife({ body: conditionBody,

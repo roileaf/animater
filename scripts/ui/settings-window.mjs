@@ -50,6 +50,7 @@ export const SETTINGS_TABS = Object.freeze([
     { world: "woundedLooks", local: "woundedLooksLocal" },
     { world: "defeatedLook" },
     { world: "damageReactions" },
+    { world: "saveReactions" },
     { world: "dramaticDeaths" },
   ] },
   { id: "motion", label: "Motion", icon: "fa-solid fa-person-running", rows: [

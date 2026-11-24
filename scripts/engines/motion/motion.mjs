@@ -367,7 +367,8 @@ export class TokenMotionPlayer {
     const existing = this.active.get(token);
     // Body treatments yield before we capture the resting geometry. Otherwise an
     // idle breath or wounded hunch becomes the permanent scale after this motion.
-    if (!existing) this.beforeStart(token);
+    // (Told which motion: one a fallen creature takes lying down leaves it down, condition-body.mjs FLOOR_MOTIONS.)
+    if (!existing) this.beforeStart(token, stage);
     const mesh = token.mesh;
     // Foundry draws the mesh at the token's center; another module's shake (or a condition
     // tremble) may have it swung aside right now, which must not become the resting spot.
