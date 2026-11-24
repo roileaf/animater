@@ -1,5 +1,16 @@
 # Changelog
 
+## 4.9.2
+
+- **A still scene costs less each frame.** A second performance audit, of 4.9.1 on a map of eighty-four creatures and thirty-eight lights with nothing moving, found Animater doing two to three milliseconds of work a frame for things that had not changed. What it found, and what changed:
+  - A world setting ("Carriers") was read from Foundry every frame. A setting never saved has no stored value, and Foundry looks for it among every stored setting in the world on each read: about 0.4 ms a frame on that world. It is now kept, as the other settings read each frame already were; so is the global weather.
+  - The list of creatures on the scene was made three or more times a frame (for the rats, the caverns, the moths, the wildlife, the decorations). It is made once a frame.
+  - A rat running along asked whether a wall stood in its way every frame. It now asks once for half a square ahead and runs that far on the answer; anything in that stretch and it asks about every step, as before, and stops where it did. Areas rats keep out of are still checked every frame.
+  - A creature standing by a flickering light (a torch, a campfire) had its shadow drawn again every frame, since the shadow flickers with the flame. It is drawn again thirty times a second, whatever the frame rate; a creature moving, a light changing or a shadow still swinging round is drawn at once, as before.
+  - The water's reflections looked at every creature and every light on the scene twenty times a second. They now look only when something by the water has changed (and once a second regardless).
+- **A creature hidden from the players casts no shadow on the GM's screen.** As it already took no light there. On a map where most creatures are hidden until met, their shadows were most of the shadows drawn.
+- **More token looks are left out of Foundry's second drawing of each token.** 4.9.1 left out the looks that only recolour the art; eight more do only that (washes, gradients, colour swaps, materials, veins, flattening, dots, old film) and are now left out too. A condition look built from a wash and a colour adjustment draws once a frame where it drew twice.
+
 ## 4.9.1
 
 - **Token looks cost far fewer drawing passes.** Every look on a token is drawn in a pass of its own, and Foundry draws each token twice a frame (once more to cut its outline), so a map of creatures by torchlight paid for all of it twice. A performance audit of a heavy scene counted about 152 extra passes a frame from Animater. Four things changed. "Creatures lit by their surroundings" is now one filter instead of two. Looks that only recolour the art (the lit look, tints, adjustments, bevels) are left out of Foundry's second, outline-only drawing; looks that change the outline (glows, tilts, dissolves) are still drawn both times. A token off the screen has its looks switched off until it comes back into view. And a token hidden from the players no longer takes the lit look on the GM's screen. Measured on eight lit tokens: 32 passes a frame before, 8 after. Thanks to the table that sent the audit.
