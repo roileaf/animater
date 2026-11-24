@@ -257,7 +257,7 @@ import { REGION_LOOK_FLAG, regionLookWants, syncRegionLooks, natureLook } from "
 import { lightAround, litKey, litPreset, lightDance } from "./engines/playback/surrounding-light.mjs";
 import { WINDOW_PATTERN, patternScaleOf, shaftOf, GLAZED, skyWindowOf, duskOf, sunsetTint, eraseRooms, openRooms, wallShadowQuads, wallShadowReach, shadeAcross, createWallShadows, wallSpan, windowShafts, createWindowShafts, windowGlows, createWindowGlow, windowFlashes, windowsFacing, keepToSight } from "./engines/motion/wall-shadows.mjs";
 import { tileSunlight, tileHeight, tileLeaves, solidShare, leafShare, canopyFall, directSun, createCanopyLight, createTreeSway } from "./engines/motion/canopy-light.mjs";
-import { tileProps, PROP_CHOICE } from "./engines/motion/tile-props.mjs";
+import { tileProps, propMiddle, PROP_CHOICE } from "./engines/motion/tile-props.mjs";
 import { greenShare, reliefPixels, shineShare, SHINES_ENOUGH, underConditions } from "./engines/motion/decor-from-art.mjs";
 import { createCovers } from "./engines/motion/roof-cover.mjs";
 import { TREE_KINDS, createTreePatterns, treeKindOf } from "./engines/motion/tree-kinds.mjs";
@@ -2860,7 +2860,10 @@ const syncTileProps = () => {
       const d = t.document, mesh = t.mesh, choice = d?.flags?.[ID]?.sunlight ?? "";
       if (!mesh?.texture || mesh.destroyed || t.visible === false || (!on && choice !== PROP_CHOICE)) continue;
       const placed = [...(d.levels ?? [])][0], own = placed ? canvas.scene?.levels?.get?.(placed) : null, level = (own ?? canvas.level)?.elevation ?? {}, base = Number(level.base ?? level.bottom) || 0;
-      tiles.push({ id: d.id, src: d.texture?.src, choice, own: d.flags?.[ID]?.sunHeight ?? null, hidden: d.hidden, overhead: (Number(d.elevation) || 0) > base, solid: tileSolid(mesh.texture).solid, texture: mesh.texture, x: mesh.x, y: mesh.y, width: mesh.width * (mesh.scale?.x < 0 ? -1 : 1), height: mesh.height * (mesh.scale?.y < 0 ? -1 : 1), rotation: (mesh.rotation * 180) / Math.PI, alpha: Number(d.alpha ?? 1) || 1, indoors: underCeiling({ x: mesh.x, y: mesh.y }) });
+      // (Its middle, which is not where it is placed unless its picture is anchored there: issue 29, tile-props.mjs propMiddle.)
+      const wide = mesh.width * (mesh.scale?.x < 0 ? -1 : 1), tall = mesh.height * (mesh.scale?.y < 0 ? -1 : 1);
+      const at = propMiddle({ x: mesh.x, y: mesh.y, width: wide, height: tall, anchorX: mesh.anchor?.x, anchorY: mesh.anchor?.y, rotation: mesh.rotation });
+      tiles.push({ id: d.id, src: d.texture?.src, choice, own: d.flags?.[ID]?.sunHeight ?? null, hidden: d.hidden, overhead: (Number(d.elevation) || 0) > base, solid: tileSolid(mesh.texture).solid, texture: mesh.texture, x: at.x, y: at.y, width: wide, height: tall, rotation: (mesh.rotation * 180) / Math.PI, alpha: Number(d.alpha ?? 1) || 1, indoors: underCeiling(at) });
     }
     let wet = 0; try { wet = wetOn() && groundOf().now.wet > DECOR_WET ? 1 : 0; } catch { /* dry */ }
     const season = undergroundScene() ? null : seasonNow(), formShade = tileReliefHere(); tileSeasonLeft = TILE_SEASON_A_PASS;

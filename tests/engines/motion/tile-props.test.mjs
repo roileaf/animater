@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { tileProp, propHeight, propBurning, tileProps, PROP_CHOICE, PROP_MOST_SQUARES } from '../../../scripts/engines/motion/tile-props.mjs';
+import { tileProp, propHeight, propBurning, tileProps, propMiddle, PROP_CHOICE, PROP_MOST_SQUARES } from '../../../scripts/engines/motion/tile-props.mjs';
 import { createDecorations, decorHeight, LAMP_GLINT_LEAST } from '../../../scripts/engines/motion/decorations.mjs';
 
 const FA = 'https://example.test/assets/!Core_Settlements/Storage/';
@@ -218,4 +218,23 @@ test('main wires it: a scene switch on unless turned off, a tile\'s own choice, 
   assert.match(main, /if \(!season \|\| season === "summer"\) return null;/);
   assert.match(main, /Math\.max\(w, h\) <= TILE_SEASON_MOST/);
   assert.match(main, /greenShare\(px\.data, w, h\) > 0\.3\) \{ ctx\.putImageData\(new ImageData\(underConditions\(px\.data, w, h, \{ season \}\)/);
+});
+
+// Reported (issue 29): every tile drawn twice, the second up and to the left by half its size. A tile's place is where
+// its picture's anchor is, and the anchor is the tile's own (Tile configuration); one from before version 14 has it at
+// the top left corner. The copy was drawn with its middle there.
+test("a tile's middle is found from wherever its picture is anchored, turned and mirrored as it is", () => {
+  const near = (got, want) => { assert.ok(Math.abs(got.x - want.x) < 1e-6 && Math.abs(got.y - want.y) < 1e-6, `${JSON.stringify(got)} is not ${JSON.stringify(want)}`); };
+  near(propMiddle({ x: 500, y: 300, width: 200, height: 100 }), { x: 500, y: 300 });
+  near(propMiddle({ x: 500, y: 300, width: 200, height: 100, anchorX: 0.5, anchorY: 0.5, rotation: 1 }), { x: 500, y: 300 });
+  near(propMiddle({ x: 500, y: 300, width: 200, height: 100, anchorX: 0, anchorY: 0 }), { x: 600, y: 350 });
+  near(propMiddle({ x: 500, y: 300, width: 200, height: 100, anchorX: 1, anchorY: 0 }), { x: 400, y: 350 });
+  // Turned a quarter about its corner: what lay to the right of it now lies below.
+  near(propMiddle({ x: 500, y: 300, width: 200, height: 100, anchorX: 0, anchorY: 0, rotation: Math.PI / 2 }), { x: 450, y: 400 });
+  // Mirrored (a negative width): the picture lies to the other side of its anchor.
+  near(propMiddle({ x: 500, y: 300, width: -200, height: 100, anchorX: 0, anchorY: 0 }), { x: 400, y: 350 });
+  near(propMiddle({ x: 500, y: 300, width: 200, height: 100, anchorX: 'x', anchorY: null }), { x: 500, y: 300 });
+  const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /const at = propMiddle\(\{ x: mesh\.x, y: mesh\.y, width: wide, height: tall, anchorX: mesh\.anchor\?\.x, anchorY: mesh\.anchor\?\.y, rotation: mesh\.rotation \}\);/);
+  assert.match(main, /x: at\.x, y: at\.y, width: wide, height: tall, rotation: \(mesh\.rotation \* 180\) \/ Math\.PI, alpha: Number\(d\.alpha \?\? 1\) \|\| 1, indoors: underCeiling\(at\) \}\);/);
 });

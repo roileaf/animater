@@ -64,8 +64,22 @@ export const standsAs = (src) => { const name = nameOf(src); return TALL.test(na
 export const propBurning = (src) => { const name = nameOf(src); return FIRE.test(name) && !UNLIT.test(name); };
 
 /**
+ * A tile's middle on the map (pure). Its place (x, y) is where its picture's anchor is, and the anchor is the tile's
+ * own (Tile configuration → its picture's anchor, 0-1 each way: 0.5 the middle, 0 the top left corner, as a tile made
+ * before Foundry 14 has it); it is turned about that point. `width` and `height` as drawn, negative when mirrored;
+ * `rotation` in radians.
+ */
+export function propMiddle({ x = 0, y = 0, width = 0, height = 0, anchorX = 0.5, anchorY = 0.5, rotation = 0 } = {}) {
+  const part = (a) => (typeof a === 'number' && Number.isFinite(a) ? a : 0.5);
+  const dx = (0.5 - part(anchorX)) * (Number(width) || 0), dy = (0.5 - part(anchorY)) * (Number(height) || 0);
+  if (!dx && !dy) return { x, y };
+  const turn = Number(rotation) || 0, c = Math.cos(turn), s = Math.sin(turn);
+  return { x: x + dx * c - dy * s, y: y + dx * s + dy * c };
+}
+
+/**
  * The tiles standing as things, as the decoration engine takes them (pure): `tiles` what the scene has, each
- * { id, src, choice, own (its Height), hidden, overhead, solid, texture, x, y, width, height, rotation (degrees),
+ * { id, src, choice, own (its Height), hidden, overhead, solid, texture, x, y (its middle: propMiddle), width, height, rotation (degrees),
  * alpha, indoors }; `on` the scene's switch; `grid` a square in pixels; `per` the scene's units to a square.
  */
 export function tileProps(tiles = [], { on = false, grid = 100, per = 5 } = {}) {
