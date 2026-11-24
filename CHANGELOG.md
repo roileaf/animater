@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.10.0
+
+- **A burst of weather, for other modules to call.** `game.modules.get("animater").api.weatherBurst({ weather: "snow", strength: 0.4, ms: 30000 })` brings a short fall of weather over the map on the calling client's own screen, then lets it go: a dice set's natural 20 bringing half a minute of snow. Asked for by Things Got Dicey, a theme pack for Dicer.
+  - It is laid over the scene's own weather: in the rain, the rain goes on and the snow falls with it. It eases in and out over three seconds.
+  - Nothing is sent to the other clients and nothing is stored on the scene, so a player's client may call it (unlike `api.moment`, which stays the GM's). A module whose rules run on every client calls it on each, and each viewer sees it by their own settings.
+  - `weather` is any of Animater's weathers with something falling or a fog ("snow", "rain", "hail", "ashfall", "fog", "thunderstorm", "sakura-bloom" and the rest); `strength` 0 to 1; `ms` from 2 to 60 seconds. The same weather asked for again while it runs carries it on to the later end, at the greater strength, and never doubles it; another weather takes its place.
+  - It is heard (rain, hail and a blizzard by Animater's own weather sounds, at the viewer's Weather volume), rings the open water where it is rain, and a storm's burst flashes with its thunder where the viewer has lightning on. None of its bolts land on the map.
+  - It leaves the ground dry, lays no snow and darkens nothing: the ground goes by the game clock, and a storm's dark is the scene's own darkness, which only a GM may change.
+  - It returns what is running, `{ weather, strength, ms }`, or `null` where it does not show: a weather it does not know, "Weather on the map" off for that viewer or that scene, an animation quality that leaves the weather out, or underground with nothing open to the sky.
+
 ## 4.9.2
 
 - **A still scene costs less each frame.** A second performance audit, of 4.9.1 on a map of eighty-four creatures and thirty-eight lights with nothing moving, found Animater doing two to three milliseconds of work a frame for things that had not changed. What it found, and what changed:
