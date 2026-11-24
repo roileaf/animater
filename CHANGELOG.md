@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.10.1
+
+- **A burst of weather shows for everyone.** In 4.10.0 `api.weatherBurst` showed only on the screen of the client that called it, so a module whose rule fires for the roller alone snowed for the roller alone. One call now shows it to everyone looking at that scene: the caller shows it and tells the other clients, and each shows it by its own settings ("Weather on the map", animation quality). Called on several clients at once, it is still one burst. `here: true` keeps it to the caller's screen.
+- **"Players' rolls can bring a burst of weather"** (Weather & seasons, on by default). A player's client may ask for a burst, as a dice module's rule does on a player's roll; off, only the GM's may. What is asked for is checked again by every client that shows it, so nothing longer than a minute or stronger than a full fall can be sent.
+
 ## 4.10.0
 
 - **A burst of weather, for other modules to call.** `game.modules.get("animater").api.weatherBurst({ weather: "snow", strength: 0.4, ms: 30000 })` brings a short fall of weather over the map on the calling client's own screen, then lets it go: a dice set's natural 20 bringing half a minute of snow. Asked for by Things Got Dicey, a theme pack for Dicer.
