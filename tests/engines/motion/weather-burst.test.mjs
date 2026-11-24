@@ -64,15 +64,30 @@ test('it is laid over the weather the map already draws, which is left as it was
   assert.equal(burstOver(rain, null), rain);
 });
 
-test('the map draws it on this screen only, through the API, for anyone', () => {
+test('one call shows it to everyone on the scene, each by their own settings; nothing is stored', () => {
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
-  // Callable by a player's client: it changes that viewer's screen and nothing else (unlike api.moment, the GM's).
   assert.match(main, /weatherBurst: \(asked = \{\}\) => weatherBurstHere\(asked\),/);
-  const here = main.slice(main.indexOf('const weatherBurstHere = '), main.indexOf('const lookSky = () => {'));
+  const here = main.slice(main.indexOf('const WEATHER_BURST_MESSAGE = '), main.indexOf('const lookSky = () => {'));
   assert.ok(here.length > 0);
-  assert.doesNotMatch(here, /isGM|socket|emit|setFlag|\.update\(/, 'nothing sent, nothing stored');
-  // Not where the viewer has the map's weather off, nor at a quality that leaves it out, nor underground.
-  assert.match(here, /if \(!weatherMapOn\(\)\) return null;/);
+  assert.doesNotMatch(here, /setFlag|\.update\(|settings\.set/, 'nothing stored');
+  // Told to the other clients, with the scene it is for; `here: true` keeps it to this screen.
+  assert.match(here, /if \(asked\?\.here !== true\) \{ try \{ game\.socket\.emit\(`module\.\$\{ID\}`, \{ type: WEATHER_BURST_MESSAGE, sender: clientId, sceneId: canvas\.scene\?\.id \?\? null, call \}\);/);
+  assert.match(main, /if \(data\?\.type === WEATHER_BURST_MESSAGE\) \{ if \(data\.sender !== clientId\) weatherBurstHeard\(data, senderId\); return; \}/);
+  // What is heard is for this scene, from someone who may bring one, and cleaned again here: nothing longer or
+  // stronger than a burst can be sent. Shown, it is told to nobody again.
+  const heard = here.slice(here.indexOf('const weatherBurstHeard = '), here.indexOf('const weatherBurstShow = '));
+  assert.match(heard, /data\.sceneId !== canvas\.scene\?\.id\) return;/);
+  assert.match(heard, /if \(!burstAllowedFrom\(game\.users\.get\(senderId\)\)\) return;/);
+  assert.match(heard, /const call = burstCall\(data\.call\);/);
+  assert.doesNotMatch(heard, /emit/);
+  // A player's client may ask, unless the GM has turned that off; a GM's always may.
+  assert.match(here, /const burstAllowedFrom = \(user\) => \{ if \(user\?\.isGM\) return true; try \{ return game\.settings\.get\(ID, "weatherBurstPlayers"\) !== false; \}/);
+  assert.match(here, /if \(!call \|\| !canvas\?\.ready \|\| !burstAllowedFrom\(game\.user\)\) return null;/);
+  assert.match(main, /registerSetting\("weatherBurstPlayers", \{[\s\S]{0,700}scope: "world", config: true, type: Boolean, default: true,/);
+  // Not where the viewer has the map's weather off, nor at a quality that leaves it out, nor underground: told all the
+  // same, since the others may show it.
+  assert.match(here, /const weatherBurstShow = \(call\) => \{\r?\n  if \(!weatherMapOn\(\)\) return null;/);
+  assert.ok(here.indexOf('game.socket.emit') < here.indexOf('return weatherBurstShow(call);'));
   // Drawn over the scene's own, and eased in and out.
   assert.match(main, /if \(weatherBurstNow && !weatherPreview\) drawn = burstOver\(drawn, weatherBurstNow\);/);
   assert.match(main, /performance\.now\(\) < weatherBurstFadeUntil \? BURST_FADE_S/);

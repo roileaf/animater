@@ -112,7 +112,7 @@ export const SETTINGS_TABS = Object.freeze([
     { section: "Weather & seasons", world: "seasonGround", local: "seasonGroundLocal" },
     { section: "Weather & seasons", world: "rainbows", local: "rainbowsLocal" },
     { section: "Weather & seasons", world: "weatherLight", local: "weatherLightLocal", extras: ["cloudDarkness", "stormSceneDarkness"] },
-    { section: "Weather & seasons", world: "weatherOnMap", local: "weatherOnMapLocal", extras: ["weatherFallsDown", "weatherFade"] },
+    { section: "Weather & seasons", world: "weatherOnMap", local: "weatherOnMapLocal", extras: ["weatherFallsDown", "weatherFade", "weatherBurstPlayers"] },
     { section: "Weather & seasons", world: "weatherClouds", local: "weatherCloudsLocal" },
     { section: "Weather & seasons", world: "weatherSounds", local: "weatherSoundsLocal", extras: ["weatherVolume", "thunderPanning"] },
     { section: "Weather & seasons", world: "rainRings", local: "rainRingsLocal" },

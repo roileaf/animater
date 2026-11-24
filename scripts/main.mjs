@@ -7519,10 +7519,16 @@ Hooks.on("preUpdateScene", (scene, change, options) => {
   change.environment.darknessLevel = now.darkness;
   foundry.utils.setProperty(change, `flags.${ID}.stormDark`, now.kept);
 });
-// A burst of weather on this screen (weather-burst.mjs; the API's weatherBurst): snow for half a minute on a natural 20.
-// Over the scene's own weather, eased in and out, and gone with the scene. Nothing is sent and nothing is stored, so any
-// client may ask for it: each one asks for its own. Not where this viewer has the map's weather off, at a quality that
-// leaves it out, or underground with nothing open to the sky (weatherMapOn: the same as the weather itself).
+// A burst of weather (weather-burst.mjs; the API's weatherBurst): snow for half a minute on a natural 20, for the whole
+// table. Over the scene's own weather, eased in and out, and gone with the scene. Nothing is stored. Whoever asks for it
+// shows it and tells every other client looking at the same scene, which shows it too — each by its own settings: not
+// where a viewer has the map's weather off, at a quality that leaves it out, or underground with nothing open to the sky
+// (weatherMapOn: the same as the weather itself).
+// A player's client may ask (a dice module's rule fires on whoever rolled), unlike a screen moment, which is the GM's:
+// it is weather over the map for a minute at most, and what is heard is cleaned again by whoever hears it (burstCall), so
+// nothing longer or stronger can be sent. The GM can turn that off ("Players' rolls can bring a burst of weather"):
+// then only a GM's client's is shown, here or anywhere. Asked for by several clients at once (a rule that runs on every
+// client), it is one burst: the same weather again only carries it on (burstAfter).
 let weatherBurstNow = null, weatherBurstTimer = null, weatherBurstFadeUntil = 0;
 // What it is heard and felt as on this screen while it runs (burstFeel): its rain's sound and rings on open water, a
 // storm's flashes and thunder (none of its bolts land on the map: those mark it). Nothing with no burst.
@@ -7537,9 +7543,23 @@ const weatherBurstEnd = (look = true) => {
   if (look) { weatherBurstFadeUntil = performance.now() + BURST_FADE_S * 1000 + 500; try { lookSky(); } catch { /* no scene shown */ } }
 };
 for (const hook of ["canvasReady", "canvasTearDown"]) Hooks.on(hook, () => { weatherBurstEnd(false); });
+const WEATHER_BURST_MESSAGE = "weather-burst";
+const burstAllowedFrom = (user) => { if (user?.isGM) return true; try { return game.settings.get(ID, "weatherBurstPlayers") !== false; } catch { return true; } };
 const weatherBurstHere = (asked = {}) => {
   const call = burstCall(asked);
-  if (!call || !canvas?.ready) return null;
+  if (!call || !canvas?.ready || !burstAllowedFrom(game.user)) return null;
+  // (`here: true`: this screen only, told to nobody.)
+  if (asked?.here !== true) { try { game.socket.emit(`module.${ID}`, { type: WEATHER_BURST_MESSAGE, sender: clientId, sceneId: canvas.scene?.id ?? null, call }); } catch { /* shown here at least */ } }
+  return weatherBurstShow(call);
+};
+// Another client's burst: shown here if it is for the scene this screen is on and its sender may bring one.
+const weatherBurstHeard = (data, senderId) => {
+  if (data?.type !== WEATHER_BURST_MESSAGE || !canvas?.ready || !data.sceneId || data.sceneId !== canvas.scene?.id) return;
+  if (!burstAllowedFrom(game.users.get(senderId))) return;
+  const call = burstCall(data.call);
+  if (call) weatherBurstShow(call);
+};
+const weatherBurstShow = (call) => {
   if (!weatherMapOn()) return null;
   const now = Date.now();
   weatherBurstNow = burstAfter(weatherBurstNow, call, now);
@@ -14661,6 +14681,11 @@ Hooks.once("init", () => {
     hint: "How many seconds the weather on the map takes to change, from no rain to rain, or rain to a storm: what falls, the clouds, the fog and the light ease across. 0 changes at once. A slider being dragged in the Weather panel always shows at once.",
     scope: "world", config: true, type: Number, range: { min: 0, max: 120, step: 1 }, default: 10,
   });
+  registerSetting("weatherBurstPlayers", {
+    name: "Players' rolls can bring a burst of weather",
+    hint: "Another module can ask Animater for a short burst of weather over the map for everyone: a dice set's natural 20 bringing half a minute of snow. On: a player's roll can bring one as well as the GM's. Off: only the GM's. It is a minute at most, changes nothing on the scene, and each player sees it only with \"Weather on the map\" on.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
   registerSetting("bloodOnPortraits", {
     name: "Blood on portraits",
     hint: "A hurt creature's picture shows blood, more the more it is hurt and in its own blood colour: on its character sheet, and in the Image Hover module's picture when that is on. Only those who could see the sheet or picture see it, and nothing is saved.",
@@ -16200,6 +16225,7 @@ Hooks.once("ready", () => {
     if (data?.type === WALL_BREAK_MESSAGE) { void receiveWallBreak(data, senderId).catch((e) => console.warn("Animater props (door):", e?.message ?? e)); return; }
     if (data?.type === BLAST_MESSAGE) { if (data.blast?.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) playBlast(data.blast); return; }
     if (data?.type === MOMENT_MESSAGE) { if (data.sender !== clientId) momentHeard(data, senderId); return; }
+    if (data?.type === WEATHER_BURST_MESSAGE) { if (data.sender !== clientId) weatherBurstHeard(data, senderId); return; }
     if (data?.type === SHOTS_MESSAGE) { shotsHeard(data); return; }
     if (data?.type === CLEAR_BLOOD_MESSAGE) { if (data.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) { floorBlood.clear(data.level ?? null); bloodLoaded = bloodElsewhere(bloodLoaded.map(packMark), data.level ?? null).map(unpackMark); } return; }
     // A player's private roll reaches only its audience (core/privacy.mjs audienceOf).
@@ -16579,11 +16605,13 @@ Hooks.once("ready", () => {
     // audience }). A GM's to call, as the panel's buttons are; it changes nothing in the world and stopMoments()
     // ends all of it. The copy button on the panel writes exactly this line.
     moment: (asked = {}) => { if (!game.user?.isGM) return null; return momentCallHere(asked.kind, asked); },
-    // A burst of weather on the calling client's own screen: { weather (one of Animater's: "snow", "rain", "hail",
-    // "ashfall", "fog"…), strength 0–1, ms (2 000–60 000) }. Over the scene's weather, then gone; nothing sent, nothing
-    // stored, so a player's client may call it (a dice module's rule runs on every client, and each calls its own).
-    // Returns what runs now { weather, strength, ms }, or null where it does not show (weather off on this screen, a
-    // quality that leaves it out, underground, or a weather it does not know). The same weather again carries it on.
+    // A burst of weather for everyone looking at this scene: { weather (one of Animater's: "snow", "rain", "hail",
+    // "ashfall", "fog"…), strength 0–1, ms (2 000–60 000), here (true: this screen only) }. Over the scene's weather,
+    // then gone; nothing stored. Call it once, on any one client — a player's too, unless the GM has turned that off —
+    // and every client shows it by its own settings. Called on several clients at once it is still one burst.
+    // Returns what runs on this screen now { weather, strength, ms }, or null where it does not show here (weather off
+    // on this screen, a quality that leaves it out, underground), for a weather it does not know, or for a player where
+    // the GM has turned players' bursts off. The same weather again carries it on.
     weatherBurst: (asked = {}) => weatherBurstHere(asked),
     stopMoments: () => { if (!game.user?.isGM) return false; momentsStopEverywhere(); return true; },
     moments: () => clone(MOMENTS),
