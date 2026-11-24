@@ -1,5 +1,15 @@
 # Changelog
 
+## 4.10.3
+
+- **A setting changed in Animater settings is no longer undone by Save Changes in Game Settings.** Game Settings keeps every field as it was when the window opened and writes them all on Save Changes. With it open behind Animater's own settings window, a setting changed there (Animation quality set to Off, say) was written back to what it had been. An open Game Settings now follows the change. This reached everyone for "Animation quality (this device)", which is always listed there, and every "on my screen" setting where a settings-lock module lists them.
+- **Less work each frame on a map with many tokens**, most of all for a GM with many hidden ones. Measured on a scene of 84 tokens, 68 of them hidden, with nothing moving:
+  - A token's size was asked of Foundry several times a token every frame (about 13,000 times a second there); it is now asked once and kept until the token's size or the grid changes (about 200 a second).
+  - A token standing still that casts no shadow (hidden, prone, set to cast none, or with "Shadows under every token" off) is looked at once and then left alone until something about it changes. The movement effects' share of a frame fell by about a third on that scene.
+  - Rats well outside what the screen shows, on no errand, take their steps one frame in six.
+- **Creatures hidden from the players no longer frighten rats and other small animals on the GM's screen.** The GM saw rats bolt from monsters nobody else could see; the players' screens never did.
+- **`api.skyCost(ms)`** for anyone measuring: what each part of Animater's ambient frame costs over that long, as `[{ part, msPerFrame, worstMs }]`, worst first. Nothing is timed unless it is asked for. `console.table(await game.modules.get("animater").api.skyCost(10000))`
+
 ## 4.10.2
 
 - **A creature on the floor stays there when it is struck.** Any animation playing on a token stood a prone creature up for as long as it lasted. Reported from a D&D 5e table: a creature toppled prone, then its failed saving throw's stagger stood it up for a second and laid it down again. What is done to a creature where it is (a stagger, a shake, a recoil, bracing, cowering, being pressed, squashed or electrocuted) it now takes lying down. What it does itself (a lunge, a leap, a spin, a throw) still shows it on its feet for that, as before.
