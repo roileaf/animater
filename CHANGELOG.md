@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.10.2
+
+- **A creature on the floor stays there when it is struck.** Any animation playing on a token stood a prone creature up for as long as it lasted. Reported from a D&D 5e table: a creature toppled prone, then its failed saving throw's stagger stood it up for a second and laid it down again. What is done to a creature where it is (a stagger, a shake, a recoil, bracing, cowering, being pressed, squashed or electrocuted) it now takes lying down. What it does itself (a lunge, a leap, a spin, a throw) still shows it on its feet for that, as before.
+- **"Saving throw reactions"** (on by default, beside "Damage reactions"). A creature's reaction to its own saving throw, shown in Activity as "Saving throw: Takes the brunt" and the like, had no switch: it is not a catalog entry, so there was nothing to find and turn off. Off, nothing moves for a save.
+
 ## 4.10.1
 
 - **A burst of weather shows for everyone.** In 4.10.0 `api.weatherBurst` showed only on the screen of the client that called it, so a module whose rule fires for the roller alone snowed for the roller alone. One call now shows it to everyone looking at that scene: the caller shows it and tells the other clients, and each shows it by its own settings ("Weather on the map", animation quality). Called on several clients at once, it is still one burst. `here: true` keeps it to the caller's screen.
