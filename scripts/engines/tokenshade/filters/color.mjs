@@ -43,7 +43,7 @@ void main() {
 };
 
 const replaceColor = {
-  type: 'replaceColor', order: 300,
+  type: 'replaceColor', order: 300, paintOnly: true,
   defaults: { originalColor: [1, 0, 0], newColor: [0, 0, 1], epsilon: 0.4 },
   uniforms: { uFrom: ['vec3', p => rgb(p.originalColor)], uTo: ['vec3', p => rgb(p.newColor)], uEpsilon: ['float', p => clamp(p.epsilon, 0.001, 2)] },
   reach: () => 0,
@@ -64,7 +64,7 @@ void main() {
 
 // Up to four stops; linear (0), radial (1) or conic (2), laid over the art only.
 const colorGradient = {
-  type: 'colorGradient', order: 320,
+  type: 'colorGradient', order: 320, paintOnly: true,
   defaults: { stops: [{ offset: 0, color: 0xff0000, alpha: 1 }, { offset: 1, color: 0x0000ff, alpha: 1 }], type: 0, angle: 90, alpha: 1, replace: false },
   uniforms: {
     uOffsets: ['vec4', p => { const s = stops(p); return [0, 1, 2, 3].map(i => s[Math.min(i, s.length - 1)].offset); }],
@@ -102,7 +102,7 @@ function stopColor(p, i) { const s = stops(p), st = s[Math.min(i, s.length - 1)]
 
 // Halftone print: dot size follows brightness on a rotated screen.
 const dot = {
-  type: 'dot', order: 320,
+  type: 'dot', order: 320, paintOnly: true,
   defaults: { scale: 1, angle: 5, grayscale: true },
   uniforms: { uScale: ['float', p => clamp(p.scale, 0.1, 10)], uAngle: ['float', p => +p.angle || 0], uGray: ['bool', p => p.grayscale !== false] },
   reach: () => 0,
@@ -207,7 +207,7 @@ void main() {
 };
 
 const oldfilm = {
-  type: 'oldfilm', order: 340,
+  type: 'oldfilm', order: 340, paintOnly: true,
   defaults: { sepia: 0.3, noise: 0.3, noiseSize: 1, scratch: 0.5, scratchDensity: 0.3, scratchWidth: 1, vignetting: 0.3, vignettingAlpha: 1, vignettingBlur: 0.3, seed: 0 },
   uniforms: {
     uSepia: ['float', p => clamp(p.sepia, 0, 1)], uNoise: ['vec2', p => [clamp(p.noise, 0, 1), clamp(p.noiseSize, 0.2, 20)]],
@@ -241,7 +241,7 @@ void main() {
 // Pressed flat into a drawing: the shading falls to a few flat tones, the colour fades a little and dark ink traces
 // the outline and the strongest inner edges. `amount` 0..1 eases between the art and the drawing.
 const flatten = {
-  type: 'flatten', order: 330,
+  type: 'flatten', order: 330, paintOnly: true,
   defaults: { amount: 1, tones: 4, saturation: 0.7, ink: 2, inkColor: 0x14100c, inkAlpha: 0.85, detail: 0.22 },
   uniforms: {
     uAmount: ['float', p => clamp(p.amount, 0, 1)], uTones: ['float', p => clamp(Math.round(f(p.tones)), 2, 8)],

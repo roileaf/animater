@@ -87,7 +87,7 @@ void main() {
 // Wash: a colour sweeping over the creature and staying: a curse taking hold, a blessing, life draining out.
 // washType: 1 tint, 2 drain (grey and dim), 3 glow, 4 shadow, 5 sickly.
 const wash = {
-  type: 'wash', order: 330,
+  type: 'wash', order: 330, paintOnly: true,
   defaults: { amount: 0.6, washType: 1, from: 2, color: 0x9a5cff, strength: 0.75, front: 0.7, time: 0 },
   timeScale: 1,
   uniforms: {

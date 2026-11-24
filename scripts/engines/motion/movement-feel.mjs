@@ -1283,6 +1283,11 @@ export function perceive({ isGM = false, docHidden = false, tokenVisible = false
   return tokenVisible ? { see: true, hear: true } : { see: false, hear: false };
 }
 
+// How often a shadow that only flickers with its light is drawn again, a second.
+export const FLICKER_HZ = 30;
+// (A little under its interval, in ms: at 60 or 120 frames a second a frame lands right on it, and one that just missed
+// would wait a whole frame more.)
+const FLICKER_SLACK = 2;
 export function createMovementFeel({ groundShadows = () => false, shadowsOverTokens = () => false, flightDust = () => false, drips = () => false, tokens, floorAt: floorOf, enabled, density, grid, distance, now, layer, footstep, cap = 120, printCap = 80, printLifetime = 0, trailLifetime = () => 0, fills = () => 1, burrowDepth = () => -10, holes = () => true, keepHole = null, trails = null, sun = () => DEFAULT_SUN, shadowShapes = () => true, lightShadows = () => true, ripples = null, swimRipples = null, kicks = null, kickAmount = () => 1 }) {
   // Where a creature's shadows fall now (shadowFalls: the sun's and a lamp's), each eased toward its aim over about a
   // quarter second so it swings round as the light or the sun moves, and fades in and out instead of popping.
@@ -1316,6 +1321,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
     // A light that flickers (each light's flicker(): how bright it is this moment against its steady self, as Foundry
     // animates it) flickers its shadow with it, darker as it flares: redrawn every frame while it does.
     const flickers = new Map(lights.filter((l) => l.key != null && typeof l.flicker === 'function').map((l) => [l.key, l.flicker]));
+    move.eased = settled;
     move.settled = settled && flickers.size === 0;
     // Each says whether it is the sun's (kept off the floor walls already shade) and carries the floor its light
     // reaches (lit.clips: { sun, [light key] }, flat x, y pairs; none on open ground), so it stops at walls.
@@ -1403,7 +1409,11 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
   // bob, its light and the sun (each kept as the same object until it changes), its art, and its shadows having
   // eased all the way and been drawn in their shape. A still scene then costs almost nothing a frame.
   const unchanged = (move, key, refs) => move.shadowKey === key && move.shadowDone === true && refs.every((r, i) => move.shadowRefs?.[i] === r);
-  const remember = (move, key, refs, done) => { move.shadowKey = key; move.shadowRefs = refs; move.shadowDone = done && move.settled !== false; };
+  const remember = (move, key, refs, done) => { move.shadowKey = key; move.shadowRefs = refs; move.shadowDone = done && move.settled !== false; move.shadowAt = now(); move.flickerOnly = done && move.eased === true && move.settled === false; };
+  // A shadow at rest under a flickering light is all that still changes on a still scene: it is drawn again FLICKER_HZ
+  // times a second, not every frame (a flame's flicker is far slower than that; at 120 frames a second every frame was
+  // four times the work for nothing the eye can tell). One still easing round, or anything else changed, is drawn at once.
+  const flickerHeld = (move, key, refs, time) => move.flickerOnly === true && move.shadowKey === key && time - move.shadowAt < 1000 / FLICKER_HZ - FLICKER_SLACK && refs.every((r, i) => move.shadowRefs?.[i] === r);
   // `trails` (ground-trails.mjs createGroundTrails): what each stride also leaves (carried prints, blood, weather).
   const capOf = typeof cap === 'function' ? cap : () => cap;
   const printCapOf = typeof printCap === 'function' ? printCap : () => printCap;
@@ -1661,7 +1671,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
           const bob = typeof token.bob === 'function' ? Number(token.bob()) || 0 : 0;
           const art = shadowShapes() ? token.art : null, both = lightShadows();
           const key = `${point.x}|${point.y}|${token.elevation}|${token.width}|${size}|${bob}|${both}`, refs = [lit, sun(), art];
-          if (handle && unchanged(move, key, refs) && move.lastCast) { flierShadows.push(move.lastCast); }
+          if (handle && (unchanged(move, key, refs) || flickerHeld(move, key, refs, time)) && move.lastCast) { flierShadows.push(move.lastCast); }
           else {
           if (!handle) shadows.set(id, handle = layer.addShadow());
           const geom = shadowGeometry({ x: point.x, y: point.y, width: token.width, lift: token.elevation - (token.base ?? 0), distance: distance() || 5, grid: size });
@@ -1715,7 +1725,7 @@ export function createMovementFeel({ groundShadows = () => false, shadowsOverTok
           const alsoList = (Array.isArray(alsoRaw) ? alsoRaw : [alsoRaw]).filter((a) => a?.art);
           const key = `${point.x}|${point.y}|${token.width}|${size}|${both}|${lying}|${token.deck ?? ''}|${alsoList.length}`;
           const refs = [lit, sun(), art, ...alsoList.map((a) => a.art?.texture ?? null)];
-          if (!handle || !unchanged(move, key, refs)) {
+          if (!handle || !(unchanged(move, key, refs) || flickerHeld(move, key, refs, time))) {
           if (!handle) shadows.set(id, handle = layer.addShadow());
           // The ground it covers, for the shadow: its token's, or the picture's own where it wears one bigger than its
           // token (a wagon's bed is its token; the shafts and the team reach past it).

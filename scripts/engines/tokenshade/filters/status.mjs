@@ -29,7 +29,7 @@ vec3 reliefNormal(float strength) {
 // spread (0..1) covers only part of it, advancing from spreadFrom (1 the feet up, 2 the edges in, 3 the centre
 // out, 4 the head down) with a bright front: animate it with a Transition to turn a creature to stone as it lands.
 const material = {
-  type: 'material', order: 340,
+  type: 'material', order: 340, paintOnly: true,
   defaults: { materialType: 1, strength: 1, cracks: 0.5, grain: 1, color: 0, spread: 1, spreadFrom: 1, front: 0.6, time: 0 },
   timeScale: 1,
   uniforms: {

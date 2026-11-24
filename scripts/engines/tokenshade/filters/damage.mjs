@@ -55,7 +55,7 @@ void main() {
 
 // Veins: dark lines spreading in from the edges under the skin, pulsing.
 const veins = {
-  type: 'veins', order: 365,
+  type: 'veins', order: 365, paintOnly: true,
   defaults: { color: 0x3d7a1f, amount: 0.6, thickness: 1, pulse: 1, glow: 0.5, time: 0 },
   timeScale: 1,
   uniforms: {

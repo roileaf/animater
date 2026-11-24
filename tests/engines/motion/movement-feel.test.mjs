@@ -1112,7 +1112,7 @@ test('every light casts its own shadow, away from itself',async()=>{
   for (let i = 0; i < 10; i++) step();
   assert.equal(drawn.size, 1, 'only its own shadow left, faded');
 });
-test('a flickering light’s shadow flickers with it, frame by frame; a steady one is left alone',async()=>{
+test('a flickering light’s shadow flickers with it, thirty times a second; a steady one is left alone',async()=>{
   const { createMovementFeel } = await import('../../../scripts/engines/motion/movement-feel.mjs');
   const { lightAround } = await import('../../../scripts/engines/playback/surrounding-light.mjs');
   const updates = [];
@@ -1124,10 +1124,21 @@ test('a flickering light’s shadow flickers with it, frame by frame; a steady o
   const feel = createMovementFeel({ groundShadows: () => true, tokens: () => [walker], enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => t, layer, footstep() {}, sun: () => null });
   feel.tick(); t += 5000; feel.tick();
   const steady = updates.at(-1);
-  k = 0.6; t += 16; feel.tick();
+  k = 0.6; t += 40; feel.tick();
   assert.ok(Math.abs(updates.at(-1) - steady * 0.6) < 1e-6, 'dimmer as its flame dips');
-  k = 1.3; t += 16; feel.tick();
+  k = 1.3; t += 40; feel.tick();
   assert.ok(Math.abs(updates.at(-1) - steady * 1.3) < 1e-6, 'darker as it flares');
+  // At rest it is drawn again FLICKER_HZ times a second, however many frames there are: at 120 frames a second every
+  // frame was four times the drawing for a flicker no eye can tell apart.
+  const { FLICKER_HZ } = await import('../../../scripts/engines/motion/movement-feel.mjs');
+  assert.equal(FLICKER_HZ, 30);
+  const before = updates.length; for (let i = 0; i < 120; i++) { t += 1000 / 120; feel.tick(); }
+  const redrawn = updates.length - before;
+  assert.ok(redrawn >= 28 && redrawn <= 31, `about thirty in a second of 120 frames, not 120: ${redrawn}`);
+  // But anything else changing is drawn at once: it steps aside and its shadow goes with it that frame.
+  const n0 = updates.length; walker.x += 30; t += 2; feel.tick();
+  assert.equal(updates.length, n0 + 1, 'a move is not held back');
+  walker.x -= 30; t += 5000; feel.tick(); t += 5000; feel.tick();
   // Without a flicker it settles and is no longer redrawn.
   delete torch.flicker; t += 5000; feel.tick(); feel.tick();
   const n = updates.length; t += 16; feel.tick();
@@ -1145,16 +1156,16 @@ test('a flame’s shadow dances: shorter and crisper as it flares, swaying side 
   const feel = createMovementFeel({ groundShadows: () => true, tokens: () => [walker], enabled: () => true, density: () => 1, grid: () => 100, distance: () => 5, now: () => t, layer, footstep() {}, sun: () => null });
   feel.tick(); t += 5000; feel.tick();
   const off = (g) => Math.hypot(g.fall.x - 500, g.fall.y - 500), steady = { ...last };
-  now = { brightness: 1.3, sway: 0 }; t += 16; feel.tick();
+  now = { brightness: 1.3, sway: 0 }; t += 40; feel.tick();
   assert.ok(off(last) < off(steady) && last.lift < steady.lift, 'flaring: shorter, crisper');
-  now = { brightness: 0.7, sway: 0 }; t += 16; feel.tick();
+  now = { brightness: 0.7, sway: 0 }; t += 40; feel.tick();
   assert.ok(off(last) > off(steady) && last.lift > steady.lift, 'dipping: longer, softer');
-  now = { brightness: 1, sway: 1 }; t += 16; feel.tick();
+  now = { brightness: 1, sway: 1 }; t += 40; feel.tick();
   const right = last.fall.y;
-  now = { brightness: 1, sway: -1 }; t += 16; feel.tick();
+  now = { brightness: 1, sway: -1 }; t += 40; feel.tick();
   assert.ok(Math.abs(right - last.fall.y) > 2 && Math.abs(off(last) - off(steady)) < 1, 'sways round, as long');
   // A plain number still dims it alone.
-  now = 0.5; t += 16; feel.tick();
+  now = 0.5; t += 40; feel.tick();
   assert.ok(Math.abs(off(last) - off(steady)) < 1e-6 && Math.abs(last.alpha - steady.alpha * 0.5) < 1e-6);
 });
 test('by a lone light at night the shadow is deep; beside other light, as before; the sun’s never',async()=>{

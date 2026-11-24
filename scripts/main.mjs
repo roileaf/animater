@@ -1559,7 +1559,11 @@ const clockNow = () => {
 };
 // The scene's sun now, kept until the time, the scene or the setting changes (never worked out a frame).
 // The weather across all scenes (the Weather: all scenes button), under each scene's own: a scene's weather, a slider it has set, its direction or its No weather comes first.
-const globalWeatherNow = () => { try { return hotSetting("globalWeather") ?? {}; } catch { return {}; } };
+// (An object, which the hot cache does not keep: held here until any setting is written. It is read by the sky every few
+// frames, and only ever read: a write spreads it into a new one.)
+let globalWeatherHeld = null;
+for (const hook of ["updateSetting", "createSetting", "deleteSetting", "clientSettingChanged", "canvasReady"]) Hooks.on(hook, () => { globalWeatherHeld = null; });
+const globalWeatherNow = () => { if (settingPreview.has("globalWeather")) return settingPreview.get("globalWeather") ?? {}; try { return globalWeatherHeld ??= (game.settings.get(ID, "globalWeather") ?? {}); } catch { return {}; } };
 // What the level being looked at has of its own, over its scene's (the panels' "This level").
 const WEATHER_KEYS = ["weather", "weatherTune", "weatherOff", "fallsDown", "windFrom"];
 const levelOf = (scene) => (scene && scene.id === canvas?.scene?.id ? canvas?.level?.flags?.[ID] ?? {} : {});
@@ -2667,7 +2671,10 @@ const floorDrawRoot = (kind) => {
 const floorLooks = createFloorLooks({ PIXI: globalThis.PIXI, root: floorDrawRoot("floorLooks"), renderer: () => canvas.app.renderer, grid: () => canvas.grid?.size ?? 100, pixels: (texture) => canvas.app.renderer.extract.pixels(texture), render: (object, renderTexture, clear, transform) => canvas.app.renderer.render(object, { renderTexture, clear, transform }) });
 const floorTextures = createFloorTextures({ PIXI: globalThis.PIXI, root: floorDrawRoot("floorTextures"), grid: () => canvas.grid?.size ?? 100, pixels: (texture) => canvas.app.renderer.extract.pixels(texture), render: (object, renderTexture, clear, transform) => canvas.app.renderer.render(object, { renderTexture, clear, transform }), renderer: () => canvas.app.renderer, tileReady: () => { const moving = movingWaterList(); syncMovingWater(moving); syncFloorShadows(moving); }, tileSize: () => floorLevel.tile ?? 1024 });
 // Where the creatures are drawn now, for the grass they walk through.
-const tokensOnFloor = () => { const out = []; for (const t of canvas.tokens?.placeables ?? []) { if (!t.visible || !t.actor || t.document?.hidden) continue; const at = t.mesh?.position ?? t.center; out.push({ id: t.id, x: at.x, y: at.y, width: t.w }); } return out; };
+// (Made once a frame, however many ask: frameOf is the canvas ticker's own time for the frame.)
+const frameOf = () => canvas?.app?.ticker?.lastTime ?? NaN;
+let floorTokensAt = NaN, floorTokensHeld = [];
+const tokensOnFloor = () => { const frame = frameOf(); if (frame === floorTokensAt) return floorTokensHeld; const out = []; for (const t of canvas.tokens?.placeables ?? []) { if (!t.visible || !t.actor || t.document?.hidden) continue; const at = t.mesh?.position ?? t.center; out.push({ id: t.id, x: at.x, y: at.y, width: t.w }); } floorTokensAt = frame; return floorTokensHeld = out; };
 const floorMotion = createFloorMotion({ PIXI: globalThis.PIXI, root: floorLayer("floorMotion", 420), grid: () => canvas.grid?.size ?? 100 });
 // Decorations (engines/motion/decorations.mjs): each region's painted rocks, trees, puddles and the rest (the region's right-click
 // panel → Decorations). Their shadows and they themselves on the ground, over the tiles (a rock on a painted rug) and under the
@@ -3804,7 +3811,9 @@ const unloadToward = (doc) => {
   } catch { return null; }
 };
 // Whether the carrier system is on at all for this world.
-const carriersOn = () => { try { return game.settings.get(ID, "carriers") !== false; } catch { return true; } };
+// (Read every frame by the carriers' ticker: through the hot cache. A world setting never saved has no document, and
+// Foundry looks for it among every stored setting on each read: a table measured 0.4 ms a frame for this one line.)
+const carriersOn = () => { try { return hotSetting("carriers") !== false; } catch { return true; } };
 const carrierCarrying = (doc) => doc?.parent?.tokens?.find((t) => t.id !== doc.id && aboardOf(t).some((q) => q.id === doc.id)) ?? null;
 const carrierHere = (doc) => (doc?.parent === canvas?.scene ? aboardOf(doc) : []);
 const riderData = (d) => ({ id: d.id, x: d.x, y: d.y, elevation: d.elevation, hidden: d.hidden, width: d.width, height: d.height, kind: kindOf(d), carries: aboardOf(d) });
@@ -4410,7 +4419,7 @@ const tickCarrierSounds = () => {
   for (const [id, voice] of carrierIdleVoices) if (!live.has(id)) { stopVoice(voice, 300); carrierIdleVoices.delete(id); }
   for (const [id, voice] of carrierHoofVoices) if (!live.has(id)) { stopVoice(voice, 300); carrierHoofVoices.delete(id); }
 };
-const carrierVolume = () => { try { const n = Number(game.settings.get(ID, "carrierVolume")); return Number.isFinite(n) ? n : 1; } catch { return 1; } };
+const carrierVolume = () => { try { const n = Number(hotSetting("carrierVolume")); return Number.isFinite(n) ? n : 1; } catch { return 1; } };
 // A passenger rides on the carrier's own squares, so it sits between the GM and the thing they want to take hold of:
 // clicking the wagon took whichever rider happened to be on top of it, and a wagon with the party aboard could not be
 // picked up at all. (Roi: "make it easy for the gm to select the carrier token(because they are all stacked)".) While
@@ -6364,6 +6373,10 @@ const wildKept = (kind, x, y) => keptOut(kind, { x, y });
 // A rat or bat may leave a region it keeps out of (one drawn round it), never go in.
 const ratBlocks = (a, b) => wallBlocks(a, b) || (keptOut("rats", b) && !keptOut("rats", a));
 const batBlocks = (a, b) => wallOnlyBlocks(a, b) || (keptOut("bats", b) && !keptOut("bats", a));
+// (For a rat running on: ratAhead is the costly part, walls and cliffs with none of their allowances, asked once for a
+// stretch ahead; ratShut the cheap part, asked every frame. vermin.mjs ratStep.)
+const ratAhead = (a, b) => wallOnlyBlocks(a, b) || cliffBlocks(a, b);
+const ratShut = (a, b) => keptOut("rats", b) && !keptOut("rats", a);
 // How many of each creature this scene has, and how big (Scene configuration → Animater → Creatures).
 const sceneCreatures = () => { const f = animalFlagsNow(), out = {}; for (const kind of ["rats", "bats", "moths", "crawlers", "rabbits", "wildBirds", "fish", "waterBirds", "frogs", "deer", "foxes", "insects", "owls", "squirrels", "snakes", "crows", "herons", "gulls", "hawks"]) { out[kind] = creatureAmount(f[kind]); out[`${kind}Size`] = creatureSize(f[`${kind}Size`], f.animalScale); } out.wolves = f.wolves ? creatureAmount(f.wolves) : 0; out.wolvesSize = creatureSize(f.wolvesSize, f.animalScale);
   // Crows, a hawk, herons and gulls left at Usual come as they always have (with the birds, the open country, the water birds);
@@ -6840,6 +6853,23 @@ const mirrorDryOf = (token) => {
   mirrorDry.set(token.id, { key, at: now, dry });
   return dry;
 };
+// What the water's reflections are made from, as one number: where each creature is drawn and how, the lights (their
+// age: any light made, moved or changed), the sun or moon, the floors. The same number as last time and nothing by the
+// water has changed, so the look below — every creature and every light on the scene, twenty times a second — is left
+// out. (A table measured half a millisecond a frame for it on a still scene of eighty creatures and forty lights.)
+let mirrorSeenKey = NaN, mirrorSeenAt = -Infinity;
+const mirrorSeen = () => {
+  let h = (lightingAge * 7 + floorGen) | 0;
+  const mix = (v) => { h = (Math.imul(h, 31) + (Math.round(Number(v) || 0) | 0)) | 0; };
+  const s = sunNow; mix((s?.angle ?? 0) * 100); mix((s?.height ?? 0) * 100); mix((s?.strength ?? 0) * 1000); mix(s?.moon ? 1 : 0);
+  for (const t of canvas.tokens?.placeables ?? []) {
+    const m = t.mesh;
+    if (!t.visible || !m || m.destroyed || !m.texture?.valid) { mix(1); continue; }
+    mix(m.position.x * 4); mix(m.position.y * 4); mix(m.alpha * 100); mix(t.w); mix(t.h); mix(m.texture.baseTexture?.uid); mix(m.scale.x < 0 ? 2 : 3);
+    mix(t.document.rotation); mix((t.document.elevation ?? 0) * 10);
+  }
+  return h;
+};
 const tickWater = (seconds) => {
   const now = performance.now(), view = viewNow(), frozen = frozenWaterOn() && groundOf().now.ice > 0.5;
   if (now - waterLookAt > 1000) {
@@ -6865,6 +6895,11 @@ const tickWater = (seconds) => {
     mirrorLookAt = now;
     // (Reflect token rings on: a ringed token mirrors whole, from its picture as drawn (water-mirror.mjs createRingPictures).)
     let rings = false; try { rings = hotSetting("waterMirrorRings") === true; } catch { /* not registered yet */ }
+    // (Nothing by the water changed: nothing to look at. Looked at anyway once a second, for what the number above does
+    // not hold; and always with ring pictures on, which arrive in their own time, or a painted carrier on the scene.)
+    const seen = mirrorSeen(), still = !rings && !carrierTokens.length && seen === mirrorSeenKey && now - mirrorSeenAt < 1000;
+    if (!still) {
+    mirrorSeenKey = seen; mirrorSeenAt = now;
     const ringed = new Set();
     const tokens = (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.mesh && !t.mesh.destroyed && t.mesh.texture?.valid).map((t) => {
       let pic = null; if (rings) { try { pic = mirrorRings.of(t); } catch { pic = null; } if (pic) ringed.add(t.id); }
@@ -6874,6 +6909,7 @@ const tickWater = (seconds) => {
     mirrorRings.keep(ringed);
     const moonOut = sunNow?.moon && Number(sunNow.strength) > 0.05;
     waterMirror.look({ tokens, lamps: mirrorLamps(), moon: moonOut ? { angle: Number(sunNow.angle), height: Number(sunNow.height), strength: Number(sunNow.strength) } : null, sunny: !!sunNow && !sunNow.moon && Number(sunNow.strength) > 0.3 });
+    }
   }
   if (coast.busy) coast.tick(seconds, { near: creaturesNow(), view, seen: wildSeen, cast: wildCast, sound: (kind, at, urgent) => { if (WILD_SOUND[kind]) wildVoice(kind, at, urgent); } });
   if (beachLife.busy) beachLife.tick(seconds, { near: creaturesNow(), view, seen: wildSeen, cast: wildCast, sound: (kind, at, urgent) => { if (WILD_SOUND[kind]) wildVoice(kind, at, urgent); } });
@@ -7010,7 +7046,7 @@ const regionTick = (seconds) => {
       if (life.field.busy) life.field.tick(step, { birdBody, liftShadow, near, ok: life.ok, blocked: life.blocked, kept: wildKept, indoors: life.indoors, canopy: wildCanopy, cast: wildCast, seen: wildSeen, day: day * out, night, warm, sun, view, sound: wildVoice, prey: life.wild, lamps: wildLamps });
     }
     if (life.town.busy) life.town.tick(Math.min(seconds, 0.1), { near, view, ok: (kind, x, y) => life.inside(x, y) && !life.ground.closed(x, y) && !life.ground.inWater(x, y) && !keptOut(townKept[kind] ?? kind, { x, y }), blocked: life.blocked, barred: (kind, x, y) => !life.inside(x, y) || life.ground.closed(x, y) || keptOut(townKept[kind] ?? kind, { x, y }), day: sunNow ? wildDay() : Math.max(0, Math.min(1, 1 - ((Number(canvas.environment?.darknessLevel) || 0) - 0.55) / 0.2)), night: sunNow ? wildNight() : 0, rain: skyFalling.rain, seen: wildSeen, cast: wildCast, sound: wildVoice });
-    if (life.rats.count) life.rats.tick(seconds, { near, lit: litForRats, blocked: life.ratBlocked, batBlocked: life.batBlocked, view, light: nearestLamp, sound: critterSound });
+    if (life.rats.count) life.rats.tick(seconds, { near, lit: litForRats, blocked: life.ratBlocked, ahead: ratAhead, shut: (a, b) => ratShut(a, b) || keepIn(a, b), batBlocked: life.batBlocked, view, light: nearestLamp, sound: critterSound });
     if (life.farm.busy) life.farm.tick(seconds, { near, ok: (kind, x, y) => life.inside(x, y) && !!life.ground.at(x, y) && !keptOut(kind, { x, y }), blocked: life.blocked, seen: wildSeen, sound: wildVoice });
   }
 };
@@ -7318,7 +7354,9 @@ const tickFireSounds = () => {
 for (const hook of ["createAmbientLight", "updateAmbientLight", "deleteAmbientLight", "canvasReady"]) Hooks.on(hook, () => { fireListAt = 0; });
 Hooks.on("canvasTearDown", () => { for (const voice of fireVoices.values()) stopVoice(voice); fireVoices.clear(); fireList = []; });
 Hooks.on("canvasTearDown", () => { try { decorations.clear(); decorLights.clear(); } catch { /* gone */ } decorTreesKey = ""; });
-const creaturesNow = () => (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.actor).map((t) => ({ id: t.id, x: t.x + t.w / 2, y: t.y + t.h / 2, width: t.w }));
+// (Asked for by the rats, the caverns, the moths, the wildlife and more in the same frame: made once a frame.)
+let creaturesAt = NaN, creaturesHeld = [];
+const creaturesNow = () => { const frame = frameOf(); if (frame === creaturesAt) return creaturesHeld; const out = []; for (const t of canvas.tokens?.placeables ?? []) if (t.visible && t.actor) out.push({ id: t.id, x: t.x + t.w / 2, y: t.y + t.h / 2, width: t.w }); creaturesAt = frame; return creaturesHeld = out; };
 // What the sky draws on the map — the clouds and the shadows they throw, the snow lying on the roofs and in the trees,
 // the trees swaying, the heat shimmer and the lightning — is shell/sky-look.mjs. Everything it needs from here is the
 // list below, and what it draws with comes back under the same names it had, so no call site moved when it went.
@@ -8299,7 +8337,7 @@ function skyTick() {
   if (ceilingDust.busy) ceilingDust.tick(seconds);
   if (wildlife.busy || pondLife.busy || fieldLife.busy) wildTick(seconds);
   if (doorBursts.busy) doorBursts.tick(seconds, { seen: (x, y) => canvas.visibility?.testVisibility?.({ x, y }, { tolerance: canvas.grid.size * 0.2 }) !== false, light: nearestLamp });
-  if (vermin.count) vermin.tick(seconds, { near: creaturesNow(), lit: litForRats, blocked: ratBlocks, batBlocked: batBlocks, view: viewNow(), light: nearestLamp, sound: critterSound, tokenAt: animalTokenAt });
+  if (vermin.count) vermin.tick(seconds, { near: creaturesNow(), lit: litForRats, blocked: ratBlocks, ahead: ratAhead, shut: ratShut, batBlocked: batBlocks, view: viewNow(), light: nearestLamp, sound: critterSound, tokenAt: animalTokenAt });
   tickFloorBlood(seconds);
   if (waterEngine.busy) waterEngine.tick(seconds, { shade: sunReachNow, sky: () => sunNow, view: viewNow, lights: floorLightSources, weather: () => floorWeather, flash: () => flashSun, wind: skyWindNow, angle: skyWindAngle, mostLights: floorLevel.lights, fish: () => wildlife.fishBeneath, fishLook: () => wildlife.fishLook });
   if (iceBreakLook.busy) iceBreakLook.tick(fireNow());
@@ -8530,6 +8568,9 @@ const movementFeel = createMovementFeel({
         // Not drawn on this screen (out of the selected token's sight, in the dark): no shadow either, whatever the GM
         // perceives (its marks and sounds still go by what this screen perceives).
         ...(t.visible !== true ? { shadow: false } : {}),
+        // Hidden from the players, it throws none on the GM's screen either, as it takes no light there (the lit look):
+        // on a map of eighty creatures with seventy of them hidden, their shadows were most of this each frame.
+        ...(d.hidden === true ? { shadow: false } : {}),
         // In a dynamic token ring: how far its ring reaches, a share of its width (Foundry draws the ring at the
         // texture's scale over its subject correction: 0.5 at scale 1, 0.4 at 0.8), false without one.
         ring: d.ring?.enabled === true ? Math.min(0.7, Math.max(0.2, 0.5 * Math.abs(Number(d.texture?.scaleX) || 1) / (Number(t.ring?.scaleCorrection) || 1))) : false,
@@ -8547,7 +8588,8 @@ const movementFeel = createMovementFeel({
         light: () => flierLight(t),
         bob: () => bodyLift.get(t.id) ?? 0,
         // Lying prone on the floor (PF2e keeps its conditions off actor.statuses), read each frame.
-        lying: () => { try { return d.hasStatusEffect?.("prone") === true; } catch { return false; } },
+        // (Looked up four times a second: each look finds the actor again.)
+        lying: () => { const at = performance.now(); if (at - (view.lyingAt ?? -Infinity) > 250) { view.lyingAt = at; try { view.lyingNow = d.hasStatusEffect?.("prone") === true; } catch { view.lyingNow = false; } } return view.lyingNow; },
       };
       movementViews.set(d.id, {token: t, signature, at: time, view});
       return view;

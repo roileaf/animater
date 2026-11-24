@@ -20,7 +20,12 @@ export const creatureSize = (v, all = 100) => Math.min(4, Math.max(0.05, (sizePe
 // One rat's next step (pure): `rat` { x, y, angle, speed, wait }; `dt` seconds; `grid` pixels a square. `lit(x, y)` says
 // how lit a spot is (0 dark – 1 bright); `near` the creatures ([{ x, y }]); `blocked(a, b)` whether a wall stands between
 // two points; `random()`. Rats dart and freeze, turn away from light and walls, and flee whoever comes within two squares.
-export function ratStep(rat, { dt = 1 / 60, grid = 100, lit = () => 0, near = [], blocked = () => false, random = Math.random } = {}) {
+// A wall is costly to ask about, and a rat running straight asks about nearly the same line every frame. Given both
+// `ahead(a, b)` (the costly part of `blocked`, and never more lenient than it) and `shut(a, b)` (its cheap part), a rat
+// asks `ahead` once for half a square past its snout and runs that far on the answer, asking only `shut` each frame.
+// Anything in that stretch and it asks `blocked` about its snout every frame, as it does without them.
+export const RAT_CLEAR = 0.5;
+export function ratStep(rat, { dt = 1 / 60, grid = 100, lit = () => 0, near = [], blocked = () => false, ahead = null, shut = null, random = Math.random } = {}) {
   const r = { ...rat };
   r.wait -= dt;
   // Told where to go, or making for a hole in the wall: it goes, and nothing on the way turns it back.
@@ -50,7 +55,17 @@ export function ratStep(rat, { dt = 1 / 60, grid = 100, lit = () => 0, near = []
     // brighter light: one caught in the light runs out of it, not round and round where it stands.
     const glare = !r.fleeing && lit(nx, ny) > 0.55 && lit(nx, ny) > lit(r.x, r.y);
     // It stops and turns, once, then sets off again in its own time (or, fleeing, chooses again at once).
-    if (blocked({ x: r.x, y: r.y }, snout) || glare) { r.angle += Math.PI * (0.6 + 0.8 * random()); r.speed = 0; if (r.fleeing) r.flee = 0; else r.wait = 0.15 + random() * 0.4; }
+    const here = { x: r.x, y: r.y }, step = r.speed * dt;
+    let stopped;
+    if (!ahead || !shut) stopped = blocked(here, snout);
+    else if (shut(here, snout)) stopped = true;
+    else if (r.clearAngle === r.angle && r.clear >= step) { r.clear -= step; stopped = false; }
+    else {
+      const reach = grid * RAT_CLEAR, far = { x: snout.x + Math.cos(r.angle) * reach, y: snout.y + Math.sin(r.angle) * reach };
+      if (!ahead(here, far)) { r.clearAngle = r.angle; r.clear = reach; stopped = false; }
+      else { r.clear = 0; stopped = blocked(here, snout); }
+    }
+    if (stopped || glare) { r.clear = 0; r.angle += Math.PI * (0.6 + 0.8 * random()); r.speed = 0; if (r.fleeing) r.flee = 0; else r.wait = 0.15 + random() * 0.4; }
     else { r.x = nx; r.y = ny; }
   }
   return r;
@@ -386,7 +401,7 @@ export function createVermin({ PIXI, root, batsRoot = root, restyle = null }) {
         return at && newBat(at);
       }).filter(Boolean);
     },
-    tick(seconds, { near = [], lit = () => 0, blocked = () => false, batBlocked = blocked, view = null, light = () => null, sound = () => {}, tokenAt = () => null } = {}) {
+    tick(seconds, { near = [], lit = () => 0, blocked = () => false, ahead = null, shut = null, batBlocked = blocked, view = null, light = () => null, sound = () => {}, tokenAt = () => null } = {}) {
       time += seconds;
       const dt = Math.min(0.05, seconds), seen = (x, y) => !view || (x > view.x - grid && y > view.y - grid && x < view.x + view.w + grid && y < view.y + view.h + grid);
       const k = (grid / 100) * size, kb = (grid / 100) * batSize, rt = ratFrames(), bt = batFrames();
@@ -416,7 +431,7 @@ export function createVermin({ PIXI, root, batsRoot = root, restyle = null }) {
             if (h) { r.toHole = h.id; r.tx = h.x; r.ty = h.y; r.round = null; }
           }
         }
-        const n = ratStep(r, { dt, grid, lit, near: r.chasing || r.toHole ? [] : near, blocked });
+        const n = ratStep(r, { dt, grid, lit, near: r.chasing || r.toHole ? [] : near, blocked, ahead, shut });
         // At the hole: in it goes, and it comes up out of one of the furthest from it.
         if (n.toHole && Math.hypot(n.tx - n.x, n.ty - n.y) < grid * 0.2) {
           const went = holes.find((h) => h.id === n.toHole) ?? null;
