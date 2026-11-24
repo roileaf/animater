@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.10.4
+
+- **Tiles are no longer drawn twice, the second up and to the left.** A tile that stands on the map as an object (Tile configuration → Animater → Sunlight on "Auto" or "Object") has its picture drawn again over its shadow. For a tile made before Foundry 14, or one whose picture's anchor is not its middle, that second picture was drawn half the tile's size up and to the left, and so were its shadows. It is now drawn on the tile. ([#29](https://github.com/roileaf/animater/issues/29))
+
 ## 4.10.3
 
 - **A setting changed in Animater settings is no longer undone by Save Changes in Game Settings.** Game Settings keeps every field as it was when the window opened and writes them all on Save Changes. With it open behind Animater's own settings window, a setting changed there (Animation quality set to Off, say) was written back to what it had been. An open Game Settings now follows the change. This reached everyone for "Animation quality (this device)", which is always listed there, and every "on my screen" setting where a settings-lock module lists them.
