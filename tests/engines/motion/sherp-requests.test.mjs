@@ -76,7 +76,8 @@ test('weather eases: the same kind across, another kind out then in', async () =
 });
 
 test('the sky never snaps a change while fading, and a drag or preview shows at once', () => {
-  assert.match(main, /fade: weatherPreview \|\| tuneDragged \? 0 : Number\(hotSetting\("weatherFade"\)\)/);
+  // (A burst of weather comes and goes in its own few seconds: weather-burst.mjs.)
+  assert.match(main, /fade: weatherPreview \|\| tuneDragged \? 0 : performance\.now\(\) < weatherBurstFadeUntil \? BURST_FADE_S : Number\(hotSetting\("weatherFade"\)\)/);
 });
 
 test('all scenes come under each scene\'s own', () => {

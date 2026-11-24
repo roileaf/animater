@@ -268,6 +268,7 @@ import { momentsPanelHtml, momentsPanelMode, momentsPresetOptions, momentsReadou
 import { floated } from "./ui/float-panel.mjs";
 import { fallWayHere, landedFlash, nearestLights, stormGloom, weatherOf, cloudCover, cloudLook, skyNeedsBuilding, heatOf, surfacesOf, riverCurrent, createSurfaceLight, createTileSnow, createHeatShimmer, createLightningFlash, WIND_FROM, rainbowOf, snowPatchAt, moonGlow, calendariaMoonLifts, weatherLight, skyBuildKey } from "./engines/motion/sky-light.mjs";
 import { weatherScene, WEATHERS, sceneWeatherId, weatherLabel, SCENE_WEATHER_PREFIX } from "./engines/motion/sky-weather.mjs";
+import { burstCall, burstAfter, burstOver, burstFeel, BURST_FADE_S } from "./engines/motion/weather-burst.mjs";
 import { forecastWeather, forecastDays, BLOCK_HOURS } from "./engines/motion/weather-forecast.mjs";
 import { stormDarkAsked, stormDarkStep, stormDarkTarget } from "./engines/motion/storm-darkness.mjs";
 import { createSoftShadows, highShadowLook } from "./engines/motion/soft-shadow.mjs";
@@ -7173,7 +7174,8 @@ const earsInside = () => {
 };
 const weatherHeard = () => {
   if (!bothSettingsOn("weatherSounds") || undergroundScene() || weatherOffHere()) return null;
-  const now = weatherTest ?? { rain: skyFalling.rain, wind: skyWindNow, storm: skyStorm, words: skyWords };
+  const burst = burstFelt();
+  const now = weatherTest ?? { rain: Math.max(skyFalling.rain, burst.rain), wind: skyWindNow, storm: stormHere(), words: `${skyWords} ${burst.words}` };
   return louder(weatherLevels({ ...now, inside: earsInside() }), weatherVolumeHere());
 };
 const tickWeatherSound = () => {
@@ -7204,7 +7206,7 @@ const readyThunder = () => { if (thunderLoaded || game.audio?.locked) return; th
 const thunderAfterFlash = (always = false, where = null) => {
   if (!bothSettingsOn("weatherSounds") || !soundsOn() || game.audio?.locked) return;
   const rect = canvas.dimensions.sceneRect, span = Math.hypot(rect.width, rect.height) / canvas.grid.size, squares = where?.squares ?? span * 0.4;
-  if (!always && !thunderReaches({ squares, span, storm: skyStorm })) return;
+  if (!always && !thunderReaches({ squares, span, storm: stormHere() })) return;
   const t = thunderShape({ squares, span }), now = performance.now(), onTop = thunderOnTopOf(squares), at = onTop ? now + t.wait : Math.max(now + t.wait, thunderAt + 1000);
   if (at - now - t.wait > 3000) return;
   thunderAt = Math.max(thunderAt, at);
@@ -7517,6 +7519,36 @@ Hooks.on("preUpdateScene", (scene, change, options) => {
   change.environment.darknessLevel = now.darkness;
   foundry.utils.setProperty(change, `flags.${ID}.stormDark`, now.kept);
 });
+// A burst of weather on this screen (weather-burst.mjs; the API's weatherBurst): snow for half a minute on a natural 20.
+// Over the scene's own weather, eased in and out, and gone with the scene. Nothing is sent and nothing is stored, so any
+// client may ask for it: each one asks for its own. Not where this viewer has the map's weather off, at a quality that
+// leaves it out, or underground with nothing open to the sky (weatherMapOn: the same as the weather itself).
+let weatherBurstNow = null, weatherBurstTimer = null, weatherBurstFadeUntil = 0;
+// What it is heard and felt as on this screen while it runs (burstFeel): its rain's sound and rings on open water, a
+// storm's flashes and thunder (none of its bolts land on the map: those mark it). Nothing with no burst.
+const NO_BURST = Object.freeze({ rain: 0, storm: 0, words: "" });
+const burstFelt = () => (weatherBurstNow && !weatherPreview ? burstFeel(weatherBurstNow) : NO_BURST);
+// (How fierce the storm is on this screen now, a burst's included where this viewer has lightning on.)
+const stormHere = () => Math.max(skyStorm, weatherBurstNow && lightningOn() ? burstFelt().storm : 0);
+const weatherBurstEnd = (look = true) => {
+  if (weatherBurstTimer) { clearTimeout(weatherBurstTimer); weatherBurstTimer = null; }
+  if (!weatherBurstNow) return;
+  weatherBurstNow = null;
+  if (look) { weatherBurstFadeUntil = performance.now() + BURST_FADE_S * 1000 + 500; try { lookSky(); } catch { /* no scene shown */ } }
+};
+for (const hook of ["canvasReady", "canvasTearDown"]) Hooks.on(hook, () => { weatherBurstEnd(false); });
+const weatherBurstHere = (asked = {}) => {
+  const call = burstCall(asked);
+  if (!call || !canvas?.ready) return null;
+  if (!weatherMapOn()) return null;
+  const now = Date.now();
+  weatherBurstNow = burstAfter(weatherBurstNow, call, now);
+  if (weatherBurstTimer) clearTimeout(weatherBurstTimer);
+  weatherBurstTimer = setTimeout(() => { weatherBurstTimer = null; weatherBurstEnd(); }, weatherBurstNow.until - now);
+  weatherBurstFadeUntil = performance.now() + BURST_FADE_S * 1000 + 500;
+  lookSky();
+  return { weather: weatherBurstNow.weather, strength: weatherBurstNow.strength, ms: weatherBurstNow.until - now };
+};
 const lookSky = () => {
   try {
     const tune = weatherPreview ? cleanTune() : weatherTuneNow();
@@ -7536,8 +7568,11 @@ const lookSky = () => {
     const sceneOwn = sceneWeatherId(weatherWordOf(canvas?.scene));
     // The weather Animater draws now (a preview's, the scene's own, else Calendaria's), and what it asks of the rest.
     const drawnId = weatherPreview?.preset || sceneOwn || calendaria?.id || null;
-    const drawn = weatherMapOn() && (weatherPreview?.preset || sceneOwn || calendaria || tuneAdds(tune)) ? tuneWeather(weatherScene(weatherPreview?.preset ? { id: weatherPreview.preset } : sceneOwn ? { id: sceneOwn } : calendaria ?? { id: "clear" }), tune) : null;
+    let drawn = weatherMapOn() && (weatherPreview?.preset || sceneOwn || calendaria || tuneAdds(tune)) ? tuneWeather(weatherScene(weatherPreview?.preset ? { id: weatherPreview.preset } : sceneOwn ? { id: sceneOwn } : calendaria ?? { id: "clear" }), tune) : null;
     if (drawn && !weatherCloudsOn()) drawn.deck = 0;
+    // (A burst over it: laid on last, so the scene's own weather and its tuning are what they were under it.)
+    if (weatherBurstNow && !weatherMapOn()) weatherBurstEnd(false);
+    if (weatherBurstNow && !weatherPreview) drawn = burstOver(drawn, weatherBurstNow);
     const windFixed = tune.wind;
     drawnNow = drawn;
     const windAsked = weatherPreview?.wind ?? weather.wind, sceneSaysWind = !["", "calm", undefined].includes(canvas?.scene?.flags?.[ID]?.wind), windNow = noneHere ? 0 : windFixed ?? ((weather.windStated && (!sceneOwn || sceneSaysWind)) || weatherPreview?.wind !== undefined ? windAsked : Math.max(drawn?.windMin ?? 0, windAsked));
@@ -7558,7 +7593,7 @@ const lookSky = () => {
       mist: !noneHere && mistOn() && clock && (fog || !(falling.rain > 0.05)) ? mistOf({ day: clock.day, sunrise: clock.sunrise, sunset: clock.sunset, sun: sunNow, fog }) : 0,
       fireflies: firefliesOn() && clock ? firefliesOf({ day: clock.day, sunset: clock.sunset, season, temperature: weather.temperature }) : 0,
       // Rain rings on open water only: none under a roof (the regions keep the weather out).
-      rain: rainRingsOn() ? falling.rain : 0,
+      rain: rainRingsOn() ? Math.max(falling.rain, burstFelt().rain) : 0,
       // How big this map wants its puddles and splashes (the Weather panel).
       puddles: tune.puddleSize ?? 1, splashes: tune.splashSize ?? 1,
       ice: frozenWaterOn() ? ground.ice : 0,
@@ -7574,7 +7609,7 @@ const lookSky = () => {
       weather: drawn,
       cover: weatherPreview?.clouds ?? (!weatherCloudsOn() ? 0 : tune.cover ?? (sceneOwn ? cloudCover(skyClear(sceneOwn)) : cloudCover(sky))), cloudShift: cloudShiftNow(), raining: falling.rain > 0.05, fallsDown: fallWayHere(levelOf(canvas?.scene).fallsDown || canvas?.scene?.flags?.[ID]?.fallsDown || globalWeatherNow().way, hotSetting("weatherFallsDown")),
       // Weather eases from one to the next ("Weather changes take"); a slider being dragged or a preview shows at once.
-      fade: weatherPreview || tuneDragged ? 0 : Number(hotSetting("weatherFade")) || 0,
+      fade: weatherPreview || tuneDragged ? 0 : performance.now() < weatherBurstFadeUntil ? BURST_FADE_S : Number(hotSetting("weatherFade")) || 0,
       gloom: (() => { const now = weatherLightOn() && weatherCloudsOn() ? stormGloom({ cover: skyCoverNow, rain: falling.rain, darkness: canvas.environment?.darknessLevel, most: tune.gloom ?? hotSetting("cloudDarkness") }) : 0; if (Math.abs(now - gloomNow) > 0.03 || (now === 0) !== (gloomNow === 0)) { gloomNow = now; glowsSoon(); } return now; })(), snowSun: sunNow ? skyForFloors(sunNow, skyCoverNow) : null,
       // The year on the ground: its colour and the fallen leaves (none under snow lying deep).
       ...(seasonGroundOn() ? (({ tint, litter }) => ({ season: tint, litter: litter * (1 - ground.snow) }))(seasonGround(season, { wind: weather.wind })) : {}),
@@ -8245,7 +8280,8 @@ Hooks.on("updateScene", (scene, change) => {
 let flashSun = null, strikeAngle = 0, lastBoltAt = -Infinity, boltNext = false, lastStrike = null;
 const strikeNow = (level = 1, at = null) => {
   const rect = canvas.dimensions.sceneRect, grid = canvas.grid.size;
-  let place = at ?? strikePlace(Math.random, rect, grid, boltNext || boltDue(performance.now() - lastBoltAt, skyStorm, Math.random, weatherTuneNow().lightning !== null) ? 1 : 0);
+  // (A burst's storm alone flashes from past the map's edge: no bolt of it lands.)
+  let place = at ?? strikePlace(Math.random, rect, grid, !(skyStorm > 0) && !boltNext ? 0 : boltNext || boltDue(performance.now() - lastBoltAt, skyStorm, Math.random, weatherTuneNow().lightning !== null) ? 1 : 0);
   boltNext = false;
   // It can come down through an opening in a roof; underground there is nowhere else, so the rest stay far off.
   if (!at && place.inside && skyOpenAreas.length) {
@@ -8391,8 +8427,9 @@ function skyTick() {
     heatShimmer.tick(seconds);
   } else if (heatShimmer.on) heatShimmer.set({ heat: 0 });
   if (lightningBolts.busy) lightningBolts.tick(seconds);
-  if (skyStorm > 0 && !thunderLoaded) readyThunder();
-  const level = lightning.tick(performance.now(), canvas.scene ? skyStorm : 0);
+  const storm = stormHere();
+  if (storm > 0 && !thunderLoaded) readyThunder();
+  const level = lightning.tick(performance.now(), canvas.scene ? storm : 0);
   surfaceLight.flash(level);
   if (level > 0.3) { if (!flashSun) strikeNow(level); flashSun = { angle: strikeAngle, height: 35, strength: level }; }
   else flashSun = null;
@@ -16542,6 +16579,12 @@ Hooks.once("ready", () => {
     // audience }). A GM's to call, as the panel's buttons are; it changes nothing in the world and stopMoments()
     // ends all of it. The copy button on the panel writes exactly this line.
     moment: (asked = {}) => { if (!game.user?.isGM) return null; return momentCallHere(asked.kind, asked); },
+    // A burst of weather on the calling client's own screen: { weather (one of Animater's: "snow", "rain", "hail",
+    // "ashfall", "fog"…), strength 0–1, ms (2 000–60 000) }. Over the scene's weather, then gone; nothing sent, nothing
+    // stored, so a player's client may call it (a dice module's rule runs on every client, and each calls its own).
+    // Returns what runs now { weather, strength, ms }, or null where it does not show (weather off on this screen, a
+    // quality that leaves it out, underground, or a weather it does not know). The same weather again carries it on.
+    weatherBurst: (asked = {}) => weatherBurstHere(asked),
     stopMoments: () => { if (!game.user?.isGM) return false; momentsStopEverywhere(); return true; },
     moments: () => clone(MOMENTS),
     creatureShowcase:tokenId=>clone(showcaseTools.snapshot(tokenId)),
