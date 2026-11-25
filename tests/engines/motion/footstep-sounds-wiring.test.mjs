@@ -14,7 +14,7 @@ test('Footstep sounds: a world switch and an on-my-screen one, listed in Sound',
 });
 
 test('off silences the step (level 0) but keeps its timing and tremor; the showcase passes the world switch', () => {
-  assert.match(main, /const soundOn = \(key\) => \{ try \{ return hotSetting\(key\) !== false; \} catch \{ return true; \} \};\s*if \(!\(\(token\.preview \|\| soundOn\("footstepSounds"\)\) && soundOn\("footstepSoundsLocal"\)\)\) level = 0;[\s\S]{0,800}?level \*= calm\.gain;\s*if \(!\(level > 0\) && !\(mix\.tremor > 0\)\) return;/);
+  assert.match(main, /const soundOn = \(key\) => \{ try \{ return hotSetting\(key\) !== false; \} catch \{ return true; \} \};\s*if \(!\(\(token\.preview \|\| soundOn\("footstepSounds"\)\) && soundOn\("footstepSoundsLocal"\)\)\) level = 0;[\s\S]{0,800}?level \*= calm\.gain;[\s\S]{0,300}?if \(!\(level > 0\) && !\(mix\.tremor > 0\) && !marked\) return;/);
 });
 
 // A ridden horse holds its own hooves (engines/sound/carrier-sound.mjs), so its size-paced footstep is silenced the

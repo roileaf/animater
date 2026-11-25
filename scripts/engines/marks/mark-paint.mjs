@@ -3,6 +3,7 @@
 // never saves anything. Textures are drawn here once per mark and reused; Foundry and
 // the canvas are reached only through the options (main.mjs).
 import { MARKS, layoutBlotches, markAlpha, markTiming } from './ground-marks.mjs';
+import { clipToRing, flatArea, ringHasNoDents } from '../regions/ice-patch.mjs';
 import { seededRandom } from '../fragments/fragments.mjs';
 import { markCircle, overlaps } from './reactions.mjs';
 
@@ -457,6 +458,48 @@ export function markTextures(PIXI, renderer) {
 }
 
 /**
+ * The parts of `cuts` (flat polygons) that lie inside one polygon of a mark's shape (`points` flat, as PIXI's are),
+ * each cut down to it so a hole never reaches past the shape it is a hole in. [] for a shape with dents in it, which
+ * cannot be cut to: the mark is then drawn whole.
+ */
+export function markCuts(polygon, cuts) {
+  const flat = Array.from(polygon?.points ?? []), ring = [];
+  for (let i = 0; i + 1 < flat.length; i += 2) ring.push({ x: flat[i], y: flat[i + 1] });
+  if (!Array.isArray(cuts) || !cuts.length || !ringHasNoDents(ring)) return [];
+  return cuts.map((cut) => clipToRing(cut, ring)).filter((points) => points.length && flatArea(points) >= 1);
+}
+
+/**
+ * What of the map a mark may lie on, when some of what is under it must be left clear: { rect, holes } — a box well
+ * round the mark and everything cut from it, and the cuts themselves (whole, as they are, so none of them touches the
+ * box's edge). Only the cuts that reach under the mark are taken. null when none does.
+ */
+export function markKeep(polygons, cuts) {
+  const shapes = [polygons].flat().filter(Boolean), holes = [];
+  for (const cut of Array.isArray(cuts) ? cuts : []) if (shapes.some((polygon) => markCuts(polygon, [cut]).length) && !holes.includes(cut)) holes.push(cut);
+  if (!holes.length) return null;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const flat of [...shapes.map((p) => Array.from(p.points ?? [])), ...holes]) for (let i = 0; i + 1 < flat.length; i += 2) { x0 = Math.min(x0, flat[i]); x1 = Math.max(x1, flat[i]); y0 = Math.min(y0, flat[i + 1]); y1 = Math.max(y1, flat[i + 1]); }
+  const pad = 64;
+  return { rect: { x: x0 - pad, y: y0 - pad, w: x1 - x0 + pad * 2, h: y1 - y0 + pad * 2 }, holes };
+}
+
+/**
+ * Where steam rises as a fire's mark lands over water: up to `most` places, [{ x, y, r }], the middle of each stretch
+ * of water under the mark and about how far across it is, the widest first. `mask` is the mark's own (its polygons,
+ * with the waters on `cuts`). [] when it lies on no water.
+ */
+export function markSteam(mask, most = 3) {
+  const out = [];
+  for (const polygon of [mask].flat().filter(Boolean)) for (const piece of markCuts(polygon, mask?.cuts)) {
+    let x = 0, y = 0; const n = piece.length / 2;
+    for (let i = 0; i + 1 < piece.length; i += 2) { x += piece[i]; y += piece[i + 1]; }
+    out.push({ x: x / n, y: y / n, r: Math.sqrt(flatArea(piece) / Math.PI) });
+  }
+  return out.filter((s) => s.r >= 12).sort((a, b) => b.r - a.r).slice(0, Math.max(0, most));
+}
+
+/**
  * One mark's display object: a sprite per blotch (and its ember rim, for a scorch), clipped to `mask` (an area's
  * template polygons) when given. Clicks pass through to the map.
  */
@@ -464,13 +507,18 @@ export function markSprite(PIXI, textures, tag, blotches, mask) {
   const root = new PIXI.Container();
   root.eventMode = 'none';
   root.rims = [];
+  // The blotches stand in a holder of their own, cut to the area's shape; what the mark must not lie on is cut from
+  // the root round it. Two masks, one inside the other, because a hole cut in the area's own shape shares an edge
+  // with it wherever the water runs past the area, and a hole on its shape's edge leaves a strip of the mark behind.
+  const paint = new PIXI.Container();
+  root.addChild(paint);
   const place = (texture, b) => {
     const s = new PIXI.Sprite(texture);
     s.anchor.set(0.5);
     s.position.set(b.x, b.y);
     s.rotation = b.rotation;
     s.width = s.height = 2 * b.r * (C / BODY);
-    root.addChild(s);
+    paint.addChild(s);
     return s;
   };
   for (const b of blotches) {
@@ -486,8 +534,21 @@ export function markSprite(PIXI, textures, tag, blotches, mask) {
     clip.beginFill(0xffffff);
     for (const polygon of polygons) clip.drawPolygon(polygon);
     clip.endFill();
-    root.addChild(clip);
-    root.mask = clip;
+    paint.addChild(clip);
+    paint.mask = clip;
+    // What the mark must not lie on (mask.cuts: water, for a scorch): everything but it is kept.
+    const keep = markKeep(polygons, mask?.cuts);
+    if (keep) {
+      const rest = new PIXI.Graphics();
+      rest.beginFill(0xffffff);
+      rest.drawRect(keep.rect.x, keep.rect.y, keep.rect.w, keep.rect.h);
+      rest.beginHole();
+      for (const hole of keep.holes) rest.drawPolygon(hole);
+      rest.endHole();
+      rest.endFill();
+      root.addChild(rest);
+      root.mask = rest;
+    }
   }
   return root;
 }

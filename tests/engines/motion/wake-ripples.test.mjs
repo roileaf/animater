@@ -89,3 +89,54 @@ test('the rings of something staying put fit the quad over them', () => {
   assert.ok(wakeReach(1, 200) > wakeReach(0.3, 200));
   assert.ok(wakeReach(0.62, 200) > 200 * 0.62 * 0.85 * 3);
 });
+
+// A giant's weight shaking a pond (giant-wake.mjs): a duck's ring is strongest where it starts and gone a square
+// out, so a big one of those died half way to the bank. Roi: "shouldnt the ripples go from the center until the
+// water edge?" A swell is carried at a set speed and holds its strength the whole way.
+test('a swell runs as far as it is sent before it fades, at any strength, and is told from a ring by its sign', async () => {
+  const { swellCode, swellOf } = await import('../../../scripts/engines/motion/wake-ripples.mjs');
+  for (const reach of [150, 200, 500, 900]) for (const strength of [0.2, 0.7, 1]) {
+    const code = swellCode({ reach, grid: 100, strength }), back = swellOf(code);
+    assert.ok(code < 0, 'a ring\'s size is never negative');
+    assert.ok(back.runs * 100 >= reach * 0.9, `${reach}: sent ${reach}, runs ${back.runs * 100}`);
+    assert.ok(back.runs * 100 <= reach + 60 || reach < 100, 'and not much further');
+    // It holds for the first part of its run and has faded to nothing by the end of it: gone as it gets there.
+    assert.ok(back.fadesFrom > back.runs * 0.5 && back.fadesFrom < back.runs * 0.75, `fades from ${back.fadesFrom} of ${back.runs}`);
+    assert.ok(Math.abs(back.strength - Math.min(0.99, strength)) < 1e-3);
+  }
+  assert.ok(swellOf(swellCode({ reach: 1, grid: 100, strength: 0.5 })).speed >= 0.25, 'never so slow it stands still');
+});
+
+test('the ring shader carries a swell at its own speed and holds it, instead of thinning it with distance', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../../../scripts/engines/motion/wake-ripples.mjs', import.meta.url), 'utf8');
+  const swell = src.slice(src.indexOf('if (r.w < 0.0) {'), src.indexOf('float g = uGrid * r.w;'));
+  assert.ok(swell.length > 100, 'a branch of its own');
+  assert.match(swell, /speed = floor\(m\) \/ 20\.0 \* uGrid, strong = fract\(m\)/);
+  assert.match(swell, /dist - \(s \* speed \+/);
+  assert.ok(!/\/ \(dist \+/.test(swell), 'no falling off with distance');
+  assert.ok(!/exp\(-s \*/.test(swell), 'and no dying away from the first moment');
+  assert.match(swell, /1\.0 - smoothstep\(/, 'only a fade as its time runs out');
+  assert.match(src, /const R = r\.size < 0 \? swellOf\(r\.size\)\.speed \* LIFE \* g \+ g \* 2 : wakeReach\(r\.size, g\);/, 'and the quad drawn over the rings is big enough for it');
+});
+
+// Roi, of a swell on a round pond: "why it goes beyond the region boundaries?" Four streaks, north, south, east and
+// west, where the pond touches the edge of its own baked picture and the picture's last pixel was read on outward.
+test('nothing is drawn past the picture of the water: no streaks where a pond touches its own edge', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../../../scripts/engines/motion/wake-ripples.mjs', import.meta.url), 'utf8');
+  const surface = src.slice(src.indexOf('vec4 surface(vec2 slope, float waves){'), src.indexOf('const RING_FRAG'));
+  assert.match(surface, /vec2 at = \(vPos - uWaterRect\.xy\) \/ uWaterRect\.zw;\s*if \(uHasWater > 0\.5 && \(at\.x < 0\.0 \|\| at\.y < 0\.0 \|\| at\.x > 1\.0 \|\| at\.y > 1\.0\)\) return vec4\(0\.0\);/);
+  assert.ok(surface.indexOf('return vec4(0.0);\n  vec4 where') > 0 || surface.indexOf('at.y > 1.0)) return vec4(0.0);') < surface.indexOf('texture2D(uWater, at)'), 'looked at before the picture is read');
+  assert.match(surface, /texture2D\(uWater, at\)/);
+});
+
+test('a swell is one bold crest and the one behind it, not a train', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../../../scripts/engines/motion/wake-ripples.mjs', import.meta.url), 'utf8');
+  const swell = src.slice(src.indexOf('if (r.w < 0.0) {'), src.indexOf('float g = uGrid * r.w;'));
+  const rate = Number(swell.match(/sin\(away \* ([\d.]+) \/ G\)/)?.[1]);
+  // Its crests are 2*pi*G/rate apart, and it is about 1.9 G across where it can be seen: under two of them.
+  assert.ok(rate > 0 && (1.9 * rate) / (2 * Math.PI) < 4.2, `${rate}`);
+  assert.ok(rate <= 14, 'no more crests than that');
+});

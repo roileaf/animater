@@ -81,6 +81,8 @@ export function momentsPanelHtml({ moments = {}, wheres = {}, styles = {}, prese
       <button type="button" data-an-make title="Make a macro of the last moment in your macro directory">Macro</button>
     </div>
   </section>
+  <section class="an-group"><h2>Something bigger</h2>
+    <div class="an-feet"><button type="button" data-an-flyover title="A great shadow crosses the map in a creature's shape, with its wings and its cry; it can come down and stand there">Something flies over…</button></div></section>
   <button type="button" class="an-stop" data-an-stop disabled>Stop everything</button>`;
 }
 

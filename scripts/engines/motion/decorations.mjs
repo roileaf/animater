@@ -299,7 +299,7 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
     return floor;
   };
   // The wind now (0-1, blowing toward angle in radians) and a clock for the cloth it stirs.
-  let air = { strength: 0, angle: 0 }, clock = 0, litTrees = null;
+  let air = { strength: 0, angle: 0 }, airAt = null, clock = 0, litTrees = null;
   let sun = null, canopyTrees = false, open = new Map(), snow = { amount: 0, toSun: [0, 0], z: 0, low: 1, color: [1, 0.97, 0.9] };
   const snowUniforms = (u) => Object.assign(u, { uAmount: snow.amount, uToSun: snow.toSun, uZ: snow.z, uLow: snow.low, uSunColor: snow.color });
   // A region's snow: its standing decorations' pictures and domes baked small, one quad over them on the ground layer.
@@ -626,7 +626,8 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
       }
     },
     /** The wind now: strength 0-1, blowing toward angle (radians). Awnings, tents and washing stir in it (not underground). */
-    wind({ strength = 0, angle = 0 } = {}) { air = { strength: Math.max(0, Math.min(1, Number(strength) || 0)), angle: Number(angle) || 0 }; },
+    // `at(decoration)`: the wind where that one stands, { strength, angle }, while a gust blows somewhere (null: the scene's).
+    wind({ strength = 0, angle = 0, at = null } = {}) { air = { strength: Math.max(0, Math.min(1, Number(strength) || 0)), angle: Number(angle) || 0 }; airAt = typeof at === 'function' ? at : null; },
     creatures(list = []) { const g = grid(); for (const r of regions.values()) for (const c of r.crowns) open.set(c, crownOpen(c.decor, list, g)); },
     // `view` what is on the screen now ({ x, y, w, h } on the map), for the shadow layers that need not be drawn.
     tick(seconds, view = null) {
@@ -650,7 +651,7 @@ export function createDecorations({ PIXI, shadows: shadowsOf, ground: groundOf, 
       // Cloth in the wind: its fabric rippling along it, in gusts, each piece out of step with the next; still in a calm.
       // (A frame's worth at most: back from a hidden or minimised window the sway carries on where it was, never racing to catch up.)
       clock += Math.min(0.1, Math.max(0, Number(seconds) || 0));
-      for (const r of regions.values()) for (const s of r.cloth) { const m = clothMotion(s.decor, air, clock, s.rotation), u = s.shader.uniforms; u.uTime = clock; u.uPush = m.push; u.uDir = m.dir; u.uAlpha = s.alpha; }
+      for (const r of regions.values()) for (const s of r.cloth) { const a = airAt ? airAt(s.decor) ?? air : air, m = clothMotion(s.decor, a, clock, s.rotation), u = s.shader.uniforms; u.uTime = clock; u.uPush = m.push; u.uDir = m.dir; u.uAlpha = s.alpha; }
     },
     // The trees on fire now, told ahead of trees() (a Set of burningDecorIds; none clears it).
     burning(ids) { litTrees = ids ?? null; },

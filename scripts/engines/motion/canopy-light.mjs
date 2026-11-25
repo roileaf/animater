@@ -373,6 +373,11 @@ export function createCanopyLight({ PIXI, root, render, above = root, pattern = 
 // little even in still air, a good deal in a gale.
 export const swayOf = (wind, grid = 100) => (0.01 + 0.05 * Math.min(1, Math.max(0, Number(wind) || 0))) * grid;
 
+// How far a gust of its own (0-1, gusts.mjs) holds a crown over, in pixels on the map: an eighth of a square at its
+// strongest, twice what a gale sways it.
+const LEAN = 0.12;
+export const leanOf = (gust, grid = 100) => LEAN * Math.min(1, Math.max(0, Number(gust) || 0)) * grid;
+
 // High precision: the filter vertex stage declares inputSize and outputFrame so, and a uniform shared by both stages
 // must match (a mismatch fails to link and the tree draws as nothing).
 const SWAY = `
@@ -382,7 +387,7 @@ uniform sampler2D uSampler;
 uniform vec4 inputSize, outputFrame;
 uniform vec3 uView;     // the stage's offset (x, y) and scale: screen = map * scale + offset
 uniform vec2 uDir, uSeed;
-uniform float uTime, uAmp, uGrid;
+uniform float uTime, uAmp, uGrid, uLean;   // uLean: how far a gust on this tree now holds it over, in map pixels
 float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y); }
@@ -396,7 +401,9 @@ void main(){
   // And the leaves flutter, finer and quicker.
   vec2 f = map / (uGrid * 0.45) + uSeed;
   off += vec2(noise(f + uTime * 1.9) - 0.5, noise(f - uTime * 2.1 + 7.3) - 0.5) * 0.35;
-  gl_FragColor = texture2D(uSampler, vTextureCoord + off * uAmp * uView.z * inputSize.zw);
+  // Under a gust of its own it is also held over the way that blows, shaking, until the gust has passed.
+  vec2 held = uDir * uLean * (1.0 + 0.3 * sin(uTime * 7.0 + w.x * 2.3));
+  gl_FragColor = texture2D(uSampler, vTextureCoord + (off * uAmp - held) * uView.z * inputSize.zw);
 }`;
 
 // The trees swaying in the wind: a light ripple of each tree tile's own picture (its mesh), leaning the way the wind
@@ -418,15 +425,21 @@ export function createTreeSway({ PIXI, grid = () => 100 }) {
       for (const mesh of want) {
         n++;
         if (on.has(mesh)) continue;
-        const filter = new PIXI.Filter(undefined, SWAY, { uView: [0, 0, 1], uDir: [1, 0], uSeed: [n * 3.17, n * 1.93], uTime: n * 4.1, uAmp: 0, uGrid: grid() });
-        filter.padding = 0.08 * grid();
+        const filter = new PIXI.Filter(undefined, SWAY, { uView: [0, 0, 1], uDir: [1, 0], uSeed: [n * 3.17, n * 1.93], uTime: n * 4.1, uAmp: 0, uGrid: grid(), uLean: 0 });
+        // (Room for the sway and for a gust's lean on top of it.)
+        filter.padding = (0.08 + LEAN) * grid();
         mesh.filters = [...(mesh.filters ?? []), filter];
         on.set(mesh, filter);
       }
     },
-    set({ wind = 0, angle = 0, view = null } = {}) {
+    // `gustAt(mesh)`: the wind where that tree stands, { wind, angle, gust }, while a gust blows somewhere (gusts.mjs);
+    // without it every tree has the scene's.
+    set({ wind = 0, angle = 0, view = null, gustAt = null } = {}) {
       if (!view) return;
-      for (const filter of on.values()) Object.assign(filter.uniforms, { uAmp: swayOf(wind, grid()), uDir: [Math.cos(angle), Math.sin(angle)], uView: [view.x, view.y, view.scale], uGrid: grid() });
+      for (const [mesh, filter] of on) {
+        const own = gustAt ? gustAt(mesh) : null, w = own?.wind ?? wind, a = own?.angle ?? angle;
+        Object.assign(filter.uniforms, { uAmp: swayOf(w, grid()), uDir: [Math.cos(a), Math.sin(a)], uView: [view.x, view.y, view.scale], uGrid: grid(), uLean: leanOf(own?.gust ?? 0, grid()) });
+      }
     },
     tick(seconds) { for (const filter of on.values()) filter.uniforms.uTime += seconds; },
     clear() { for (const mesh of [...on.keys()]) off(mesh); },

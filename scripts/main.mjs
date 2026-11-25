@@ -52,7 +52,8 @@ import { spreadStep, cellStep, fireUpdatesFor, readFire, decorFireOf, fireCellsO
 import { areaRefusal } from "./engines/props/prop-areas.mjs";
 import { createFireLooks, thingFires, charredCells, litCells } from "./engines/props/fire-looks.mjs";
 import { iceBreakOf, iceHoleAt, cutIceHoles } from "./engines/regions/ice-break-look.mjs";
-import { iceSettingsOf, iceStateOf, iceMoveFor, sizeNameOf, walkedLegs, squaresEntered, moveSince, weightOffset, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares } from "./engines/regions/thin-ice.mjs";
+import { iceSettingsOf, iceStateOf, iceMoveFor, sizeNameOf, walkedLegs, squaresEntered, moveSince, weightOffset, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares, iceFreezeUpdates, iceThawIds, SPELL_ICE } from "./engines/regions/thin-ice.mjs";
+import { areaOutline, icePatchShapes, icePatchData, icePatchMelt } from "./engines/regions/ice-patch.mjs";
 import { createIceBreakLook } from "./engines/regions/ice-break-draw.mjs";
 import { iceBreakSound, iceBreakVoice, newKeys } from "./engines/regions/ice-break-sound.mjs";
 import { iceWords } from "./engines/regions/ice-break-word.mjs";
@@ -63,7 +64,8 @@ import { DECOR_BREAK_MESSAGE, DECOR_NAMES, burningDecorIds, decorPlaceOf, decorS
 import { blastTargets, energyBlastTargets, ignitableInArea } from "./engines/props/prop-blast.mjs";
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML, smokeLightFieldHTML, SMOKE_LIGHT_FLAG } from "./ui/prop-config.mjs";
 import { bulkBreakableUpdates, windowLike } from "./engines/props/wall-break-bulk.mjs";
-import { damageTypesOfItem, areaIdOf, areaOriginRefOf, placedRecordOf, typesBreaking, rollDamageTypes } from "./engines/props/area-damage.mjs";
+import { damageTypesOfItem, areaIdOf, areaOriginRefOf, placedRecordOf, typesBreaking, rollDamageTypes, spellDamageTypes } from "./engines/props/area-damage.mjs";
+import { isEarthSpell, quakeSpots, QUAKE, QUAKE_DUST } from "./engines/motion/earth-spell.mjs";
 import { createPlayWatch, strikeMoment, momentWait } from "./engines/props/play-moments.mjs";
 import { askClaimed, createAreaWaits, AREA_TTL_MS, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
 import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
@@ -122,7 +124,7 @@ import { createReactionHost } from "./engines/marks/reactions.mjs";
 import { reactionVisual } from "./engines/marks/reaction-fx.mjs";
 import { twoeCounteract, dnd5eDispelSpell, createDnd5eDispels, createDispelWindow, createFlickerHost, dispelMessage, receiveDispel as receiveDispelData, lastingAnimaterEffect, effectTokenIds, idsOfTokens, spotHolds } from "./engines/playback/dispel.mjs";
 import { shatterVisual, createShatterHost, shatterSeed, spotFromBounds } from "./engines/playback/shatter-fx.mjs";
-import { areaMaskFor, createMarkLayer, markSprite, markTextures } from "./engines/marks/mark-paint.mjs";
+import { areaMaskFor, createMarkLayer, markSprite, markTextures, markSteam } from "./engines/marks/mark-paint.mjs";
 import { clearGroundMarks, receiveClearMarks } from "./engines/marks/clear-marks.mjs";
 import { areaMark, isHarmful, markTiming } from "./engines/marks/ground-marks.mjs";
 import { createAreaMarkQueue, registerSpellArsenal } from "./integrations/spell-arsenal.mjs";
@@ -156,7 +158,7 @@ import { weaponCategories } from "./systems/weapon-categories.mjs";
 import { beachKeepOff, createCoast, shoreAt, shoreField, tideLevel } from "./engines/motion/coast.mjs";
 import { PLACE_VOLUME, THROUGH_WALL, calmSeaShare, placeHeard, placeHeardLouds, fallLoudness, spotsHeard, placeFile } from "./engines/motion/place-sounds.mjs";
 import { createWaterfalls } from "./engines/motion/waterfall.mjs";
-import { createWaterMirror, waterStillness, tokenTurn as mirrorTokenTurn, createRingPictures } from "./engines/motion/water-mirror.mjs";
+import { createWaterMirror, waterStillness, tokenTurn as mirrorTokenTurn, createRingPictures, mirrorSize } from "./engines/motion/water-mirror.mjs";
 import { createAftermath, bodyStage } from "./engines/motion/aftermath.mjs";
 import { createTownLife, lightsOutAt } from "./engines/motion/town-life.mjs";
 import { dayShift, chorusGap, chorusSpot } from "./engines/motion/day-shift.mjs";
@@ -329,6 +331,13 @@ import { createEnergyBlasts, BLAST_TYPES, blastType, blastRadius, blastShake, bl
 import { REACTION_SECONDS, caughtBy, createBlastReactions, pushedTo, reactionOf, reactionSecondsOf } from "./engines/motion/blast-reactions.mjs";
 import { createDrips } from "./engines/motion/drips.mjs";
 import { createStepRipples, rippleDue } from "./engines/motion/step-ripples.mjs";
+import { createHeardSteps } from "./engines/motion/heard-steps.mjs";
+import { createGusts, windAt } from "./engines/motion/gusts.mjs";
+import { isWindSpell, windSpellGusts } from "./engines/motion/wind-spell.mjs";
+import { createGiantWakes, waterRipples, RIPPLE_RINGS, RIPPLE_GAP_MS, RIPPLE_FALL } from "./engines/motion/giant-wake.mjs";
+import { FLYOVER_MESSAGE, flyoverCall, flyoverReach, flyoverPlace, flyoverLandsAt, landingBoom, flyoverLook, flyoverBeat, flyoverWeight, flyoverGust, tokenCorner, tokenRotation, shapeFor, shapePolygons, artTurn } from "./engines/motion/flyover.mjs";
+import { flyoverPanelHtml, flyoverCreatureOptions, flyoverAsk, flyoverShows, flyoverNote, flyoverPlaceHint, flyoverAimHint, voiceForShape } from "./ui/flyover-panel.mjs";
+import { createFlyoverLayer } from "./engines/motion/flyover-draw.mjs";
 import { createWakeRipples, wakeAim } from "./engines/motion/wake-ripples.mjs";
 import { createWaterEngine, overLiftOf, seaShore, wakeRingDue } from "./engines/motion/water-engine.mjs";
 import { createFloorShadows, floorBody, longEdges, postSpots } from "./engines/motion/floor-shadows.mjs";
@@ -998,8 +1007,18 @@ const markLayer = createMarkLayer({
   cap: () => (localQuality() === "low" ? 30 : 60),
   timing: () => markTiming(hotSetting("groundMarkMinutes")),
   // An area clips to its placed Region (v14 templates are Regions), found by the id on its tag.
-  mask: (tag) => areaMaskFor(tag, { regions: regionsHere(), grid: canvas?.grid?.size ?? 100, polygonsOf: areaMask }),
-  onLand: (record) => markReactions.onLand(record),
+  // A scorch lies on the ground and never on water (nor on ice over it, which the fire has melted): the waters here are
+  // left out of its shape. Frost the same: on ice it would only whiten over the ice's own look, and open water takes none.
+  mask: (tag) => {
+    const shape = areaMaskFor(tag, { regions: regionsHere(), grid: canvas?.grid?.size ?? 100, polygonsOf: areaMask });
+    if (Array.isArray(shape) && (tag?.mark === "scorch" || tag?.mark === "rime")) { try { shape.cuts = regionsHere().filter((r) => plainFloorOf(r) === "water" && r.flags?.[ID]?.[SPELL_ICE] !== true).flatMap((r) => regionAreas(r).map((a) => Array.from(a))); } catch { /* the mark is drawn whole */ } }
+    return shape;
+  },
+  onLand: (record) => {
+    markReactions.onLand(record);
+    // Fire landing on water (or on ice over it) steams: a puff over each stretch of water its mark would have lain on.
+    if (record?.tag?.mark === "scorch") markSteam(record.mask).forEach((s, n) => markReactions.play({ kind: "steam", durationMs: 1800, at: { x: s.x, y: s.y }, radius: s.r, seed: ((record.tag.seed >>> 0) + n * 7919) >>> 0, level: record.tag.level }));
+  },
 });
 // Element reactions (engines/marks/reactions.mjs): a new mark landing on an older one can react (fire on frost puffs
 // steam and melts it). Each client works it out from the marks it holds; the visuals sit just above the tokens.
@@ -2366,7 +2385,10 @@ const windOnFire = (key, x, y) => {
     const now = performance.now(), had = fireShelter.get(key);
     let shelter = had?.shelter ?? 0;
     if (!had || now - had.at > 1000 || Math.hypot(had.x - x, had.y - y) > canvas.grid.size) { shelter = undergroundScene() || underCeiling({ x, y }) || wildOpen?.closed?.(x, y) ? 1 : 0; fireShelter.set(key, { at: now, x, y, shelter }); }
-    return flameWind({ wind: skyWindNow, angle: skyWindAngle, t: now / 1000, key, shelter });
+    // (A gust near it adds to the scene's wind, out of doors.)
+    // (Under a ceiling only a gust that came inside is felt, a wind spell cast in the room: then the flame leans to it.)
+    const air = !gusts.busy ? { wind: skyWindNow, angle: skyWindAngle } : shelter ? windAt({ wind: 0, angle: 0 }, gusts.at(x, y, { sheltered: true })) : windHere(x, y);
+    return flameWind({ wind: air.wind, angle: air.angle, t: now / 1000, key, shelter: shelter && !(air.gust > 0) ? 1 : 0 });
   } catch { return flameWind(); }
 };
 const gutterFlames = (on) => {
@@ -2630,6 +2652,236 @@ const underCeiling = (at) => {
   try { return indoorPolygons().some((p) => pointInPolygon(at, p)); } catch { return false; }
 };
 Hooks.on("canvasTearDown", () => { ceilingDust.clear(); });
+// Footsteps heard from a creature this screen cannot see (engines/motion/heard-steps.mjs): struck ink marks where each
+// one falls. Above the fog, since the creature is usually somewhere this screen cannot see.
+let heardStepsRoot = null;
+const heardStepsRootOf = () => {
+  if (!heardStepsRoot || heardStepsRoot.destroyed) { heardStepsRoot = new PIXI.Container(); heardStepsRoot.eventMode = "none"; (canvas.interface ?? canvas.stage).addChild(heardStepsRoot); }
+  return heardStepsRoot;
+};
+const heardSteps = createHeardSteps({ PIXI: globalThis.PIXI, root: heardStepsRootOf, grid: () => canvas?.grid?.size ?? 100 });
+const heardStepsOn = () => bothSettingsOn("heardSteps");
+// One heard step: placed by this screen's ears, within the footstep's own range, fainter the further off it is.
+const markHeardStep = (at, { squares, weight, sneak, range, seed }) => {
+  try {
+    const reach = footstepReach(range, weight) * (canvas.grid?.size ?? 100);
+    const near = heardFrom(at, canvas.sounds?.getListenerPositions?.() ?? [], reach);
+    if (!(near > 0)) return;
+    heardSteps.add({ x: at.x, y: at.y, size: squares, sneak, loud: 0.4 + 0.6 * near, heading: at.heading, vague: hotSetting("heardStepsPlace") === "vague", seed });
+  } catch { /* the canvas mid-change */ }
+};
+Hooks.on("canvasTearDown", () => { heardSteps.clear(); try { heardStepsRoot?.destroy({ children: true }); } catch { /* canvas gone */ } heardStepsRoot = null; });
+// Gusts of wind at a place (engines/motion/gusts.mjs): the air a great wing pushes. The trees, flames and cloth near
+// one ask the wind where they stand (windHere) instead of taking the scene's; with none blowing nobody asks.
+const gusts = createGusts();
+const gustsOn = () => bothSettingsOn("localGusts");
+const windHere = (x, y) => windAt({ wind: skyWindNow, angle: skyWindAngle }, gusts.at(x, y));
+// A gust does not come in under a ceiling: whether a decoration stands under one is looked at once (it does not move).
+const decorRoofed = new WeakMap();
+const decorWindAt = (d) => {
+  if (!d || !Number.isFinite(d.x) || !Number.isFinite(d.y)) return null;
+  if (!decorRoofed.has(d)) { try { decorRoofed.set(d, underCeiling({ x: d.x, y: d.y })); } catch { return null; } }
+  // (Under a ceiling: only a gust that came inside, a wind spell cast in the room. With none, it is left as it was.)
+  const air = decorRoofed.get(d) ? windAt({ wind: 0, angle: 0 }, gusts.at(d.x, d.y, { sheltered: true })) : windHere(d.x, d.y);
+  if (decorRoofed.get(d) && !(air.gust > 0)) return null;
+  return { strength: air.wind, angle: air.angle };
+};
+// A Huge or bigger creature on the wing (engines/motion/giant-wake.mjs): the air it pushes goes with it as a gust, and
+// the animals bolt as it comes. Told on each of its strides this screen perceives, so a creature this screen neither
+// sees nor hears stirs nothing here.
+const giantsScareOn = () => { try { return hotSetting("giantsScare") !== false; } catch { return false; } };
+const giantWakes = createGiantWakes({ gusts, scare: (at) => noiseScares(at), grid: () => canvas?.grid?.size ?? 100 });
+const giantFlies = (at, token) => {
+  try {
+    const squares = (token.width ?? 100) / (canvas.grid?.size || 100);
+    const weight = stepWeight({ size: token.bulk?.size, squares, heavy: token.bulk?.heavy === true });
+    if (!(weight >= 4)) return;
+    const height = ((Number(token.elevation) || 0) - (Number(token.base) || 0)) / (canvas.dimensions?.distance || 5);
+    giantWakes.fly(token, at, { weight, height, gust: gustsOn(), scare: giantsScareOn() });
+  } catch { /* the canvas mid-change */ }
+};
+// A Huge creature's weight shakes the water near where it treads (giant-wake.mjs waterRipples): it comes down on the
+// ground, beside the water or some way off, and one big ripple spreads through a pond from its middle (through a
+// river or the sea, from where the blow reaches it).
+const giantRipplesOn = () => { try { return hotSetting("giantRipples") !== false; } catch { return false; } };
+// The waters on this scene, each as its middle, how far across it is, and a test of whether a point is its water.
+const waterBodies = () => {
+  const bodies = [], elevation = canvas.level?.elevation?.base ?? 0;
+  for (const region of regionsHere()) {
+    try {
+      if (regionFloor({ name: region.name, flag: floorFlagOf(region) }) !== "water") continue;
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const area of regionAreasKept(region)) for (let i = 0; i + 1 < area.length; i += 2) { x0 = Math.min(x0, area[i]); x1 = Math.max(x1, area[i]); y0 = Math.min(y0, area[i + 1]); y1 = Math.max(y1, area[i + 1]); }
+      if (!(x1 > x0 && y1 > y0)) continue;
+      bodies.push({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, radius: Math.min(x1 - x0, y1 - y0) / 2, span: Math.max(x1 - x0, y1 - y0) / 2, test: (x, y) => region.testPoint({ x, y, elevation }) });
+    } catch { /* a broken region never breaks the rest */ }
+  }
+  return bodies;
+};
+// One big ripple through each water near enough, a moment after the step: a swell (swellWater), which runs all the
+// way to the bank and fades out where the water ends, so however big it is it never runs up onto the land.
+const shakeWaters = (at, weight, wide = 0) => {
+  try {
+    const grid = canvas.grid.size, sceneId = canvas.scene?.id;
+    for (const ripple of waterRipples({ at, grid, weight, wide, bodies: waterBodies() })) {
+      // A few rings one after the other, each a little smaller: the water goes on ringing for a moment.
+      for (let i = 0; i < RIPPLE_RINGS; i++) setTimeout(() => { try { if (canvas?.ready && canvas.scene?.id === sceneId) swellWater(ripple.x, ripple.y, ripple.reach, ripple.strength * (1 - i * RIPPLE_FALL)); } catch { /* the canvas mid-change */ } }, ripple.delay + i * RIPPLE_GAP_MS);
+    }
+  } catch { /* the canvas mid-change */ }
+};
+Hooks.on("canvasTearDown", () => { giantWakes.clear(); gusts.clear(); });
+// Something flies over (engines/motion/flyover.mjs; the API's flyover): a GM's moment. Its shadow crosses the map in
+// the creature's shape, the air under it goes with it as a gust, the animals bolt, its wings and its cry are heard
+// where it is, and it may come down and have its token put there. Sent to every screen on the scene; the token is put
+// down by the screen that sent it and by no other.
+let flyoverRoot = null, flyoverNext = 1;
+const flyoverRootOf = () => {
+  if (!flyoverRoot || flyoverRoot.destroyed) { flyoverRoot = new PIXI.Container(); flyoverRoot.eventMode = "none"; flyoverRoot.sortLayer = 752; canvas.primary.addChild(flyoverRoot); }
+  flyoverRoot.elevation = birdRootOf().elevation;
+  return flyoverRoot;
+};
+// The shadows are drawn in a holder of their own inside the root, so they can be kept off the floors of rooms by a
+// mask that sits beside that holder (as the drawn clouds' shadows are, engines/motion/drawn-clouds.mjs).
+let flyoverClip = null, flyoverMask = null;
+const flyoverClipOf = () => {
+  const root = flyoverRootOf();
+  if (!flyoverClip || flyoverClip.destroyed || flyoverClip.parent !== root) { flyoverClip = new PIXI.Container(); flyoverClip.eventMode = "none"; root.addChild(flyoverClip); flyoverMask = null; }
+  return flyoverClip;
+};
+const flyoverLayer = createFlyoverLayer({ PIXI: globalThis.PIXI, root: flyoverClipOf });
+const flyovers = new Map();
+// Its shadow falls on the open map and on the roofs, not on the floors of rooms: the map with its rooms rubbed out,
+// drawn once into a small picture as a flyover starts (rooms do not move in the seconds it lasts) and used as the
+// mask. A picture, not a shape with holes: a plain shape used so hid the whole shadow on a live map (2026-11-25).
+// With no rooms there is no mask, and the shadow is seen coming in over the map's edge as well.
+const flyoverOutOfRooms = () => {
+  try {
+    const clip = flyoverClipOf(), root = flyoverRootOf();
+    clip.mask = null;
+    if (flyoverMask) { try { root.removeChild(flyoverMask); flyoverMask.texture?.destroy(true); flyoverMask.destroy(); } catch { /* gone */ } flyoverMask = null; }
+    const rooms = indoorPolygons().filter((p) => p.length >= 6);
+    if (!rooms.length) return;
+    const box = canvas.dimensions.sceneRect, k = Math.min(0.25, 2048 / Math.max(1, box.width, box.height)), stage = new PIXI.Container();
+    stage.scale.set(k); stage.position.set(-box.x * k, -box.y * k);
+    const all = new PIXI.Graphics(); all.beginFill(0xffffff, 1).drawRect(box.x, box.y, box.width, box.height).endFill(); stage.addChild(all);
+    for (const room of rooms) { const hole = new PIXI.Graphics(); hole.beginFill(0xffffff, 1); hole.drawPolygon(Array.from(room)); hole.endFill(); hole.blendMode = PIXI.BLEND_MODES.ERASE; stage.addChild(hole); }
+    const picture = PIXI.RenderTexture.create({ width: Math.max(1, Math.ceil(box.width * k)), height: Math.max(1, Math.ceil(box.height * k)) });
+    try { bakeInto(stage, picture); } finally { try { stage.destroy({ children: true }); } catch { /* drawn */ } }
+    const edge = new PIXI.Sprite(picture); edge.eventMode = "none"; edge.position.set(box.x, box.y); edge.scale.set(1 / k);
+    root.addChild(edge); clip.mask = edge; flyoverMask = edge;
+  } catch { /* with no mask it falls everywhere, as before */ }
+};
+const clearFlyovers = () => { for (const run of flyovers.values()) { clearTimeout(run.placing); if (run.gust !== null) gusts.end(run.gust); } flyovers.clear(); flyoverLayer.clear(); try { flyoverMask?.texture?.destroy(true); } catch { /* gone */ } try { flyoverRoot?.destroy({ children: true }); } catch { /* canvas gone */ } flyoverRoot = null; flyoverClip = null; flyoverMask = null; };
+// A sound of the flyover, played where it is now and heard as far as a great creature's wings carry.
+const flyoverSound = (file, at, { rate = 1, volume = 1, lowpass = null } = {}) => {
+  if (!file || !(volume > 0) || !soundsOn()) return;
+  try {
+    Hooks.callAll("animater.shapeSound", { file, rate, ...(lowpass ? { lowpass } : {}) });
+    void Promise.resolve(canvas.sounds?.playAtPosition?.(file, { x: at.x, y: at.y, elevation: canvas.level?.elevation?.base ?? 0 }, 22 * (canvas.dimensions?.distance ?? 5), { volume: Math.min(1, volume), walls: false, gmAlways: true }))
+      .then((sound) => { const node = sound?.sourceNode?.playbackRate; if (node && node.value !== rate) node.value = rate; }).catch(() => {});
+  } catch { /* sound is optional */ }
+};
+// Its cry: the picked actor's own Animater voice, or a voice group named in the call ("group:dragon").
+const flyoverCry = async (call, at) => {
+  try {
+    if (!call.voice || !movementFeelSettingOn("creatureVoices") || !movementFeelSettingOn("creatureVoicesLocal")) return;
+    const actor = call.voice.startsWith("group:") ? null : await fromUuid(call.voice);
+    const own = tokenVoice(actor, { voice: call.voice.startsWith("group:") ? call.voice.slice(6) : "" });
+    if (!own.creature) return;
+    const seed = `flyover:${call.x}:${call.y}`, file = voiceFile(own.creature, "attack", { seed, voiceSeed: actor?.uuid ?? call.voice, voiceId: own.voiceId, bank: voiceBank() });
+    if (!file) return;
+    const shape = voiceShape(flyoverWeight(call) - 2, actor?.id ?? call.voice, { hitSeed: seed, event: "attack" });
+    flyoverSound(file, at, { rate: shape.rate, volume: shape.volume * voiceGain(file) });
+  } catch { /* its voice is optional */ }
+};
+// Its token put where it landed (flyover.mjs tokenCorner, tokenRotation): one of that actor's already on the scene is
+// brought there and shown; else a new one from its prototype. Done by the GM who sent the flyover.
+const placeFlyoverToken = async (call) => {
+  try {
+    const actor = await fromUuid(call.actor), scene = canvas.scene;
+    if (!actor || !scene || !game.user?.isGM) return;
+    const here = scene.tokens.filter((t) => (t.actorId ?? t.actor?.id) === actor.id);
+    const waiting = here.find((t) => t.hidden) ?? here[0] ?? null;
+    const proto = waiting ?? actor.prototypeToken, at = tokenCorner(call, { width: proto?.width ?? 1, height: proto?.height ?? 1 }, canvas.grid.size);
+    // Turned to face the way it flew when its own top-down art made the shadow. A portrait is left as it is, and so
+    // is an illustration (a ringed token's cut-out, drawn from the side): turned to its heading, Roi's Blue Dragon
+    // landed standing on its nose (2026-11-25).
+    const turn = call.art && call.turn && proto?.lockRotation !== true ? { rotation: tokenRotation(call) } : {};
+    const ground = { elevation: canvas.level?.elevation?.base ?? 0, movementAction: "walk" };
+    if (waiting) await waiting.update({ ...at, hidden: false, ...turn, ...ground }, { animate: false, teleport: true });
+    else await scene.createEmbeddedDocuments("Token", [{ ...(await actor.getTokenDocument({ ...at, hidden: false, ...turn, ...ground })).toObject() }]);
+  } catch (e) { console.warn("Animater flyover: its token was not placed.", e?.message ?? e); }
+};
+// Its token is put down once, by whichever comes first: the frame that sees it land, or a timer set for touchdown.
+// The timer is what does not depend on frames: a window that is hidden or struggling still puts the token down.
+const placeFlyoverOnce = (run) => { if (run.placed) return; run.placed = true; clearTimeout(run.placing); void placeFlyoverToken(run.call); };
+const flyoverShow = (call, { place = false } = {}) => {
+  if (!canvas?.ready) return null;
+  const id = flyoverNext++, grid = canvas.grid.size, rect = canvas.dimensions.sceneRect;
+  const run = { call, t: 0, place, gust: null, scared: null, beats: 0, cried: false, landed: null, shown: false, placed: false, placing: null, reach: flyoverReach(rect, grid) };
+  flyovers.set(id, run);
+  if (place && call.pass === "land" && call.actor) run.placing = setTimeout(() => placeFlyoverOnce(run), flyoverLandsAt(call, { grid, reach: run.reach }) * 1000 + 250);
+  if (flyovers.size === 1) flyoverOutOfRooms();
+  // Its art, when it has one that loads; until then, and without, its drawn shape. Underground there is no sky to cast it.
+  const begin = (texture) => { if (!flyovers.has(id)) return; run.shown = !undergroundScene() && flyoverLayer.show(id, { texture }); };
+  const load = foundry.canvas?.loadTexture ?? globalThis.loadTexture;
+  if (call.art && load) Promise.resolve(load(call.art)).then((texture) => begin(texture?.valid ? texture : null)).catch(() => begin(null));
+  else begin(null);
+  return id;
+};
+const tickFlyovers = (seconds) => {
+  const grid = canvas.grid.size, zoom = canvas.stage?.scale?.x ?? 1;
+  for (const [id, run] of flyovers) {
+    const call = run.call; run.t += seconds;
+    const at = flyoverPlace(call, run.t, { grid, reach: run.reach }), look = flyoverLook(call, at), wings = flyoverBeat(call, run.t), weight = flyoverWeight(call);
+    // Down: the landing a heavy creature already makes, and its token. Looked at before it is let go, and counted as
+    // landed even by a frame that comes after it is all over: a hidden tab draws a frame every second or two, and a
+    // landing that only a frame inside its 1.6 seconds could see was skipped whole, token and all (2026-11-25).
+    if ((at.landed || (at.done && call.pass === "land")) && run.landed === null) {
+      run.landed = run.t;
+      const spot = { x: call.x, y: call.y };
+      if (run.gust !== null) { gusts.end(run.gust); run.gust = null; }
+      flyoverSound(thudFile(weight + 1, 0, `flyover:${id}:land`), spot, { rate: weight >= 5 ? 0.55 : 0.7, volume: 0.9, lowpass: 900 });
+      // And the boom over the thud: a slowed blast, and the ground giving under it (flyover.mjs landingBoom).
+      for (const layer of landingBoom({ weight: weight + 1, seed: id })) setTimeout(() => flyoverSound(layer.file, spot, layer), layer.delay);
+      try { cameraShake.tremor({ at: spot, weight: weight + 1, sceneId: canvas.scene?.id, level: canvas.level?.id, seed: `flyover:${id}`, scale: 1 }); } catch { /* shake is optional */ }
+      try { if (ceilingDustOn() && underCeiling(spot)) ceilingDust.fall({ at: spot, weight: weight + 1, grid, seed: `flyover:${id}:dust` }, canvas.app.renderer); } catch { /* the canvas mid-change */ }
+      if (giantsScareOn()) noiseScares({ ...spot, radius: call.squares * grid * 3 });
+      if (giantRipplesOn()) shakeWaters(spot, weight + 1, call.squares * grid);
+      if (run.place && call.pass === "land" && call.actor) placeFlyoverOnce(run);
+    }
+    if (at.done) { if (run.gust !== null) gusts.end(run.gust); clearTimeout(run.placing); flyovers.delete(id); flyoverLayer.drop(id); continue; }
+    if (run.shown) flyoverLayer.pose(id, { x: at.x, y: at.y, call, heading: at.heading, look, beat: wings.beat, wide: call.squares * grid * call.artScale, grid, zoom, t: run.t, gone: run.landed === null ? 0 : (run.t - run.landed) / 0.33 });
+    // The air under it goes with it, until it is down.
+    if (gustsOn() && run.landed === null) { const g = flyoverGust(call, at, grid); if (run.gust === null) run.gust = gusts.add({ x: at.x, y: at.y, heading: at.heading, ...g }); else gusts.move(run.gust, { x: at.x, y: at.y, heading: at.heading }); }
+    if (giantsScareOn() && run.landed === null && (!run.scared || Math.hypot(at.x - run.scared.x, at.y - run.scared.y) >= grid * 3)) { run.scared = { x: at.x, y: at.y }; noiseScares({ x: at.x, y: at.y, radius: call.squares * grid * 2 }); }
+    // Each down-stroke is heard where the shadow is: the wing beat, and under a Huge one the whump of the air it pushes.
+    if (call.wings && run.landed === null && wings.count > run.beats) {
+      run.beats = wings.count;
+      const shape = moveSoundShape("wing", { weight, seed: `flyover:${id}`, n: wings.count }), far = call.height === "high" ? 0.6 : 1;
+      flyoverSound(moveSoundFile("wing", wings.count, { seed: `flyover:${id}` }), at, { rate: shape.rate, volume: shape.volume * far * 1.6, lowpass: call.height === "high" ? 1800 : shape.lowpass });
+      if (weight >= 4) flyoverSound(thudFile(weight, wings.count, `flyover:${id}`), at, { rate: 0.6, volume: 0.22 * far, lowpass: 260 });
+    }
+    if (!run.cried && Math.hypot(at.x - call.x, at.y - call.y) < grid * 2.5) { run.cried = true; void flyoverCry(call, at); }
+  }
+};
+const flyoverHere = (asked = {}) => {
+  const call = flyoverCall(asked);
+  if (!call || !canvas?.ready || !game.user?.isGM) return null;
+  // (`here: true`: its shadow and its sounds on this screen only, told to nobody. Its token is still put down where it
+  // lands, as a token is the world's and not a screen's: Roi, 2026-11-25, of a try, "it should move that token to the
+  // landing place and reveal it". `place: false` is what leaves the token alone.)
+  if (asked?.here !== true) { try { game.socket.emit(`module.${ID}`, { type: FLYOVER_MESSAGE, sender: clientId, sceneId: canvas.scene?.id ?? null, call }); } catch { /* shown here at least */ } }
+  return flyoverShow(call, { place: asked?.place !== false });
+};
+// Another GM's flyover: shown here if it is for the scene this screen is on. It never puts a token down here.
+const flyoverHeard = (data, senderId) => {
+  if (data?.type !== FLYOVER_MESSAGE || !canvas?.ready || !data.sceneId || data.sceneId !== canvas.scene?.id) return;
+  if (!game.users.get(senderId)?.isGM) return;
+  const call = flyoverCall(data.call);
+  if (call) flyoverShow(call, { place: false });
+};
+Hooks.on("canvasTearDown", () => { clearFlyovers(); });
 // Life in the dark and water dripping (engines/motion/vermin.mjs, drips.mjs): rats on the floor under the creatures,
 // bats over everything; puddles on the floor where a region says it drips.
 // (`key` names it, for finding it among the map's layers; its place among them is MAP_SORT[key] (floor-slot.mjs) unless given.)
@@ -4828,6 +5080,13 @@ const rippleWater = (x, y, size, quiet, dir = null, key = null) => {
   stepRipples.add({ x, y, size, painted: paintedWaterAt(x, y) });
   waterEngine.addRing({ x, y, size: size * 0.7 });
 };
+// A swell through the water (wake-ripples.mjs swell): one broad ripple from a place, running `reach` px before it
+// fades, and fading out where the water ends. What a giant's weight does to a pond.
+const swellWater = (x, y, reach, strength) => {
+  if (wakeFloorFor !== canvas.scene?.id) { wakeFloorFor = canvas.scene?.id; wakeRipples.floor(mapFloor()); }
+  wakeRipples.swell({ x, y, reach, strength });
+  ringMovingWater(x, y, 2 * strength, null);
+};
 const swimRipples = (token) => {
   try {
     if (!canvas?.ready) return false;
@@ -6831,7 +7090,8 @@ const rebuildWater = () => {
   placeAreas.surf = [...(useSea ? seasHeard : []), ...seaSounds]; placeAreas.waterfall = [...(useFalls ? fallsHeard.map((f) => f.area) : []), ...fallSounds]; placeAreas.waterfallLouds = [...(useFalls ? fallsHeard.map((f) => f.loud) : []), ...fallLouds];
   const useBeaches = bothSettingsOn("coast") && !undergroundScene();
   // What stands over the water (a dock, a bridge): nothing reflects on it, and a creature on it is not wading.
-  const decks = canvas?.ready ? drawnRegions().filter((r) => r.flags?.[ID]?.overWater === true).flatMap((r) => regionAreas(r).map((a) => Array.from(a))) : [];
+  // A sheet of ice a cold spell laid on the water (ice-patch.mjs) lies over it the same way: the pond under it still mirrors, the ice does not.
+  const decks = canvas?.ready ? drawnRegions().filter((r) => r.flags?.[ID]?.overWater === true || r.flags?.[ID]?.[SPELL_ICE] === true).flatMap((r) => regionAreas(r).map((a) => Array.from(a))) : [];
   const key = JSON.stringify([canvas?.scene?.id, canvas?.level?.id, useSea && seas, useFalls && falls, useMirror && calm, useMirror && rough, useMirror && dull, useMirror && decks, useBeaches && beaches]);
   if (key === waterKey) return; waterKey = key;
   coast.clear(); beachLife.clear(); waterfalls.clear(); waterMirror.clear(); calmWater = useMirror ? calm : []; glintWater = useMirror ? rough : []; waterLookAt = 0; mirrorTilesAt = 0; mirrorTilesKey = "";
@@ -6908,7 +7168,7 @@ const mirrorSeen = () => {
   for (const t of canvas.tokens?.placeables ?? []) {
     const m = t.mesh;
     if (!t.visible || !m || m.destroyed || !m.texture?.valid) { mix(1); continue; }
-    mix(m.position.x * 4); mix(m.position.y * 4); mix(m.alpha * 100); mix(t.w); mix(t.h); mix(m.texture.baseTexture?.uid); mix(m.scale.x < 0 ? 2 : 3);
+    mix(m.position.x * 4); mix(m.position.y * 4); mix(m.alpha * 100); mix(t.w); mix(t.h); mix(m.width); mix(m.height); mix(m.texture.baseTexture?.uid); mix(m.scale.x < 0 ? 2 : 3);
     mix(t.document.rotation); mix((t.document.elevation ?? 0) * 10);
   }
   return h;
@@ -6947,7 +7207,9 @@ const tickWater = (seconds) => {
     const tokens = (canvas.tokens?.placeables ?? []).filter((t) => t.visible && t.mesh && !t.mesh.destroyed && t.mesh.texture?.valid).map((t) => {
       let pic = null; if (rings) { try { pic = mirrorRings.of(t); } catch { pic = null; } if (pic) ringed.add(t.id); }
       const worn = wornLook(t); if (worn) { const off = wornOffset(t, worn); pic = { texture: worn.texture, x: t.mesh.position.x + off.ox, y: t.mesh.position.y + off.oy, w: Math.abs(worn.width), h: Math.abs(worn.height) }; }
-      return { id: t.id, texture: pic?.texture ?? t.mesh.texture, x: pic?.x ?? t.mesh.position.x, y: pic?.y ?? t.mesh.position.y, liveX: t.mesh.position.x, liveY: t.mesh.position.y, live: t.mesh.position, dry: mirrorDryOf(t), w: pic?.w ?? t.w, h: pic?.h ?? t.h, rotation: mirrorTokenTurn(t.document), alpha: t.mesh.alpha };
+      // (Placed by its squares, drawn as big as its picture: water-mirror.mjs mirrorSize. A picture of its own, a ring
+      // or a painted carrier, already says its size.)
+      return { id: t.id, texture: pic?.texture ?? t.mesh.texture, x: pic?.x ?? t.mesh.position.x, y: pic?.y ?? t.mesh.position.y, liveX: t.mesh.position.x, liveY: t.mesh.position.y, live: t.mesh.position, dry: mirrorDryOf(t), w: pic?.w ?? t.w, h: pic?.h ?? t.h, rotation: mirrorTokenTurn(t.document), alpha: t.mesh.alpha, drawn: pic ? null : mirrorSize({ w: t.w, h: t.h, mesh: t.mesh }) };
     });
     mirrorRings.keep(ringed);
     const moonOut = sunNow?.moon && Number(sunNow.strength) > 0.05;
@@ -8039,6 +8301,165 @@ function momentsFire(kind) {
   if (asked.where === "point") { momentAimAt(kind, asked, ({ x, y, radius }) => momentCallHere(kind, { ...asked, x, y, radius })); return; }
   momentCallHere(kind, asked);
 }
+// "Something flies over": its dialog (ui/flyover-panel.mjs), opened from the Moments dashboard.
+let flyoverPanel = null, flyoverAngle = 0;
+const flyoverPanelClose = () => { try { flyoverPanel?.remove?.(); } catch { /* gone */ } flyoverPanel = null; stopCaveInAim(); };
+// How much of its square a picture fills (0-1): a full disc or square has no outline of its own to cast.
+const artShare = (source, w, h) => {
+  const N = 64, c = document.createElement("canvas"); c.width = c.height = N;
+  const x = c.getContext("2d", { willReadFrequently: true }), k = N / Math.max(w, h);
+  x.drawImage(source, (N - w * k) / 2, (N - h * k) / 2, w * k, h * k);
+  const d = x.getImageData(0, 0, N, N).data; let n = 0;
+  for (let i = 3; i < d.length; i += 4) if (d[i] > 128) n++;
+  return n / (N * N);
+};
+// A creature as the dialog needs it: its size, its art when that has an outline of its own, the shape that suits it.
+const flyoverCreatures = new Map();
+const readFlyoverCreature = async (uuid) => {
+  if (flyoverCreatures.has(uuid)) return flyoverCreatures.get(uuid);
+  const actor = await fromUuid(uuid);
+  if (!actor) return null;
+  // A token in a dynamic ring is drawn from its subject: the creature cut out, the ring put round it by Foundry. That
+  // cut-out is its outline. (Every ringed token was first refused as "a face in a frame": on Roi's world every token
+  // is ringed, his Blue Dragon among them, a whole dragon cut out, and it cast the drawn shape. 2026-11-25.)
+  const proto = actor.prototypeToken, ringed = proto?.ring?.enabled === true, src = (ringed ? proto?.ring?.subject?.texture : null) || proto?.texture?.src || null;
+  let art = null, element = null, wide = 0, tall = 0;
+  try {
+    // (A stock icon is nobody, and a picture that fills its square has no outline: neither is cast.)
+    const load = foundry.canvas?.loadTexture ?? globalThis.loadTexture, plain = /\.svg(?:\?|$)|default-icons|mystery-man/i.test(src ?? ""), texture = src && load && !plain ? await load(src) : null;
+    element = texture?.baseTexture?.resource?.source ?? null; wide = texture?.width ?? 0; tall = texture?.height ?? 0;
+    if (element && wide && tall && artShare(element, wide, tall) < 0.7) art = src;
+  } catch { /* a picture that cannot be read casts a drawn shape */ }
+  let flight = null;
+  try { flight = creatureFlight({ system: game.system.id, actor, name: actor.name }); } catch { /* unknown anatomy */ }
+  // How big its art is drawn: a ringed token's subject has a scale of its own. And which way it is drawn facing: a
+  // top-down token faces down; a ringed one is an illustration from the side, and those mostly face right.
+  const scale = Math.abs(Number(ringed ? proto?.ring?.subject?.scale ?? proto?.texture?.scaleX : proto?.texture?.scaleX) || 1);
+  const info = { uuid, name: actor.name, squares: Number(proto?.width) || 1, artScale: scale, art, element: art ? element : null, wide, tall, faces: ringed ? "right" : "down", turns: !ringed,
+    shape: shapeFor({ name: actor.name, traits: Array.from(actor.system?.traits?.value ?? []), flight }) };
+  flyoverCreatures.set(uuid, info);
+  return info;
+};
+// Pointing it at the map: press where it crosses, drag the way it flies, let go. A click alone keeps the last direction.
+// `atTip` (a landing): the arrow is drawn from where it comes to where it comes down, and its tip is the spot (Roi,
+// 2026-11-25: "can the landing be at the end of the arrow rather than the start?").
+const aimFlyover = (fire, { atTip = false } = {}) => {
+  stopCaveInAim();
+  if (!game.user?.isGM || !canvas?.ready) return false;
+  const ring = new PIXI.Graphics(); ring.eventMode = "none"; (canvas.interface ?? canvas.stage).addChild(ring);
+  const at = (e) => canvas.canvasCoordinatesFromClient({ x: e.clientX, y: e.clientY }), onCanvas = (e) => e.target === canvas.app.view, grid = canvas.grid.size;
+  let from = null;
+  const arrow = (p, to) => {
+    const k = 1 / (canvas.stage.scale.x || 1), far = to ? Math.hypot(to.x - p.x, to.y - p.y) : 0;
+    const dragged = far > grid * 0.5, a = dragged ? Math.atan2(to.y - p.y, to.x - p.x) : flyoverAngle, len = Math.max(grid * 2, far);
+    // The spot is the arrow's tail, or for a landing its tip: where the pointer is let go (a click alone: where it was pressed).
+    const tip = atTip ? (dragged ? to : p) : { x: p.x + Math.cos(a) * len, y: p.y + Math.sin(a) * len }, tail = atTip ? { x: tip.x - Math.cos(a) * len, y: tip.y - Math.sin(a) * len } : p, spot = atTip ? tip : p;
+    ring.clear(); ring.lineStyle(3 * k, 0xe8ecf3, 0.9); ring.drawCircle(spot.x, spot.y, grid * 0.25); ring.moveTo(tail.x, tail.y); ring.lineTo(tip.x, tip.y);
+    for (const side of [-1, 1]) { ring.moveTo(tip.x, tip.y); ring.lineTo(tip.x - Math.cos(a + side * 0.45) * grid * 0.5, tip.y - Math.sin(a + side * 0.45) * grid * 0.5); }
+    return { angle: a, spot };
+  };
+  const done = () => { window.removeEventListener("pointerup", lift, true); stopCaveInAim(); flyoverPanel?.classList.remove("is-aiming"); };
+  const move = (e) => { if (from) arrow(from, at(e)); else if (onCanvas(e)) arrow(at(e), null); };
+  // Taken before Foundry sees it (no selection box, no token dragged).
+  const down = (e) => { if (!onCanvas(e)) return; e.stopImmediatePropagation(); e.preventDefault(); if (e.button !== 0) { done(); return; } from = at(e); arrow(from, null); };
+  function lift(e) { if (!from) return; e.stopImmediatePropagation(); const { angle, spot } = arrow(from, at(e)); from = null; flyoverAngle = angle; done(); fire({ x: spot.x, y: spot.y, angle }); }
+  const key = (e) => { if (e.key === "Escape") { e.stopImmediatePropagation(); done(); } };
+  const none = () => {};
+  caveInAim = { ring, move, down, key, up: none, wheel: none };
+  window.addEventListener("pointermove", move, true); window.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key, true); window.addEventListener("pointerup", lift, true);
+  flyoverPanel?.classList.add("is-aiming");
+  return true;
+};
+function openFlyoverPanel() {
+  if (flyoverPanel?.isConnected) { flyoverPanelClose(); return; }
+  if (!game.user?.isGM || !globalThis.document?.createElement) return;
+  const box = document.createElement("div");
+  box.className = "animater animater-moments-panel animater-flyover-panel";
+  // Offered: the tokens selected, then every creature with a token on this scene. Any other actor can be dragged in.
+  const listed = new Map();
+  for (const t of [...(canvas.tokens?.controlled ?? []), ...(canvas.tokens?.placeables ?? [])]) { const a = t.document?.baseActor ?? t.actor; if (a?.uuid && !listed.has(a.uuid)) listed.set(a.uuid, a.name); }
+  const families = Object.entries(VOICE_FAMILIES).map(([id, f]) => [id, f.label ?? id]);
+  box.innerHTML = flyoverPanelHtml({ creatures: [...listed].map(([uuid, name]) => ({ uuid, name })), voices: families });
+  floated(box, "panel");
+  flyoverPanel = box;
+  const state = { source: "actor", picked: null, faces: "down", spread: true, size: "huge", height: "low", pass: "straight", place: true, wings: true, cry: true, voice: "own" };
+  let creature = null;
+  const q = (s) => box.querySelector(s), hide = (s, off) => q(s)?.toggleAttribute("hidden", off);
+  // The shadow it will cast, heading up the little picture: its own art laid dark, or the drawn shape.
+  const picture = (cast) => {
+    const c = q("[data-fo-thumb]"), x = c?.getContext?.("2d"); if (!x) return;
+    x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = "source-over"; x.clearRect(0, 0, c.width, c.height); x.translate(c.width / 2, c.height / 2); x.fillStyle = "rgb(8, 10, 22)";
+    try {
+      if (cast.art && creature?.element) { const k = (c.width * 0.86) / Math.max(creature.wide, creature.tall); x.rotate(artTurn({ angle: -Math.PI / 2, faces: state.faces })); x.drawImage(creature.element, (-creature.wide * k) / 2, (-creature.tall * k) / 2, creature.wide * k, creature.tall * k);
+        x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = "source-in"; x.fillRect(0, 0, c.width, c.height); return; }
+      x.rotate(-Math.PI / 2); const body = c.width * 0.3;
+      for (const poly of shapePolygons(cast.shape, 1, 0)) { x.beginPath(); for (let i = 0; i < poly.length; i += 2) x[i ? "lineTo" : "moveTo"](poly[i] * body, poly[i + 1] * body); x.closePath(); x.fill(); }
+    } catch { /* a picture that cannot be drawn leaves the box empty */ }
+  };
+  const sync = () => {
+    if (!box.isConnected) return;
+    const shows = flyoverShows(state, creature), cast = flyoverAsk(state, creature, { x: 0, y: 0, angle: 0 });
+    hide("[data-fo-creature]", !shows.creature); hide("[data-fo-faces-row]", !shows.faces); hide("[data-fo-spread-row]", !shows.spread); hide("[data-fo-size-row]", !shows.size);
+    hide("[data-fo-place-row]", !shows.place); hide("[data-fo-place-hint]", !shows.placeHint); hide("[data-fo-voice-row]", !shows.voice);
+    q("[data-fo-note]").innerHTML = flyoverNote(state, creature); q("[data-fo-place-hint]").textContent = flyoverPlaceHint(state, creature); q("[data-fo-hint]").textContent = flyoverAimHint(state);
+    for (const b of box.querySelectorAll("[data-fo-shape]")) b.classList.toggle("is-on", !cast.art && b.dataset.foShape === cast.shape);
+    for (const b of box.querySelectorAll("[data-fo-source]")) b.classList.toggle("on", b.dataset.foSource === state.source);
+    picture(cast);
+  };
+  // The cry follows what was picked: the creature's own, or one that suits the shape. The GM can still change it.
+  const voiceTo = (value) => { state.voice = value; const pick = q("[data-fo-voice]"); if (pick) pick.value = value; };
+  const pickCreature = async (uuid) => {
+    creature = uuid ? await readFlyoverCreature(uuid) : null; state.picked = null; voiceTo("own");
+    // Its art's facing is guessed from what kind of token it is; the GM can still turn it.
+    if (creature?.art) { state.faces = creature.faces; for (const b of box.querySelectorAll("[data-fo-faces]")) b.classList.toggle("on", b.dataset.foFaces === state.faces); }
+    sync();
+  };
+  const SEGS = ["source", "faces", "size", "height", "pass"];
+  box.addEventListener("click", (event) => {
+    const hit = (s) => event.target?.closest?.(s);
+    if (hit("[data-fo-close]")) { flyoverPanelClose(); return; }
+    for (const name of SEGS) { const b = hit(`[data-fo-${name}]`); if (!b) continue;
+      for (const sib of b.parentElement.children) sib.classList.toggle("on", sib === b);
+      state[name] = b.dataset[`fo${name[0].toUpperCase()}${name.slice(1)}`];
+      if (name === "source") { state.picked = null; voiceTo(state.source === "actor" ? "own" : voiceForShape("dragon", families.map((f) => f[0]))); }
+      sync(); return; }
+    const shape = hit("[data-fo-shape]")?.dataset?.foShape;
+    if (shape) { state.picked = shape; if (state.source === "actor" && !creature) state.source = "shape"; if (state.source === "shape") voiceTo(voiceForShape(shape, families.map((f) => f[0]))); sync(); return; }
+    const here = !!hit("[data-fo-try]");
+    if (here || hit("[data-fo-send]")) {
+      if (state.source === "actor" && !creature) { ui.notifications?.warn("Animater: pick a creature, or choose A shape."); return; }
+      aimFlyover((aim) => { flyoverHere({ ...flyoverAsk(state, creature, aim), here }); }, { atTip: state.pass === "land" });
+    }
+  });
+  box.addEventListener("change", (event) => {
+    const el = event.target;
+    if (el?.matches?.("[data-fo-creature]")) { void pickCreature(el.value); return; }
+    if (el?.matches?.("[data-fo-voice]")) { state.voice = el.value; return; }
+    for (const name of ["spread", "place", "wings", "cry"]) if (el?.matches?.(`[data-fo-${name}]`)) { state[name] = el.checked === true; sync(); return; }
+  });
+  // Any actor dragged in from the sidebar is added to the list and picked.
+  box.addEventListener("dragover", (event) => event.preventDefault());
+  box.addEventListener("drop", (event) => {
+    let data = null; try { data = JSON.parse(event.dataTransfer?.getData("text/plain") ?? "null"); } catch { data = null; }
+    if (data?.type !== "Actor" || !data.uuid) return;
+    event.preventDefault();
+    void (async () => { const actor = await fromUuid(data.uuid); if (!actor || !box.isConnected) return;
+      if (!listed.has(actor.uuid)) { listed.set(actor.uuid, actor.name); q("[data-fo-creature]").innerHTML = flyoverCreatureOptions([...listed].map(([uuid, name]) => ({ uuid, name }))); }
+      q("[data-fo-creature]").value = actor.uuid; state.source = "actor"; await pickCreature(actor.uuid); })();
+  });
+  // Dragged by its header, and never off the edge.
+  const header = q("header");
+  header?.addEventListener("pointerdown", (event) => {
+    if (event.target?.closest?.("button")) return;
+    const r = box.getBoundingClientRect(), dx = event.clientX - r.left, dy = event.clientY - r.top;
+    const move = (e) => { box.style.left = `${Math.round(Math.min(Math.max(8, e.clientX - dx), Math.max(8, innerWidth - box.offsetWidth - 8)))}px`; box.style.top = `${Math.round(Math.min(Math.max(8, e.clientY - dy), Math.max(8, innerHeight - 40)))}px`; box.style.right = box.style.bottom = "auto"; };
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  });
+  const first = q("[data-fo-creature]")?.value;
+  if (first) void pickCreature(first); else { state.source = "shape"; voiceTo(voiceForShape("dragon", families.map((f) => f[0]))); sync(); }
+}
+Hooks.on("canvasTearDown", () => { flyoverPanelClose(); flyoverCreatures.clear(); });
 function openMomentsPanel() {
   if (momentsPanel?.isConnected) { momentsPanelClose(); return; }
   if (!game.user?.isGM || !globalThis.document?.createElement) return;
@@ -8061,6 +8482,7 @@ function openMomentsPanel() {
     }
     const kind = event.target?.closest?.("[data-an-moment]")?.dataset?.anMoment;
     if (kind) { momentsFire(kind); return; }
+    if (event.target?.closest?.("[data-an-flyover]")) { openFlyoverPanel(); return; }
     if (event.target?.closest?.("[data-an-stop]")) { momentsStopEverywhere(); return; }
     if (event.target?.closest?.("[data-an-pick]")) { momentPickSound(box); return; }
     if (event.target?.closest?.("[data-an-play]")) { momentPresetPlay(); return; }
@@ -8439,7 +8861,7 @@ function skyTick() {
   // The trees sway with the wind and keep up with the camera.
   if (treeSway.swaying) {
     const st = canvas.stage.transform; st.updateLocalTransform();
-    treeSway.set({ wind: skyWind, angle: skyWindAngle, view: { x: st.localTransform.tx, y: st.localTransform.ty, scale: st.localTransform.a } });
+    treeSway.set({ wind: skyWindNow, angle: skyWindAngle, view: { x: st.localTransform.tx, y: st.localTransform.ty, scale: st.localTransform.a }, gustAt: gusts.busy ? (mesh) => windHere(mesh.x, mesh.y) : null });
     treeSway.tick(seconds);
   }
   // A roof fading for a creature inside shows the room in its own light (looked at a few times a second).
@@ -8453,6 +8875,8 @@ function skyTick() {
   if (lampLights.length) { lookLampAir(performance.now()); if (lampAir.shown) { lampAir.tick(seconds); tickSmoke(seconds); } }
   if (smoke.roomAir()) tickRoomAir();
   if (ceilingDust.busy) ceilingDust.tick(seconds);
+  if (heardSteps.busy) heardSteps.tick(seconds);
+  if (flyovers.size) tickFlyovers(seconds);
   skyMark("wildlife");
   if (wildlife.busy || pondLife.busy || fieldLife.busy) wildTick(seconds);
   skyMark("door bursts");
@@ -8505,7 +8929,7 @@ function skyTick() {
   heightsWeatherAt += seconds; if (heightsWeatherAt >= 1) { heightsWeatherAt = 0; const hw = heightsWeather(), hk = `${hw.wet}|${hw.snow}`; if (hk !== heightsWeatherKey) { heightsWeatherKey = hk; heightShadowsSoon(); } }
   skyMark("decorations");
   if (decorations.busy) {
-    decorations.creatures(tokensOnFloor()); decorations.wind({ strength: undergroundScene() ? 0 : skyWindNow, angle: skyWindAngle }); decorations.tick(seconds, viewNow());
+    decorations.creatures(tokensOnFloor()); decorations.wind({ strength: undergroundScene() ? 0 : skyWindNow, angle: skyWindAngle, at: gusts.busy ? decorWindAt : null }); decorations.tick(seconds, viewNow());
     // The lights' shadows of them, a few times a second (lights move with the creatures carrying them), as strong as each light is against the sky.
     decorWeatherAt += seconds; if (decorWeatherAt >= 1) { decorWeatherAt = 0; const key = decorWeatherNow(); if (key !== decorWeatherKey) { decorWeatherKey = key; try { syncDecorations(); } catch { /* not built yet */ } } }
     decorLampsAt += seconds; if (decorLampsAt >= 0.15) { decorLampsAt = 0; try { decorations.lamps(shadowsOffHere() ? [] : floorLightSources()); } catch { /* no lights now */ } }
@@ -8743,6 +9167,8 @@ const movementFeel = createMovementFeel({
   // a flier, a churn for a burrower, a stroke for a swimmer, a grip for a climber, a shuffle for a crawl, a whoosh as a
   // jump leaves the ground and a heavier footstep where it lands.
   footstep: (floor, at, token, kind = "step") => {
+    // A Huge creature's wings stir the air under it on every stride, whatever its sounds are set to.
+    if (kind === "wing" && !token.preview) giantFlies(at, token);
     const mix = movementSoundMix(token.sound);
     if (mix.silent || token.gait === 'none' || (token.preview && !token.preview.active)) return;
     let level = 1;
@@ -8758,7 +9184,9 @@ const movementFeel = createMovementFeel({
     let calm = { gain: 1, range: null };
     try { if (!token.preview) calm = stepCalm(hotSetting("footstepsOutsideCombat"), game.combat); } catch { /* not registered yet */ }
     level *= calm.gain;
-    if (!(level > 0) && !(mix.tremor > 0)) return;
+    // Heard, not seen ("Heard footsteps"): its step is marked on the floor, whatever this screen's footstep volume.
+    const marked = !token.preview && token.visible === false && calm.gain > 0 && heardStepsOn();
+    if (!(level > 0) && !(mix.tremor > 0) && !marked) return;
     const seed = token.id ?? "";
     // How heavy the creature is: its size category (else its token width) and whether its body is heavy.
     const squares = (token.width ?? 100) / (canvas.grid?.size || 100);
@@ -8787,6 +9215,11 @@ const movementFeel = createMovementFeel({
     let range = "normal";
     try { range = calm.range ?? hotSetting("footstepRange") ?? "normal"; } catch { /* not registered yet */ }
     const where = { x: at.x, y: at.y, elevation: token.elevation }, reach = footstepReach(range, weight) * (canvas.dimensions?.distance ?? 5);
+    if (marked && walking) markHeardStep(at, { squares, weight, sneak: !!sneak, range, seed: `${seed}:${step}` });
+    // A Huge creature's tread sends the animals near it running ("Huge creatures scare animals").
+    if (walking && weight >= 4 && !sneak && !token.preview && giantsScareOn()) noiseScares({ x: at.x, y: at.y, radius: token.width });
+    // And rings the water near it ("Giant footfalls ring the water").
+    if (walking && weight >= 4 && !sneak && !token.preview && giantRipplesOn()) shakeWaters(at, weight, token.width);
     // A rained-on hard or open floor has puddles: a quiet splash under the step.
     const puddle = walking && movementFeelSettingOn("weatherOnGround") && weatherAt(at, token.elevation ?? 0) === "rain" && rainFloor(floor, "rain").splash;
     const volume = Math.min(1, footstepVolume(floor, { weight }) * vary.gain * Math.min(1, level) * (kind === "land" ? 1.25 : 1) * (sneak?.gain ?? 1));
@@ -11499,7 +11932,8 @@ function iceMeltOf(scene, area) {
   const grid = propGrid(scene), regions = [];
   for (const doc of scene?.regions?.contents ?? []) {
     try {
-      if (!iceSettingsOf(doc).thin) continue;
+      // (A sheet a cold spell laid melts by the fire's own shape, not square by square: iceSheetMeltOf.)
+      if (!iceSettingsOf(doc).thin || doc.flags?.[ID]?.[SPELL_ICE] === true) continue;
       const areas = regionAreas(doc) ?? [];
       if (!areas.length) continue;
       const bounds = squareBox(areas);
@@ -11513,13 +11947,43 @@ function iceMeltOf(scene, area) {
   }
   return iceMeltUpdates(tilesOnLevel(regions, area.levels));
 }
+// Fire on a sheet of ice a cold spell laid (ice-patch.mjs icePatchMelt): the fire takes its own shape out of the sheet,
+// a hole in the region, and the pond under it shows there again exactly as it was. Whatever cracks and holes the sheet
+// had stored under the fire go with it. A sheet with next to nothing left is taken away whole.
+function iceSheetMeltOf(scene, area) {
+  const out = { updates: [], deletes: [] };
+  if (!area?.bounds) return out;
+  const grid = propGrid(scene);
+  for (const doc of scene?.regions?.contents ?? []) {
+    try {
+      if (doc.flags?.[ID]?.[SPELL_ICE] !== true || !tilesOnLevel([{ id: doc.id, levels: [...(doc.levels ?? [])] }], area.levels).length) continue;
+      const { areas, inside } = iceShapeOf(doc);
+      const bounds = areas.length ? squareBox(areas) : null;
+      if (!bounds) continue;
+      const squares = iceMeltSquares({ bounds, within: area.bounds, grid, inside, inArea: area.testPoint });
+      if (!squares.length) continue;
+      const outline = areaOutline({ bounds: area.bounds, testPoint: area.testPoint, seeds: squares.map((key) => iceSquareMid(key, grid)) });
+      const melted = icePatchMelt({ shapes: Array.from(doc.toObject?.().shapes ?? doc.shapes ?? []), outline, least: grid * grid * 0.25 });
+      if (!melted) continue;
+      if (melted.gone) { out.deletes.push(doc.id); continue; }
+      const [cleared] = iceFreezeUpdates([{ id: doc.id, flags: doc.flags ?? {}, squares }]);
+      out.updates.push({ ...(cleared ?? { _id: doc.id }), shapes: melted.shapes });
+    } catch (err) { runtime?.trace?.("thin ice", `sheet melt ${doc?.id ?? "?"}: ${err?.message ?? err}`); }
+  }
+  return out;
+}
+// Whether this area still has ice to melt: the claim on it is held until it has none.
+const iceMeltLeft = (scene, area) => { const sheets = iceSheetMeltOf(scene, area); return iceMeltOf(scene, area).length + sheets.updates.length + sheets.deletes.length; };
 // The GM's one region batch for a melt, stamped as Animater's own on an options object built for this write alone.
 async function meltIceWrite(scene, area) {
   if (!game.user?.isGM || !scene) return false;
-  const updates = propSafe("thin ice melt", () => iceMeltOf(scene, area)) ?? [];
-  if (!updates.length) return false;
-  await scene.updateEmbeddedDocuments("Region", updates.map((u) => withDeletes(u, propDel())), { animater: { thinIce: true } })
+  const sheets = propSafe("thin ice sheet melt", () => iceSheetMeltOf(scene, area)) ?? { updates: [], deletes: [] };
+  const updates = [...(propSafe("thin ice melt", () => iceMeltOf(scene, area)) ?? []), ...sheets.updates];
+  if (!updates.length && !sheets.deletes.length) return false;
+  if (updates.length) await scene.updateEmbeddedDocuments("Region", updates.map((u) => withDeletes(u, propDel())), { animater: { thinIce: true } })
     .catch((e) => runtime?.trace?.("thin ice", `melt not written: ${e?.message ?? e}`));
+  if (sheets.deletes.length) await scene.deleteEmbeddedDocuments("Region", sheets.deletes, { animater: { thinIce: true } })
+    .catch((e) => runtime?.trace?.("thin ice", `sheet not taken away: ${e?.message ?? e}`));
   return true;
 }
 async function applyIceMelt(scene, cause, user) {
@@ -11546,6 +12010,97 @@ async function receiveIceMelt(data, senderId) {
   const user = senderId ? game.users.get(senderId) : null, scene = game.scenes.get(String(data.sceneId ?? ""));
   if (!user || !scene || typeof data.cause?.areaUuid !== "string") return;
   await applyIceMelt(scene, { areaUuid: data.cause.areaUuid, messageId: typeof data.cause.messageId === "string" ? data.cause.messageId : undefined }, user);
+}
+// Cold freezing water: the melt's other half. A cold area over thin ice closes the holes and cracks it covers
+// (thin-ice.mjs iceFreezeUpdates); and on a scene whose Cold freezes water is ticked, the part of a still pond it
+// covers becomes a sheet of thin ice, a region of its own laid over the pond in the shape of the spell and the bank
+// (ice-patch.mjs). Asked, claimed, checked and written exactly as the melt is.
+const ICE_FREEZE_MESSAGE = "thin-ice-freeze";
+const iceFreezeGate = createQuenchGate();
+// What became of the last cold areas, step by step, for api.debug.iceTrail(): a pond that stayed water says where it stopped.
+const iceTrail = [];
+const iceNote = (step, what = {}) => { iceTrail.push({ step, at: Date.now(), ...what }); if (iceTrail.length > 40) iceTrail.shift(); };
+const coldFreezesOn = (scene) => scene?.flags?.[ID]?.coldFreezes === true;
+const sceneCanFreeze = (scene) => sceneHasThinIce(scene) || coldFreezesOn(scene);
+// Whether placed areas are watched on a scene at all: for what they break, or only for the water a cold one freezes.
+// Cold freezes water is a switch of its own, so it works without Breakable props (Roi ticked it alone and nothing froze).
+const areasActOn = (scene) => propsOn(scene) || coldFreezesOn(scene);
+// A region's own areas, and whether a point is in them (its islands left out).
+const iceShapeOf = (doc) => { const areas = regionAreas(doc) ?? []; return { areas, inside: (p) => areas.some((a) => pointInPolygon(p, a) && !(a.holes ?? []).some((h) => pointInPolygon(p, h))) }; };
+// What this area mends, on this screen's documents: each thin-ice region's squares under it.
+function iceFreezeOf(scene, area) {
+  const grid = propGrid(scene), regions = [];
+  for (const doc of scene?.regions?.contents ?? []) {
+    try {
+      if (!iceSettingsOf(doc).thin) continue;
+      const { areas, inside } = iceShapeOf(doc);
+      const bounds = areas.length ? squareBox(areas) : null;
+      if (!bounds) continue;
+      const squares = iceMeltSquares({ bounds, within: area.bounds ?? null, grid, inside, inArea: area.testPoint });
+      if (squares.length) regions.push({ id: doc.id, flags: doc.flags ?? {}, levels: [...(doc.levels ?? [])], squares });
+    } catch (err) { runtime?.trace?.("thin ice", `freeze ${doc?.id ?? "?"}: ${err?.message ?? err}`); }
+  }
+  return iceFreezeUpdates(tilesOnLevel(regions, area.levels));
+}
+// The sheets of ice this area lays on open water, as regions to create: one for each still pond it reaches, where the
+// scene says cold freezes water. A river, a waterfall and the sea run on; a place already under a spell's ice gets no
+// second sheet (its holes are mended above instead).
+function icePatchesOf(scene, area) {
+  if (!coldFreezesOn(scene) || !area?.bounds) return [];
+  const grid = propGrid(scene), made = [], sheets = [];
+  for (const doc of scene?.regions?.contents ?? []) { try { if (doc.flags?.[ID]?.[SPELL_ICE] === true) sheets.push(iceShapeOf(doc).inside); } catch { /* a region mid-change */ } }
+  for (const doc of scene?.regions?.contents ?? []) {
+    try {
+      const own = doc.flags?.[ID] ?? {};
+      if (iceSettingsOf(doc).thin || own[SPELL_ICE] === true) continue;
+      if (regionFloor({ name: doc.name, flag: floorFlagOf(doc) }) !== "water" || waterKindOf(stepFlags(own) ?? {}) !== "still") continue;
+      if (!tilesOnLevel([{ id: doc.id, levels: [...(doc.levels ?? [])] }], area.levels).length) continue;
+      const { areas, inside } = iceShapeOf(doc);
+      const bounds = areas.length ? squareBox(areas) : null;
+      if (!bounds) continue;
+      const mids = iceMeltSquares({ bounds, within: area.bounds, grid, inside, inArea: area.testPoint }).map((key) => iceSquareMid(key, grid));
+      if (!mids.length || mids.every((p) => sheets.some((within) => within(p)))) continue;
+      const outline = areaOutline({ bounds: area.bounds, testPoint: area.testPoint, seeds: mids });
+      const sheet = icePatchData({ pond: doc, shapes: icePatchShapes({ areas, outline, least: grid * grid * 0.5 }) });
+      if (sheet) made.push(sheet);
+    } catch (err) { runtime?.trace?.("thin ice", `sheet ${doc?.id ?? "?"}: ${err?.message ?? err}`); }
+  }
+  return made;
+}
+async function freezeIceWrite(scene, area) {
+  if (!game.user?.isGM || !scene) return false;
+  const updates = propSafe("thin ice freeze", () => iceFreezeOf(scene, area)) ?? [], sheets = propSafe("thin ice sheet", () => icePatchesOf(scene, area)) ?? [];
+  iceNote("write", { mends: updates.length, sheets: sheets.length, bounds: !!area?.bounds });
+  if (!updates.length && !sheets.length) return false;
+  if (updates.length) await scene.updateEmbeddedDocuments("Region", updates.map((u) => withDeletes(u, propDel())), { animater: { thinIce: true } })
+    .catch((e) => runtime?.trace?.("thin ice", `freeze not written: ${e?.message ?? e}`));
+  if (sheets.length) await scene.createEmbeddedDocuments("Region", sheets, { animater: { thinIce: true } })
+    .catch((e) => runtime?.trace?.("thin ice", `sheet not laid: ${e?.message ?? e}`));
+  return true;
+}
+async function applyIceFreeze(scene, cause, user) {
+  if (!game.users.activeGM?.isSelf || !scene) return false;
+  const full = { kind: "area", damageType: "cold", areaUuid: cause?.areaUuid, ...(typeof cause?.messageId === "string" ? { messageId: cause.messageId } : {}) };
+  const { area, now } = areaPlace(full, user);
+  const refused = areaRefusal(area ? { ...area, testPoint: () => true } : area, { cause: full, sceneId: scene.id, sender: user, point: { x: 0, y: 0 }, levels: area?.levels, now });
+  iceNote("gm check", { areaId: cause?.areaUuid, refused, found: !!area, onScene: area?.sceneId ?? null, types: area?.damageTypes ?? null, bounds: !!area?.bounds });
+  if (refused) { runtime?.trace?.("thin ice", `water not frozen: ${refused}`); return false; }
+  return iceFreezeGate.run(`${scene.id}:${area.uuid}`, () => freezeIceWrite(scene, area));
+}
+// True once asked of (or started by) the GM; false with none connected.
+function askIceFreeze(area, messageId) {
+  const scene = area?.scene, gm = game.users.activeGM;
+  if (!scene || !gm) return false;
+  const cause = { areaUuid: area.templateId, ...(typeof messageId === "string" ? { messageId } : {}) };
+  if (gm.isSelf) { void applyIceFreeze(scene, cause, game.user).catch((e) => runtime?.trace?.("thin ice", `freeze: ${e?.message ?? e}`)); return true; }
+  game.socket.emit(`module.${ID}`, { type: ICE_FREEZE_MESSAGE, sender: clientId, sceneId: scene.id, cause });
+  return true;
+}
+async function receiveIceFreeze(data, senderId) {
+  if (data?.type !== ICE_FREEZE_MESSAGE || !game.users.activeGM?.isSelf) return;
+  const user = senderId ? game.users.get(senderId) : null, scene = game.scenes.get(String(data.sceneId ?? ""));
+  if (!user || !scene || typeof data.cause?.areaUuid !== "string") return;
+  await applyIceFreeze(scene, { areaUuid: data.cause.areaUuid, messageId: typeof data.cause.messageId === "string" ? data.cause.messageId : undefined }, user);
 }
 // Water and cold putting fires out (engines/props/fire-spread.mjs quenchUpdates). An area whose spell deals a quenching
 // damage type puts out every fire inside it: a prop's, a decoration's and a grass square's flags are cleared and their fire
@@ -12225,6 +12780,9 @@ async function repairAllProps(scene = canvas?.scene) {
     for (const u of iceRepairUpdates(sceneRegions(scene))) { const own = decorFixes.find((d) => d._id === u._id); if (own) Object.assign(own, u); else decorFixes.push(u); }
     await relightDecor(scene, (scene.regions?.contents ?? []).filter((r) => decorFixes.some((u) => u._id === r.id)));
     if (decorFixes.length) await scene.updateEmbeddedDocuments("Region", decorFixes.map((u) => withDeletes(u, del)), { animater: { decorRepair: true } });
+    // The sheets of ice cold spells laid on open water are regions of their own, and go whole: the pond under each was never changed.
+    const thawed = iceThawIds(sceneRegions(scene));
+    if (thawed.length) await scene.deleteEmbeddedDocuments("Region", thawed, { animater: { thinIce: true } });
   });
   // A breach's part B goes first, so the wall put back whole never overlaps it.
   if (breaches.deletes.length) await scene.deleteEmbeddedDocuments("Wall", breaches.deletes, { animater: { wallRepair: true } });
@@ -12307,7 +12865,8 @@ function areaItemOf(doc) {
   try { item = doc.item ?? doc.message?.item ?? (ref.messageId ? game.messages?.get(ref.messageId)?.item : null) ?? null; } catch { item = null; }
   return { item: item ?? sync(ref.itemUuid), activity: null };
 }
-const areaDamageTypes = (doc) => propSafe("area types", () => { const { item, activity } = areaItemOf(doc); return damageTypesOfItem(item, game.system.id, { activity }); }) ?? [];
+// (A spell of water counts water among them, which is what puts fires out: area-damage.mjs spellDamageTypes.)
+const areaDamageTypes = (doc) => propSafe("area types", () => { const { item, activity } = areaItemOf(doc); return spellDamageTypes(damageTypesOfItem(item, game.system.id, { activity }), item); }) ?? [];
 // authorId: the user who placed it (the hook's own), which the GM checks an area cause's sender against (prop-areas.mjs).
 // damageTypes: the spell's, which its animation breaks things with when it lands (breakAreaOnPlay).
 // The centre of a placed area's shape (wall-breach.mjs areaShapeCentre: a cone's or line's middle, not its origin), where it
@@ -12327,11 +12886,52 @@ function rememberArea(doc, authorId, rememberedAt) {
     damageTypes: areaDamageTypes(doc), ...(Number.isFinite(rememberedAt) ? { rememberedAt } : {}) });
 }
 for (const hook of ["createMeasuredTemplate", "createRegion"]) Hooks.on(hook, (doc, _options, userId) => propSafe("area", () => rememberArea(doc, userId)));
+// A wind spell blows (engines/motion/wind-spell.mjs): as its area appears, the air in it moves the way the spell sends
+// it, and the trees, flames and cloth there obey. Each screen blows it for itself on the scene it is looking at;
+// nothing is written or sent, and nothing is put out (Roi: "theres no such mechanic, so visual only"). So it does not
+// wait on a scene's Breakable props either: it changes nothing.
+const windSpellsOn = () => { try { return hotSetting("windSpells") !== false; } catch { return false; } };
+function blowWindSpell(doc) {
+  if (!canvas?.ready || doc?.parent?.id !== canvas.scene?.id || !gustsOn() || !windSpellsOn()) return;
+  const { item } = areaItemOf(doc);
+  if (!isWindSpell({ name: item?.name, traits: Array.from(item?.system?.traits?.value ?? []) })) return;
+  let shape = doc.shapes?.[0] ?? null;
+  if (!shape && doc.documentName === "MeasuredTemplate") shape = templateShape({ t: doc.t, x: doc.x, y: doc.y, distance: doc.distance, direction: doc.direction, angle: doc.angle, width: doc.width }, canvas.grid.size / (canvas.dimensions?.distance || 5));
+  for (const gust of windSpellGusts(shape, { grid: canvas.grid.size })) gusts.add(gust);
+  // The animals in it bolt, as they do from anything sudden.
+  const at = areaShapeCentreOf(doc);
+  if (at && giantsScareOn()) noiseScares({ x: at.x, y: at.y, radius: canvas.grid.size * 3 });
+}
+for (const hook of ["createMeasuredTemplate", "createRegion"]) Hooks.on(hook, (doc) => propSafe("wind spell", () => blowWindSpell(doc)));
+// An earth spell shakes the ground (engines/motion/earth-spell.mjs): as its area appears the view jolts, dust comes
+// down from any ceiling over it, the ponds near it ring and the animals bolt. Each screen feels it for itself; nothing
+// is written or sent and nothing is left lying: bringing a ceiling down is the GM's own tool, and saved.
+const earthSpellsOn = () => { try { return hotSetting("earthSpells") !== false; } catch { return false; } };
+function quakeEarthSpell(doc) {
+  if (!canvas?.ready || doc?.parent?.id !== canvas.scene?.id || !earthSpellsOn()) return;
+  const { item } = areaItemOf(doc);
+  if (!isEarthSpell({ name: item?.name, traits: Array.from(item?.system?.traits?.value ?? []) })) return;
+  const at = areaShapeCentreOf(doc);
+  if (!at) return;
+  const grid = canvas.grid.size, sceneId = canvas.scene.id, level = canvas.level?.id, seed = doc.id ?? `${at.x}:${at.y}`, box = areaBoxOf(doc), inArea = areaTestOf(doc);
+  const still = () => canvas?.ready && canvas.scene?.id === sceneId;
+  QUAKE.forEach((jolt, n) => setTimeout(() => { try { if (still()) cameraShake.tremor({ at, weight: jolt.weight, sceneId, level, seed: `quake:${seed}:${n}`, scale: jolt.scale }); } catch { /* shake is optional */ } }, jolt.delay));
+  // One deep thud under it, as the cave-in's small fall has.
+  playUnder("thud", at, { file: THUD_FILES[0], volume: 0.9, reach: 30, rate: 0.45, room: 1, lowpass: 500, bass: 10 });
+  if (ceilingDustOn()) {
+    let spots = []; try { spots = quakeSpots({ box, inArea }).filter((p) => underCeiling(p)); } catch { spots = []; }
+    spots.forEach((p, n) => setTimeout(() => { try { if (still()) ceilingDust.fall({ at: p, weight: QUAKE_DUST, grid, seed: `quake:${seed}:dust:${n}` }, canvas.app.renderer); } catch { /* the canvas mid-change */ } }, 80 * n));
+  }
+  const wide = box ? Math.max(Number(box.w) || 0, Number(box.h) || 0) : grid * 2;
+  if (giantRipplesOn()) shakeWaters(at, 5, wide);
+  if (giantsScareOn()) noiseScares({ x: at.x, y: at.y, radius: Math.max(grid * 3, wide / 2) });
+}
+for (const hook of ["createMeasuredTemplate", "createRegion"]) Hooks.on(hook, (doc) => propSafe("earth spell", () => quakeEarthSpell(doc)));
 // A screen that loaded after an area was placed (a reload between placing it and rolling its damage) remembers it from
 // its document and spell card (placedRecordOf), with the card's time, so its damage roll still breaks things.
 function rememberLoadedAreas() {
   const scene = canvas?.scene, now = Date.now();
-  if (!propsOn(scene)) return;
+  if (!areasActOn(scene)) return;
   let templates = [];
   try { templates = scene.collections?.templates?.contents ?? []; } catch { templates = []; }
   for (const doc of [...(scene.regions?.contents ?? []), ...templates]) {
@@ -12404,22 +13004,30 @@ const worn = (wall, scene) => ["door", "wall"].includes(wallTraits(wall, scene, 
 const CLAIM_SETTLE_MS = PROP_REFUSED_MS + 1500;
 function breakAreaThings(area, types, { messageId } = {}) {
   const scene = area?.scene;
-  if (!area || !types?.length || !propsOn(scene) || !game.scenes.get(scene.id)) return false;
+  if (!area || !types?.length || !areasActOn(scene) || !game.scenes.get(scene.id)) return false;
+  // With Breakable props off, only the ice answers: the water a cold area freezes and the ice a fire melts again.
+  const props = propsOn(scene);
   // Water or cold puts out the fires inside the area (asked of the GM once per area), besides anything it breaks.
-  const quench = types.find(quenchedBy), quenching = !!quench && propAreas.claim(area.templateId, "quench");
+  const quench = types.find(quenchedBy), quenching = props && !!quench && propAreas.claim(area.templateId, "quench");
   // A refusal is the GM's silence, so the claim is given back unless the fires inside the area are gone after a wait; a later
   // ask (the damage roll's, which names its message) can then still put them out.
   if (quenching) void askClaimed({ ask: () => askQuench(area, quench, messageId), release: () => propAreas.release(area.templateId, "quench"), wait: CLAIM_SETTLE_MS,
     written: () => { try { return quenchPutOf(scene, area).put.length === 0; } catch { return false; } } });
   // With Fire spreads on, a fire area also sets the grass it covers alight (asked of the GM once per area), as it
   // sets the flammable props in it alight. Nothing of this breaks anything; the ground simply starts to burn.
-  const lighting = types.includes("fire") && scene.flags?.[ID]?.fireSpreads === true && propAreas.claim(area.templateId, "grass");
+  const lighting = props && types.includes("fire") && scene.flags?.[ID]?.fireSpreads === true && propAreas.claim(area.templateId, "grass");
   if (lighting) void askClaimed({ ask: () => askGrassCatch(area, messageId), release: () => propAreas.release(area.templateId, "grass"), wait: CLAIM_SETTLE_MS,
     written: () => { try { return grassCatchOf(scene, area).lit.length === 0; } catch { return false; } } });
   // A fire area melts the thin ice it covers to open water (asked of the GM once per area), as it lights the grass.
   const melting = types.includes("fire") && sceneHasThinIce(scene) && propAreas.claim(area.templateId, "ice");
   if (melting) void askClaimed({ ask: () => askIceMelt(area, messageId), release: () => propAreas.release(area.templateId, "ice"), wait: CLAIM_SETTLE_MS,
-    written: () => { try { return iceMeltOf(scene, area).length === 0; } catch { return false; } } });
+    written: () => { try { return iceMeltLeft(scene, area) === 0; } catch { return false; } } });
+  // A cold area freezes: it mends the thin ice it covers, and where the scene says so turns still water to ice.
+  const freezing = types.includes("cold") && sceneCanFreeze(scene) && propAreas.claim(area.templateId, "freeze");
+  if (types.includes("cold")) iceNote("cold area", { areaId: area.templateId, canFreeze: sceneCanFreeze(scene), coldFreezes: coldFreezesOn(scene), claimed: freezing, gm: game.users.activeGM?.name ?? null });
+  if (freezing) void askClaimed({ ask: () => askIceFreeze(area, messageId), release: () => propAreas.release(area.templateId, "freeze"), wait: CLAIM_SETTLE_MS,
+    written: () => { try { return iceFreezeOf(scene, area).length === 0 && icePatchesOf(scene, area).length === 0; } catch { return false; } } });
+  if (!props) return melting || freezing;
   const grid = propGrid(scene), tiles = tilesOnLevel(scene.tiles.contents.map(propTileView), area.levels), walls = (scene.walls?.contents ?? []).map(wallView);
   const decor = propSafe("area decorations", () => decorViews(scene, area.levels)) ?? [], id = (t) => t.id;
   const hits = typesBreaking(types, (type) => propsInArea(tiles, area.testPoint, grid, type), id).filter(({ thing }) => propAreas.claim(area.templateId, thing.id));
@@ -12434,7 +13042,7 @@ function breakAreaThings(area, types, { messageId } = {}) {
   const decorHits = typesBreaking(types, (type) => propsInArea(decor, area.testPoint, grid, type), id).filter(({ thing }) => propAreas.claim(area.templateId, thing.id));
   // Decorations whose powder spilled earlier: a fire area sets them off, once, as it does a keg tile's.
   const decorSpills = !types.includes("fire") ? [] : (propSafe("area decoration powder", () => ignitableInArea(tilesOnLevel(decorSpilled(decorRegionsOf(scene, { breaking: true }), grid, decorIndex), area.levels), area.testPoint)) ?? []).filter((v) => propAreas.claim(area.templateId, `ignite:${v.id}`));
-  if (!hits.length && !doors.length && !spills.length && !decorHits.length && !decorSpills.length) return quenching || lighting || melting;
+  if (!hits.length && !doors.length && !spills.length && !decorHits.length && !decorSpills.length) return quenching || lighting || melting || freezing;
   const areaUuid = area.templateId, roll = typeof messageId === "string" ? { messageId } : {};
   const cause = (damageType) => ({ kind: "area", damageType, at: area.at, areaUuid, ...roll });
   const held = (claimId, ask, written) => void askClaimed({ ask, written, release: () => propAreas.release(areaUuid, claimId), wait: CLAIM_SETTLE_MS });
@@ -12463,8 +13071,9 @@ function breakAreaThings(area, types, { messageId } = {}) {
 // break inside it. No damage roll is needed; a spell with no damage type breaks nothing.
 function breakAreaOnPlay(areaId, impactAt) {
   const area = propAreas.get(areaId);
-  if (!area || !propsOn(area.scene)) return;
-  const land = () => propSafe("area play", () => { const now = propAreas.get(areaId); if (now) breakAreaThings(now, now.damageTypes ?? []); });
+  iceNote("played", { areaId, remembered: !!area, props: propsOn(area?.scene), types: area?.damageTypes ?? null, waitMs: Math.round(impactAt - Date.now()) });
+  if (!area || !areasActOn(area.scene)) return;
+  const land = () => propSafe("area play", () => { const now = propAreas.get(areaId); iceNote("landed", { areaId, still: !!now, types: now?.damageTypes ?? null }); if (now) breakAreaThings(now, now.damageTypes ?? []); });
   const wait = Math.max(0, impactAt - Date.now());
   if (wait > 0) setTimeout(land, wait); else land();
 }
@@ -12475,14 +13084,14 @@ function breakAreaOnPlay(areaId, impactAt) {
 function breakAreaProps(message) {
   if ((message?.author ?? message?.user)?.id !== game.user.id) return;
   // Cheap first: the roller's scene has breakable props.
-  if (!propsOn((message.speaker?.scene ? game.scenes.get(message.speaker.scene) : null) ?? canvas?.scene)) return;
+  if (!areasActOn((message.speaker?.scene ? game.scenes.get(message.speaker.scene) : null) ?? canvas?.scene)) return;
   const d = damageFromMessage(message, game.system.id);
   if (!d?.type || !d.itemUuid) return;
   let speaker = null;
   try { speaker = ChatMessage.implementation?.getSpeakerActor?.(message.speaker)?.uuid ?? null; } catch { speaker = null; }
   const area = propAreas.matchDamage({ itemUuid: d.itemUuid, actorUuid: d.actorUuid ?? uuidOwners(d.itemUuid).actorUuid ?? speaker });
   const scene = area?.scene;
-  if (!area || !propsOn(scene) || !game.scenes.get(scene.id)) return;
+  if (!area || !areasActOn(scene) || !game.scenes.get(scene.id)) return;
   // The roll's types the spell itself deals (the GM accepts no other), its largest share first. A spell whose item names
   // none (chosen at cast, a kineticist impulse) takes the roll's own, naming the roll: the GM reads it again itself.
   const spell = area.damageTypes ?? [], rolled = [...new Set([d.type, ...(d.types ?? [])])].filter(Boolean);
@@ -14543,6 +15152,27 @@ Hooks.once("init", () => {
   skyPair("rainRings", "rainRingsLocal", "Rain on water", "While it rains (Calendaria's weather or the scene's), rings spread where the drops land on water and on the puddles of wet ground, more the harder it rains.");
   skyPair("windowGlow", "windowGlowLocal", "Warm light from windows", "At night a lit room's light spills out of its windows and open doors onto the ground outside, in the light's colour, further the brighter the room. A room is a region that keeps the weather out; any light inside it that reaches the window lights it.");
   screenOnly("dawnChorusLocal", "Dawn chorus and night shift", "Birds sing all around at first light and go quiet as the sun sets; a hush falls, and the crickets take over once it is dark. Needs Wildlife sounds on.");
+  skyPair("localGusts", "localGustsLocal", "Gusts of wind", "A gust at one place on the map (the air a Huge creature's wings push, or a flyover) bends the trees, leans the flames and torches and snaps the cloth near it, and leaves the rest of the map as it was. It does not come in under a roof. Each of those still needs its own switch on.");
+  registerSetting("giantRipples", {
+    name: "Giant footfalls ring the water",
+    hint: "A Huge or bigger creature's weight shakes the water near where it treads, even from some way off: one big ripple spreads through a pond from its middle to its banks, a moment after the step, fainter the further off the creature is (up to eight squares for a Huge one, twelve for a Gargantuan). A river, a lake or the sea ripples from where the blow reaches it. Not when it sneaks. A flyover that lands shakes it too. Water regions only, not rain puddles.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  registerSetting("earthSpells", {
+    name: "Earth spells shake the ground",
+    hint: "A spell of earth (one with the earth trait, or named for it: Earthquake, Tremor, Rockslide and the like) is felt as it is cast: the view jolts, dust comes down from any ceiling over its area, ponds near it ring and the animals bolt, for a moment. Only seen and heard: no rubble is left and nothing falls on anyone. The view's jolt needs Camera shake on, the dust needs Dust from the ceiling.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  registerSetting("windSpells", {
+    name: "Wind spells blow",
+    hint: "A spell of wind (one with the air trait, or named for it: Gust of Wind, Whirlwind, Wind Wall and the like) moves the air in its area as it is cast: the trees there bend, flames, torches and smoke lean, cloth snaps and the animals bolt, for a moment. A line and a cone blow the way they point; a burst blows outward from its middle. It blows indoors too. Only seen: nothing is put out, moved or changed. Needs Gusts of wind on.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
+  registerSetting("giantsScare", {
+    name: "Huge creatures scare animals",
+    hint: "The animals on the map bolt from a Huge or bigger creature: ahead of one on the wing as it comes, and at each heavy footfall of one that walks (not when it sneaks). Only on screens that see or hear the creature.",
+    scope: "world", config: true, type: Boolean, default: true,
+  });
   skyPair("windFlames", "windFlamesLocal", "Flames in the wind", "Out of doors, flames, torches and their smoke lean with the wind, swelling in the gusts and pressed low by the strongest. Under a roof or in a room they feel none of it. Never changes the light itself.");
   skyPair("oldTracks", "oldTracksLocal", "Old tracks", "Where a scene asks for it (Scene configuration → Animater → Old tracks; off otherwise), prints stay and age by the game's clock, softer and fainter the older they are, so you can read who passed and how long ago. Mud and dirt keep them longest, stone hardly at all. The GM chooses for each scene whether only the GM or everyone sees them, and how long they last.");
   skyPair("stuckShots", "stuckShotsLocal", "Shots stick where they land", "Arrows and bolts that hit a wall stay stuck in it, and those that miss stay in the floor, until the scene changes. Never saved.");
@@ -14600,7 +15230,7 @@ Hooks.once("init", () => {
   });
   registerSetting("movementStealth", {
     name: "Movement respects stealth",
-    hint: "Players only see and hear what their characters could: an undetected or unnoticed creature moves in silence and leaves no tracks, and a hidden one is heard but leaves nothing to see (PF2e Visioner, judged from each player's own tokens, else the creature's conditions). Off: everyone sees and hears every movement drawn on their screen. Tokens the GM hid never give anything away either way.",
+    hint: "Players only see and hear what their characters could: an undetected or unnoticed creature moves in silence and leaves no tracks, and a hidden one is heard but leaves no tracks (its steps are marked where they are heard, with Heard footsteps on; PF2e Visioner, judged from each player's own tokens, else the creature's conditions). Off: everyone sees and hears every movement drawn on their screen. Tokens the GM hid never give anything away either way.",
     scope: "world", config: true, type: Boolean, default: true,
     onChange: () => awareness.clear(),
   });
@@ -14681,6 +15311,24 @@ Hooks.once("init", () => {
     hint: "A creature moving stealthily steps softer, slower and duller, and only a Huge or bigger one still thuds: PF2e's Avoid Notice exploration activity or a Sneak effect, PF2e Visioner's sneaking, D&D 5e's Hiding status.",
     scope: "world", config: true, type: Boolean, default: true,
     onChange: () => sneakCache.clear(),
+  });
+  registerSetting("heardSteps", {
+    name: "Heard footsteps",
+    hint: "A creature a player hears but cannot see (hidden or invisible; with PF2e Visioner, also one heard through a wall) has each footstep marked on the floor with a few struck ink strokes: wider for a bigger creature, small and faint for one that sneaks, only within the footstep hearing range. An undetected or unnoticed creature is never marked. A GM sees them when perceiving as a selected token.",
+    scope: "world", config: true, type: Boolean, default: true,
+    onChange: (on) => { if (on === false) heardSteps.clear(); },
+  });
+  registerSetting("heardStepsLocal", {
+    name: "Heard footsteps on my screen",
+    hint: "Turn off to never draw the marks of heard footsteps on this screen.",
+    scope: "client", config: false, type: Boolean, default: true,
+    onChange: (on) => { if (on === false) heardSteps.clear(); },
+  });
+  registerSetting("heardStepsPlace", {
+    name: "Heard footsteps land",
+    hint: "Exact square: the mark is struck where the foot fell, as a hidden creature's square is known. Vague: it lands up to a square and a half off, so a patrol cannot be followed square by square.",
+    scope: "world", config: true, type: String, default: "exact",
+    choices: { exact: "Exact square", vague: "Vague" },
   });
   registerSetting("footfallTremor", {
     name: "Giant footfalls shake the view",
@@ -15452,7 +16100,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
   // Breakable props: the GM's switch for this scene, the miss chance, and Repair (GM only).
   if (!root.querySelector(`[name="flags.${ID}.breakableProps"]`)) {
     const flags = app.document?.flags?.[ID] ?? {}, props = document.createElement("div");
-    props.innerHTML = propSceneFieldsHTML({ on: flags.breakableProps === true, chance: flags.propMissChance, breakWalls: flags.breakWalls, rubble: flags.rubbleDifficult === true, fireSpreads: flags.fireSpreads === true, burnRounds: flags.fireBurnRounds, smokeFills: flags.smokeFills === true, askSuccess: flags.askSuccess === true, wearDoors: flags.wearDoors === true, wearSystem: DOOR_ATTACK_SYSTEMS.has(game.system.id) });
+    props.innerHTML = propSceneFieldsHTML({ on: flags.breakableProps === true, chance: flags.propMissChance, breakWalls: flags.breakWalls, rubble: flags.rubbleDifficult === true, fireSpreads: flags.fireSpreads === true, burnRounds: flags.fireBurnRounds, smokeFills: flags.smokeFills === true, askSuccess: flags.askSuccess === true, wearDoors: flags.wearDoors === true, coldFreezes: flags.coldFreezes === true, wearSystem: DOOR_ATTACK_SYSTEMS.has(game.system.id) });
     const repair = props.querySelector('[data-action="animater-repair-props"]');
     repair.disabled = !game.user?.isGM;
     repair.addEventListener("click", async (event) => {
@@ -16324,12 +16972,14 @@ Hooks.once("ready", () => {
     if (data?.type === PROP_BREAK_MESSAGE) { void receivePropBreak(data, senderId).catch((e) => console.warn("Animater props:", e?.message ?? e)); return; }
     if (data?.type === QUENCH_MESSAGE) { void receiveQuench(data, senderId).catch((e) => console.warn("Animater props (quench):", e?.message ?? e)); return; }
     if (data?.type === GRASS_FIRE_MESSAGE) { void receiveGrassCatch(data, senderId).catch((e) => console.warn("Animater props (grass fire):", e?.message ?? e)); return; }
+    if (data?.type === ICE_FREEZE_MESSAGE) { void receiveIceFreeze(data, senderId).catch((e) => console.warn("Animater thin ice (freeze):", e?.message ?? e)); return; }
     if (data?.type === ICE_MELT_MESSAGE) { void receiveIceMelt(data, senderId).catch((e) => console.warn("Animater thin ice (melt):", e?.message ?? e)); return; }
     if (data?.type === DECOR_BREAK_MESSAGE) { void receiveDecorBreak(data, senderId).catch((e) => console.warn("Animater props (decoration):", e?.message ?? e)); return; }
     if (data?.type === WALL_BREAK_MESSAGE) { void receiveWallBreak(data, senderId).catch((e) => console.warn("Animater props (door):", e?.message ?? e)); return; }
     if (data?.type === BLAST_MESSAGE) { if (data.blast?.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) playBlast(data.blast); return; }
     if (data?.type === MOMENT_MESSAGE) { if (data.sender !== clientId) momentHeard(data, senderId); return; }
     if (data?.type === WEATHER_BURST_MESSAGE) { if (data.sender !== clientId) weatherBurstHeard(data, senderId); return; }
+    if (data?.type === FLYOVER_MESSAGE) { if (data.sender !== clientId) flyoverHeard(data, senderId); return; }
     if (data?.type === SHOTS_MESSAGE) { shotsHeard(data); return; }
     if (data?.type === CLEAR_BLOOD_MESSAGE) { if (data.sceneId === canvas?.scene?.id && game.users.get(senderId)?.isGM) { floorBlood.clear(data.level ?? null); bloodLoaded = bloodElsewhere(bloodLoaded.map(packMark), data.level ?? null).map(unpackMark); } return; }
     // A player's private roll reaches only its audience (core/privacy.mjs audienceOf).
@@ -16717,6 +17367,15 @@ Hooks.once("ready", () => {
     // on this screen, a quality that leaves it out, underground), for a weather it does not know, or for a player where
     // the GM has turned players' bursts off. The same weather again carries it on.
     weatherBurst: (asked = {}) => weatherBurstHere(asked),
+    /**
+     * Something flies over (GM only): its shadow crosses the map at { x, y } heading `angle` (radians), on every screen
+     * on the scene. `squares` its true width; `art` a picture of it from above (else `shape`: dragon, bird, bat, insect,
+     * wingless), `faces` which way that picture points, `spread` its sides beaten as wings; `height` low or high;
+     * `pass` straight, circle or land; `wings` their sound; `voice` an actor's uuid or "group:<voice>"; `actor` the
+     * one whose token is put down where it lands (`place: false` not to). `here: true`: seen and heard on this screen
+     * only (its token is still put down).
+     */
+    flyover: (asked = {}) => { if (!game.user?.isGM) return null; return flyoverHere(asked); },
     // What each part of the ambient frame (skyTick) costs over `ms`: [{ part, msPerFrame, worstMs }], worst first.
     skyCost: (ms) => skyCost(ms),
     stopMoments: () => { if (!game.user?.isGM) return false; momentsStopEverywhere(); return true; },
@@ -16774,6 +17433,26 @@ Hooks.once("ready", () => {
       // thin ice melted as a fire area over it would melt it (its middle and how far it reaches, in pixels).
       refreezeIce: (regionId) => refreezeIceRegion(canvas?.scene?.regions?.get(regionId)),
       meltIce: (at, radius = canvas.grid?.size ?? 100) => meltIceWrite(canvas?.scene, { testPoint: (p) => Math.hypot(p.x - at.x, p.y - at.y) <= radius, bounds: { x: at.x - radius, y: at.y - radius, w: radius * 2, h: radius * 2 }, levels: [] }),
+      iceTrail: () => iceTrail.map((n) => ({ ...n })),
+      // What a placed area does as its animation lands, with these damage types, and what stood in its way: the path a
+      // cast spell takes, which the two above skip.
+      landArea: (areaUuid, types = ["cold"]) => {
+        const area = propAreas.get(areaUuid), scene = area?.scene;
+        const asked = area ? breakAreaThings(area, types) : false;
+        const placed = areaPlace({ kind: "area", damageType: types[0], areaUuid }, game.user);
+        return { remembered: !!area, asked, props: propsOn(scene), canFreeze: sceneCanFreeze(scene), damageTypes: area?.damageTypes ?? null, bounds: placed.area?.bounds ?? null,
+          refused: placed.area ? areaRefusal({ ...placed.area, testPoint: () => true }, { cause: { kind: "area", damageType: types[0], areaUuid }, sceneId: scene?.id, sender: game.user, point: { x: 0, y: 0 }, levels: placed.area.levels, now: placed.now }) : "no area",
+          mends: placed.area ? iceFreezeOf(scene, placed.area).length : 0, sheets: placed.area ? icePatchesOf(scene, placed.area).length : 0,
+          activeGM: game.users.activeGM?.isSelf === true, coldFreezes: coldFreezesOn(scene), areaLevels: placed.area?.levels ?? null,
+          // Each region here and what the freeze makes of it, so a pond that stays water says why.
+          waters: (scene?.regions?.contents ?? []).filter((doc) => doc.uuid !== areaUuid).map((doc) => { try {
+            const own = doc.flags?.[ID] ?? {}, { areas, inside } = iceShapeOf(doc), bounds = areas.length ? squareBox(areas) : null;
+            const squares = bounds && placed.area?.bounds ? iceMeltSquares({ bounds, within: placed.area.bounds, grid: propGrid(scene), inside, inArea: placed.area.testPoint }).length : 0;
+            return { name: doc.name, floor: regionFloor({ name: doc.name, flag: floorFlagOf(doc) }), kind: waterKindOf(stepFlags(own) ?? {}), thin: iceSettingsOf(doc).thin, sheet: own[SPELL_ICE] === true,
+              levels: [...(doc.levels ?? [])], onLevel: tilesOnLevel([{ id: doc.id, levels: [...(doc.levels ?? [])] }], placed.area?.levels).length > 0, areas: areas.length, squares };
+          } catch (err) { return { name: doc?.name, error: String(err?.message ?? err) }; } }) };
+      },
+      freezeIce: (at, radius = canvas.grid?.size ?? 100) => freezeIceWrite(canvas?.scene, { testPoint: (p) => Math.hypot(p.x - at.x, p.y - at.y) <= radius, bounds: { x: at.x - radius, y: at.y - radius, w: radius * 2, h: radius * 2 }, levels: [] }),
       // Break a region's decoration (a key from decorKeys) as a bludgeoning area at its centre would (both switches still
       // apply; a player's is asked of the GM, who checks it as any other); the region's breakable decorations, with their
       // keys; and the keys this screen lets break now (drawn, not broken: decorBreakable).
@@ -16868,6 +17547,12 @@ Hooks.once("ready", () => {
         let reached = 0; for (const d of airField.dist) if (d > 0) reached++;
         return { live: airLive, gust: +((performance.now() - gustAt) / 1000).toFixed(1), openings: (airField.openings ?? []).map((o) => (Array.isArray(o) ? `region of ${o.length / 2} corners` : `point ${Math.round(o.x)},${Math.round(o.y)}`)), reached, squares: airField.cols * airField.rows, at: (x, y) => airAt(x, y) };
       },
+      // A gust blown at a point for three seconds, heading that way (radians), for looking at what bends.
+      gustHere: (x, y, heading = 0, strength = 1) => (gustsOn() ? gusts.add({ x, y, heading, strength, width: canvas.grid.size * 4, length: canvas.grid.size * 8, ms: 3000 }) : null),
+      // How many gusts blow now, and how many fliers are stirring the air.
+      gustsNow: () => ({ gusts: gusts.count, fliers: giantWakes.count, flyovers: flyovers.size, shadows: flyoverLayer.count }),
+      // A heard footstep struck at a point, for looking at the mark: size in squares.
+      heardStepHere: (x, y, { size = 1, sneak = false, vague = false, loud = 1 } = {}) => { heardSteps.add({ x, y, size, sneak, vague, loud, heading: 0, seed: `debug:${performance.now()}` }); return heardSteps.count; },
       shakeCeiling: (at, weight = 6) => ceilingDust.fall({ at, weight, grid: canvas.grid?.size ?? 100, seed: `debug:${performance.now()}` }, canvas.app.renderer),
       heldTorches: () => heldTorches.size,
       lightOrbs: () => lightOrbs.size,

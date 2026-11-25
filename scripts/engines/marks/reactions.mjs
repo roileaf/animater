@@ -77,6 +77,14 @@ export function createReactionHost({ near, remove, spawn, enabled = () => true, 
       }
     },
 
+    // A reaction that no second mark set off (a fire landing on water steams): shown as the others are, under the
+    // same switch and the same count. True when it was shown.
+    play(reaction) {
+      try { if (!enabled() || active.length >= max || !reaction?.kind) return false; } catch { return false; }
+      try { const handle = spawn(reaction); if (handle) active.push(handle); return !!handle; }
+      catch (err) { console.warn('Animater | skipped an element reaction', err); return false; }
+    },
+
     // On the PIXI ticker: never throws, and a reaction that fails is dropped.
     tick() {
       if (!active.length) return;

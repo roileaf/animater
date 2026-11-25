@@ -110,3 +110,25 @@ export function rollDamageTypes(roll, { itemUuid, actorUuid, sender, now, ttl = 
   if (!Number.isFinite(age) || age < -ROLL_SKEW_MS || age > ttl) return [];
   return typesFrom(listOf(roll.types));
 }
+
+// Water spells put fires out. Quenching was built for the damage types water and cold (fire-spread.mjs quenchedBy), but
+// no spell deals a damage type called water: a water spell's water is its trait, and its damage, if it has any, is
+// bludgeoning. So nothing was ever quenched by water. A spell of water therefore counts water among its damage types.
+
+// Named for water, in whatever system. Whole words: a Wave of Despair is not water, nor is Underwater Breathing.
+const WATERY = /\b(?:waters?|watery|tidal|tsunamis?|deluges?|geysers?|hydraulic|floods?|aqueous|torrents?)\b/i;
+
+/** Whether a spell is one of water (pure): it has the water trait (PF2e, SF2e), or its name says so. Never a spell of fire. */
+export function isWaterSpell({ name = "", traits = [] } = {}) {
+  const has = (t) => (traits ?? []).includes(t);
+  return !has("fire") && (has("water") || WATERY.test(String(name ?? "")));
+}
+
+/** The damage types of the spell that placed an area, with water added for a spell of water (pure): the types an item's
+ *  damage names (damageTypesOfItem), as they came, and "water" once more when the item is one. */
+export function spellDamageTypes(types, item) {
+  const out = [...(types ?? [])];
+  let traits = []; try { traits = Array.from(item?.system?.traits?.value ?? []); } catch { traits = []; }
+  if (item && !out.includes("water") && isWaterSpell({ name: item.name, traits })) out.push("water");
+  return out;
+}

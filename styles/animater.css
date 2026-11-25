@@ -5067,3 +5067,77 @@ body.animater-aiming #board {
   .animater-handout-light.animater-handout-flicker { animation: none; }
   .animater-handout-wet::after { animation: none; }
 }
+
+/* "Something flies over": the flyover's dialog. It wears the Moments dashboard's look; these are only its own parts. */
+.animater-flyover-panel {
+  right: 300px;
+  width: 292px;
+}
+.animater-flyover-panel.is-aiming {
+  box-shadow: 0 0 0 2px var(--an-m-live), 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+.animater-flyover-panel .fo-who {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.animater-flyover-panel .fo-who canvas {
+  flex: 0 0 92px;
+  width: 92px;
+  height: 92px;
+  border: 1px solid var(--an-m-line);
+  border-radius: 6px;
+  background: #c9b890;
+}
+.animater-flyover-panel .fo-side {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.animater-flyover-panel .fo-side select {
+  width: 100%;
+}
+.animater-flyover-panel .fo-side select[hidden],
+.animater-flyover-panel .an-check[hidden],
+.animater-flyover-panel .fo-hint[hidden] {
+  display: none;
+}
+.animater-flyover-panel .fo-note,
+.animater-flyover-panel .fo-hint {
+  margin: 0;
+  color: var(--an-m-dim);
+  font-size: 11px;
+  line-height: 1.3;
+}
+.animater-flyover-panel .fo-note {
+  padding: 4px 6px;
+  border: 1px dashed var(--an-m-line);
+  border-radius: 5px;
+  min-height: 2.6em;
+}
+.animater-flyover-panel .fo-note b {
+  color: #e8ecf3;
+  font-weight: 600;
+}
+.animater-flyover-panel .fo-shapes {
+  grid-template-columns: repeat(5, 1fr);
+}
+.animater-flyover-panel .fo-shapes .an-tile svg {
+  width: 30px;
+  height: 30px;
+  fill: currentColor;
+  stroke: none;
+}
+.animater-flyover-panel .an-check {
+  display: flex;
+  justify-content: flex-start;
+  margin-left: 0;
+}
+.animater-flyover-panel .fo-go {
+  border-color: var(--an-m-live);
+  background: #2f3950;
+  color: #fff;
+  font-weight: 600;
+}

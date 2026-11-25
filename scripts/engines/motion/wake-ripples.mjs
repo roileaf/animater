@@ -6,6 +6,17 @@
 
 export const MAX_WAKE_RINGS = 32;
 const LIFE = 3.2;
+// A swell holds its strength for this share of its run, then fades, and is gone as it gets as far as it was sent.
+// (It first held for four fifths and got there still strong, fading on the bank itself; Roi: "the ripple should fade
+// slightly before the water edge".)
+const SWELL_HOLD = 0.6;
+/**
+ * A swell as the ring list carries it (pure): a ring's size is never negative, so a negative one is a swell, its
+ * speed (in twentieths of a square a second) in the whole part and its strength (0 to 0.99) in the fraction.
+ * `reach` px: how far it runs; it is gone as it gets there. swellOf reads one back (`runs` and `fadesFrom` in squares).
+ */
+export const swellCode = ({ reach = 300, grid = 100, strength = 1 } = {}) => -(Math.max(5, Math.round((Math.max(0, reach) / grid / LIFE) * 20)) + Math.min(0.99, Math.max(0, strength)));
+export const swellOf = (code) => { const speed = Math.floor(-code) / 20; return { speed, strength: +(-code - Math.floor(-code)).toFixed(4), runs: speed * LIFE, fadesFrom: speed * LIFE * SWELL_HOLD }; };
 const TRAIL_LIFE = 2.6, KELVIN_TAN = Math.tan(Math.asin(1 / 3)), SPACING = 0.3, MAX_POINTS = 160;
 const MAX_QUADS = MAX_POINTS * 3;
 
@@ -26,7 +37,13 @@ uniform float uTime, uGrid, uHasFloor, uHasWater;
 vec3 floorAt(vec2 at){ return uHasFloor > 0.5 ? texture2D(uFloor, clamp((at - uRect.xy) / uRect.zw, 0.0, 1.0)).rgb : vec3(0.2, 0.25, 0.3); }
 vec4 surface(vec2 slope, float waves){
   if (waves < 0.002) return vec4(0.0);
-  vec4 where = uHasWater > 0.5 ? texture2D(uWater, (vPos - uWaterRect.xy) / uWaterRect.zw) : vec4(1.0);
+  // Past the picture of the water there is no water. (Read past its edge, a picture gives its last pixel over again:
+  // where a round pond touches the edge of its own picture, that pixel is water, and a ripple that got that far was
+  // drawn on out across the land in a streak, north, south, east and west of the pond. Nothing reached that far until
+  // the swell did. 2026-11-25.)
+  vec2 at = (vPos - uWaterRect.xy) / uWaterRect.zw;
+  if (uHasWater > 0.5 && (at.x < 0.0 || at.y < 0.0 || at.x > 1.0 || at.y > 1.0)) return vec4(0.0);
+  vec4 where = uHasWater > 0.5 ? texture2D(uWater, at) : vec4(1.0);
   float inWater = where.r;
   if (inWater < 0.01) return vec4(0.0);
   vec3 L = normalize(vec3(-0.55, -0.45, 0.7)), H = normalize(L + vec3(0.0, 0.0, 1.0)), n = normalize(vec3(-slope, 1.0));
@@ -47,7 +64,19 @@ void main(){
   vec2 slope = vec2(0.0); float waves = 0.0;
   for (int i = 0; i < ${MAX_WAKE_RINGS}; i++) {
     vec4 r = uRings[i]; float s = uTime - r.z; if (s < 0.0 || s > ${LIFE.toFixed(1)}) continue;
-    vec2 p = vPos - r.xy; float dist = length(p), g = uGrid * r.w;
+    vec2 p = vPos - r.xy; float dist = length(p);
+    if (r.w < 0.0) {
+      // A swell (swellCode): a broad train of crests carried at a set speed and held at its strength the whole way,
+      // fading only as its time runs out, so it reaches the far bank instead of dying a square from where it began.
+      float m = -r.w, speed = floor(m) / 20.0 * uGrid, strong = fract(m), G = uGrid * 1.5, wide = G * 0.36;
+      float away = dist - (s * speed + G * 0.2); if (away > G * 0.35 || away < -wide * 3.0) continue;
+      float held = exp(-pow((away + G * 0.27) / wide, 2.0)) * smoothstep(0.0, 0.2, s) * (1.0 - smoothstep(${(LIFE * SWELL_HOLD).toFixed(2)}, ${LIFE.toFixed(1)}, s)) * (0.4 + 0.8 * strong);
+      held *= smoothstep(0.0, G * 0.1, dist);
+      // (One bold crest and the one behind it: at 20.0 here it was a train of three or four.)
+      waves += held; slope += -held * sin(away * 13.0 / G) * 0.42 * p / max(dist, 0.001);
+      continue;
+    }
+    float g = uGrid * r.w;
     float off = dist - (s * 0.85 + 0.6) * g, wid = g * 0.33; if (off > g * 0.3 || off < -wid * 3.0) continue;
     float env = exp(-pow((off + g * 0.27) / wid, 2.0)) * exp(-s * 1.0) * min(1.0, g * 0.45 / (dist + g * 0.15)) * 1.1;
     env *= smoothstep(0.0, g * 0.1, dist);
@@ -191,7 +220,7 @@ export function createWakeRipples({ PIXI, root, grid = () => 100, render = () =>
   const ready = () => { if (!rings || rings.destroyed) make(); };
   const fitRings = () => {
     const g = ringUniforms.uGrid; let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const r of ringList) { if (time - r.when > LIFE) continue; const R = wakeReach(r.size, g); x0 = Math.min(x0, r.x - R); y0 = Math.min(y0, r.y - R); x1 = Math.max(x1, r.x + R); y1 = Math.max(y1, r.y + R); }
+    for (const r of ringList) { if (time - r.when > LIFE) continue; const R = r.size < 0 ? swellOf(r.size).speed * LIFE * g + g * 2 : wakeReach(r.size, g); x0 = Math.min(x0, r.x - R); y0 = Math.min(y0, r.y - R); x1 = Math.max(x1, r.x + R); y1 = Math.max(y1, r.y + R); }
     if (!Number.isFinite(x0)) return;
     ringPos.set([x0, y0, x1, y0, x1, y1, x0, y1]); rings.geometry.getBuffer('aVertexPosition').update();
   };
@@ -253,6 +282,8 @@ export function createWakeRipples({ PIXI, root, grid = () => 100, render = () =>
       ringUniforms.uRings.set([x, y, time, size], i * 4);
       fitRings(); rings.visible = true; live = LIFE;
     },
+    // A swell: one broad ripple from a place that runs `reach` px before it fades (a giant's weight shaking a pond).
+    swell({ x, y, reach = 300, strength = 1 } = {}) { this.add({ x, y, size: swellCode({ reach, grid: grid(), strength }) }); },
     drive(key, { x, y, size = 1, dir, keep = false }) {
       ready();
       armUniforms.uGrid = grid();

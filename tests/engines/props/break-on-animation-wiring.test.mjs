@@ -87,7 +87,7 @@ test("a fire area melts the thin ice it covers, asked of the GM once for the are
   assert.ok(t.includes('types.includes("fire") && sceneHasThinIce(scene)'), "and only a fire area melts it");
   assert.ok(t.includes('askClaimed({ ask: () => askIceMelt(area, messageId), release: () => propAreas.release(area.templateId, "ice"), wait: CLAIM_SETTLE_MS'),
     "the claim is given back when the GM does not write it");
-  assert.ok(t.includes("return iceMeltOf(scene, area).length === 0;"), "held until the ice this area covers is really melted");
+  assert.ok(t.includes("return iceMeltLeft(scene, area) === 0;"), "held until the ice this area covers is really melted");
   // An area that melts ice and breaks nothing still counts as asked for, or the roll would ask all over again.
-  assert.ok(t.includes("return quenching || lighting || melting;"), "the melt is folded into the early return");
+  assert.ok(t.includes("return quenching || lighting || melting || freezing;"), "the melt is folded into the early return");
 });

@@ -146,7 +146,7 @@ test('wet decorations go darker while the ground is soaked, leafy crowns and wat
   const src = readFileSync(new URL('../../../scripts/engines/motion/decor-paint.mjs', import.meta.url), 'utf8');
   assert.match(src, /if \(o\.wet > 0 && !k\.water && !k\.tree && kind !== 'bush'\)/);
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
-  assert.match(main, /decorations\.wind\(\{ strength: undergroundScene\(\) \? 0 : skyWindNow, angle: skyWindAngle \}\)/);
+  assert.match(main, /decorations\.wind\(\{ strength: undergroundScene\(\) \? 0 : skyWindNow, angle: skyWindAngle, at: gusts\.busy \? decorWindAt : null \}\)/);
 });
 
 test('decorations follow the ground as snow builds or melts, rain soaks in or dries, or the season turns, not only when the clock jumps', () => {

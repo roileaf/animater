@@ -317,6 +317,33 @@ export function iceRefreezeUpdates(region) {
 // is ever deleted — unlike a prop's rubble, thin ice is the region itself, and only its own keys go.
 export const iceRepairUpdates = (regions) => (regions ?? []).flatMap((region) => iceRefreezeUpdates(region));
 
+// ---- cold freezing it ----
+
+// The mark on a region a cold spell made: a sheet of thin ice laid over part of a pond (ice-patch.mjs). It was open
+// water, and Repair takes the whole region away again.
+export const SPELL_ICE = "iceSpell";
+/** The regions a cold spell made, by id, for Repair to delete: the GM's own thin ice is never among them. Pure. */
+export const iceThawIds = (regions) => (regions ?? []).filter((region) => region?.flags?.animater?.[SPELL_ICE] === true).map((region) => region?.id ?? region?._id).filter(Boolean);
+
+/** What a cold area mends. `regions` are [{ id, flags, squares }]: the squares of that thin-ice region the cold covers,
+ *  as square keys. The covered holes and cracks go by name: the ice is whole there again, whether a creature broke it
+ *  or a fire melted it. A region that is not thin ice is left alone (open water freezing is a region of its own:
+ *  ice-patch.mjs). Updates for updateEmbeddedDocuments("Region"); [] when nothing mends. Pure. */
+export function iceFreezeUpdates(regions = []) {
+  const out = [];
+  for (const region of regions ?? []) {
+    const id = region?.id ?? region?._id, own = region?.flags?.animater;
+    if (!id || !thinIceOn(own)) continue;
+    const covered = new Set((region?.squares ?? []).filter((key) => SQUARE_KEY.test(key)));
+    if (!covered.size) continue;
+    const stored = own?.thinIce && typeof own.thinIce === "object" ? own.thinIce : {}, fields = {};
+    for (const key of keysIn(stored.cracks)) if (covered.has(key)) fields[`${ICE_FLAG}.cracks.-=${key}`] = null;
+    for (const key of keysIn(stored.holes)) if (covered.has(key)) fields[`${ICE_FLAG}.holes.-=${key}`] = null;
+    if (Object.keys(fields).length) out.push({ _id: id, ...fields });
+  }
+  return out;
+}
+
 /** What a fire melts. `regions` are [{ id, flags, squares }]: the squares of that region the fire covers, as square keys.
  *  Each becomes a hole stored as MELTED — open water with a slushy edge — and a crack under it goes by name. A square
  *  already open stays the hole it is (a break keeps its own shape), and a region the GM never marked melts nothing.

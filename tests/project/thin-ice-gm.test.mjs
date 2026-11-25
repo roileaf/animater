@@ -101,7 +101,26 @@ const makeScene = () => {
       if (type === "Region") for (const u of updates) { const doc = this.regions.get(u._id); if (doc) { applyUpdate(doc, u); for (const fn of hooks.get("updateRegion") ?? []) { try { fn(doc, { ...u, _id: undefined }, options); } catch { /* another listener's business */ } } } }
       return updates;
     },
-    async deleteEmbeddedDocuments(type, ids, options = {}) { options.parent = this; this.writes.push({ type, deletes: ids, options }); return ids; },
+    async deleteEmbeddedDocuments(type, ids, options = {}) {
+      options.parent = this; this.writes.push({ type, deletes: ids, options });
+      if (type === "Region") for (const id of ids) { const at = this.regions.findIndex((d) => d.id === id); if (at >= 0) { const doc = this.regions[at]; this.regions = collection(this.regions.filter((d) => d !== doc)); for (const fn of hooks.get("deleteRegion") ?? []) { try { fn(doc, options); } catch { /* another listener's business */ } } } }
+      return ids;
+    },
+    // A region made as Foundry makes one, as far as this feature reads it: its shapes as polygons, and a testPoint.
+    async createEmbeddedDocuments(type, datas, options = {}) {
+      options.parent = this; this.writes.push({ type, creates: datas, options });
+      if (type !== "Region") return [];
+      return datas.map((data, n) => {
+        const inRing = (x, y, pts) => { let yes = false; for (let i = 0, j = pts.length - 2; i < pts.length; j = i, i += 2) if (pts[i + 1] > y !== pts[j + 1] > y && x < ((pts[j] - pts[i]) * (y - pts[i + 1])) / (pts[j + 1] - pts[i + 1]) + pts[i]) yes = !yes; return yes; };
+        // Its shapes are read as they are now, so a hole written into it later is a hole.
+        const doc = { ...structuredClone(data), id: `made${this.writes.length}_${n}`, parent: this, behaviors: [],
+          get polygonTree() { const cuts = this.shapes.filter((sh) => sh.hole).map((sh) => ({ isHole: true, points: sh.points, children: [] })); return { children: this.shapes.filter((sh) => !sh.hole).map((sh) => ({ isHole: false, points: sh.points, children: cuts })) }; },
+          testPoint({ x, y }) { return this.shapes.some((sh) => !sh.hole && inRing(x, y, sh.points)) && !this.shapes.some((sh) => sh.hole && inRing(x, y, sh.points)); } };
+        this.regions = collection([...this.regions, doc]); // (its contents are a copy taken as it is made)
+        for (const fn of hooks.get("createRegion") ?? []) { try { fn(doc, options); } catch { /* another listener's business */ } }
+        return doc;
+      });
+    },
     async update() { return this; },
   };
   return s;
@@ -220,4 +239,86 @@ test("a player with the console melts no ice: only the GM writes a region", asyn
     assert.deepEqual(scene.writes.filter((w) => w.type === "Region"), [], "nothing was written");
     assert.deepEqual(iceOf(region).holes ?? {}, {}, "and the ice is whole");
   } finally { game.user.isGM = true; }
+});
+
+// Roi, 2026-11-25: "cold freezing pond", and of mending ice against freezing open water, "both".
+test("a cold area over broken thin ice freezes it over again", async () => {
+  const region = iceRegion({ cracks: { [key(2, 2)]: 1 }, holes: { [key(2, 3)]: 2, [key(5, 5)]: 1 } });
+  setUp([region]);
+  assert.equal(floorAt(2, 3), "water");
+  await api.debug.freezeIce(mid(2, 2), GRID * 1.2);
+  assert.deepEqual(iceOf(region).cracks, {});
+  assert.deepEqual(Object.keys(iceOf(region).holes), [key(5, 5)], "the hole it never reached is still open");
+  assert.equal(floorAt(2, 3), "ice", "and where it froze, the floor holds again");
+});
+
+test("a cold area over open water freezes nothing until the scene says cold freezes water", async () => {
+  const region = iceRegion(undefined, { thin: false });
+  setUp([region]);
+  await api.debug.freezeIce(mid(2, 2), GRID * 1.2);
+  assert.deepEqual(scene.writes.filter((w) => w.type === "Region"), []);
+  assert.equal(floorAt(2, 2), "water");
+});
+
+// The whole pond freezing was built first; Roi, shown it: "Want partial".
+test("with the scene's switch on, a cold area freezes the part of a pond it covers, as a sheet of ice laid over it", async () => {
+  const region = iceRegion(undefined, { thin: false });
+  setUp([region]);
+  scene.flags = { animater: { coldFreezes: true } };
+  try {
+    await api.debug.freezeIce(mid(1, 1), GRID * 1.6);
+    const made = scene.writes.find((w) => w.creates);
+    assert.ok(made, "a region was made");
+    assert.equal(made.creates.length, 1);
+    assert.equal(made.creates[0].flags.animater.iceSpell, true);
+    assert.equal(region.flags.animater.iceThin, false, "the pond itself is not changed");
+    assert.equal(scene.regions.length, 2);
+    assert.equal(floorAt(1, 1), "ice", "under the spell the water holds a creature up");
+    assert.equal(floorAt(5, 5), "water", "and the rest of the pond is the water it was");
+    // The same spell again lays no second sheet.
+    scene.writes.length = 0;
+    await api.debug.freezeIce(mid(1, 1), GRID * 1.6);
+    assert.deepEqual(scene.writes.filter((w) => w.creates), []);
+    // Fire takes its own shape out of the sheet, and the pond shows there again; cold lays ice over it once more.
+    const sheet = scene.regions.find((d) => d.flags.animater.iceSpell === true);
+    await api.debug.meltIce(mid(1, 1), GRID * 0.9);
+    assert.equal(sheet.shapes.filter((sh) => sh.hole).length, 1, "a hole in the sheet's own shape");
+    assert.deepEqual(iceOf(sheet).holes ?? {}, {}, "not a square stored as melted");
+    assert.equal(floorAt(1, 1), "water");
+    assert.equal(floorAt(2, 2), "ice", "the sheet beside the fire still holds");
+    await api.debug.freezeIce(mid(1, 1), GRID * 0.9);
+    assert.equal(floorAt(1, 1), "ice");
+    // A fire over all of it takes the sheets away whole.
+    await api.debug.meltIce(mid(1, 1), GRID * 4);
+    assert.deepEqual(scene.regions.map((d) => d.id), [region.id]);
+    await api.debug.freezeIce(mid(1, 1), GRID * 1.6);
+    assert.equal(scene.regions.length, 2);
+    // Repair takes the sheet away and leaves the pond.
+    await api.debug.repairProps();
+    assert.deepEqual(scene.regions.map((d) => d.id), [region.id]);
+    assert.equal(floorAt(1, 1), "water");
+  } finally { scene.flags = {}; }
+});
+
+test("a lake is frozen where the cold reaches too, however wide it is", async () => {
+  const region = iceRegion(undefined, { thin: false, w: 8100, h: 5000 });
+  setUp([region]);
+  scene.flags = { animater: { coldFreezes: true } };
+  try {
+    await api.debug.freezeIce(mid(40, 30), GRID * 1.6);
+    assert.equal(scene.writes.filter((w) => w.creates).length, 1);
+    assert.equal(floorAt(40, 30), "ice");
+    assert.equal(floorAt(10, 10), "water");
+  } finally { scene.flags = {}; }
+});
+
+test("a river is not frozen", async () => {
+  const region = iceRegion(undefined, { thin: false });
+  region.flags.animater.flowTo = "e";
+  setUp([region]);
+  scene.flags = { animater: { coldFreezes: true } };
+  try {
+    await api.debug.freezeIce(mid(2, 2), GRID * 1.6);
+    assert.deepEqual(scene.writes.filter((w) => w.creates), []);
+  } finally { scene.flags = {}; }
 });

@@ -84,6 +84,31 @@ export function createRingPictures({ PIXI, renderer, most = 512 }) {
   };
 }
 
+/**
+ * How a picture is turned over to make its copy in the water (pure): { x, y } each 1 or -1, and `side` whether the
+ * water lies to a side of it. A mirror image across the water's edge: top to bottom where the water is below or above
+ * it, left to right where it is to a side. (It was first turned over top to bottom and then turned ROUND to point
+ * away from the token, so a creature beside water lay on its side in it and one below water stood the right way up
+ * facing backwards: Roi, 2026-11-25, of his dragon, "fix reflection direction".)
+ */
+export function mirrorFlip(way = { x: 0, y: 1 }) {
+  const side = Math.abs(Number(way?.x) || 0) > Math.abs(Number(way?.y) || 0);
+  return side ? { x: -1, y: 1, side: true } : { x: 1, y: -1, side: false };
+}
+
+/**
+ * How big a token's picture is drawn on the map, in px (pure): how big its mirrored copy must be drawn, since the
+ * copy is that whole picture (given to mirrorOf as `token.drawn`; where the copy lies still goes by its squares).
+ * Its mesh's own size, which holds its art's scale; its squares only when there is no mesh to ask.
+ * (The copy was first given the token's squares. A token whose art is drawn larger than its squares, a dragon at
+ * scale 2 spilling out of its ring, then mirrored at half its size: Roi, 2026-11-25, "why the reflection size doesnt
+ * match the token size?")
+ */
+export function mirrorSize({ w = 0, h = 0, mesh = null } = {}) {
+  const mw = Math.abs(Number(mesh?.width)), mh = Math.abs(Number(mesh?.height));
+  return { w: mw > 0 ? mw : w, h: mh > 0 ? mh : h };
+}
+
 // Where a token's mirrored copy goes one way (pure; `way` down the map unless given). `x`, `y` its middle and `w`, `h` its size in px, `rotation` radians. null: it stands in rough water, or no water lies within its own length of it, so a big creature reflects from further off than a small one.
 // Else { id, x, y (the copy's middle), footX, foot (where the copy starts, on the token's side facing the water), way { x, y } the way it falls, w, h (stretched), rotation, alpha, distance (px, its edge to the nearest water), down (px, its edge to the water along that way), wet (0-1 how much of the copy lands on the water; none: nothing shows) }.
 // The copy runs from that edge and the water cuts it, so the further from the shore, the less of it shows: the head alone, then nothing; and it fades to nothing as it goes.
@@ -99,9 +124,14 @@ export function mirrorOf(token, areas = [], { grid = 100, rough = [], decks = []
   if (distance > tall + w / 2) return null;
   const { wet, down } = copyOnWater(foot, way, w, tall, areas, decks.length ? [...rough, ...decks] : rough), showing = Math.max(0, 1 - down / tall);
   if (wet > 0 && blocked?.({ x: centre.x + way.x, y: centre.y + way.y }, { x: foot.x + way.x * down, y: foot.y + way.y * down })) return null;
-  // The picture's top falls away from the token; a copy running down the map needs no turn.
-  const turn = Math.atan2(way.y, way.x) - Math.PI / 2;
-  return { id: token.id, x: foot.x + way.x * tall / 2, y: foot.y + way.y * tall / 2, footX: foot.x, foot: foot.y, way: { x: way.x, y: way.y }, w, h: tall, rotation: turn - (Number(token.rotation) || 0), alpha: (token.alpha ?? 1) * 0.62 * Math.min(1, showing * 1.6) * Math.min(1, wet * 2.5), distance, down, wet };
+  // The copy is the picture turned over across the water's edge, whichever side the water lies (mirrorFlip): it is
+  // never turned round to point away from the token. Only the token's own turn is carried over, the other way.
+  // Where the copy lies, and how much of it the water takes, go by the creature's own squares: that is where it
+  // stands. How big the copy is drawn goes by its picture (`token.drawn`, mirrorSize), which may be larger than its
+  // squares, about the same middle. (Sized AND placed by the picture, a dragon three squares across with art seven
+  // across had its copy start deep in a four-square pool and run out over the far bank: nothing showed at all.)
+  const sx = token.drawn?.w > 0 && w > 0 ? token.drawn.w / w : 1, sy = token.drawn?.h > 0 && h > 0 ? token.drawn.h / h : 1;
+  return { id: token.id, x: foot.x + way.x * tall / 2, y: foot.y + way.y * tall / 2, footX: foot.x, foot: foot.y, way: { x: way.x, y: way.y }, w: w * sx, h: tall * sy, span: tall, stretch, rotation: 0 - (Number(token.rotation) || 0), alpha: (token.alpha ?? 1) * 0.62 * Math.min(1, showing * 1.6) * Math.min(1, wet * 2.5), distance, down, wet };
 }
 
 // Every copy a token shows (pure): one into each water it reaches, down, up or to a side, so on a bridge both sides show
@@ -303,7 +333,7 @@ export function createWaterMirror({ PIXI, root, glowRoot = null, grid: gridOf = 
     const seen = new Set(), g = gridOf();
     copies = [];
     for (const t of tokens) {
-      const key = `${t.x}|${t.y}|${t.w}|${t.h}|${t.rotation}|${t.alpha}|${t.dry === true}`; seen.add(t.id);
+      const key = `${t.x}|${t.y}|${t.w}|${t.h}|${t.rotation}|${t.alpha}|${t.dry === true}|${Math.round(t.drawn?.w ?? 0)}|${Math.round(t.drawn?.h ?? 0)}`; seen.add(t.id);
       let was = cache.get(t.id);
       if (!was || was.key !== key) { was = { key, spots: mirrorsOf(t, areas, { grid: g, rough, decks, blocked }) }; cache.set(t.id, was); }
       // (`live`: where the token is drawn this very frame, its position object, so the copy keeps up as it glides between these looks.)
@@ -408,13 +438,20 @@ export function createWaterMirror({ PIXI, root, glowRoot = null, grid: gridOf = 
         entry.a += ((entry.want ? c.alpha * (sunny ? 1 : 0.75) : 0) - entry.a) * ease;
         if (!entry.want && entry.a < 0.004) { s.visible = false; spare.push(s); live.delete(key); continue; }
         s.alpha = entry.a;
-        const w = mirrorWobble(time, c.phase, wind), tall = c.h * w.stretch;
-        s.skew.x = w.skew;
-        s.scale.set(c.w / Math.max(1, c.texture.width), -tall / Math.max(1, c.texture.height));
+        const w = mirrorWobble(time, c.phase, wind), tall = c.h * w.stretch, flip = mirrorFlip(c.way), tw = Math.max(1, c.texture.width), th = Math.max(1, c.texture.height);
+        // Turned over across the water's edge, and drawn out a little the way it falls: down its height where the
+        // water is above or below, along its width where the water is to a side. It sways the same way.
+        if (flip.side) { const k = c.stretch > 0 ? c.stretch : 1; s.skew.x = 0; s.skew.y = w.skew; s.scale.set((flip.x * c.w * k * w.stretch) / tw, (flip.y * c.h) / k / th); }
+        else { s.skew.x = w.skew; s.skew.y = 0; s.scale.set((flip.x * c.w) / tw, (flip.y * tall) / th); }
+        // Its middle lies half the creature's own copy from the water's edge (`span`), however big its picture is
+        // drawn about that middle. (Set half the PICTURE's length out instead, a dragon whose art is drawn far larger
+        // than its squares mirrored on the far side of its pool, with open water between it and its own reflection:
+        // Roi, 2026-11-25, "shouldnt the reflection start from water edge?")
+        const span = (c.span ?? c.h) * w.stretch;
         // The lean swings about its middle: moved back so that it stays at their feet.
-        const lean = Math.sin(w.skew) * (tall / 2), way = c.way ?? { x: 0, y: 1 };
+        const lean = Math.sin(w.skew) * (span / 2), way = c.way ?? { x: 0, y: 1 };
         const dx = c.live ? (Number(c.live.x) || 0) - c.fromX : 0, dy = c.live ? (Number(c.live.y) || 0) - c.fromY : 0;
-        s.position.set(c.footX + dx + way.x * tall / 2 + way.y * lean, c.foot + dy + way.y * tall / 2 - way.x * lean);
+        s.position.set(c.footX + dx + way.x * span / 2 + way.y * lean, c.foot + dy + way.y * span / 2 - way.x * lean);
       }
     },
     clear() { dropAll(); areas = []; rough = []; decks = []; box = null; tokens = []; lampsNow = []; moonNow = null; copies = []; tilesNow = []; tileCopies = []; cache.clear(); lightDirty = true; viewKey = ''; },

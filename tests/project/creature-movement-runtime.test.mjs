@@ -21,6 +21,7 @@ function host({ tremorOn = false } = {}) {
     game: { settings: { get: () => 1 }, modules: new Map() }, Hooks: { callAll: (hook, shape) => shapes.push(shape) },
     setTimeout: (fn) => timers.push(fn), cameraShake: { tremor: (step) => tremors.push(step) },
     ceilingDustOn: () => false, underCeiling: () => false, ceilingDust: { fall: () => {} },
+    heardStepsOn: () => false, markHeardStep: () => {}, giantFlies: () => {}, giantsScareOn: () => false, noiseScares: () => {}, giantRipplesOn: () => false, shakeWaters: () => {},
     canvas: { grid: { size: 100 }, dimensions: { distance: 5 }, scene: { id: 'test' },
       sounds: { playAtPosition: (file, where, reach, options) => {
         played.push({ file, options }); return { sourceNode: { playbackRate: { value: 1 } } };

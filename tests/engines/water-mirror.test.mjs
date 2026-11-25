@@ -151,7 +151,7 @@ test('each water within reach shows its own copy; wading, only the one down the 
   const pier = [1250, 900, 1350, 900, 1350, 1300, 1250, 1300];
   assert.deepEqual(mirrorsOf(token({ x: 1300, y: 1200 }), [pond], { grid: 100, decks: [pier] }).map((s) => s.dir).sort(), [0, 2, 3]);
   const side = mirrorsOf(token({ x: 950, y: 1300 }), [pond], { grid: 100 })[0];
-  assert.equal(side.footX, 1000, 'from the edge facing the water'); assert.ok(Math.abs(side.rotation + Math.PI / 2) < 1e-9, 'its top away from them');
+  assert.equal(side.footX, 1000, 'from the edge facing the water'); assert.equal(side.rotation, 0, 'turned over across the bank, never turned on its side');
 });
 
 // (Sampled in strips, a copy's strength steps a little; the layer eases every change over half a second.)
@@ -452,4 +452,83 @@ test('dripping pools mirror on any floor; plain ground, the sea, falls and swift
   assert.equal(waterStillness({ reflections: 'off', drips: true }, false), 'rough');
   assert.equal(waterStillness({ reflections: 'off' }, false), null, 'no water at all');
   assert.equal(waterStillness({ reflections: '' }, true), 'calm');
+});
+
+// Roi, 2026-11-25, of his Blue Dragon beside a pool: "why the reflection size doesnt match the token size?" The copy
+// was given the token's squares; a token whose art is drawn bigger than its squares (scale 2, spilling out of its
+// ring) then mirrored at half its size.
+test('a token mirrors as big as its picture is drawn, not as big as its squares', async () => {
+  const { mirrorSize, mirrorOf } = await import('../../scripts/engines/motion/water-mirror.mjs');
+  const { readFileSync } = await import('node:fs');
+  assert.deepEqual(mirrorSize({ w: 300, h: 300, mesh: { width: 777, height: 777 } }), { w: 777, h: 777 }, 'three squares, drawn at more than twice that');
+  assert.deepEqual(mirrorSize({ w: 100, h: 100, mesh: { width: 100, height: 100 } }), { w: 100, h: 100 }, 'an ordinary token is unchanged');
+  assert.deepEqual(mirrorSize({ w: 100, h: 100, mesh: { width: -100, height: 100 } }), { w: 100, h: 100 }, 'a mirrored token\'s width is still a width');
+  assert.deepEqual(mirrorSize({ w: 200, h: 100, mesh: null }), { w: 200, h: 100 }, 'no mesh to ask: its squares');
+  assert.deepEqual(mirrorSize({ w: 200, h: 100, mesh: { width: 0, height: NaN } }), { w: 200, h: 100 });
+  // Roi's scene: a round pool four squares across, the dragon three squares across standing just west of it.
+  const pool = []; for (let i = 0; i < 48; i++) { const a = (i / 48) * Math.PI * 2; pool.push(3400 + Math.cos(a) * 200, 1100 + Math.sin(a) * 200); }
+  const dragon = { id: 't', x: 3050, y: 1050, w: 300, h: 300, rotation: 0, alpha: 1 }, east = { x: 1, y: 0 };
+  const plain = mirrorOf(dragon, [pool], { grid: 100, way: east }), scaled = mirrorOf({ ...dragon, drawn: mirrorSize({ w: 300, h: 300, mesh: { width: 777, height: 777 } }) }, [pool], { grid: 100, way: east });
+  assert.ok(plain && scaled);
+  // Drawn as big as its picture...
+  assert.ok(Math.abs(scaled.w - 777) < 1e-6, `${scaled.w}`); assert.ok(scaled.h > 777, 'and a little stretched, as every copy is');
+  assert.equal(plain.w, 300);
+  // ...but lying where the creature's own copy lies, and as much on the water. (Placed by the picture as well, the
+  // first fix, it began deep in the pool and ran out over the far bank: 7% of it on water, and "now it doesnt show
+  // reflection at all".)
+  assert.deepEqual({ x: scaled.x, y: scaled.y, footX: scaled.footX, foot: scaled.foot }, { x: plain.x, y: plain.y, footX: plain.footX, foot: plain.foot });
+  assert.equal(scaled.wet, plain.wet); assert.equal(scaled.alpha, plain.alpha);
+  assert.ok(scaled.wet > 0.5 && scaled.alpha > 0.4, `it shows: ${scaled.wet} wet, ${scaled.alpha}`);
+  // And its middle is set half the creature's OWN copy from the water's edge, not half its picture's: `span`.
+  // (Half the picture's length out, the dragon mirrored on the far side of its pool, open water between it and its
+  // reflection: "shouldnt the reflection start from water edge?")
+  assert.equal(scaled.span, plain.h, 'the length of the creature\'s own copy');
+  assert.equal(plain.span, plain.h);
+  assert.ok(scaled.h > scaled.span * 2);
+  const src = readFileSync(new URL('../../scripts/engines/motion/water-mirror.mjs', import.meta.url), 'utf8');
+  assert.match(src, /const span = \(c\.span \?\? c\.h\) \* w\.stretch;/);
+  assert.match(src, /s\.position\.set\(c\.footX \+ dx \+ way\.x \* span \/ 2 \+ way\.y \* lean, c\.foot \+ dy \+ way\.y \* span \/ 2 - way\.x \* lean\);/);
+  const draws = src.slice(src.indexOf('const span = (c.span ?? c.h) * w.stretch;'));
+  assert.ok(!/way\.x \* tall \/ 2/.test(draws.slice(0, 700)), 'the sprite is not placed by its drawn length');
+  const main = readFileSync(new URL('../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /w: pic\?\.w \?\? t\.w, h: pic\?\.h \?\? t\.h, rotation: mirrorTokenTurn\(t\.document\), alpha: t\.mesh\.alpha, drawn: pic \? null : mirrorSize\(\{ w: t\.w, h: t\.h, mesh: t\.mesh \}\) \};/);
+  assert.match(main, /mix\(t\.w\); mix\(t\.h\); mix\(m\.width\); mix\(m\.height\);/, 'and a change of scale is noticed at once');
+});
+
+// Roi, 2026-11-25, of his dragon standing below a pool, mirrored the right way up and facing backwards (and, beside
+// a pool, lying on its side in it): "fix reflection direction".
+test('a reflection is a mirror image across the water\'s edge, whichever side the water lies', async () => {
+  const { mirrorFlip, mirrorOf, createWaterMirror } = await import('../../scripts/engines/motion/water-mirror.mjs');
+  // Water below or above: turned over top to bottom. To either side: left to right. Never both, which is a half turn.
+  assert.deepEqual(mirrorFlip({ x: 0, y: 1 }), { x: 1, y: -1, side: false });
+  assert.deepEqual(mirrorFlip({ x: 0, y: -1 }), { x: 1, y: -1, side: false }, 'water above it: the same, not turned round as well');
+  assert.deepEqual(mirrorFlip({ x: 1, y: 0 }), { x: -1, y: 1, side: true });
+  assert.deepEqual(mirrorFlip({ x: -1, y: 0 }), { x: -1, y: 1, side: true });
+  // No turn is added for the side the water is on: only the token's own, carried over the other way.
+  const pool = [0, 0, 3000, 0, 3000, 3000, 0, 3000], hole = [1000, 1000, 2000, 1000, 2000, 2000, 1000, 2000], lake = Object.assign(pool, { holes: [hole] });
+  const island = { id: 't', x: 1500, y: 1500, w: 100, h: 100, alpha: 1, dry: true };
+  for (const way of [{ x: 0, y: 1 }, { x: 0, y: -1 }, { x: 1, y: 0 }, { x: -1, y: 0 }]) {
+    const at = { ...island, x: 1500 + way.x * 440, y: 1500 + way.y * 440 };
+    const plain = mirrorOf({ ...at, rotation: 0 }, [lake], { grid: 100, way }), turned = mirrorOf({ ...at, rotation: 0.5 }, [lake], { grid: 100, way });
+    assert.ok(plain && turned, `${way.x},${way.y}`);
+    assert.equal(plain.rotation, 0, `${way.x},${way.y}: not turned`);
+    assert.equal(turned.rotation, -0.5);
+    assert.equal(plain.stretch, 1.12);
+  }
+  // Drawn so: the sprite's own scale carries the turning over.
+  const sprites = [];
+  class Sprite { constructor(t) { this.texture = t; this.alpha = 1; this.rotation = 0; this.anchor = { set() {} }; this.scale = { x: 1, y: 1, set(x, y) { this.x = x; this.y = y; } }; this.position = { set() {} }; this.skew = { x: 0, y: 0 }; sprites.push(this); } }
+  const PIXI = { Container: class { addChild() {} addChildAt() {} destroy() {} }, Graphics: class { clear() {} beginFill() {} drawPolygon() {} endFill() {} beginHole() {} endHole() {} }, Sprite, Mesh: class { constructor(g) { this.geometry = g; } }, Geometry: class { addAttribute() { return this; } addIndex() { return this; } getBuffer() { return { update() {} }; } }, Buffer: class {}, Shader: { from: () => ({}) } };
+  const mirror = createWaterMirror({ PIXI, root: () => ({ addChild() {} }), grid: () => 100 });
+  mirror.water([lake]);
+  const texture = { width: 200, height: 200, valid: true };
+  mirror.look({ tokens: [{ ...island, id: 'south', x: 1500, y: 1940, texture }, { ...island, id: 'east', x: 1940, y: 1500, texture }], lamps: [], moon: null, sunny: true });
+  for (let i = 0; i < 60; i++) mirror.tick(0.05, { view: { x: 0, y: 0, w: 3000, h: 3000 }, wind: 0 });
+  const shown = sprites.filter((s) => s.alpha > 0.05);
+  assert.ok(shown.length >= 2, `${shown.length} copies drawn`);
+  const overTopToBottom = shown.filter((s) => s.scale.x > 0 && s.scale.y < 0), overSideToSide = shown.filter((s) => s.scale.x < 0 && s.scale.y > 0);
+  assert.ok(overTopToBottom.length >= 1, 'the one with water below it');
+  assert.ok(overSideToSide.length >= 1, 'the one with water beside it');
+  assert.ok(shown.every((s) => s.rotation === 0), 'none turned round or laid on its side');
+  assert.ok(shown.every((s) => !(s.scale.x < 0 && s.scale.y < 0)), 'none turned over both ways');
 });
