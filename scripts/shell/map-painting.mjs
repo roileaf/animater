@@ -729,9 +729,9 @@ export function createMapPainting(ctx) {
         try { await Picker.createDirectory("data", folder, { notify: false }); } catch { /* there already */ }
         const saved = (await Picker.upload("data", folder, new File([blob], `lifted-${canvas.scene.id}-${Date.now().toString(36)}.webp`, { type: "image/webp" }), {}, { notify: false }))?.path;
         if (!saved) throw new Error("the cut picture could not be saved");
-        const level = canvas.level, data = liftTileData({ src: saved, scene: at.scene, stands: brushChoices().liftStands, tree: brushChoices().liftTree, per: Number(canvas.grid?.distance) || 5, levelId: level?.id ?? null, elevation: Number(level?.elevation?.base ?? level?.elevation?.bottom) || 0 });
+        const level = canvas.level, data = liftTileData({ src: saved, scene: at.scene, stands: brushChoices().liftStands, tree: brushChoices().liftTree, breaks: brushChoices().liftBreaks, per: Number(canvas.grid?.distance) || 5, levelId: level?.id ?? null, elevation: Number(level?.elevation?.base ?? level?.elevation?.bottom) || 0 });
         const [made] = await canvas.scene.createEmbeddedDocuments("Tile", [data]);
-        if (made) { rememberDecorStep({ kind: "tile", id: made.id, data: made.toObject() }); ui.notifications?.info?.("Animater: lifted. It stands on the map as a tile now; Ctrl+Z puts it back in the picture."); }
+        if (made) { rememberDecorStep({ kind: "tile", id: made.id, data: made.toObject() }); ui.notifications?.info?.(`Animater: lifted. It stands on the map as a tile now; Ctrl+Z puts it back in the picture.${data.flags.animater.prop && canvas.scene.flags?.animater?.breakableProps !== true ? " Breakable props is off for this scene: it breaks once that is on (Scene configuration → Animater)." : ""}`); }
       } catch (err) { console.warn("Animater | lift from map", err); ui.notifications?.warn?.(`Animater: that could not be lifted (${err?.message ?? err}).`); }
       finally { lf.busy = false; }
     };

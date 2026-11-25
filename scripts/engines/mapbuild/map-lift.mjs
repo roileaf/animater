@@ -20,6 +20,13 @@ export const LIFT_CHOICES = Object.freeze([['flat', 'Flat'], ['low', 'Low'], ['w
  */
 export const LIFT_GROWS = Object.freeze(['bush', 'tree']);
 export const LIFT_TREES = Object.freeze([['broadleaf', 'Broadleaf'], ['pine', 'Pine'], ['spruce', 'Spruce'], ['palm', 'Palm'], ['birch', 'Birch'], ['blossom', 'Blossom'], ['bare', 'Bare'], ['willow', 'Willow']]);
+/**
+ * What a lifted thing is made of, said as it is lifted (the brush's Breaks): that is what makes a tile break (props/
+ * prop-material.mjs), and a piece cut from the map has no name for it to be guessed from. Won't says nothing, which
+ * leaves it to the region it stands in (props/lifted-props.mjs). A bush or a tree only ever burns.
+ */
+export const LIFT_BREAKS = Object.freeze([['no', "Won't"], ['wood', 'Wood'], ['stone', 'Stone'], ['metal', 'Metal'], ['clay', 'Clay'], ['glass', 'Glass']]);
+export const LIFT_BURNS = Object.freeze([['no', "Won't"], ['plant', 'Burns']]);
 /** The most pixels a side a cut picture is kept at: bigger is scaled down, since it is laid at its own size anyway. */
 export const LIFT_MOST = 2048;
 
@@ -92,13 +99,16 @@ export function cutPixels(rgba, cw, ch, mask, mw, mh, box) {
  * The tile a lifted thing is laid as (pure): its picture, where it was painted, and told to stand as an object so the
  * engines take it (flags.animater.sunlight: 'prop'), as tall as `stands` says in the scene's own units (`per` to a
  * square). One that grows (LIFT_GROWS) is told to be a tree instead (sunlight: 'tree', sunTree: its kind `tree`). A tile's place is its middle. `levelId` the level it is on, `elevation` that level's floor.
+ * `breaks` what it is made of (LIFT_BREAKS; one that grows is a plant whichever was picked): written as the tile's own
+ * material, so it breaks. Won't, or nothing, writes none.
  */
-export function liftTileData({ src, scene, stands = 'waist', tree = 'broadleaf', per = 5, levelId = null, elevation = 0 } = {}) {
+export function liftTileData({ src, scene, stands = 'waist', tree = 'broadleaf', per = 5, levelId = null, elevation = 0, breaks = 'no' } = {}) {
   if (typeof src !== 'string' || !src || !(scene?.width > 0) || !(scene?.height > 0)) return null;
   const high = LIFT_STANDS[stands] ?? LIFT_STANDS.waist, grows = LIFT_GROWS.includes(stands), kind = LIFT_TREES.some(([k]) => k === tree) ? tree : 'broadleaf';
+  const said = breaks !== 'no' && (LIFT_BREAKS.some(([k]) => k === breaks) || (grows && breaks === 'plant')), material = said ? (grows ? 'plant' : breaks) : null;
   return {
     texture: { src, anchorX: 0.5, anchorY: 0.5 }, x: Math.round(scene.x + scene.width / 2), y: Math.round(scene.y + scene.height / 2), width: Math.round(scene.width), height: Math.round(scene.height), rotation: 0,
     elevation: Number(elevation) || 0, ...(levelId ? { levels: [levelId] } : {}),
-    flags: { animater: { sunlight: grows ? 'tree' : 'prop', ...(grows ? { sunTree: kind } : {}), sunHeight: +(high * (Number(per) || 5)).toFixed(2), lifted: true } },
+    flags: { animater: { sunlight: grows ? 'tree' : 'prop', ...(grows ? { sunTree: kind } : {}), sunHeight: +(high * (Number(per) || 5)).toFixed(2), lifted: true, ...(material ? { prop: { material } } : {}) } },
   };
 }

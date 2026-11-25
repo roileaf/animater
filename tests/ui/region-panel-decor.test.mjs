@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { moreSections, panelSections, summaryOf } from '../../scripts/ui/region-panel-model.mjs';
+import { decorSummary, moreSections, panelSections, summaryOf } from '../../scripts/ui/region-panel-model.mjs';
 import { SECTIONS } from '../../scripts/ui/region-panel-sections.mjs';
 import { decorSettings } from '../../scripts/engines/motion/decor-regions.mjs';
 
@@ -220,4 +220,38 @@ test('Shift+wheel turns what the brush lays; a turned stamp keeps its whole turn
 test("the Decorations can break tip names the indoor and water things that break too", () => {
   const src = readFileSync(new URL("../../scripts/ui/region-panel-sections.mjs", import.meta.url), "utf8"), line = src.split(/\r?\n/).find((l) => l.includes("toggle('Decorations can break'"));
   for (const w of ["bookshelves", "beds", "thrones", "statues", "rowboats", "mooring posts", "cattails"]) assert.ok(line.includes(w), w);
+});
+
+// Roi: a thing lifted from the map "should be considered as a decoration to be set as breakable".
+test('a region with lifted things in it offers Decorations can break without any decorations of its own', () => {
+  fakeDom();
+  const acts = [], doc = { parent: { flags: { animater: { breakableProps: true } } } };
+  const c = (decor, lifted) => ({ own: decor ? { decor } : {}, act: (f) => acts.push(f), doc, repairDecor: () => {}, lifted: () => lifted });
+  const label = (parts) => parts.flatMap((p) => [...walk(p)]).map((n) => n.attrs?.['aria-label']).filter(Boolean);
+  // None lifted, decorations off: only the Decorations switch, as ever.
+  assert.deepEqual(label(SECTIONS.decor(c(null, 0))), ['Decorations']);
+  // Lifted things: the break switch too, and none of the scatter's own rows.
+  let parts = SECTIONS.decor(c(null, 3));
+  assert.deepEqual(label(parts), ['Decorations', 'Decorations can break']);
+  assert.ok(findIn(parts, (n) => /^3 things lifted from the map stand here/.test(n.textContent ?? '')));
+  assert.ok(findIn(SECTIONS.decor(c(null, 1)), (n) => /^1 thing lifted from the map stands here/.test(n.textContent ?? '')));
+  findIn(parts, (n) => n.attrs?.['aria-label'] === 'Decorations can break').listeners.click[0]({});
+  assert.deepEqual(acts.pop(), { decor: { canBreak: true } });
+  // On: how they break, and no Repair decorations (a lifted thing is a tile: the scene's Repair mends it).
+  parts = SECTIONS.decor(c({ canBreak: true }, 3));
+  assert.ok(label(parts).includes('Material'));
+  assert.equal(findIn(parts, (n) => n.textContent === 'Repair decorations'), undefined);
+  assert.equal(findIn(parts, (n) => n.attrs?.['aria-label'] === 'How dense'), undefined);
+  // The section shows, and says so, once it is on.
+  assert.ok(panelSections('indoors', { decor: { canBreak: true } }).some((s) => s.id === 'decor'));
+  assert.equal(summaryOf('decor', { decor: { canBreak: true } }), 'Lifted things break');
+  assert.equal(summaryOf('decor', { decor: { on: false } }), 'None');
+  assert.match(read('scripts/ui/region-panel.mjs'), /const c = \{[^\n]*\blifted\b/);
+  // Its heading counts them, and the section shows for any kind of region that has some.
+  assert.equal(decorSummary({}, 0), 'None');
+  assert.equal(decorSummary({}, 3), '3 lifted');
+  assert.equal(decorSummary({ decor: { canBreak: true } }, 3), '3 lifted, can break');
+  assert.equal(decorSummary({ decor: { on: true, kinds: { rock: {} } } }, 2), 'Outdoors, 1 kind, 2 lifted');
+  assert.match(read('scripts/ui/region-panel.mjs'), /liftedHere && kind !== 'none' \? \[\.\.\.added, 'decor'\] : \[\.\.\.added\]/);
+  assert.match(read('scripts/ui/region-panel.mjs'), /s\.id === 'decor' \? decorSummary\(own, liftedHere\) : s\.summary/);
 });

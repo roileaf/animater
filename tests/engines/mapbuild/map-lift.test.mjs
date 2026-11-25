@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { LIFT_CHOICES, LIFT_GROWS, LIFT_MOST, LIFT_STANDS, LIFT_TREES, cutPixels, liftMask, liftPlaces, liftTileData, maskBox, roomyBox } from '../../../scripts/engines/mapbuild/map-lift.mjs';
+import { LIFT_BREAKS, LIFT_BURNS, LIFT_CHOICES, LIFT_GROWS, LIFT_MOST, LIFT_STANDS, LIFT_TREES, cutPixels, liftMask, liftPlaces, liftTileData, maskBox, roomyBox } from '../../../scripts/engines/mapbuild/map-lift.mjs';
 
 const blob = (w, h, x0, y0, x1, y1) => { const m = new Uint8Array(w * h); for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) m[y * w + x] = 1; return m; };
 
@@ -100,4 +100,26 @@ test('Map painting lifts on a click, and a lift can be taken back and put back',
   // Lifting has the tab to itself: no kinds, no brush, no density beside it.
   assert.match(bar, /if \(lifting\) \{\s+row\.append\(seg\('It stands'/);
   assert.match(bar, /lift: remembered\.lift === true, liftStands:/);
+});
+
+// Roi: "lets also add option to auto set it as breakable in the brush bar".
+test('a thing lifted with Breaks set is made of that, and so breaks; left at Won\'t it is given no material', async () => {
+  const { MATERIALS } = await import('../../../scripts/engines/props/prop-material.mjs');
+  const at = { x: 0, y: 0, width: 100, height: 100 };
+  assert.deepEqual(LIFT_BREAKS.map(([k]) => k), ['no', 'wood', 'stone', 'metal', 'clay', 'glass']);
+  for (const [k] of LIFT_BREAKS.slice(1)) assert.ok(MATERIALS.includes(k), k);
+  assert.deepEqual(LIFT_BURNS.map(([k]) => k), ['no', 'plant']);
+  assert.deepEqual(liftTileData({ src: 'a.webp', scene: at, stands: 'waist', breaks: 'clay' }).flags.animater.prop, { material: 'clay' });
+  // Nothing written for Won't, so the region it stands in can still say (lifted-props.mjs).
+  for (const breaks of ['no', '', undefined, 'nonsense', 'none']) assert.equal('prop' in liftTileData({ src: 'a.webp', scene: at, breaks }).flags.animater, false, String(breaks));
+  // A bush or a tree burns, whatever was picked for the things beside it.
+  assert.deepEqual(liftTileData({ src: 'a.webp', scene: at, stands: 'bush', breaks: 'stone' }).flags.animater.prop, { material: 'plant' });
+  assert.deepEqual(liftTileData({ src: 'a.webp', scene: at, stands: 'tree', breaks: 'plant' }).flags.animater.prop, { material: 'plant' });
+  assert.equal('prop' in liftTileData({ src: 'a.webp', scene: at, stands: 'tree', breaks: 'no' }).flags.animater, false);
+  assert.equal('prop' in liftTileData({ src: 'a.webp', scene: at, stands: 'tall', breaks: 'plant' }).flags.animater, false, 'an object is not a plant');
+  const bar = readFileSync(new URL('../../../scripts/ui/decor-brush-bar.mjs', import.meta.url), 'utf8');
+  assert.match(bar, /seg\('Breaks', grows \? LIFT_BURNS : LIFT_BREAKS,/);
+  assert.match(bar, /liftBreaks: LIFT_BREAKS\.some\(\(\[k\]\) => k === remembered\.liftBreaks\) \? remembered\.liftBreaks : 'no',/);
+  const shell = readFileSync(new URL('../../../scripts/shell/map-painting.mjs', import.meta.url), 'utf8');
+  assert.match(shell, /tree: brushChoices\(\)\.liftTree, breaks: brushChoices\(\)\.liftBreaks,/);
 });

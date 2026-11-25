@@ -258,6 +258,7 @@ import { lightAround, litKey, litPreset, lightDance } from "./engines/playback/s
 import { WINDOW_PATTERN, patternScaleOf, shaftOf, GLAZED, skyWindowOf, duskOf, sunsetTint, eraseRooms, openRooms, wallShadowQuads, wallShadowReach, shadeAcross, createWallShadows, wallSpan, windowShafts, createWindowShafts, windowGlows, createWindowGlow, windowFlashes, windowsFacing, keepToSight } from "./engines/motion/wall-shadows.mjs";
 import { tileSunlight, tileHeight, tileLeaves, solidShare, leafShare, canopyFall, directSun, createCanopyLight, createTreeSway } from "./engines/motion/canopy-light.mjs";
 import { tileProps, propMiddle, PROP_CHOICE } from "./engines/motion/tile-props.mjs";
+import { liftedPropUpdate } from "./engines/props/lifted-props.mjs";
 import { greenShare, reliefPixels, shineShare, SHINES_ENOUGH, underConditions } from "./engines/motion/decor-from-art.mjs";
 import { createCovers } from "./engines/motion/roof-cover.mjs";
 import { TREE_KINDS, createTreePatterns, treeKindOf } from "./engines/motion/tree-kinds.mjs";
@@ -4604,7 +4605,31 @@ const outlinePanelRegion = (doc) => {
   g.eventMode = "none"; canvas.interface.addChild(g); panelOutline = g;
 };
 Hooks.on("canvasTearDown", () => { panelOutline = null; });
-const regionPanel = createRegionPanel({ brush: (doc) => startDecorBrush(doc), repairDecor: (doc) => repairDecorRegionAsk(doc), refreezeIce: (doc) => refreezeIceAsk(doc), cliffWalls: { get: () => heightsSceneOn("walls"), set: (on) => void canvas.scene?.update({ [`flags.${ID}.cliffWalls`]: on }) }, addCrossing: (kind) => { startDecorBrush(); decorBrushing?.bar?.setCrossing?.(kind); }, cliffView: { get: () => (cliffsTopDown() ? "topdown" : "side"), set: (v) => void canvas.scene?.update({ [`flags.${ID}.cliffView`]: v === "topdown" ? "topdown" : "side" }) }, shows: outlinePanelRegion, flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, fireSpreads: () => canvas.scene?.flags?.[ID]?.fireSpreads === true, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]), configure: (doc) => doc.sheet?.render({ force: true }), remove: (doc) => doc.deleteDialog?.(), confirm: (text) => foundry.applications.api.DialogV2.confirm({ window: { title: "Animater: None" }, content: `<p>${foundry.utils.escapeHTML?.(text) ?? text}</p>`, rejectClose: false }).then((yes) => yes === true) });
+// The things lifted from the map (engines/mapbuild/map-lift.mjs) that stand in a region: each by its middle.
+const liftedMiddle = (d) => { const mid = tileMiddle(tileRectOf(d)); return { x: mid.x, y: mid.y, elevation: Number(d.elevation) || 0 }; };
+const liftedIn = (region) => { const out = []; for (const d of region?.parent?.tiles ?? []) { if (d.flags?.[ID]?.lifted !== true) continue; try { if (region.testPoint(liftedMiddle(d))) out.push(d); } catch { /* a broken tile never breaks the rest */ } } return out; };
+// They break with that region's decorations (engines/props/lifted-props.mjs): its break options are written onto each
+// tile, by the one GM who does such writing, a moment after a tile or a region changes. A tile's own choice is left alone.
+const syncLiftedProps = async () => {
+  try {
+    const scene = canvas?.scene;
+    if (!canvas?.ready || !scene || game.users?.activeGM?.id !== game.user?.id) return;
+    const things = scene.tiles.filter((d) => d.flags?.[ID]?.lifted === true); if (!things.length) return;
+    const regions = scene.regions.filter((r) => r.flags?.[ID]?.decor?.canBreak === true), updates = [];
+    for (const d of things) {
+      const at = liftedMiddle(d), region = regions.find((r) => { try { return r.testPoint(at) === true; } catch { return false; } });
+      const update = liftedPropUpdate(d, region?.flags?.[ID]?.decor ?? null);
+      if (update) updates.push({ _id: d.id, ...update });
+    }
+    if (updates.length) await scene.updateEmbeddedDocuments("Tile", updates, { render: false });
+  } catch (err) { console.warn("Animater | lifted things and their region", err); }
+};
+let liftedTimer = null;
+const liftedSoon = () => { clearTimeout(liftedTimer); liftedTimer = setTimeout(() => { liftedTimer = null; void syncLiftedProps(); }, 250); };
+// (Not for a write that only stores a decoration's break: that changes nothing a lifted thing takes.)
+for (const hook of ["createTile", "updateTile", "createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options) => { if (first?.parent === canvas?.scene && !quietSave(first, changes, options)) liftedSoon(); });
+Hooks.on("canvasReady", () => { liftedSoon(); });
+const regionPanel = createRegionPanel({ brush: (doc) => startDecorBrush(doc), repairDecor: (doc) => repairDecorRegionAsk(doc), lifted: (doc) => liftedIn(doc).length, refreezeIce: (doc) => refreezeIceAsk(doc), cliffWalls: { get: () => heightsSceneOn("walls"), set: (on) => void canvas.scene?.update({ [`flags.${ID}.cliffWalls`]: on }) }, addCrossing: (kind) => { startDecorBrush(); decorBrushing?.bar?.setCrossing?.(kind); }, cliffView: { get: () => (cliffsTopDown() ? "topdown" : "side"), set: (v) => void canvas.scene?.update({ [`flags.${ID}.cliffView`]: v === "topdown" ? "topdown" : "side" }) }, shows: outlinePanelRegion, flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, fireSpreads: () => canvas.scene?.flags?.[ID]?.fireSpreads === true, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]), configure: (doc) => doc.sheet?.render({ force: true }), remove: (doc) => doc.deleteDialog?.(), confirm: (text) => foundry.applications.api.DialogV2.confirm({ window: { title: "Animater: None" }, content: `<p>${foundry.utils.escapeHTML?.(text) ?? text}</p>`, rejectClose: false }).then((yes) => yes === true) });
 Hooks.on("updateRegion", (doc, change) => { const flags = change?.flags?.[ID]; if (flags && "step" in flags) refreshStepsWindow(doc.id); });
 // With a region's panel open, a left-drag inside that region moves it: its outline follows the pointer, and on letting go the
 // region is moved by as much (its decorations, heights and crossings go with it, by their own hooks). Shift lays it off the grid.

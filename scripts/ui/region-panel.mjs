@@ -2,7 +2,7 @@
 // is (its kind), then only the sections that kind uses, each folded to a one-line summary until opened. Every control
 // saves to the region's flags at once, which reach every screen. What each section holds: region-panel-sections.mjs.
 
-import { REGION_KINDS, regionKindOf, kindFlags, panelSections, moreSections, shownFloorOf, hasRoof, setRoof } from './region-panel-model.mjs';
+import { REGION_KINDS, regionKindOf, kindFlags, panelSections, moreSections, decorSummary, shownFloorOf, hasRoof, setRoof } from './region-panel-model.mjs';
 import { stepTabs, titled } from './region-steps-ui.mjs';
 import { SECTIONS, element, button, icon } from './region-panel-sections.mjs';
 import { floated } from './float-panel.mjs';
@@ -17,10 +17,11 @@ const FLOOR_ICONS = Object.freeze({ cavern: 'fa-gem', lava: 'fa-fire', water: 'f
  * `presets()` the Tokenshade look names, `weathers()` [[id, label]], `confirm(text)` a yes or no (a promise) before None
  * takes a region's settings away, `configure(doc)` Foundry's own configuration of the region (a cog by the close button),
  * `remove(doc)` deletes it (a trash can by the cog; Foundry's own question first).
+ * `lifted(doc)` how many things lifted from the map stand in the region (they break with its decorations).
  * `shows(doc | null)` hears which region it shows now (null once closed), to outline it on the map.
  * Its heading drags it about the screen; it stays where it is put until it closes.
  */
-export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, set: setRoof }, texture = () => false, season = () => false, fireSpreads = () => false, presets = () => [], weathers = () => [], confirm = async () => true, configure = null, remove = null, shows = () => {}, brush = null, repairDecor = null, refreezeIce = null, cliffWalls = null, addCrossing = null, cliffView = null }) {
+export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, set: setRoof }, texture = () => false, season = () => false, fireSpreads = () => false, presets = () => [], weathers = () => [], confirm = async () => true, configure = null, remove = null, shows = () => {}, brush = null, repairDecor = null, lifted = null, refreezeIce = null, cliffWalls = null, addCrossing = null, cliffView = null }) {
   let shown = null;
   const tell = (doc) => { if (doc === shown) return; shown = doc; try { shows(doc); } catch { /* an outline never breaks the panel */ } };
   let box = null, open_ = null, saving = 0, drag = null;
@@ -81,7 +82,7 @@ export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, 
       line.setAttribute('aria-expanded', String(on)); line.append(icon(on ? 'fa-caret-down' : 'fa-caret-right'), element('span', '', label));
       return on ? [line, ...build()] : [line];
     };
-    const c = { doc, own, floor, kind, at: open_.at ?? null, act, toFloor, roofed: !!roof.has(doc), setRoof: setRoofNow, more, texture, season, fireSpreads, presets, weathers, close, edit, saving: () => saving > 0, brush, repairDecor, refreezeIce, cliffWalls, addCrossing, cliffView };
+    const c = { doc, own, floor, kind, at: open_.at ?? null, act, toFloor, roofed: !!roof.has(doc), setRoof: setRoofNow, more, texture, season, fireSpreads, presets, weathers, close, edit, saving: () => saving > 0, brush, repairDecor, lifted, refreezeIce, cliffWalls, addCrossing, cliffView };
 
     const head = element('div', 'an-rp-head'), shut = button('', 'an-rp-close', close);
     shut.setAttribute('aria-label', 'Close'); shut.append(icon('fa-xmark'));
@@ -116,7 +117,9 @@ export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, 
     parts.push(kinds);
     if (kind === 'none') parts.push(element('div', 'an-rp-none', 'Animater does nothing in this region. Pick what it is above.'));
 
-    for (const s of panelSections(kind, own, floor, [...added])) {
+    // (Things lifted from the map standing in it: Decorations shows whatever the kind, and counts them on its heading.)
+    let liftedHere = 0; try { liftedHere = Math.max(0, Number(lifted?.(doc)) || 0); } catch { /* none counted */ }
+    for (const s of panelSections(kind, own, floor, liftedHere && kind !== 'none' ? [...added, 'decor'] : [...added])) {
       const shown = folds.has(s.id) ? folds.get(s.id) : s.open, sec = element('section', shown ? 'an-rp-sec an-rp-open' : 'an-rp-sec');
       // Once shown it stays, and open stays open until folded by hand: a change in it (drips turned off) never shuts it, or
       // takes it away, under the pointer. A new kind starts over.
@@ -124,7 +127,7 @@ export function createRegionPanel({ flagsOf, save, edit, roof = { has: hasRoof, 
       sec.setAttribute('data-section', s.id); sec.setAttribute('data-open', String(shown));
       const title = button('', 'an-rp-title', () => { folds.set(s.id, !shown); draw(); });
       title.setAttribute('aria-expanded', String(shown));
-      title.append(icon(s.icon, 'an-rp-ic'), element('b', '', s.title), element('small', '', s.summary), icon('fa-chevron-right', 'an-rp-chev'));
+      title.append(icon(s.icon, 'an-rp-ic'), element('b', '', s.title), element('small', '', s.id === 'decor' ? decorSummary(own, liftedHere) : s.summary), icon('fa-chevron-right', 'an-rp-chev'));
       sec.append(title);
       // A folded section's controls are not built at all.
       if (shown) { const body = element('div', 'an-rp-body'); body.append(...SECTIONS[s.id](c)); sec.append(body); }

@@ -122,19 +122,26 @@ const propControl = (r, save) => {
 const decorSection = (c) => {
   const { own, act, doc } = c, decor = own.decor, on = decor?.on === true, parts = [];
   parts.push(toggle('Decorations', on, (now) => act({ decor: now ? (decor?.kinds ? { on: true } : freshDecor(c.kind === 'cave' ? 'cave' : 'surface', Math.floor(Math.random() * 1e6))) : { on: false } }), 'Scatters painted rocks, trees, bushes, puddles and more over this region, the same on every screen. They cast shadows from the sun, moon and lights, change with the seasons and the weather, and trees open as a creature walks under them.'));
-  if (!on) return parts;
+  // Things lifted from the map (mapbuild/map-lift.mjs) standing here break with the region's decorations (props/
+  // lifted-props.mjs), so a region that has some offers the break switch with no decorations of its own.
+  let lifted = 0; try { lifted = Math.max(0, Number(c.lifted?.(doc)) || 0); } catch { /* none counted */ }
+  if (!on && !lifted) return parts;
+  if (on) {
   const where = decor.where === 'cave' ? 'cave' : 'surface';
   parts.push(row('Where', seg([['surface', 'Outdoors'], ['cave', 'Underground']], where, (w) => act({ decor: { where: w, kinds: Object.fromEntries(DECOR_DEFAULT_KINDS[w].filter((id) => !decor.kinds?.[id]).map((id) => [id, { size: 1, amount: 1 }])) } }), 'Where'), 'Which kinds fit: trees and flowers outdoors; stalagmites, glowing mushrooms and cave pools underground.'));
   parts.push(range('How dense', DECOR_RANGE.density, Number(decor.density ?? 0.6), times, (v) => act({ decor: { density: v } }), 0.05, 'How many decorations the region holds, all kinds together.'));
   parts.push(range('Size', DECOR_RANGE.scale, Number(decor.scale ?? 1), times, (v) => act({ decor: { scale: v } }), 0.05, 'Every decoration bigger or smaller.'));
   parts.push(range('Height', DECOR_TALL, Number(decor.height ?? 1), percent, (v) => act({ decor: { height: v } }), 0.05, 'How tall every decoration here stands against its size, times its own Decoration height from the brush: taller ones throw longer shadows from the sun, the moon and nearby lights.'));
-  parts.push(toggle('Decorations can break', decor.canBreak === true, (now) => act({ decor: { canBreak: now } }), 'Crates, barrels, crystals, bushes, ferns, spiky plants, reeds, cobwebs, stalagmites and rock columns here break like breakable props, and so do town and dungeon things: sacks, urns, carts, fences, benches, tables, market stalls, braziers, candles, street lamps, gravestones, coffins and more, and indoor and water things: bookshelves, beds, desks, chests, thrones, statues, altars, potted plants, rugs, bathtubs, rowboats, mooring posts and cattails. They break from area damage, missed swings beside the target, shoves and blasts. Needs the scene\'s Breakable props on.'));
-  if (decor.canBreak === true && doc?.parent?.flags?.animater?.breakableProps !== true) parts.push(element('div', 'an-rp-note', 'Breakable props is off for this scene: nothing breaks until it is on.'));
+  }
+  if (lifted) parts.push(element('div', 'an-rp-note', `${lifted} ${lifted === 1 ? 'thing lifted from the map stands' : 'things lifted from the map stand'} here: Decorations can break covers ${lifted === 1 ? 'it' : 'them'} too.`));
+  parts.push(toggle('Decorations can break', decor?.canBreak === true, (now) => act({ decor: { canBreak: now } }), (lifted ? 'A thing lifted from the map breaks as wood unless Material says otherwise, a bush or a tree by burning; one given a material of its own (the brush\'s Breaks, or its Tile configuration) keeps it, and the scene\'s Repair mends it. ' : '') + 'Crates, barrels, crystals, bushes, ferns, spiky plants, reeds, cobwebs, stalagmites and rock columns here break like breakable props, and so do town and dungeon things: sacks, urns, carts, fences, benches, tables, market stalls, braziers, candles, street lamps, gravestones, coffins and more, and indoor and water things: bookshelves, beds, desks, chests, thrones, statues, altars, potted plants, rugs, bathtubs, rowboats, mooring posts and cattails. They break from area damage, missed swings beside the target, shoves and blasts. Needs the scene\'s Breakable props on.'));
+  if (decor?.canBreak === true && doc?.parent?.flags?.animater?.breakableProps !== true) parts.push(element('div', 'an-rp-note', 'Breakable props is off for this scene: nothing breaks until it is on.'));
   // How they break: the tile's Breakable prop options, one of each for the region, for every decoration whose own is Automatic.
   // (The panel's narrow label column takes the short names: "Tips over", its long name in the hint.)
-  if (decor.canBreak === true) parts.push(...decorPropRows(null, decor.prop ?? {}).map((r) => { const shown = { ...r, label: DECOR_PROP_SHORT[r.key] ?? r.label }; return row(shown.label, propControl(shown, (v) => act({ decor: { prop: { [r.key]: v } } })), DECOR_PROP_SHORT[r.key] ? `${r.label}: ${r.hint}` : r.hint); }));
+  if (decor?.canBreak === true) parts.push(...decorPropRows(null, decor.prop ?? {}).map((r) => { const shown = { ...r, label: DECOR_PROP_SHORT[r.key] ?? r.label }; return row(shown.label, propControl(shown, (v) => act({ decor: { prop: { [r.key]: v } } })), DECOR_PROP_SHORT[r.key] ? `${r.label}: ${r.hint}` : r.hint); }));
   // Only breaking and its repair here: decorations are laid with the Decorations brush in the toolbar.
-  if (c.repairDecor && (decor.canBreak === true || own.decorBroken?.length > 0)) {
+  // (A lifted thing is a tile: the scene's own Repair mends it, so a region with nothing else has no button.)
+  if (c.repairDecor && ((on && decor.canBreak === true) || own.decorBroken?.length > 0)) {
     const buttons = element('div', 'an-rp-buttons');
     buttons.append(tip(button('Repair decorations', '', () => c.repairDecor(doc)), 'Put back every broken decoration in this region.'));
     parts.push(buttons);

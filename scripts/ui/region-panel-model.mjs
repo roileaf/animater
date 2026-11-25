@@ -98,7 +98,8 @@ const IN_USE = {
   look: (own) => ['texture', 'textureStyles', 'tokenshade', 'stepEdgeOff'].some((k) => set(own[k])) || (own.stepEdge !== undefined && own.stepEdge !== null && own.stepEdge !== ''),
   drips: (own) => ['drips', 'dripPace', 'dripDepth'].some((k) => set(own[k])),
   steps: (own) => !!own.stepsEdited || Number(own.step) > 0 || own.stepHidden === true,
-  decor: (own) => own.decor?.on === true,
+  // (Or only told that the things lifted from the map standing in it break: props/lifted-props.mjs.)
+  decor: (own) => own.decor?.on === true || own.decor?.canBreak === true,
   // (Map painting's Heights: a raised part, or a crossing between heights.)
   height: (own) => readHeight(own) !== null || readRamp(own) !== null,
 };
@@ -149,6 +150,16 @@ const aOrAn = (word) => (/^[aeiou]/.test(word) ? 'an' : 'a');
 const POND = { still: 'Pond', river: 'River', rapids: 'Rapids', falls: 'Waterfall', sea: 'Sea' };
 
 // The one line shown on a section's heading (pure), in plain words.
+/**
+ * The Decorations heading's line when things lifted from the map stand in the region (pure): `lifted` how many. They
+ * are counted beside the region's own decorations, and alone they say whether they break.
+ */
+export function decorSummary(own = {}, lifted = 0) {
+  const base = summaryOf('decor', own), n = Math.max(0, Math.floor(Number(lifted) || 0));
+  if (!n) return base;
+  if (own?.decor?.on === true) return `${base}, ${n} lifted`;
+  return `${n} lifted${own?.decor?.canBreak === true ? ', can break' : ''}`;
+}
 export function summaryOf(id, own = {}, floor) {
   switch (id) {
     case 'height': {
@@ -178,7 +189,7 @@ export function summaryOf(id, own = {}, floor) {
     }
     case 'air': return own?.regionWeather ? weatherLabel(own.regionWeather) : 'As the scene';
     case 'decor': {
-      if (own?.decor?.on !== true) return 'None';
+      if (own?.decor?.on !== true) return own?.decor?.canBreak === true ? 'Lifted things break' : 'None';
       const kinds = Object.values(own.decor.kinds ?? {}).filter((k) => k && k.off !== true).length, byHand = (own.decor.brushed ?? []).length;
       return `${own.decor.where === 'cave' ? 'Underground' : 'Outdoors'}, ${kinds} ${kinds === 1 ? 'kind' : 'kinds'}${byHand ? `, ${byHand} by hand` : ''}`;
     }
