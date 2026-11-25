@@ -99,6 +99,27 @@ test('plain, screen-space, hidden and unmeasurable effects are never culled', ()
   assert.equal(draw(new CanvasEffect({ bounds: far, filters: glow() }), noFrame).rendered, 1);
 });
 
+test('an effect whose frame texture was destroyed is not drawn, whatever the settings, and says so once', () => {
+  // PIXI nulls a texture's _uvs when it is destroyed; drawing the mesh then throws on every frame.
+  const dead = () => new CanvasEffect({ bounds: near, data: { file: 'aura.webm' }, sprite: { managedSprite: { _texture: { _uvs: null } } } });
+  const warn = console.warn, said = [];
+  console.warn = (...a) => said.push(a.join(' '));
+  try {
+    const effect = dead();
+    assert.deepEqual(draw(effect), { rendered: 0, voided: 0 });
+    assert.deepEqual(draw(effect), { rendered: 0, voided: 0 });
+    assert.equal(said.length, 1);
+    assert.match(said[0], /aura\.webm/);
+    state.enabled = false;
+    assert.deepEqual(draw(dead()), { rendered: 0, voided: 0 });
+    state.enabled = true;
+  } finally { console.warn = warn; }
+  // A live texture, a sprite still loading and a text-only effect draw as before.
+  assert.equal(draw(new CanvasEffect({ bounds: near, sprite: { managedSprite: { _texture: { _uvs: {} } } } })).rendered, 1);
+  assert.equal(draw(new CanvasEffect({ bounds: near, sprite: { managedSprite: null } })).rendered, 1);
+  assert.equal(draw(new CanvasEffect({ bounds: near, sprite: null })).rendered, 1);
+});
+
 test('switching culling or the speed-ups off renders everything', () => {
   state.culling = false;
   assert.equal(draw(new CanvasEffect({ bounds: far, filters: glow() })).rendered, 1);

@@ -54,6 +54,22 @@ function isOffscreen(effect, renderer, state) {
   return offscreen;
 }
 
+/**
+ * A destroyed texture has no uvs (PIXI nulls them), and a mesh still holding one
+ * throws from updateUvs on every frame, which stops the whole canvas drawing.
+ * Seen with Sequencer's frame meshes on lasting effects; the effect is skipped
+ * and named once so the cause can be found.
+ */
+function hasDeadTexture(effect) {
+  const texture = effect.sprite?.managedSprite?._texture;
+  if (!texture || texture._uvs !== null) return false;
+  if (!effect.__turboDeadSaid) {
+    effect.__turboDeadSaid = true;
+    console.warn(`Animater | Sequencer effect not drawn: its texture was destroyed while it was still playing (${effect.data?.file ?? effect.data?.name ?? effect.id ?? 'unknown'})`);
+  }
+  return true;
+}
+
 function ownerOf(proto, name) {
   for (let p = proto; p && p !== Object.prototype; p = Object.getPrototypeOf(p)) {
     if (Object.prototype.hasOwnProperty.call(p, name)) return p;
@@ -69,6 +85,7 @@ export function patchEffectRender(effect, state) {
 
   const baseRender = owner.render;
   owner.render = function (renderer) {
+    if (hasDeadTexture(this)) return;
     if (state.enabled && state.culling && isOffscreen(this, renderer, state)) {
       this.__turboCulledFrame = state.frame;
       return;
@@ -83,6 +100,7 @@ export function patchEffectRender(effect, state) {
   if (voidOwner && !voidOwner._renderAsVoid.__turboOrig) {
     const baseVoid = voidOwner._renderAsVoid;
     voidOwner._renderAsVoid = function (renderer) {
+      if (hasDeadTexture(this)) return;
       if (state.enabled && state.culling && this.__turboCulledFrame === state.frame) return;
       return baseVoid.call(this, renderer);
     };
