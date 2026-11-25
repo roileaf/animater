@@ -21,6 +21,32 @@ export const HEAT_CATCH = 100;
 // How many rounds a prop burns before it goes out.
 export const BURN_ROUNDS = 3;
 
+// ---- The scene's burn time. ----
+// A GM may say how many rounds a fire burns on a scene (flags.animater.fireBurnRounds), so a burning room goes on
+// flaming and smoking for as long as the scene needs instead of the few rounds it takes a thing to char. It lengthens
+// the fire WHERE IT IS and nothing else: a long fire heats what stands beside it for exactly as many rounds as a
+// usual one (BURN_ROUNDS, CELL_ROUNDS for grass) and then only burns, so the fire reaches no further across the map
+// than it does with no burn time set. That is carried on the fire itself as `spread`, the rounds it still heats
+// its neighbours; a fire with no `spread` (every fire lit with no burn time set, and every fire saved before this
+// existed) heats for as long as it burns, which is what it always did.
+// The most rounds a scene may ask for: an hour of play out of combat, and a whole number a flag can hold.
+export const BURN_ROUNDS_MOST = 600;
+// The rounds a thing burns: the scene's burn time when it is a number longer than the usual `base`, else `base`.
+// A blank, a zero, junk, or anything not longer than the usual all mean "as it always was".
+export function burnRoundsOf(value, base = BURN_ROUNDS) {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) && n > base ? Math.min(n, BURN_ROUNDS_MOST) : base;
+}
+// A fire just lit: it burns the scene's rounds, and when that is longer than the usual it spreads for the usual only.
+export function freshFire(heat, { rounds = null, base = BURN_ROUNDS } = {}) {
+  const left = burnRoundsOf(rounds, base);
+  return { heat, burning: true, roundsLeft: left, ...(left > base ? { spread: base } : {}) };
+}
+// Whether a burning thing still heats what is beside it: always, unless it carries a spread that has run out.
+export const fireHeats = (fire) => !Number.isFinite(fire?.spread) || fire.spread > 0;
+// A burning thing's spread a round on: one fewer, never below none; nothing for a fire that carries none.
+const spreadOn = (fire) => (Number.isFinite(fire?.spread) ? { spread: Math.max(0, fire.spread - 1) } : {});
+
 // The gap between two rectangles, edge to edge: 0 when they touch or overlap.
 function edgeGap(a, b) {
   const dx = Math.max(0, a.x - (b.x + b.w), b.x - (a.x + a.w));
@@ -113,8 +139,8 @@ export const TOUCH_HEAT = 55, NEAR_HEAT = 40;
 // never caught — it is already wrecked, and its own minute is what ends it.
 export function spreadStep({ things = [], wind = null, grid = 100, cap = 12, cells = [], cols = 1, origin = { x: 0, y: 0 }, cell = grid, spills = [] } = {}) {
   const burners = things.filter((t) => t.fire?.burning);
-  const sources = [...burners, ...(spills ?? []).filter((s) => s?.rect)];
-  const fires = burningCells(cells).map((c) => ({ id: c.id ?? cellId(c.i), levels: c.levels, rect: cellRect(c.i, { cols, origin, cell }) }));
+  const sources = [...burners.filter((t) => fireHeats(t.fire)), ...(spills ?? []).filter((s) => s?.rect)];
+  const fires = burningCells(cells).filter(fireHeats).map((c) => ({ id: c.id ?? cellId(c.i), levels: c.levels, rect: cellRect(c.i, { cols, origin, cell }) }));
   const gain = new Map();
   const damp = dampFactor(wind), cool = rainCooling(wind), soaked = soakedRounds(wind);
   for (const target of things) {
@@ -159,7 +185,7 @@ export function spreadStep({ things = [], wind = null, grid = 100, cap = 12, cel
   const out = burners.filter((t) => (t.fire.roundsLeft ?? 0) <= 1 + soaked).map((t) => t.id);
   // Still burning and not out: each keeps its heat and has one round fewer left, for the caller to save. Rain takes
   // another round with it, so a fire caught in a downpour is beaten before it would have burned itself out.
-  const burning = burners.filter((t) => (t.fire.roundsLeft ?? 0) > 1 + soaked).map((t) => ({ id: t.id, heat: t.fire.heat ?? 0, roundsLeft: t.fire.roundsLeft - 1 - soaked }));
+  const burning = burners.filter((t) => (t.fire.roundsLeft ?? 0) > 1 + soaked).map((t) => ({ id: t.id, heat: t.fire.heat ?? 0, roundsLeft: t.fire.roundsLeft - 1 - soaked, ...spreadOn(t.fire) }));
   return { heat, caught, out, warn, burning };
 }
 
@@ -182,7 +208,7 @@ export function cellStep({ cells = [], things = [], cols = 1, rows = 1, origin =
   const sources = burningCells(cells);
   const gain = new Map();
   const add = (i, amount) => gain.set(i, (gain.get(i) ?? 0) + amount);
-  for (const src of sources) {
+  for (const src of sources.filter(fireHeats)) {
     const col = src.i % cols;
     const row = Math.floor(src.i / cols);
     const from = cellRect(src.i, geo);
@@ -196,7 +222,7 @@ export function cellStep({ cells = [], things = [], cols = 1, rows = 1, origin =
       add(i, NEAR_HEAT * GRASS_RATE * windBoost(wind, from, cellRect(i, geo)) * damp);
     }
   }
-  const fires = [...things.filter((t) => t.fire?.burning), ...(spills ?? []).filter((s) => s?.rect)];
+  const fires = [...things.filter((t) => t.fire?.burning && fireHeats(t.fire)), ...(spills ?? []).filter((s) => s?.rect)];
   if (fires.length) {
     for (const target of cells) {
       if (target.burning || target.charred) continue;
@@ -222,7 +248,7 @@ export function cellStep({ cells = [], things = [], cols = 1, rows = 1, origin =
   const caught = catching.slice(0, cap).map((c) => c.i);
   const out = sources.filter((c) => (c.roundsLeft ?? 0) <= 1 + soaked).map((c) => c.i);
   // Still burning and not out: each has one round fewer left, for the caller to save; rain takes another with it.
-  const burning = sources.filter((c) => (c.roundsLeft ?? 0) > 1 + soaked).map((c) => ({ i: c.i, roundsLeft: c.roundsLeft - 1 - soaked }));
+  const burning = sources.filter((c) => (c.roundsLeft ?? 0) > 1 + soaked).map((c) => ({ i: c.i, roundsLeft: c.roundsLeft - 1 - soaked, ...spreadOn(c) }));
   return { heat, caught, out, burning };
 }
 
@@ -230,14 +256,14 @@ export function cellStep({ cells = [], things = [], cols = 1, rows = 1, origin =
 // decorFire flag, and a grass square's in its region's fireCells flag, instead.
 export const writeFirePath = (id) => (id ? "flags.animater.prop.fire" : "");
 
-// A fire as saved: { heat, burning, roundsLeft }, or null when there is none. Read from a tile's flag, from a `fire` field,
+// A fire as saved: { heat, burning, roundsLeft, spread? }, or null when there is none. Read from a tile's flag, from a `fire` field,
 // or from a saved entry itself. A burning fire with no heat yet is still a fire (heat 0); a cold one needs a heat to count.
 export function readFire(doc) {
   const f = doc?.flags?.animater?.prop?.fire ?? doc?.fire ?? doc ?? null;
   if (!f || typeof f !== "object") return null;
   const hasHeat = Number.isFinite(f.heat);
   if (!hasHeat && f.burning !== true) return null;
-  return { heat: hasHeat ? f.heat : 0, burning: f.burning === true, roundsLeft: Number.isFinite(f.roundsLeft) ? f.roundsLeft : 0 };
+  return { heat: hasHeat ? f.heat : 0, burning: f.burning === true, roundsLeft: Number.isFinite(f.roundsLeft) ? f.roundsLeft : 0, ...(Number.isFinite(f.spread) ? { spread: f.spread } : {}) };
 }
 
 // The burning decorations a region has saved, keyed as decorBroken is. Returns {} for an empty or missing flag (a region
@@ -262,12 +288,12 @@ export function fireCellsOf(region) {
 }
 
 // One saved entry's new value for a round, or null for no change. The first list that names the key wins: out (`outEntry`),
-// then caught (starts at `rounds`), then still burning (one round fewer left), then heated. `saved` is the entry already
+// then caught (starts at the scene's `rounds`, else the usual `base`), then still burning (one round fewer left), then heated. `saved` is the entry already
 // stored, for the heat a burning step does not carry.
-function entryChange(key, { heat, caught, out, burning }, rounds, saved, outEntry) {
+function entryChange(key, { heat, caught, out, burning }, { rounds, base }, saved, outEntry) {
   if (out.has(key)) return outEntry;
-  if (caught.has(key)) return { heat: heat.get(key) ?? HEAT_CATCH, burning: true, roundsLeft: rounds };
-  if (burning.has(key)) return { heat: burning.get(key).heat ?? saved?.heat ?? HEAT_CATCH, burning: true, roundsLeft: burning.get(key).roundsLeft };
+  if (caught.has(key)) return freshFire(heat.get(key) ?? HEAT_CATCH, { rounds, base });
+  if (burning.has(key)) return { heat: burning.get(key).heat ?? saved?.heat ?? HEAT_CATCH, burning: true, roundsLeft: burning.get(key).roundsLeft, ...(Number.isFinite(burning.get(key).spread) ? { spread: burning.get(key).spread } : {}) };
   if (heat.has(key)) return { heat: heat.get(key), burning: false, roundsLeft: 0 };
   return null;
 }
@@ -294,7 +320,9 @@ function keyedFlagFields(flag, changed, removed) {
 // (`-=` with null, as repair does). A decoration that goes out, or whose key is no longer painted, is deleted from decorFire
 // by key; a grass square that goes out is kept as charred (never relights) and one that is no longer there is deleted by key.
 // A region gets one update holding both flags' changes.
-export function fireUpdatesFor(step, { tiles = [], regions = [], cellSteps = {} } = {}) {
+// `burnRounds` is the scene's burn time as stored (burnRoundsOf reads it): what catches burns that long instead.
+export function fireUpdatesFor(step, { tiles = [], regions = [], cellSteps = {}, burnRounds = null } = {}) {
+  const propRounds = { rounds: burnRounds, base: BURN_ROUNDS }, grassRounds = { rounds: burnRounds, base: CELL_ROUNDS };
   const lists = (s, idOf) => ({
     heat: new Map((s?.heat ?? []).map((h) => [idOf(h), h.heat])),
     caught: new Set((s?.caught ?? []).map((c) => idOf(c))),
@@ -308,7 +336,7 @@ export function fireUpdatesFor(step, { tiles = [], regions = [], cellSteps = {} 
     const path = writeFirePath(t?.id);
     if (!path) continue;
     if (things.out.has(t.id)) { tileUpdates.push({ _id: t.id, "flags.animater.prop.-=fire": null }); continue; }
-    const next = entryChange(t.id, things, BURN_ROUNDS, null, null);
+    const next = entryChange(t.id, things, propRounds, null, null);
     if (next) tileUpdates.push({ _id: t.id, [path]: next });
   }
   const regionUpdates = [];
@@ -319,7 +347,7 @@ export function fireUpdatesFor(step, { tiles = [], regions = [], cellSteps = {} 
     const removed = new Set(Object.keys(stored).filter((k) => !live.has(k)));
     for (const key of live) {
       if (things.out.has(key)) { if (key in stored) removed.add(key); continue; }
-      const next = entryChange(key, things, BURN_ROUNDS, stored[key], null);
+      const next = entryChange(key, things, propRounds, stored[key], null);
       if (next) changed[key] = next;
     }
     const squares = squaresOf(r.id);
@@ -329,7 +357,7 @@ export function fireUpdatesFor(step, { tiles = [], regions = [], cellSteps = {} 
     const cellRemoved = new Set(Object.keys(savedCells).filter((k) => !liveCells.has(k)));
     for (const key of liveCells) {
       if (savedCells[key]?.charred) continue;
-      const next = entryChange(key, squares, CELL_ROUNDS, savedCells[key], { heat: 0, burning: false, roundsLeft: 0, charred: true });
+      const next = entryChange(key, squares, grassRounds, savedCells[key], { heat: 0, burning: false, roundsLeft: 0, charred: true });
       if (next) cellChanged[key] = next;
     }
     const fields = { ...keyedFlagFields("flags.animater.decorFire", changed, removed), ...keyedFlagFields("flags.animater.fireCells", cellChanged, cellRemoved) };

@@ -1,6 +1,6 @@
 // When a fire's round comes round, which scenes it burns on, what a fire area sets alight, which walls stand between
 // its sources and what they heat, and the grass squares a region holds. Pure: no Foundry, no globals, no clocks.
-import { fireRate, readFire, decorFireOf, fireCellsOf, HEAT_CATCH, BURN_ROUNDS, CELL_ROUNDS } from "./fire-spread.mjs";
+import { fireRate, readFire, decorFireOf, fireCellsOf, freshFire, HEAT_CATCH, BURN_ROUNDS, CELL_ROUNDS } from "./fire-spread.mjs";
 
 // What a fire area does to one thing it covers, with Fire spreads on: it sets alight whatever will take fire
 // instead of breaking it outright (it then burns its rounds and chars, which is the whole feature), and leaves
@@ -11,10 +11,11 @@ import { fireRate, readFire, decorFireOf, fireCellsOf, HEAT_CATCH, BURN_ROUNDS, 
 //   - Already alight: null, and the break rules refuse it as they always did.
 // A thing that takes fire only by what it holds (a stone chest of books) catches too, though its own material would
 // never break: that is the point of the feature, and the round ticker rules what is left of it when the fire is out.
-export function areaCatch({ fireSpreads = false, kind = "", damageType = "", traits = null, fire = null } = {}) {
+// `burnRounds` is the scene's burn time as stored (fire-spread.mjs burnRoundsOf): the fire burns that long instead.
+export function areaCatch({ fireSpreads = false, kind = "", damageType = "", traits = null, fire = null, burnRounds = null } = {}) {
   if (fireSpreads !== true || kind !== "area" || damageType !== "fire") return null;
   if (traits?.contents === "powder" || !(fireRate(traits) > 0) || fire?.burning === true) return null;
-  return { heat: HEAT_CATCH, burning: true, roundsLeft: BURN_ROUNDS };
+  return freshFire(HEAT_CATCH, { rounds: burnRounds, base: BURN_ROUNDS });
 }
 
 // What a fire area does to one square of grass it covers, the counterpart of areaCatch: in a region whose ground
@@ -23,10 +24,10 @@ export function areaCatch({ fireSpreads = false, kind = "", damageType = "", tra
 //   - Fire spreads off, or the cause is not a fire area: null (with the switch off nothing anywhere changes).
 //   - A region whose ground does not burn (its Burns switch, else its floor): null.
 //   - A square already alight, or charred for good: null.
-export function areaCellCatch({ fireSpreads = false, kind = "", damageType = "", burns = false, cell = null } = {}) {
+export function areaCellCatch({ fireSpreads = false, kind = "", damageType = "", burns = false, cell = null, burnRounds = null } = {}) {
   if (fireSpreads !== true || kind !== "area" || damageType !== "fire" || burns !== true) return null;
   if (cell?.charred === true || readFire(cell)?.burning === true) return null;
-  return { heat: HEAT_CATCH, burning: true, roundsLeft: CELL_ROUNDS };
+  return freshFire(HEAT_CATCH, { rounds: burnRounds, base: CELL_ROUNDS });
 }
 
 // Which grass squares a fire area sets alight, as region updates ready for updateEmbeddedDocuments. `regions` are
@@ -34,7 +35,7 @@ export function areaCellCatch({ fireSpreads = false, kind = "", damageType = "",
 // middle of each square for the area to be asked about. `inArea(point)` is the area's own shape test, on the GM's
 // screen. Foundry merges object flags, so each square is written at its own path (`<flag>.<index>`), never as a
 // whole object. Returns {regions, lit}: the updates, and the squares lit, so the caller knows whether to write.
-export function areaCellsLit({ regions = [], inArea = null, fireSpreads = false, kind = "area", damageType = "" } = {}) {
+export function areaCellsLit({ regions = [], inArea = null, fireSpreads = false, kind = "area", damageType = "", burnRounds = null } = {}) {
   const updates = [], lit = [];
   if (typeof inArea !== "function") return { regions: updates, lit };
   for (const r of regions ?? []) {
@@ -42,7 +43,7 @@ export function areaCellsLit({ regions = [], inArea = null, fireSpreads = false,
     const fields = {};
     for (const c of r.cells ?? []) {
       if (!Number.isInteger(c?.i)) continue;
-      const next = areaCellCatch({ fireSpreads, kind, damageType, burns: r.burns === true, cell: c.saved });
+      const next = areaCellCatch({ fireSpreads, kind, damageType, burns: r.burns === true, cell: c.saved, burnRounds });
       if (!next) continue;
       let inside = false;
       try { inside = inArea(c.point) === true; } catch { inside = false; }

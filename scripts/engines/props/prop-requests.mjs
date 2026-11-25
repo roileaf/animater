@@ -130,7 +130,7 @@ export function validBreakRequest(req, { tile, walls = [], fireWalls = null, sce
   // With Fire spreads on, a fire area sets this alight instead of breaking it (fire-rounds areaCatch). It is still
   // checked exactly as a break is (the note, the area it names, how far it is) before anything is written, and a
   // thing that only catches by what it holds skips the material refusal: its own material is not what is burning.
-  const lit = areaCatch({ fireSpreads: own.fireSpreads === true, kind: cause.kind, damageType: cause.damageType, traits, fire: readFire(tile) });
+  const lit = areaCatch({ fireSpreads: own.fireSpreads === true, kind: cause.kind, damageType: cause.damageType, traits, fire: readFire(tile), burnRounds: own.fireBurnRounds });
   if (!lit && !tips && !canBreak(propMaterial(tile, grid), asked, { cuttable: traits.cuttable, rule: traits.rule })) return no("material");
   const note = readNote(req.note);
   if (!note) return no("note");

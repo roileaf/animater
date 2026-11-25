@@ -11169,7 +11169,7 @@ async function fireRound(scene) {
   // Everything alight on the scene this round, for the smoke that follows: where it is and which level it is on.
   const burningNow = [...alight, ...spills, ...litSquares].map((t) => ({ rect: t.rect, levels: [...(t.levels ?? [])] }));
   const sceneCols = Math.max(1, ...litSquares.map((c) => Math.floor(c.rect.x / grid) + 1));
-  const sceneCells = litSquares.map((c) => ({ i: Math.floor(c.rect.y / grid) * sceneCols + Math.floor(c.rect.x / grid), id: c.id, levels: c.levels, burning: true }));
+  const sceneCells = litSquares.map((c) => ({ i: Math.floor(c.rect.y / grid) * sceneCols + Math.floor(c.rect.x / grid), id: c.id, levels: c.levels, burning: true, ...(Number.isFinite(c.spread) ? { spread: c.spread } : {}) }));
   // The wind where the fire is: at a burning prop, else at a burning oil spill, else at a burning grass square (a
   // field with no props on it at all is a fire all the same), else nowhere, which is no wind.
   const first = alight[0]?.rect ?? spills[0]?.rect ?? litSquares[0]?.rect ?? null;
@@ -11186,7 +11186,7 @@ async function fireRound(scene) {
   const step = spreadStep({ things, wind, grid, cells: sceneCells, cols: sceneCols, origin: { x: 0, y: 0 }, cell: grid, spills });
   const cellSteps = {};
   for (const r of regions) if (r.grass) cellSteps[r.id] = cellStep({ cells: r.squares, things, spills, cols: r.grass.cols, rows: r.grass.rows, origin: r.grass.origin, cell: grid, wind });
-  const updates = fireUpdatesFor(step, { tiles, cellSteps, regions: regions.map((r) => ({ id: r.id, keys: r.keys, cells: r.cells ?? [], flags: r.flags })) });
+  const updates = fireUpdatesFor(step, { tiles, cellSteps, burnRounds: scene.flags?.[ID]?.fireBurnRounds, regions: regions.map((r) => ({ id: r.id, keys: r.keys, cells: r.cells ?? [], flags: r.flags })) });
   const del = propDel();
   if (updates.tiles.length) await scene.updateEmbeddedDocuments("Tile", updates.tiles.map((u) => withDeletes(u, del)), { animater: { propFire: true } })
     .catch((e) => runtime?.trace("props", `fire not written: ${e?.message ?? e}`));
@@ -11447,7 +11447,7 @@ function grassCatchOf(scene, area) {
   const walls = blockingWalls((scene.walls?.contents ?? []).map(wallView)), from = area.at;
   const reaches = (p) => (!walls.length || !Number.isFinite(from?.x) ? true : !wallBetween(from, p, walls));
   const inArea = typeof area.testPoint === "function" ? (p) => area.testPoint(p) === true && reaches(p) : area.testPoint;
-  return areaCellsLit({ regions: tilesOnLevel(regions, area.levels), inArea, fireSpreads: true, kind: "area", damageType: "fire" });
+  return areaCellsLit({ regions: tilesOnLevel(regions, area.levels), inArea, fireSpreads: true, kind: "area", damageType: "fire", burnRounds: scene.flags?.[ID]?.fireBurnRounds });
 }
 async function applyGrassCatch(scene, cause, user) {
   if (!game.users.activeGM?.isSelf || !scene || !propsOn(scene) || scene.flags?.[ID]?.fireSpreads !== true) return false;
@@ -15452,7 +15452,7 @@ Hooks.on("renderSceneConfig", (app, html) => {
   // Breakable props: the GM's switch for this scene, the miss chance, and Repair (GM only).
   if (!root.querySelector(`[name="flags.${ID}.breakableProps"]`)) {
     const flags = app.document?.flags?.[ID] ?? {}, props = document.createElement("div");
-    props.innerHTML = propSceneFieldsHTML({ on: flags.breakableProps === true, chance: flags.propMissChance, breakWalls: flags.breakWalls, rubble: flags.rubbleDifficult === true, fireSpreads: flags.fireSpreads === true, smokeFills: flags.smokeFills === true, askSuccess: flags.askSuccess === true, wearDoors: flags.wearDoors === true, wearSystem: DOOR_ATTACK_SYSTEMS.has(game.system.id) });
+    props.innerHTML = propSceneFieldsHTML({ on: flags.breakableProps === true, chance: flags.propMissChance, breakWalls: flags.breakWalls, rubble: flags.rubbleDifficult === true, fireSpreads: flags.fireSpreads === true, burnRounds: flags.fireBurnRounds, smokeFills: flags.smokeFills === true, askSuccess: flags.askSuccess === true, wearDoors: flags.wearDoors === true, wearSystem: DOOR_ATTACK_SYSTEMS.has(game.system.id) });
     const repair = props.querySelector('[data-action="animater-repair-props"]');
     repair.disabled = !game.user?.isGM;
     repair.addEventListener("click", async (event) => {
