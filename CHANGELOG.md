@@ -1,5 +1,12 @@
 # Changelog
 
+## 4.11.0
+
+- **Things lifted from the map can break.** A table, crate or barrel lifted out of the map's picture (Map painting → Decorate → Lift from map) never broke unless its material was set by hand in its Tile configuration, since its picture has no name to tell what it is made of. Two ways now:
+  - **Breaks**, a new row beside "It stands" when lifting: Won't, Wood, Stone, Metal, Clay or Glass (Won't or Burns for a bush or a tree). The next thing lifted is made of that, and breaks like any breakable prop. The choice is remembered.
+  - **The region it stands in.** A region with lifted things in it counts them on its Decorations heading ("3 lifted") and offers "Decorations can break" even with no decorations of its own. Turned on, the lifted things there break too, by the region's Material, Breaks as, Contents and the rest: as wood where Material is left on Automatic, a bush or a tree by burning. A thing given a material of its own, with Breaks or in its Tile configuration (including "Won't break"), keeps it. Turn the switch off, or move the thing out of the region, and it no longer breaks.
+  - Both need the scene's Breakable props on, and the scene's Repair mends a broken lifted thing as it does any prop.
+
 ## 4.10.4
 
 - **Tiles are no longer drawn twice, the second up and to the left.** A tile that stands on the map as an object (Tile configuration → Animater → Sunlight on "Auto" or "Object") has its picture drawn again over its shadow. For a tile made before Foundry 14, or one whose picture's anchor is not its middle, that second picture was drawn half the tile's size up and to the left, and so were its shadows. It is now drawn on the tile. ([#29](https://github.com/roileaf/animater/issues/29))
