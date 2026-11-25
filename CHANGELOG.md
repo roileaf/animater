@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.12.0
+
+- **A fire can be told how long to burn.** With Fire spreads on, a burning prop charred after 3 rounds (grass after 2), about eighteen seconds out of combat, and the smoke stopped with it, so a room with a door or a window open cleared almost at once. Scene configuration → "Fires burn for (rounds)", under Fire spreads, now sets how many rounds a fire on that scene goes on burning and making smoke (up to 600; a round is six seconds out of combat, so 10 is a minute and 600 an hour, and the tracker's round in combat). Open doors and windows still let the smoke out, but the fire keeps feeding it until its time is up, then chars what it was burning as before. A longer fire burns where it is: it sets its neighbours alight exactly as far as a usual fire does, and no further. Left empty, nothing changes. Fires already burning when the number is set keep the time they were lit with.
+
 ## 4.11.1
 
 - **A lasting Sequencer effect whose picture was lost no longer stops the map drawing.** With Sequencer active, a lasting effect (an aura, a condition's effect) could be left holding a picture that had already been thrown away. Drawing it failed on every frame with "Cannot read properties of null (reading 'uvsFloat32')", and the whole canvas stopped with it. That effect is now left undrawn and the rest of the map carries on; the console names it once ("Animater | Sequencer effect not drawn"). What throws the picture away is not yet known: if you see that line, please report the file it names and what happened just before.
