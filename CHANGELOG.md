@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.11.1
+
+- **A lasting Sequencer effect whose picture was lost no longer stops the map drawing.** With Sequencer active, a lasting effect (an aura, a condition's effect) could be left holding a picture that had already been thrown away. Drawing it failed on every frame with "Cannot read properties of null (reading 'uvsFloat32')", and the whole canvas stopped with it. That effect is now left undrawn and the rest of the map carries on; the console names it once ("Animater | Sequencer effect not drawn"). What throws the picture away is not yet known: if you see that line, please report the file it names and what happened just before.
+
 ## 4.11.0
 
 - **Things lifted from the map can break.** A table, crate or barrel lifted out of the map's picture (Map painting → Decorate → Lift from map) never broke unless its material was set by hand in its Tile configuration, since its picture has no name to tell what it is made of. Two ways now:
