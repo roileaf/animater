@@ -53,7 +53,7 @@ import { areaRefusal } from "./engines/props/prop-areas.mjs";
 import { createFireLooks, thingFires, charredCells, litCells } from "./engines/props/fire-looks.mjs";
 import { iceBreakOf, iceHoleAt, cutIceHoles } from "./engines/regions/ice-break-look.mjs";
 import { iceSettingsOf, iceStateOf, iceMoveFor, sizeNameOf, walkedLegs, squaresEntered, moveSince, weightOffset, iceRefreezeUpdates, iceRepairUpdates, iceMeltUpdates, iceMeltSquares, iceFreezeUpdates, iceThawIds, SPELL_ICE } from "./engines/regions/thin-ice.mjs";
-import { areaOutline, icePatchShapes, icePatchData, icePatchMelt } from "./engines/regions/ice-patch.mjs";
+import { areaOutline, icePatchShapes, icePatchData, icePatchMelt, iceGrowFar, iceGrowRadius, iceGrown } from "./engines/regions/ice-patch.mjs";
 import { createIceBreakLook } from "./engines/regions/ice-break-draw.mjs";
 import { iceBreakSound, iceBreakVoice, newKeys } from "./engines/regions/ice-break-sound.mjs";
 import { iceWords } from "./engines/regions/ice-break-word.mjs";
@@ -122,6 +122,8 @@ import { createSummonsLights, isSummonsActor } from "./integrations/summons-wall
 import { conditionTransition } from "./catalogs/shared/condition-looks.mjs";
 import { createReactionHost } from "./engines/marks/reactions.mjs";
 import { reactionVisual } from "./engines/marks/reaction-fx.mjs";
+import { chargePlan, chargeSpan } from "./engines/marks/water-charge.mjs";
+import { planEnd } from "./engines/finishers/finisher-play.mjs";
 import { twoeCounteract, dnd5eDispelSpell, createDnd5eDispels, createDispelWindow, createFlickerHost, dispelMessage, receiveDispel as receiveDispelData, lastingAnimaterEffect, effectTokenIds, idsOfTokens, spotHolds } from "./engines/playback/dispel.mjs";
 import { shatterVisual, createShatterHost, shatterSeed, spotFromBounds } from "./engines/playback/shatter-fx.mjs";
 import { areaMaskFor, createMarkLayer, markSprite, markTextures, markSteam } from "./engines/marks/mark-paint.mjs";
@@ -964,6 +966,21 @@ const areaMarks = createAreaMarkQueue({
     game.socket?.emit(`module.${ID}`, { type: AREA_MARK_MESSAGE, tag, sender: clientId });
   },
 });
+// When each placed area's animation ends on this screen (by its document's id), so what the spell does to the map —
+// its wind, the steam off water, the charge in it — lasts as long as the spell is seen, not a fixed moment
+// (Roi: "make sure the effects ... happen until the animations end"). Never past PLAY_MOST: a recipe that loops is not waited on.
+const areaPlayEnds = new Map(), PLAY_MOST = 12000;
+const areaPlayLeft = (id) => { const end = areaPlayEnds.get(id); return Number.isFinite(end) ? Math.max(0, Math.min(PLAY_MOST, end - Date.now())) : 0; };
+function areaPlayStarted(doc, plan) {
+  const now = Date.now(); let length = 0;
+  try { length = planEnd(Array.isArray(plan) ? plan : []); } catch { length = 0; }
+  for (const [id, end] of areaPlayEnds) if (end < now - 60000) areaPlayEnds.delete(id);
+  if (!doc?.id || !(length > 0)) return;
+  areaPlayEnds.set(doc.id, now + Math.min(PLAY_MOST, length));
+  // Its wind was started as its area appeared: it is kept blowing until the animation is over.
+  for (const id of windSpellGusts_.get(doc.id) ?? []) gusts.hold(id, Math.min(PLAY_MOST, length));
+}
+const windSpellGusts_ = new Map();
 const markArea = (event) => {
   if (hotSetting("groundMarks") === false || !isHarmful({ ...event, automatic: true }, { itemDamages: (item) => usedItemDamages(item, game.system.id) })) return;
   const region = templateDocument(event.template);
@@ -1009,15 +1026,36 @@ const markLayer = createMarkLayer({
   // An area clips to its placed Region (v14 templates are Regions), found by the id on its tag.
   // A scorch lies on the ground and never on water (nor on ice over it, which the fire has melted): the waters here are
   // left out of its shape. Frost the same: on ice it would only whiten over the ice's own look, and open water takes none.
+  // And lightning's burn lines: on water the charge runs out across it instead (onLand).
   mask: (tag) => {
     const shape = areaMaskFor(tag, { regions: regionsHere(), grid: canvas?.grid?.size ?? 100, polygonsOf: areaMask });
-    if (Array.isArray(shape) && (tag?.mark === "scorch" || tag?.mark === "rime")) { try { shape.cuts = regionsHere().filter((r) => plainFloorOf(r) === "water" && r.flags?.[ID]?.[SPELL_ICE] !== true).flatMap((r) => regionAreas(r).map((a) => Array.from(a))); } catch { /* the mark is drawn whole */ } }
+    if (Array.isArray(shape) && ["scorch", "rime", "streaks"].includes(tag?.mark)) { try { shape.cuts = regionsHere().filter((r) => plainFloorOf(r) === "water" && r.flags?.[ID]?.[SPELL_ICE] !== true).flatMap((r) => regionAreas(r).map((a) => Array.from(a))); } catch { /* the mark is drawn whole */ } }
     return shape;
   },
   onLand: (record) => {
     markReactions.onLand(record);
     // Fire landing on water (or on ice over it) steams: a puff over each stretch of water its mark would have lain on.
-    if (record?.tag?.mark === "scorch") markSteam(record.mask).forEach((s, n) => markReactions.play({ kind: "steam", durationMs: 1800, at: { x: s.x, y: s.y }, radius: s.r, seed: ((record.tag.seed >>> 0) + n * 7919) >>> 0, level: record.tag.level }));
+    // It keeps steaming while the fire's animation still burns: a fresh puff every second or so until it is over.
+    if (record?.tag?.mark === "scorch") {
+      const spots = markSteam(record.mask), until = Date.now() + areaPlayLeft(record.tag.regionId), sceneId = canvas?.scene?.id;
+      const puff = (round) => {
+        if (canvas?.scene?.id !== sceneId) return;
+        spots.forEach((s, n) => markReactions.play({ kind: "steam", durationMs: 1800, at: { x: s.x, y: s.y }, radius: s.r, seed: ((record.tag.seed >>> 0) + n * 7919 + round * 104729) >>> 0, level: record.tag.level }));
+        if (spots.length && Date.now() + 1100 < until) setTimeout(() => propSafe("steam", () => puff(round + 1)), 1100);
+      };
+      puff(0);
+    }
+    // Lightning landing on open water runs out across it and finds the creatures standing in it (water-charge.mjs).
+    // Looks only, on each screen: nothing is rolled or written. Not on ice, and not on a creature in the air over it.
+    if (record?.tag?.mark === "streaks") propSafe("water charge", () => {
+      const wet = (p, doc) => movementFeelFloor(p, doc) === "water", ground = canvas?.level?.elevation?.base ?? 0;
+      const tokens = (canvas?.tokens?.placeables ?? []).filter((t) => t?.center && !t.document?.hidden && t.visible !== false && !((Number(t.document?.elevation) || 0) > ground) && wet(t.center, t.document))
+        .map((t) => ({ x: t.center.x, y: t.center.y, r: (t.w ?? canvas.grid.size) / 2 }));
+      // (As long as the lightning's animation still plays, and then it dies away.)
+      const span = chargeSpan(areaPlayLeft(record.tag.regionId));
+      const plan = chargePlan({ spots: markSteam(record.mask, 3), waters: record.mask?.cuts ?? [], tokens, seed: record.tag.seed >>> 0, grid: canvas?.grid?.size ?? 100, wet: (p) => wet(p), hold: span.hold });
+      if (plan) markReactions.play({ kind: "charge", durationMs: span.durationMs, at: plan.at, radius: plan.reach, seed: record.tag.seed >>> 0, level: record.tag.level, plan });
+    });
   },
 });
 // Element reactions (engines/marks/reactions.mjs): a new mark landing on an older one can react (fire on frost puffs
@@ -1887,9 +1925,34 @@ const iceAreas = (region) => {
   try {
     const holes = iceBreakOf(region, { grid: canvas.grid?.size ?? 100 }).holes;
     iceCutNow += holes.length;
-    return cutIceHoles(areas, holes, pointInPolygon);
+    const cut = cutIceHoles(areas, holes, pointInPolygon), growing = iceGrowing.get(region.id);
+    // (Whole once its time is up, whatever became of the timer that steps it: a hidden tab's timers run late.)
+    if (growing && performance.now() - growing.t0 >= growing.ms) { iceGrowing.delete(region.id); return cut; }
+    // (A sheet a cold spell has just laid is drawn as far as it has spread on this screen: iceGrowStart.)
+    return growing ? iceGrown(cut, growing.from, iceGrowRadius(growing.far, (performance.now() - growing.t0) / growing.ms)) : cut;
   } catch { return areas; }
 };
+// Ice spreading (ice-patch.mjs iceGrown). A cold spell's sheet is written whole as the spell lands; each screen shows
+// it spread out from where the spell was cast for as long as it still sees the spell's animation, in a dozen steps
+// (Roi: "Grow it"). Looks only: the ice is whole underfoot from the first moment.
+const iceGrowing = new Map(), ICE_GROW_LEAST = 900, ICE_GROW_STEPS = 12;
+function iceGrowStart(doc) {
+  const own = doc?.flags?.[ID];
+  if (own?.[SPELL_ICE] !== true || !canvas?.ready || doc.parent?.id !== canvas.scene?.id || !Array.isArray(own.iceFrom)) return;
+  const from = { x: Number(own.iceFrom[0]), y: Number(own.iceFrom[1]) }, far = iceGrowFar(regionAreas(doc), from);
+  if (!(far > 0)) return;
+  const ms = Math.max(ICE_GROW_LEAST, areaPlayLeft(own.iceArea)), id = doc.id;
+  iceGrowing.set(id, { from, far, t0: performance.now(), ms });
+  let step = 0;
+  const next = () => {
+    if (!iceGrowing.has(id)) return;
+    if (++step >= ICE_GROW_STEPS || !canvas?.scene?.regions?.get(id)) iceGrowing.delete(id); else setTimeout(next, ms / ICE_GROW_STEPS);
+    floorLooksSoon();
+  };
+  setTimeout(next, ms / ICE_GROW_STEPS);
+}
+Hooks.on("createRegion", (doc) => { try { iceGrowStart(doc); } catch (err) { runtime?.trace?.("thin ice", `grow: ${err?.message ?? err}`); } });
+Hooks.on("canvasTearDown", () => iceGrowing.clear());
 // Under a roof: the regions that keep the weather out (as for snow and rain), where the sun never reaches.
 // What is open to the sky (regions marked so), each with how far its edge fades.
 const openSkyPolygons = () => {
@@ -10025,7 +10088,7 @@ const smokeFiresNow = () => {
       const x = token.mesh.position.x, y = token.mesh.position.y, last = torchLean.get(key);
       const lean = last ? last.lean * 0.85 + Math.max(-0.6, Math.min(0.6, (x - last.x) * 0.02)) * 0.15 : 0;
       torchLean.set(key, { x, lean });
-      torch = { key, x, y, width: token.w ?? grid, side, lean: lean + windOnFire(key, x, y).lean * 0.6, color: source.data.color, visible: token.visible === true && !token.document.hidden && !flameCovered(`torch:${key}`, { x, y }, token.document.elevation) && !inThickSmoke({ x, y }) };
+      torch = { key, x, y, width: token.w ?? grid, side, lean: lean + windOnFire(key, x, y).lean * 0.9, color: source.data.color, visible: token.visible === true && !token.document.hidden && !flameCovered(`torch:${key}`, { x, y }, token.document.elevation) && !inThickSmoke({ x, y }) };
       at = torchPose(torch, grid).top;
     }
     // Only a fire this screen can see smokes (a torch behind a wall stays hidden); a carried one, while its creature shows.
@@ -12069,7 +12132,7 @@ function icePatchesOf(scene, area) {
       const mids = iceMeltSquares({ bounds, within: area.bounds, grid, inside, inArea: area.testPoint }).map((key) => iceSquareMid(key, grid));
       if (!mids.length || mids.every((p) => sheets.some((within) => within(p)))) continue;
       const outline = areaOutline({ bounds: area.bounds, testPoint: area.testPoint, seeds: mids });
-      const sheet = icePatchData({ pond: doc, shapes: icePatchShapes({ areas, outline, least: grid * grid * 0.5 }) });
+      const sheet = icePatchData({ pond: doc, shapes: icePatchShapes({ areas, outline, least: grid * grid * 0.5 }), from: propAreas.get(area.uuid)?.at ?? area.at ?? null, area: typeof area.uuid === "string" ? area.uuid.split(".").pop() : null });
       if (sheet) made.push(sheet);
     } catch (err) { runtime?.trace?.("thin ice", `sheet ${doc?.id ?? "?"}: ${err?.message ?? err}`); }
   }
@@ -12905,7 +12968,8 @@ function blowWindSpell(doc) {
   if (!isWindSpell({ name: item?.name, traits: Array.from(item?.system?.traits?.value ?? []) })) return;
   let shape = doc.shapes?.[0] ?? null;
   if (!shape && doc.documentName === "MeasuredTemplate") shape = templateShape({ t: doc.t, x: doc.x, y: doc.y, distance: doc.distance, direction: doc.direction, angle: doc.angle, width: doc.width }, canvas.grid.size / (canvas.dimensions?.distance || 5));
-  for (const gust of windSpellGusts(shape, { grid: canvas.grid.size })) gusts.add(gust);
+  const blown = windSpellGusts(shape, { grid: canvas.grid.size }).map((gust) => gusts.add(gust));
+  if (doc.id) { windSpellGusts_.set(doc.id, blown); if (windSpellGusts_.size > 40) windSpellGusts_.delete(windSpellGusts_.keys().next().value); const left = areaPlayLeft(doc.id); if (left > 0) for (const id of blown) gusts.hold(id, left); }
   // The animals in it bolt, as they do from anything sudden.
   const at = areaShapeCentreOf(doc);
   if (at && giantsScareOn()) noiseScares({ x: at.x, y: at.y, radius: canvas.grid.size * 3 });
@@ -17460,7 +17524,8 @@ Hooks.once("ready", () => {
               levels: [...(doc.levels ?? [])], onLevel: tilesOnLevel([{ id: doc.id, levels: [...(doc.levels ?? [])] }], placed.area?.levels).length > 0, areas: areas.length, squares };
           } catch (err) { return { name: doc?.name, error: String(err?.message ?? err) }; } }) };
       },
-      freezeIce: (at, radius = canvas.grid?.size ?? 100) => freezeIceWrite(canvas?.scene, { testPoint: (p) => Math.hypot(p.x - at.x, p.y - at.y) <= radius, bounds: { x: at.x - radius, y: at.y - radius, w: radius * 2, h: radius * 2 }, levels: [] }),
+      freezeIce: (at, radius = canvas.grid?.size ?? 100) => freezeIceWrite(canvas?.scene, { at, testPoint: (p) => Math.hypot(p.x - at.x, p.y - at.y) <= radius, bounds: { x: at.x - radius, y: at.y - radius, w: radius * 2, h: radius * 2 }, levels: [] }),
+      iceGrowing: () => [...iceGrowing].map(([id, g]) => ({ id, far: Math.round(g.far), ms: g.ms, k: +((performance.now() - g.t0) / g.ms).toFixed(2) })),
       // Break a region's decoration (a key from decorKeys) as a bludgeoning area at its centre would (both switches still
       // apply; a player's is asked of the GM, who checks it as any other); the region's breakable decorations, with their
       // keys; and the keys this screen lets break now (drawn, not broken: decorBreakable).
@@ -18644,6 +18709,7 @@ Hooks.once("ready", () => {
             // Its props break at the area's impact while this plays (breakAreaProps).
             // and breaks what its spell breaks then, with no damage roll (breakAreaOnPlay).
             onPlayStart: (started) => propSafe("area", () => {
+              propSafe("area play length", () => areaPlayStarted(template, started?.playbackPlan));
               const impactAt = Date.now() + impactDelay(started?.playbackPlan);
               propAreas.played(template.uuid, impactAt);
               breakAreaOnPlay(template.uuid, impactAt);

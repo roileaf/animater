@@ -138,12 +138,23 @@ const path = () => {
 };
 const oval = (x, y, rx, ry, turn = 0) => { const p = [], c = Math.cos(turn), s = Math.sin(turn); for (let i = 0; i < 16; i++) { const a = (i / 16) * Math.PI * 2, px = Math.cos(a) * rx, py = Math.sin(a) * ry; p.push(x + px * c - py * s, y + px * s + py * c); } return p; };
 
+// One side of a shape drawn from nose to tail along the middle, and its other side with it.
+const mirrored = (half) => { const out = [...half]; for (let i = half.length - 4; i >= 2; i -= 2) out.push(half[i], -half[i + 1]); return out; };
+
+// A leaf of a shape from a root at (x, y), `long` the way `turn` points and `wide` at its widest: pointed at both ends.
+// `lean` over 1 puts the widest part towards its tip (a wing), under 1 towards its root (a body tapering away).
+const leaf = (x, y, long, wide, turn, lean = 1) => { const c = Math.cos(turn), s = Math.sin(turn), N = 10, one = [], other = [];
+  for (let i = 0; i <= N; i++) { const t = i / N, u = t * long, v = wide * Math.sin(Math.PI * Math.pow(t, lean)); one.push(x + u * c - v * s, y + u * s + v * c); if (i && i < N) other.unshift(x + u * c + v * s, y + u * s - v * c); }
+  return [...one, ...other]; };
+
 const DRAWN = {
-  // A long neck and tail, two wings with scalloped trailing edges.
-  dragon(w) { return [path().move(1.25, 0).quad(1, -0.09, 0.72, -0.07).quad(0.5, -0.16, 0.3, -0.15).line(0.34, -0.5 * w).quad(0.2, -1.1 * w, -0.18, -1.38 * w)
-    .quad(-0.18, -1.05 * w, -0.36, -0.98 * w).quad(-0.24, -0.74 * w, -0.44, -0.62 * w).quad(-0.3, -0.4 * w, -0.46, -0.2).quad(-0.9, -0.1, -1.5, 0).quad(-0.9, 0.1, -0.46, 0.2)
-    .quad(-0.3, 0.4 * w, -0.44, 0.62 * w).quad(-0.24, 0.74 * w, -0.36, 0.98 * w).quad(-0.18, 1.05 * w, -0.18, 1.38 * w).quad(0.2, 1.1 * w, 0.34, 0.5 * w)
-    .line(0.3, 0.15).quad(0.5, 0.16, 0.72, 0.07).quad(1, 0.09, 1.25, 0).points]; },
+  // A dragon from above: a wedge of a head with horns swept back, a neck, wings that reach forward to a clawed wrist and
+  // out to long fingers with the skin hollowed between them, haunches, and a long tail ending in a blade. (The first
+  // one was a dart with small wings: it read as a bat. Roi: "doesnt look like dragon".)
+  dragon(w) { return [mirrored(path().move(1.32, 0).quad(1.22, -0.03, 1.1, -0.09).line(1.0, -0.11).line(0.8, -0.24).line(0.9, -0.085).quad(0.72, -0.05, 0.56, -0.09).quad(0.46, -0.11, 0.4, -0.17)
+    .quad(0.5, -0.4 * w, 0.66, -0.6 * w).line(0.8, -0.66 * w).line(0.64, -0.72 * w).quad(0.52, -1.1 * w, 0.2, -1.46 * w)
+    .quad(0.16, -1.02 * w, -0.16, -1.14 * w).quad(-0.04, -0.8 * w, -0.4, -0.82 * w).quad(-0.22, -0.52 * w, -0.52, -0.44 * w).quad(-0.36, -0.28, -0.42, -0.18)
+    .quad(-0.56, -0.25, -0.68, -0.1).quad(-1.0, -0.05, -1.34, -0.03).line(-1.42, -0.13).line(-1.66, 0).points)]; },
   // Broad feathered wings with fingered tips, a short neck, a fanned tail.
   bird(w) { return [path().move(0.62, 0).quad(0.5, -0.1, 0.3, -0.1).line(0.3, -0.3 * w).quad(0.34, -0.95 * w, 0.04, -1.38 * w).line(-0.05, -1.2 * w).line(-0.13, -1.32 * w).line(-0.18, -1.13 * w)
     .line(-0.27, -1.2 * w).line(-0.3, -1.0 * w).quad(-0.34, -0.5 * w, -0.26, -0.13).line(-0.58, -0.1).line(-0.98, -0.3).quad(-0.86, 0, -0.98, 0.3).line(-0.58, 0.1).line(-0.26, 0.13)
@@ -153,9 +164,11 @@ const DRAWN = {
   bat(w) { return [path().move(0.52, 0).line(0.44, -0.07).line(0.54, -0.17).line(0.3, -0.12).line(0.32, -0.5 * w).line(0.14, -1.34 * w).quad(0, -0.92 * w, -0.28, -1.12 * w)
     .quad(-0.2, -0.76 * w, -0.52, -0.72 * w).quad(-0.34, -0.42 * w, -0.46, -0.13).line(-0.74, 0).line(-0.46, 0.13).quad(-0.34, 0.42 * w, -0.52, 0.72 * w).quad(-0.2, 0.76 * w, -0.28, 1.12 * w)
     .quad(0, 0.92 * w, 0.14, 1.34 * w).line(0.32, 0.5 * w).line(0.3, 0.12).line(0.54, 0.17).line(0.44, 0.07).points]; },
-  // Four narrow wings, a head, a thorax and a long thin tail.
-  insect(w) { const out = [oval(0.56, 0, 0.13, 0.12), oval(0.22, 0, 0.2, 0.11), oval(-0.5, 0, 0.56, 0.065)];
-    for (const k of [-1, 1]) out.push(oval(0.34, k * 0.6 * w, 0.11, 0.62 * w, k * 0.5), oval(-0.06, k * 0.5 * w, 0.1, 0.5 * w, -k * 0.5));
+  // A great wasp or dragonfly from above: a head with feelers, a thorax, a long body tapering to a point, and two pairs
+  // of long narrow wings rooted at the thorax, the front pair held a little forward and the back pair swept behind.
+  // (The first had its wings as four crossed ovals: it read as an eye. Roi: "insect shadow looks weird".)
+  insect(w) { const out = [oval(0.62, 0, 0.11, 0.12), oval(0.33, 0, 0.19, 0.13), leaf(0.2, 0, 1.2, 0.105, Math.PI, 0.5)];
+    for (const k of [-1, 1]) out.push(leaf(0.38, k * 0.06, 1.25 * w, 0.14, k * 1.36, 1.5), leaf(0.24, k * 0.06, 1.0 * w, 0.15, k * 1.95, 1.5), [0.7, k * 0.04, 0.95, k * 0.2, 0.71, k * 0.09]);
     return out; },
   // No wings: a long body winding as it goes (a great worm, a serpent of the air).
   wingless(w, t) { const N = 28, left = [], right = [];

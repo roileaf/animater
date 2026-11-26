@@ -3,8 +3,9 @@
 // flames and smoke lean, cloth snaps. For a moment, on each screen, changing nothing (Roi, 2026-11-25, of putting
 // torches out with one: "theres no such mechanic, so visual only"). Pure: what is a wind spell, and the gusts of a shape.
 
-// How long a wind spell's gust blows, in ms.
-export const WIND_SPELL_MS = 1800;
+// How long a wind spell's gust blows, in ms: about as long as its animation streams past, so a flame is still held over
+// while the wind is still seen (at 1800 it had stood up again mid-spell).
+export const WIND_SPELL_MS = 3200;
 
 // Named for wind, in whatever system. Whole words: a Window of Opportunity is not one, nor is Rewind.
 const WINDY = /\b(?:gusts?|winds?|whirlwinds?|windstorms?|cyclones?|tornado(?:es)?|gales?|tempests?|squalls?|zephyrs?|hurricanes?)\b/i;
@@ -16,9 +17,11 @@ export function isWindSpell({ name = '', traits = [] } = {}) {
 
 const fin = (...v) => v.every(Number.isFinite), rad = (d) => ((Number(d) || 0) * Math.PI) / 180;
 // One gust blowing `long` px from a point the way `heading` points, `wide` across: its head set just past the far end,
-// so the whole length behind it is in its wake. `inside`: it blows under a ceiling too (the spell was cast in the room).
+// so the whole length behind it is in its wake — at full strength all the way back to where it was cast (`flat`), and
+// dying away quickly behind that (a gust of the open air fades behind its head; a spell blows from the hand that cast it).
+// `inside`: it blows under a ceiling too (the spell was cast in the room).
 const along = (x, y, heading, long, wide, strength) => ({
-  x: x + Math.cos(heading) * (long + wide / 3), y: y + Math.sin(heading) * (long + wide / 3), heading, strength, width: wide, length: long * 0.95, ms: WIND_SPELL_MS, inside: true,
+  x: x + Math.cos(heading) * (long + wide / 3), y: y + Math.sin(heading) * (long + wide / 3), heading, strength, width: wide, length: wide * 0.6, flat: long, ms: WIND_SPELL_MS, inside: true,
 });
 // Outward every way from a middle, as far as `radius`: eight gusts, each gentle, adding up to a wind away from the middle.
 const outward = (x, y, radius) => Array.from({ length: 8 }, (_, i) => along(x, y, (i / 8) * Math.PI * 2, radius, radius * 0.9, 0.6));

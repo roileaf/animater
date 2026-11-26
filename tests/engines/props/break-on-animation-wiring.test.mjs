@@ -6,7 +6,7 @@ const main = readFileSync(new URL("../../../scripts/main.mjs", import.meta.url),
 const body = (name) => { const i = main.indexOf(`function ${name}(`); assert.ok(i >= 0, name); return main.slice(i, main.indexOf("\n}\n", i)); };
 
 test("an area breaks at its animation's impact, with the spell's own damage types, no roll needed", () => {
-  assert.match(main, /onPlayStart: \(started\) => propSafe\("area", \(\) => \{\n\s*const impactAt = Date\.now\(\) \+ impactDelay\(started\?\.playbackPlan\);\n\s*propAreas\.played\(template\.uuid, impactAt\);\n\s*breakAreaOnPlay\(template\.uuid, impactAt\);/);
+  assert.match(main, /onPlayStart: \(started\) => propSafe\("area", \(\) => \{\n\s*propSafe\("area play length", \(\) => areaPlayStarted\(template, started\?\.playbackPlan\)\);\n\s*const impactAt = Date\.now\(\) \+ impactDelay\(started\?\.playbackPlan\);\n\s*propAreas\.played\(template\.uuid, impactAt\);\n\s*breakAreaOnPlay\(template\.uuid, impactAt\);/);
   assert.match(body("breakAreaOnPlay"), /breakAreaThings\(now, now\.damageTypes \?\? \[\]\)/);
   // every screen remembers the spell's types with the area
   assert.match(body("rememberArea"), /damageTypes: areaDamageTypes\(doc\)/);

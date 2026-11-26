@@ -108,3 +108,27 @@ test('wired: trees, flames and cloth ask the wind where they stand, only while a
 test('a gust does not reach cloth under a ceiling, looked at once a thing', () => {
   assert.match(main, /const decorWindAt = \(d\) => \{[\s\S]{0,400}?decorRoofed\.set\(d, underCeiling\(\{ x: d\.x, y: d\.y \}\)\)[\s\S]{0,300}?windHere\(d\.x, d\.y\)/);
 });
+
+test('a gust can be kept blowing longer, never cut shorter, and not once it has died', async () => {
+  const { createGusts } = await import('../../../scripts/engines/motion/gusts.mjs');
+  let t = 0; const g = createGusts({ now: () => t });
+  const id = g.add({ x: 0, y: 0, heading: 0, strength: 1, width: 300, length: 600, ms: 1000 });
+  assert.equal(g.hold(id, 5000), true);
+  t = 3000; assert.ok(g.at(-100, 0).x > 0.3, 'still blowing past its first end');
+  assert.equal(g.hold(id, 100), true); t = 4500; assert.ok(g.at(-100, 0).x > 0.3, 'a shorter hold does not cut it');
+  t = 6000; assert.equal(g.count, 0);
+  assert.equal(g.hold(id, 1000), false);
+  const free = g.add({ x: 0, y: 0 }); assert.equal(g.hold(free, 1000), false, 'one that blows until ended is left to whoever ends it');
+});
+
+test('a gust can be kept blowing longer, never cut shorter, and not once it has died', async () => {
+  const { createGusts: make } = await import('../../../scripts/engines/motion/gusts.mjs');
+  let t = 0; const g = make({ now: () => t });
+  const id = g.add({ x: 0, y: 0, heading: 0, strength: 1, width: 300, length: 600, ms: 1000 });
+  assert.equal(g.hold(id, 5000), true);
+  t = 3000; assert.ok(g.at(-100, 0).x > 0.3, 'still blowing past its first end');
+  assert.equal(g.hold(id, 100), true); t = 4500; assert.ok(g.at(-100, 0).x > 0.3, 'a shorter hold does not cut it');
+  t = 6000; assert.equal(g.count, 0);
+  assert.equal(g.hold(id, 1000), false);
+  const free = g.add({ x: 0, y: 0 }); assert.equal(g.hold(free, 1000), false, 'one that blows until ended is left to whoever ends it');
+});

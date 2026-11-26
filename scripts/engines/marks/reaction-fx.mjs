@@ -86,6 +86,42 @@ function bubbles(random, radius) {
   };
 }
 
+// Lightning on water (water-charge.mjs): the arcs run out from where it struck as far as the charge has got, shivering;
+// one finds each creature standing in the water and crawls round it. `light` is the water under it, lit in steps.
+function charge(seed, plan, durationMs) {
+  const passes = [[5, 0x5a8cff, 0.28], [2.2, 0xaad2ff, 0.7], [1, 0xffffff, 0.95]];
+  return (g, k, _at, light) => {
+    const age = (k * durationMs) / 1000, far = age * plan.speed, random = seededRandom((seed + Math.floor(age * 20) * 7919) >>> 0), jit = (n) => (random() - 0.5) * 2 * n;
+    const stay = plan.hold > 0.95 ? plan.hold : 0.95, fade = age < stay ? 1 : Math.max(0, 1 - (age - stay) / 0.75), flick = 0.55 + 0.45 * random();
+    if (light) {
+      light.clear();
+      if (fade > 0) for (const [share, alpha] of [[1, 0.07], [0.7, 0.08], [0.4, 0.1]]) { light.beginFill(0xaacdff, alpha * fade); light.drawCircle(0, 0, Math.min(plan.reach, far) * share); light.endFill(); }
+    }
+    if (fade > 0) for (const [width, color, alpha] of passes) {
+      g.lineStyle(width, color, alpha * fade * (width < 5 ? flick : 1));
+      for (const a of plan.arcs) { if (a.far > far) continue; g.moveTo(a.x0 + jit(2), a.y0 + jit(2)); g.lineTo(a.x1 + jit(2), a.y1 + jit(2)); }
+    }
+    for (const q of plan.grabs) {
+      const since = age - q.d / plan.speed;
+      // (It keeps hold of a creature while the charge is still in the water, and a moment after.)
+      const last = Math.max(1, stay + 0.05 - q.d / plan.speed);
+      if (since < 0 || since > last + 0.4) continue;
+      const hold = since < last ? 1 : 1 - (since - last) / 0.4;
+      g.lineStyle(3, 0xeaf3ff, 0.8 * hold);
+      g.drawCircle(q.dx, q.dy, q.r);
+      for (const [width, color, alpha] of [[3, 0x6ea0ff, 0.45], [1.2, 0xffffff, 0.95]]) {
+        g.lineStyle(width, color, alpha * hold);
+        if (since < 0.35) { const n = Math.max(4, Math.round(q.d / 16)); g.moveTo(0, 0); for (let i = 1; i <= n; i++) g.lineTo((q.dx * i) / n + (i < n ? jit(6) : 0), (q.dy * i) / n + (i < n ? jit(6) : 0)); }
+        for (let i = 0; i < 5; i++) {
+          const a0 = random() * Math.PI * 2;
+          for (let s = 0; s <= 5; s++) { const a = a0 + (s / 5) * 1.3, r = q.r * (0.75 + random() * 0.45), x = q.dx + Math.cos(a) * r, y = q.dy + Math.sin(a) * r; if (s) g.lineTo(x, y); else g.moveTo(x, y); }
+        }
+      }
+    }
+    g.lineStyle(0);
+  };
+}
+
 function drawerFor(reaction, random) {
   const { kind, radius, seed } = reaction;
   switch (kind) {
@@ -94,6 +130,7 @@ function drawerFor(reaction, random) {
     case 'flare': return flare(random, radius);
     case 'arcs': return arcs(seed, radius, reaction.targets ?? []);
     case 'bubbles': return bubbles(random, radius);
+    case 'charge': return reaction.plan ? charge(seed, reaction.plan, reaction.durationMs > 0 ? reaction.durationMs : 1000) : null;
     default: return null;
   }
 }
@@ -109,17 +146,32 @@ export function reactionVisual(PIXI, reaction, startAt) {
   if (reaction.kind === 'flare' || reaction.kind === 'arcs') g.blendMode = PIXI.BLEND_MODES?.ADD ?? g.blendMode;
   const draw = drawerFor(reaction, seededRandom(reaction.seed));
   const duration = reaction.durationMs > 0 ? reaction.durationMs : 1000;
+  // A charge on water also lights the water itself, and only the water: a second drawing under the arcs, cut to the pond.
+  let display = g, light = null;
+  if (reaction.kind === 'charge' && reaction.plan?.pond) {
+    display = new PIXI.Container();
+    display.eventMode = 'none';
+    display.position.set(reaction.at.x, reaction.at.y);
+    g.position.set(0, 0);
+    light = new PIXI.Graphics();
+    const cut = new PIXI.Graphics(), own = (flat) => Array.from(flat, (v, i) => v - (i % 2 ? reaction.at.y : reaction.at.x));
+    cut.beginFill(0xffffff); cut.drawPolygon(own(reaction.plan.pond));
+    for (const hole of reaction.plan.pond.holes ?? []) { cut.beginHole(); cut.drawPolygon(own(hole)); cut.endHole(); }
+    cut.endFill();
+    light.mask = cut;
+    display.addChild(cut, light, g);
+  }
   return {
-    display: g,
+    display,
     update(t) {
       const k = (t - startAt) / duration;
-      if (!draw || k >= 1 || g.destroyed) return false;
+      if (!draw || k >= 1 || display.destroyed) return false;
       g.clear();
-      if (k > 0) draw(g, k, reaction.at);
+      if (k > 0) draw(g, k, reaction.at, light);
       return true;
     },
     destroy() {
-      if (!g.destroyed) g.destroy();
+      if (!display.destroyed) display.destroy({ children: true });
     },
   };
 }

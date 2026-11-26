@@ -171,7 +171,7 @@ test("a scorch is left off the water under it: the mark's shape has the water ta
   assert.deepEqual(markCuts(cone, []), []);
   assert.deepEqual(markCuts(cone, undefined), []);
   assert.deepEqual(markCuts({ points: [0, 0, 10, 0, 10, 10, 5, 2, 0, 10] }, [pond]), [], "a shape with a dent in it is drawn whole");
-  assert.ok(main.includes('if (Array.isArray(shape) && (tag?.mark === "scorch" || tag?.mark === "rime")) { try { shape.cuts = regionsHere().filter((r) => plainFloorOf(r) === "water" && r.flags?.[ID]?.[SPELL_ICE] !== true)'), "scorch and frost: neither lies on water or on the ice over it; a sheet lies on its pond, which is cut already");
+  assert.ok(main.includes('if (Array.isArray(shape) && ["scorch", "rime", "streaks"].includes(tag?.mark)) { try { shape.cuts = regionsHere().filter((r) => plainFloorOf(r) === "water" && r.flags?.[ID]?.[SPELL_ICE] !== true)'), "scorch and frost: neither lies on water or on the ice over it; a sheet lies on its pond, which is cut already");
   const melt = body("iceSheetMeltOf");
   assert.match(melt, /if \(doc\.flags\?\.\[ID\]\?\.\[SPELL_ICE\] !== true/);
   assert.match(melt, /if \(melted\.gone\) \{ out\.deletes\.push\(doc\.id\); continue; \}/);
@@ -217,7 +217,10 @@ test("fire landing on water steams: a puff over each stretch of water under its 
   host.clear(); on = false;
   assert.equal(host.play({ kind: "steam", at: { x: 1, y: 2 }, radius: 50 }), false, "off with Element reactions");
   assert.equal(host.play(null), false);
-  assert.ok(main.includes('if (record?.tag?.mark === "scorch") markSteam(record.mask).forEach((s, n) => markReactions.play({ kind: "steam"'));
+  assert.ok(main.includes('const spots = markSteam(record.mask), until = Date.now() + areaPlayLeft(record.tag.regionId)'));
+  assert.ok(main.includes('spots.forEach((s, n) => markReactions.play({ kind: "steam"'));
+  // It goes on steaming while the fire's animation still plays.
+  assert.ok(main.includes('if (spots.length && Date.now() + 1100 < until) setTimeout(() => propSafe("steam", () => puff(round + 1)), 1100);'));
 });
 
 test("Cold freezes water works on a scene with Breakable props off: only the ice answers there", () => {
@@ -230,4 +233,33 @@ test("Cold freezes water works on a scene with Breakable props off: only the ice
   assert.ok(body.indexOf("if (!props) return melting || freezing;") > body.indexOf("const freezing ="), "and nothing breaks: it stops after the ice");
   const play = src.slice(src.indexOf("function breakAreaOnPlay("), src.indexOf("function breakAreaProps("));
   assert.ok(play.includes("if (!area || !areasActOn(area.scene)) return;"), "the animation's impact reaches it");
+});
+
+test("a spell's sheet is seen to spread from where the spell came, and is whole at the end", async () => {
+  const { iceGrowFar, iceGrowRadius, iceGrown } = await import("../../../scripts/engines/regions/ice-patch.mjs");
+  const sheet = Object.assign([0, 0, 400, 0, 400, 200, 0, 200], { holes: [[300, 50, 350, 50, 350, 100, 300, 100]] }), from = { x: 0, y: 100 };
+  const far = iceGrowFar([sheet], from);
+  assert.ok(Math.abs(far - Math.hypot(400, 100)) < 1e-9);
+  assert.equal(iceGrowFar([sheet], null), 0);
+  assert.ok(iceGrowRadius(far, 0) > 0 && iceGrowRadius(far, 0) < far * 0.2, "a little ice at once");
+  assert.ok(iceGrowRadius(far, 0.5) > far * 0.6, "quick at first");
+  assert.equal(iceGrowRadius(far, 1), far);
+  assert.equal(iceGrowRadius(far, 7), far);
+  const early = iceGrown([sheet], from, 120), late = iceGrown([sheet], from, far * 1.01);
+  assert.equal(early.length, 1);
+  assert.ok(flatArea(early[0]) < flatArea(sheet) * 0.4 && flatArea(early[0]) > 0);
+  for (let i = 0; i + 1 < early[0].length; i += 2) assert.ok(Math.hypot(early[0][i] - from.x, early[0][i + 1] - from.y) <= 121, "within its reach");
+  assert.deepEqual(early[0].holes, [], "the island is not reached yet");
+  assert.ok(Math.abs(flatArea(late[0]) - flatArea(sheet)) < 1, "whole at the end");
+  assert.equal(late[0].holes.length, 1, "with its island");
+  assert.equal(iceGrown([sheet], null, 50)[0], sheet, "nothing to grow from: as it is");
+  assert.deepEqual(iceGrown([sheet], { x: 5000, y: 5000 }, 50), [], "not reached at all yet");
+  // The sheet remembers where it came from and whose area laid it.
+  const data = icePatchData({ pond: { name: "Pond" }, shapes: [{ type: "polygon", points: [0, 0, 10, 0, 10, 10], hole: false }], from: { x: 12.4, y: 7.6 }, area: "abc" });
+  assert.deepEqual(data.flags.animater.iceFrom, [12, 8]);
+  assert.equal(data.flags.animater.iceArea, "abc");
+  assert.equal("iceFrom" in icePatchData({ pond: {}, shapes: [{ type: "polygon", points: [0, 0, 10, 0, 10, 10], hole: false }] }).flags.animater, false);
+  const src = readFileSync(new URL("../../../scripts/main.mjs", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+  assert.ok(src.includes("return growing ? iceGrown(cut, growing.from, iceGrowRadius(growing.far, (performance.now() - growing.t0) / growing.ms)) : cut;"));
+  assert.ok(src.includes("const ms = Math.max(ICE_GROW_LEAST, areaPlayLeft(own.iceArea)), id = doc.id;"), "for as long as the spell is seen");
 });

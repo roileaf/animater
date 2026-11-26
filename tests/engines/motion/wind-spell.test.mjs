@@ -81,7 +81,9 @@ test('wired: every screen blows it for itself as the spell\'s area appears on th
   assert.match(main, /for \(const hook of \["createMeasuredTemplate", "createRegion"\]\) Hooks\.on\(hook, \(doc\) => propSafe\("wind spell", \(\) => blowWindSpell\(doc\)\)\);/);
   assert.match(main, /function blowWindSpell\(doc\) \{[\s\S]{0,200}?if \(!canvas\?\.ready \|\| doc\?\.parent\?\.id !== canvas\.scene\?\.id \|\| !gustsOn\(\) \|\| !windSpellsOn\(\)\) return;/);
   assert.match(main, /isWindSpell\(\{ name: item\?\.name, traits: Array\.from\(item\?\.system\?\.traits\?\.value \?\? \[\]\) \}\)/);
-  assert.match(main, /for \(const gust of windSpellGusts\(shape, \{ grid: canvas\.grid\.size \}\)\) gusts\.add\(gust\);/);
+  assert.ok(main.includes('const blown = windSpellGusts(shape, { grid: canvas.grid.size }).map((gust) => gusts.add(gust));'));
+  // And it blows until the spell's animation is over, not for a fixed moment.
+  assert.ok(main.includes('for (const id of windSpellGusts_.get(doc.id) ?? []) gusts.hold(id, Math.min(PLAY_MOST, length));'));
   // Not behind Breakable props: it changes nothing and saves nothing.
   const blow = main.slice(main.indexOf('function blowWindSpell(doc) {'), main.indexOf('for (const hook of ["createMeasuredTemplate", "createRegion"]) Hooks.on(hook, (doc) => propSafe("wind spell"'));
   assert.ok(!/propsOn\(|updateEmbeddedDocuments|game\.socket\.emit|setFlag/.test(blow), 'nothing written, nothing sent, no scene switch');

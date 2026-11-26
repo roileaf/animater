@@ -80,16 +80,19 @@ export function icePatchShapes({ areas = [], outline = [], least = 0 } = {}) {
 /**
  * The region to create for a sheet: thin ice that holds a Medium creature, painted as ice whatever the map under it
  * shows, marked as a spell's (SPELL_ICE) so Repair takes it away. It stands where its pond stands: the pond's levels,
- * its elevation, and the picture it is bound to when it is bound to one. null without shapes.
+ * its elevation, and the picture it is bound to when it is bound to one. null without shapes. `from` (where the spell
+ * was cast from) and `area` (its area's id) are kept on it, so each screen can show the ice spreading from there for
+ * as long as it sees the spell (iceGrown).
  */
-export function icePatchData({ pond, shapes = [] } = {}) {
+export function icePatchData({ pond, shapes = [], from = null, area = null } = {}) {
   if (!Array.isArray(shapes) || !shapes.some((s) => s?.hole !== true)) return null;
   const own = pond?.flags?.animater ?? {};
   return {
     name: `${pond?.name ? `${pond.name} ` : ""}(frozen)`.trim(), color: "#bfe4f2", shapes,
     elevation: { bottom: pond?.elevation?.bottom ?? null, top: pond?.elevation?.top ?? null },
     levels: [...(pond?.levels ?? [])],
-    flags: { animater: { floor: "water", iceThin: true, iceHolds: "med", texture: "on", [SPELL_ICE]: true, ...(own.imageRegion ? { imageRegion: own.imageRegion } : {}) } },
+    flags: { animater: { floor: "water", iceThin: true, iceHolds: "med", texture: "on", [SPELL_ICE]: true, ...(own.imageRegion ? { imageRegion: own.imageRegion } : {}),
+      ...(finite(from) ? { iceFrom: [Math.round(from.x), Math.round(from.y)] } : {}), ...(typeof area === "string" && area ? { iceArea: area } : {}) } },
   };
 }
 
@@ -121,4 +124,32 @@ export function icePatchMelt({ shapes = [], outline = [], least = 0 } = {}) {
   if (!cuts.length) return null;
   const whole = solids.reduce((sum, s) => sum + flatArea(s.points), 0), taken = cuts.reduce((sum, points) => sum + flatArea(points), 0);
   return { shapes: [...shapes, ...cuts.map((points) => ({ type: "polygon", points, hole: true }))], gone: taken >= whole * SHEET_GONE };
+}
+
+// Ice spreading. A sheet is written whole the moment the spell lands, and it is whole for everything that walks on it;
+// but on each screen it is seen to spread out from where the spell came, for as long as the spell is still seen.
+const GROW_START = 0.12, GROW_RING = 40;
+/** How far a sheet's furthest corner is from a place: the reach it has grown to when it is whole. */
+export function iceGrowFar(areas = [], from = null) {
+  let far = 0;
+  if (finite(from)) for (const flat of areas ?? []) for (let i = 0; i + 1 < (flat?.length ?? 0); i += 2) far = Math.max(far, Math.hypot(flat[i] - from.x, flat[i + 1] - from.y));
+  return far;
+}
+/** How far it has spread, `k` (0-1) of the way through: quick at first, slowing as it nears its edge. */
+export const iceGrowRadius = (far, k) => { const t = Math.min(1, Math.max(0, Number(k) || 0)); return (Number(far) || 0) * (GROW_START + (1 - GROW_START) * (1 - (1 - t) ** 2)); };
+/**
+ * A sheet's areas as far as it has spread: each cut down to a round reach of `radius` from `from`, its islands with it.
+ * The areas as they are when there is nothing to cut to.
+ */
+export function iceGrown(areas = [], from = null, radius = 0) {
+  if (!finite(from) || !(radius > 0)) return areas;
+  const ring = Array.from({ length: GROW_RING }, (_, i) => { const a = (i / GROW_RING) * Math.PI * 2; return { x: from.x + Math.cos(a) * radius, y: from.y + Math.sin(a) * radius }; });
+  const out = [];
+  for (const area of areas ?? []) {
+    const points = clipToRing(area, ring);
+    if (!points.length) continue;
+    points.holes = (area?.holes ?? []).map((hole) => clipToRing(hole, ring)).filter((hole) => hole.length);
+    out.push(points);
+  }
+  return out;
 }

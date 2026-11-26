@@ -11,11 +11,12 @@ const smooth = (k) => { const t = clamp(k, 0, 1); return t * t * (3 - 2 * t); };
 /**
  * How much of a gust is felt at a point (pure), 0-1. `g`: { x, y, heading, width, length } in map pixels, blowing the
  * way it heads. Strongest a little behind its head; it dies away to the sides over `width`, behind over `length`,
- * and sharply ahead, where the air is not yet moved.
+ * and sharply ahead, where the air is not yet moved. `flat`: this far behind its head it is as strong as at the head,
+ * and only dies away behind that (a wind spell blows at full strength from the hand that cast it to its far end).
  */
 export function gustShare(g, x, y) {
   const dx = x - g.x, dy = y - g.y, c = Math.cos(g.heading), s = Math.sin(g.heading), along = dx * c + dy * s, across = -dx * s + dy * c;
-  const width = g.width || 300, back = -along - width / 3, reach = back > 0 ? (g.length || 600) : width * 0.4;
+  const width = g.width || 300, behind = -along - width / 3, back = behind > 0 ? Math.max(0, behind - (g.flat > 0 ? g.flat : 0)) : behind, reach = back > 0 ? (g.length || 600) : width * 0.4;
   return Math.exp(-(across * across) / (width * width)) * Math.exp(-(back * back) / (reach * reach));
 }
 
@@ -44,13 +45,16 @@ export function createGusts({ now = () => globalThis.performance?.now?.() ?? Dat
   const prune = (t) => { for (const [id, g] of live) { felt(g, t); if (g.ended !== null && t - g.ended >= GUST_EASE_MS) live.delete(id); } };
   return {
     // `inside`: it blows under a ceiling too (a wind spell cast in a room); without, it is the open air's and stays out.
-    add({ x = 0, y = 0, heading = 0, strength = 1, width = 300, length = 600, ms = null, inside = false } = {}) {
+    add({ x = 0, y = 0, heading = 0, strength = 1, width = 300, length = 600, flat = 0, ms = null, inside = false } = {}) {
       const id = next++, t = now();
-      live.set(id, { x, y, heading, strength: clamp(Number(strength) || 0, 0, 1), width, length, inside: inside === true, born: t, until: Number.isFinite(ms) ? t + ms : null, ended: null });
+      live.set(id, { x, y, heading, strength: clamp(Number(strength) || 0, 0, 1), width, length, flat: flat > 0 ? flat : 0, inside: inside === true, born: t, until: Number.isFinite(ms) ? t + ms : null, ended: null });
       return id;
     },
     move(id, { x, y, heading } = {}) { const g = live.get(id); if (!g) return false; if (Number.isFinite(x)) g.x = x; if (Number.isFinite(y)) g.y = y; if (Number.isFinite(heading)) g.heading = heading; return true; },
     end(id) { const g = live.get(id); if (g && g.ended === null) g.ended = now(); },
+    // Keeps one blowing until `ms` from now, when that is later than it would have ended (a spell's wind lasts as
+    // long as the spell is seen). False once it has already died away.
+    hold(id, ms) { const g = live.get(id), t = now(); if (!g || g.ended !== null || g.until === null || !(ms > 0)) return false; g.until = Math.max(g.until, t + ms); return true; },
     // `sheltered`: the place is under a ceiling, where only the gusts that came inside are felt.
     at(x, y, { sheltered = false } = {}) {
       if (!live.size) return { x: 0, y: 0 };
