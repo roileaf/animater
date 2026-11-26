@@ -66,3 +66,12 @@ test('a water spell\'s damage types gain water, which is what quenches; other sp
   assert.ok(spellDamageTypes([], push).some(quenchedBy), 'and water is one of the two things that quench');
   assert.match(main, /return spellDamageTypes\(damageTypesOfItem\(item, game\.system\.id, \{ activity \}\), item\);/);
 });
+
+test('the dust comes down in rounds: a few whatever happens, then for as long as the spell is still seen', async () => {
+  const { quakeDustGoesOn, QUAKE_ROUNDS, QUAKE_ROUNDS_MOST, QUAKE_DUST, QUAKE_DUST_AFTER } = await import('../../../scripts/engines/motion/earth-spell.mjs');
+  for (let r = 0; r < QUAKE_ROUNDS; r++) assert.equal(quakeDustGoesOn(r, 0), true, `round ${r} with no animation`);
+  assert.equal(quakeDustGoesOn(QUAKE_ROUNDS, 0), false, 'then it stops');
+  assert.equal(quakeDustGoesOn(QUAKE_ROUNDS, 2000), true, 'unless the spell is still playing');
+  assert.equal(quakeDustGoesOn(QUAKE_ROUNDS_MOST, 9000), false, 'never for ever');
+  assert.ok(QUAKE_DUST > QUAKE_DUST_AFTER, 'the first shake brings down the most');
+});

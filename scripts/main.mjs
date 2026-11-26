@@ -65,7 +65,7 @@ import { blastTargets, energyBlastTargets, ignitableInArea } from "./engines/pro
 import { propTileFieldsHTML, propSceneFieldsHTML, wallBreakFieldsHTML, smokeLightFieldHTML, SMOKE_LIGHT_FLAG } from "./ui/prop-config.mjs";
 import { bulkBreakableUpdates, windowLike } from "./engines/props/wall-break-bulk.mjs";
 import { damageTypesOfItem, areaIdOf, areaOriginRefOf, placedRecordOf, typesBreaking, rollDamageTypes, spellDamageTypes } from "./engines/props/area-damage.mjs";
-import { isEarthSpell, quakeSpots, QUAKE, QUAKE_DUST } from "./engines/motion/earth-spell.mjs";
+import { isEarthSpell, quakeSpots, QUAKE, QUAKE_DUST, QUAKE_DUST_AFTER, QUAKE_ROUND_MS, quakeDustGoesOn } from "./engines/motion/earth-spell.mjs";
 import { createPlayWatch, strikeMoment, momentWait } from "./engines/props/play-moments.mjs";
 import { askClaimed, createAreaWaits, AREA_TTL_MS, impactDelay, missOutcome, weaponDamageType, uuidOwners, ownWallsBeforeCollision, slamTimes, crossedWalls, travelSpan, GROUND_MOTIONS, groundTravel, groundSlams } from "./engines/props/prop-triggers.mjs";
 import { createAfterimages, placeUnder } from "./engines/motion/afterimage-render.mjs";
@@ -12992,7 +12992,13 @@ function quakeEarthSpell(doc) {
   playUnder("thud", at, { file: THUD_FILES[0], volume: 0.9, reach: 30, rate: 0.45, room: 1, lowpass: 500, bass: 10 });
   if (ceilingDustOn()) {
     let spots = []; try { spots = quakeSpots({ box, inArea }).filter((p) => underCeiling(p)); } catch { spots = []; }
-    spots.forEach((p, n) => setTimeout(() => { try { if (still()) ceilingDust.fall({ at: p, weight: QUAKE_DUST, grid, seed: `quake:${seed}:dust:${n}` }, canvas.app.renderer); } catch { /* the canvas mid-change */ } }, 80 * n));
+    // Round after round while the spell is still seen (earth-spell.mjs quakeDustGoesOn), the first the heaviest.
+    const round = (r) => {
+      if (!still() || !quakeDustGoesOn(r, areaPlayLeft(doc.id))) return;
+      spots.forEach((p, n) => setTimeout(() => { try { if (still()) ceilingDust.fall({ at: p, weight: r ? QUAKE_DUST_AFTER : QUAKE_DUST, grid, seed: `quake:${seed}:dust:${r}:${n}` }, canvas.app.renderer); } catch { /* the canvas mid-change */ } }, 80 * n));
+      if (spots.length) setTimeout(() => round(r + 1), QUAKE_ROUND_MS);
+    };
+    round(0);
   }
   const wide = box ? Math.max(Number(box.w) || 0, Number(box.h) || 0) : grid * 2;
   if (giantRipplesOn()) shakeWaters(at, 5, wide);
@@ -17626,6 +17632,8 @@ Hooks.once("ready", () => {
       gustsNow: () => ({ gusts: gusts.count, fliers: giantWakes.count, flyovers: flyovers.size, shadows: flyoverLayer.count }),
       // A heard footstep struck at a point, for looking at the mark: size in squares.
       heardStepHere: (x, y, { size = 1, sneak = false, vague = false, loud = 1 } = {}) => { heardSteps.add({ x, y, size, sneak, vague, loud, heading: 0, seed: `debug:${performance.now()}` }); return heardSteps.count; },
+      // Why an earth spell's dust does or does not fall at a place: each thing that has to hold.
+      ceilingAt: (at) => ({ dustOn: ceilingDustOn(), earthOn: earthSpellsOn(), under: underCeiling(at), openSky: openToSkyAt(at, canvas?.level?.elevation?.base ?? 0), underground: undergroundScene(), indoors: (() => { try { return indoorPolygons().some((p) => pointInPolygon(at, p)); } catch { return null; } })(), falling: ceilingDust.busy }),
       shakeCeiling: (at, weight = 6) => ceilingDust.fall({ at, weight, grid: canvas.grid?.size ?? 100, seed: `debug:${performance.now()}` }, canvas.app.renderer),
       heldTorches: () => heldTorches.size,
       lightOrbs: () => lightOrbs.size,

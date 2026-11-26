@@ -13,8 +13,15 @@ export function isEarthSpell({ name = '', traits = [] } = {}) {
 
 // How the view shakes: two jolts, the second a little less, as the cave-in's small fall does (camera-shake.mjs tremor).
 export const QUAKE = Object.freeze([{ delay: 0, weight: 9, scale: 1.6 }, { delay: 420, weight: 8, scale: 1.2 }]);
-// How heavy a jolt the ceiling dust falls from (ceiling-dust.mjs ceilingFall: more and wider the heavier).
-export const QUAKE_DUST = 6;
+// How heavy a jolt the ceiling dust falls from (ceiling-dust.mjs ceilingFall: more and wider the heavier): the first
+// shake brings down the most, and it goes on coming down, less of it, while the ground still moves.
+export const QUAKE_DUST = 8, QUAKE_DUST_AFTER = 6;
+// The dust comes down in rounds, this far apart (ms): never fewer than QUAKE_ROUNDS of them, and then for as long as the
+// spell's animation still plays, up to QUAKE_ROUNDS_MOST. (One fall as the area was placed was over before the spell
+// was seen. Roi: "i dont see dust puff coming from the ceiling when casting earth spells".)
+export const QUAKE_ROUND_MS = 600, QUAKE_ROUNDS = 3, QUAKE_ROUNDS_MOST = 18;
+/** Whether another round of dust falls (pure): `round` the one about to fall (0 first), `left` ms of the spell still to play. */
+export const quakeDustGoesOn = (round, left = 0) => round < QUAKE_ROUNDS || (round < QUAKE_ROUNDS_MOST && left > 0);
 
 /**
  * Where dust is shaken down inside an area (pure): up to `most` places spread across it, [{ x, y }]. `box` { x, y, w, h }
