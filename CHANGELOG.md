@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.13.1
+
+- **Earth spells shake dust down where you can see it.** Under a ceiling (an underground scene, or a room under a roof) an earth spell's dust fell once, faintly, at the instant its area was placed, and had settled before the spell's animation was on screen, so it looked as if none fell. It now comes down in rounds, the first the heaviest: at least three, and then for as long as the spell's animation still plays.
+
 ## 4.13.0
 
 - **Footsteps you hear but cannot see are marked on the floor.** A creature a player hears but does not see (hidden or invisible; with PF2e Visioner, also one heard through a wall) has each footstep struck on the floor in a few ink strokes where it falls: wider for a bigger creature, small and faint for one that sneaks, and only within the footstep hearing range. An undetected or unnoticed creature is never marked. "Heard footsteps land" chooses the exact square or a vague one, up to a square and a half off, so a patrol cannot be followed step by step. A GM sees them when perceiving as a selected token. New settings: Heard footsteps (and "on my screen"), Heard footsteps land. On by default.
