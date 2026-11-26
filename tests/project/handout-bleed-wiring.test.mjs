@@ -172,6 +172,18 @@ test('the choice is made where the page is edited, once, and never over its read
     'the list comes from the engine, and nothing chosen leaves it to the scene');
 });
 
+test('the page editor is not asked about arrivals at a table that uses none', () => {
+  // Launder: the row sat at the bottom of every journal page with the module setting on "No arrival".
+  const at = main.indexOf('const handoutPageRow = (app, element) => {');
+  const block = main.slice(at, main.indexOf('\r\n};', at) + 3);
+  assert.ok(block.includes('if (!handoutOffered(now, entry?.flags?.[ID]?.handout, canvas?.scene?.flags?.[ID]?.handout, shakeSetting("handoutArrival", "off"))) return;'),
+    'the page, its journal, the scene and the table are all asked before a row is added');
+  assert.ok(block.indexOf('handoutOffered(') < block.indexOf('document.createElement'), 'and asked before anything is built');
+  // The journal's header button stays: it is how a page or a journal is given an arrival of its own at such a table.
+  const button = main.slice(main.indexOf('const handoutButton = ('), main.indexOf('Hooks.on("closeImagePopout"'));
+  assert.ok(!button.includes('handoutOffered'), 'the header button is not hidden with it');
+});
+
 test('every bleed look is a setting of its own, with the engine’s own default', () => {
   for (const key of BLEED_KEYS) {
     const setting = `bleed${key[0].toUpperCase()}${key.slice(1)}`;

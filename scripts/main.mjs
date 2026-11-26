@@ -108,7 +108,7 @@ import { createScreenTint, canTint } from "./engines/camera/screen-tint.mjs";
 import { createKillCam, canKillCam, killCamLength, killCamMs, KILL_CAM_LENGTH } from "./engines/camera/kill-cam.mjs";
 import { lensSplashFor, lingerLevel, lensAmount, woundOf, lensWho, lensRoleWanted, nearestNear, lensReach, LENS_REACH, LENS_BLOOD, LENS_BASE_SECONDS } from "./engines/camera/lens-blood.mjs";
 import { createLensBloodOverlay } from "./engines/camera/lens-blood-draw.mjs";
-import { HANDOUT_ARRIVALS, handoutAt, handoutDust, handoutHasCreases, handoutHasDust, handoutHasLamp, handoutHasPins, handoutHasRod, handoutHasRods, handoutHere, handoutIsWide, handoutLampAt, handoutLight, handoutMs, handoutPick, handoutPins, handoutSeed, handoutSound, handoutSoundAt } from "./engines/camera/handout-arrival.mjs";
+import { HANDOUT_ARRIVALS, handoutAt, handoutDust, handoutHasCreases, handoutHasDust, handoutHasLamp, handoutHasPins, handoutHasRod, handoutHasRods, handoutHere, handoutIsWide, handoutOffered, handoutLampAt, handoutLight, handoutMs, handoutPick, handoutPins, handoutSeed, handoutSound, handoutSoundAt } from "./engines/camera/handout-arrival.mjs";
 import { BUNDLED_SOUND_DIRS } from "../data/bundled-sounds.mjs";
 import { BLEED_ALIVE_MOST, BLEED_DEFAULTS, BLEED_LOOKS, BLEED_SHUDDER_MS, bleedFrame, bleedLooks, bleedShudder, bleedSplats, bleedWanted, hurtLevel } from "./engines/camera/interface-bleed.mjs";
 import { createFriendHitPlayer, friendHitClip, isFriendlyHit, FRIEND_HIT_CLIPS, JB2A_MODULES } from "./engines/camera/lens-friend-hit.mjs";
@@ -19088,8 +19088,13 @@ const HANDOUT_PAGE_SHEETS = ["Image", "Text", "Video", "PDF"];
 const handoutPageRow = (app, element) => {
   const root = element instanceof HTMLElement ? element : element?.[0];
   if (!root?.querySelector || app?.isView === true || root.querySelector(".animater-handout-page")) return;
-  const where = root.querySelector('[data-application-part="content"]') ?? root.querySelector("form") ?? root;
   const now = String(app?.document?.flags?.[ID]?.handout ?? "");
+  // A table with arrivals off, on a map and in a journal that choose none, is not asked: the row was at the bottom of
+  // every page it edited for a thing it never turned on. A page with a choice of its own always shows it. The journal's
+  // header button is still there for giving one page an arrival at such a table.
+  const entry = app?.document?.parent;
+  if (!handoutOffered(now, entry?.flags?.[ID]?.handout, canvas?.scene?.flags?.[ID]?.handout, shakeSetting("handoutArrival", "off"))) return;
+  const where = root.querySelector('[data-application-part="content"]') ?? root.querySelector("form") ?? root;
   const row = document.createElement("div");
   row.className = "form-group animater-handout-page";
   const options = [["", "From the scene or the module"], ...Object.entries(HANDOUT_ARRIVALS)]

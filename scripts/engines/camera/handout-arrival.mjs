@@ -77,6 +77,15 @@ export function handoutHere(...choices) {
   return "off";
 }
 
+// Whether a page's editor should ask how the page arrives at all. A table that has arrivals off, on a map and in a
+// journal that choose none, is not using them, and a row at the bottom of every page it edits is clutter for a thing
+// it never turned on. A page that already carries a choice of its own always shows it, whatever it says and whether
+// or not this build still knows the look, so it can be seen and cleared. `above` is the journal, the scene, the table.
+export function handoutOffered(own, ...above) {
+  if (String(own ?? "") !== "") return true;
+  return above.some((choice) => { const look = known(choice); return look !== null && look !== "off"; });
+}
+
 // How long this look takes, 0 when it does not arrive at all.
 export const handoutMs = (look) => HANDOUT_MS[handoutPick(look)] ?? 0;
 

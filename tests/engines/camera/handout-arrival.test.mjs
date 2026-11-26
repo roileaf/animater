@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   HANDOUT_ARRIVALS, HANDOUT_MS, HANDOUT_LOOKS,
-  handoutAt, handoutHere, handoutMs, handoutPick, handoutSeed,
+  handoutAt, handoutHere, handoutOffered, handoutMs, handoutPick, handoutSeed,
   handoutHasRod, handoutHasRods, handoutHasDust, handoutDust, handoutLight,
   handoutHasPins, handoutHasCreases, handoutHasLamp, handoutPins, handoutLampAt, handoutIsWide, handoutSound, handoutSoundAt,
 } from '../../../scripts/engines/camera/handout-arrival.mjs';
@@ -274,4 +274,21 @@ test('a sound that belongs to a moment waits for it, and the rest start with the
     assert.equal(handoutSoundAt(look), 0, `${look} is already making its sound on the first frame`);
   }
   assert.equal(handoutSoundAt('off'), 0);
+});
+
+test('a page editor is only asked how the page arrives when somebody at this table uses arrivals', () => {
+  // Launder: "I disabled the Handouts arrive option... but the arrival selection dropdown still appears at the
+  // bottom of every Journal page in the editor." Off is the default, so every table had a row for a thing it never
+  // turned on. handoutOffered(page, journal, scene, module).
+  assert.equal(handoutOffered('', '', undefined, 'off'), false, 'nothing chosen anywhere: no row');
+  assert.equal(handoutOffered(undefined, undefined, undefined, undefined), false);
+  assert.equal(handoutOffered('', 'off', 'off', 'off'), false, 'saying "no arrival" three times over is still nobody using it');
+  assert.equal(handoutOffered('', '', '', 'unfold'), true, 'the table uses them');
+  assert.equal(handoutOffered('', '', 'spread', 'off'), true, 'this scene does');
+  assert.equal(handoutOffered('', 'any', '', 'off'), true, 'this journal does');
+  // A page that already has its own choice always shows it, so it can be seen, changed and cleared.
+  assert.equal(handoutOffered('lamp', '', '', 'off'), true);
+  assert.equal(handoutOffered('off', '', '', 'off'), true, 'even a page that chose no arrival');
+  assert.equal(handoutOffered('gone-in-a-later-version', '', '', 'off'), true, 'even a choice this build no longer knows');
+  assert.equal(handoutOffered('', 'nonsense', 'nonsense', 'nonsense'), false, 'but nonsense above the page is not a choice');
 });
