@@ -156,6 +156,27 @@ test('the cog by the close button opens Foundry\'s region configuration and clos
   plain.done();
 });
 
+// Roi: "lets add a button to make a hole in the region on the right side of the delete button".
+test('the ring right of the trash can closes the panel and starts a hole in the region', async () => {
+  const holes = [];
+  const t = await setup({ floor: 'grass' }, 'grass', { configure: () => {}, remove: () => {}, extra: { hole: (d) => holes.push(d) } });
+  const order = ['Delete region', 'Cut a hole', 'Region configuration', 'Close'].map((label) => t.byLabel(label));
+  assert.ok(order.every(Boolean));
+  const kids = order[0].parent.children, at = order.map((b) => kids.indexOf(b));
+  assert.deepEqual(at, [...at].sort((a, b) => a - b), 'trash, hole, cog, close');
+  assert.equal(at[1], at[0] + 1, 'right beside the trash can');
+  await t.click(t.byLabel('Cut a hole'));
+  assert.deepEqual(holes, [t.doc]); assert.equal(t.panel.isOpen, false);
+  t.done();
+  const plain = await setup({ floor: 'grass' }, 'grass');
+  assert.equal(plain.byLabel('Cut a hole'), null, 'none without a way to draw it');
+  plain.done();
+  const main = (await import('node:fs')).readFileSync(new URL('../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.ok(main.includes('hole: (doc) => startRegionHole(doc)'));
+  assert.ok(main.includes('const shapes = holedShapes(doc.shapes, ring); stopRegionHole();'));
+  assert.ok(main.includes('Hooks.on("canvasTearDown", stopRegionHole);'));
+});
+
 // Roi: "lets add a trash can next to the cogwheel to delete the region too".
 test('the trash can by the cog deletes the region (Foundry asks first) and closes the panel', async () => {
   const removed = [];

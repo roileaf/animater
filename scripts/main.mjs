@@ -323,6 +323,7 @@ import { createFloorMotion } from "./engines/motion/floor-motion.mjs";
 import { openStepsWindow, refreshStepsWindow } from "./ui/region-steps-ui.mjs";
 import { createRegionPanel } from "./ui/region-panel.mjs";
 import { shownFloorOf, movedShapes } from "./ui/region-panel-model.mjs";
+import { strokeRing, strokeLength, ringMask, ringAsk, fittedHole, clickedHole, maskRing, ringToImage, ringToScene, holedShapes } from "./engines/regions/region-hole.mjs";
 import { createFarmLife } from "./engines/motion/farm-life.mjs";
 import { loadAnimalArt, restyle as restyleAnimals, litPIXI, setAnimalLight, artFrame } from "./engines/motion/animal-art.mjs";
 import { regionAnimalCounts, regionHasAnimals, regionAnimalSize, townLevelOf, exactCountOf, regionDay, animalPaceOf, regionPace, pacedSteps } from "./engines/motion/region-animals.mjs";
@@ -4944,7 +4945,7 @@ const liftedSoon = () => { clearTimeout(liftedTimer); liftedTimer = setTimeout((
 // (Not for a write that only stores a decoration's break: that changes nothing a lifted thing takes.)
 for (const hook of ["createTile", "updateTile", "createRegion", "updateRegion", "deleteRegion"]) Hooks.on(hook, (first, changes, options) => { if (first?.parent === canvas?.scene && !quietSave(first, changes, options)) liftedSoon(); });
 Hooks.on("canvasReady", () => { liftedSoon(); });
-const regionPanel = createRegionPanel({ brush: (doc) => startDecorBrush(doc), repairDecor: (doc) => repairDecorRegionAsk(doc), lifted: (doc) => liftedIn(doc).length, refreezeIce: (doc) => refreezeIceAsk(doc), cliffWalls: { get: () => heightsSceneOn("walls"), set: (on) => void canvas.scene?.update({ [`flags.${ID}.cliffWalls`]: on }) }, addCrossing: (kind) => { startDecorBrush(); decorBrushing?.bar?.setCrossing?.(kind); }, cliffView: { get: () => (cliffsTopDown() ? "topdown" : "side"), set: (v) => void canvas.scene?.update({ [`flags.${ID}.cliffView`]: v === "topdown" ? "topdown" : "side" }) }, shows: outlinePanelRegion, flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, fireSpreads: () => canvas.scene?.flags?.[ID]?.fireSpreads === true, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]), configure: (doc) => doc.sheet?.render({ force: true }), remove: (doc) => doc.deleteDialog?.(), confirm: (text) => foundry.applications.api.DialogV2.confirm({ window: { title: "Animater: None" }, content: `<p>${foundry.utils.escapeHTML?.(text) ?? text}</p>`, rejectClose: false }).then((yes) => yes === true) });
+const regionPanel = createRegionPanel({ brush: (doc) => startDecorBrush(doc), repairDecor: (doc) => repairDecorRegionAsk(doc), lifted: (doc) => liftedIn(doc).length, refreezeIce: (doc) => refreezeIceAsk(doc), cliffWalls: { get: () => heightsSceneOn("walls"), set: (on) => void canvas.scene?.update({ [`flags.${ID}.cliffWalls`]: on }) }, addCrossing: (kind) => { startDecorBrush(); decorBrushing?.bar?.setCrossing?.(kind); }, cliffView: { get: () => (cliffsTopDown() ? "topdown" : "side"), set: (v) => void canvas.scene?.update({ [`flags.${ID}.cliffView`]: v === "topdown" ? "topdown" : "side" }) }, shows: outlinePanelRegion, flagsOf: stepFlagsOf, save: saveStepFlags, edit: openSteps, season: regionTakesSeason, fireSpreads: () => canvas.scene?.flags?.[ID]?.fireSpreads === true, texture: (own) => showsTexture(own, canvas.scene?.flags?.[ID]?.floorTextures), presets: () => tokenFx.getPresets("tokenshade").map((p) => p.name).filter((n) => !/^[a-z]/.test(n)).sort((a, b) => a.localeCompare(b)), weathers: () => WEATHERS.map((w) => [w, weatherLabel(w)]), configure: (doc) => doc.sheet?.render({ force: true }), remove: (doc) => doc.deleteDialog?.(), hole: (doc) => startRegionHole(doc), confirm: (text) => foundry.applications.api.DialogV2.confirm({ window: { title: "Animater: None" }, content: `<p>${foundry.utils.escapeHTML?.(text) ?? text}</p>`, rejectClose: false }).then((yes) => yes === true) });
 Hooks.on("updateRegion", (doc, change) => { const flags = change?.flags?.[ID]; if (flags && "step" in flags) refreshStepsWindow(doc.id); });
 // With a region's panel open, a left-drag inside that region moves it: its outline follows the pointer, and on letting go the
 // region is moved by as much (its decorations, heights and crossings go with it, by their own hooks). Shift lays it off the grid.
@@ -4972,6 +4973,141 @@ Hooks.once("canvasReady", () => {
   }, true);
 });
 Hooks.on("canvasTearDown", () => { regionDrag = null; });
+// A hole cut in a region (the ring on its panel): drawn freehand on the map, a press and a drag round it, cut on letting go.
+// Where the smart model is already on this machine (it is never downloaded from here) the ring is fitted to the thing it
+// goes round, and a plain click on a thing outlines it: that outline is shown first, and Enter or a click inside it cuts.
+// Shift keeps a ring exactly as drawn. Esc gives it up. The map still pans and zooms meanwhile.
+// (engines/regions/region-hole.mjs)
+let holeDraw = null, holeSmart = null;
+const dropHoleSmart = () => { const was = holeSmart; holeSmart = null; void was?.ready.then((s) => s?.seg.drop(s.view)).catch(() => {}); };
+// The model with this level's map read, or null where it cannot be used: not downloaded yet, no map picture, a map moved in
+// its configuration. Kept while the scene is shown, so the next hole asks at once.
+const holeSmartHere = () => {
+  const level = canvas.level, src = level?.background?.src, rect = canvas.dimensions?.sceneRect;
+  if (!src || !(rect?.width > 0) || !(rect?.height > 0)) return Promise.resolve(null);
+  if (holeSmart?.src === src) return holeSmart.ready;
+  dropHoleSmart();
+  const ready = (async () => {
+    const { smartModelShared, isSmartModelCached } = await import("./ui/smart-model.mjs");
+    if (!(await isSmartModelCached())) return null;
+    const floors = await import("./ui/floor-regions-ui.mjs");
+    if (!floors.levelMapIsPlain(level?.textures)) return null;
+    const loaded = await floors.loadMapRgba(src, floorFitSize(rect.width, rect.height)); if (!loaded?.ok) return null;
+    const seg = await smartModelShared(), view = await seg.read(loaded.rgba, loaded.width, loaded.height);
+    return { seg, view, map: { width: loaded.width, height: loaded.height, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } } };
+  })().catch((err) => { console.warn("Animater | smart model for a region's hole", err); return null; });
+  holeSmart = { src, ready };
+  // (A model that is not there yet is asked for again next time: it may have been downloaded since, in Map painting.)
+  void ready.then((s) => { if (!s && holeSmart?.ready === ready) holeSmart = null; });
+  return ready;
+};
+Hooks.on("canvasTearDown", dropHoleSmart);
+const stopRegionHole = () => {
+  const h = holeDraw; if (!h) return; holeDraw = null;
+  try { if (!h.g.destroyed) h.g.destroy(); } catch { /* gone with the canvas */ }
+  for (const [type, fn] of h.listeners) window.removeEventListener(type, fn, true);
+};
+const startRegionHole = (doc) => {
+  stopRegionHole();
+  if (!doc || !canvas?.ready || !game.user?.isGM || doc.parent !== canvas.scene) return;
+  const view = canvas.app.view, g = new PIXI.Graphics();
+  // `stroke` the drag going on, `pending` the model's outline waiting for a yes, `smart` the model once it is ready.
+  let stroke = null, pending = null, busy = false, smart = null, told = false;
+  g.eventMode = "none"; canvas.interface.addChild(g);
+  const mine = () => holeDraw?.g === g;
+  const worldAt = (e) => { const r = view.getBoundingClientRect(), t = canvas.stage.worldTransform; return { x: (e.clientX - r.left - t.tx) / t.a, y: (e.clientY - r.top - t.ty) / t.d }; };
+  const px = () => 1 / Math.max(0.05, canvas.stage?.scale?.x ?? 1);
+  const drawing = () => !!stroke && strokeLength(stroke) >= 6 * px();
+  const paint = () => {
+    if (g.destroyed) return;
+    const w = px(), open = drawing(), flat = open ? stroke.flatMap((p) => [p.x, p.y]) : pending;
+    g.clear();
+    for (const area of regionAreas(doc)) { const pts = Array.from(area); if (pts.length >= 6) g.lineStyle({ width: 2 * w, color: 0xe8c56a, alpha: 0.7, join: "round" }).drawPolygon(pts); }
+    if (!flat || flat.length < 4) return;
+    if (flat.length >= 6) g.lineStyle(0).beginFill(0x000000, open ? 0.25 : 0.45).drawPolygon(flat).endFill();
+    for (const [width, color] of [[5 * w, 0x000000], [2.5 * w, open ? 0xffffff : 0xe8c56a]]) {
+      g.lineStyle({ width, color, alpha: 0.9, join: "round", cap: "round" }).moveTo(flat[0], flat[1]);
+      for (let i = 2; i < flat.length; i += 2) g.lineTo(flat[i], flat[i + 1]);
+      if (!open) g.lineTo(flat[0], flat[1]);
+    }
+  };
+  const write = (ring) => {
+    const shapes = holedShapes(doc.shapes, ring); stopRegionHole();
+    if (!shapes) { ui.notifications?.warn("Animater: that was too small to be a hole. Nothing was cut."); return; }
+    void doc.update({ shapes }).catch((err) => { console.warn("Animater | cutting a hole in a region", err); ui.notifications?.warn("Animater: the hole could not be cut."); });
+  };
+  // The model's outline of what a drawn ring goes round, or of the thing under a click; null when it sees no such thing.
+  const fitted = async (ring) => {
+    const m = smart.map, mask = ringMask(ringToImage(ring, m), m.width, m.height), ask = ringAsk(mask, m.width, m.height); if (!ask) return null;
+    const answer = await smart.seg.masks(smart.view, ask.points);
+    const cut = fittedHole({ masks: answer.masks, ring: mask, width: m.width, height: m.height, at: ask.at }), traced = cut && maskRing(cut, m.width, m.height);
+    return traced ? ringToScene(traced, m) : null;
+  };
+  const clicked = async (p) => {
+    const m = smart.map, at = { x: Math.round(((p.x - m.rect.x) * m.width) / m.rect.width), y: Math.round(((p.y - m.rect.y) * m.height) / m.rect.height) };
+    if (at.x < 0 || at.y < 0 || at.x >= m.width || at.y >= m.height) return null;
+    const answer = await smart.seg.masks(smart.view, [{ ...at, label: 1 }]);
+    const cut = clickedHole({ masks: answer.masks, scores: answer.scores, width: m.width, height: m.height, at }), traced = cut && maskRing(cut, m.width, m.height);
+    return traced ? ringToScene(traced, m) : null;
+  };
+  const asked = async (work) => {
+    busy = true;
+    try { return await work(); } catch (err) { console.warn("Animater | smart model for a region's hole", err); return null; } finally { busy = false; }
+  };
+  const propose = (ring) => {
+    pending = ring; paint();
+    if (!told) { told = true; ui.notifications?.info("Animater: this is the smart model's outline. Enter or a click inside it cuts it; draw again for another; Esc gives it up."); }
+  };
+  const finish = async (points, keep) => {
+    if (strokeLength(points) < 6 * px()) {
+      // A click: inside the outline shown, a yes to it; else the model is asked what stands there.
+      const at = points[0];
+      if (pending && pointInPolygon(at, pending)) return write(pending);
+      if (!smart) { ui.notifications?.info("Animater: press and drag round the hole."); return; }
+      const ring = await asked(() => clicked(at)); if (!mine()) return;
+      if (ring) propose(ring); else ui.notifications?.info("Animater: the smart model sees no one thing there. Draw round it instead.");
+      return;
+    }
+    const ring = strokeRing(points, 1.5 * px());
+    if (!ring) { paint(); ui.notifications?.warn("Animater: that was too small to be a hole. Draw round it again."); return; }
+    if (keep || !smart) return write(ring);
+    pending = ring; paint();
+    const fit = await asked(() => fitted(ring)); if (!mine()) return;
+    if (fit) propose(fit); else write(ring);
+  };
+  const safe = (fn) => (e) => { if (!mine()) return; try { fn(e); } catch (err) { console.warn("Animater | drawing a hole", err); stopRegionHole(); } };
+  const down = safe((e) => {
+    if (e.button !== 0 || e.target !== view) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (!busy) stroke = [worldAt(e)];
+  });
+  const move = safe((e) => {
+    if (!stroke) return; e.preventDefault(); e.stopImmediatePropagation();
+    const at = worldAt(e), last = stroke[stroke.length - 1];
+    if (Math.hypot(at.x - last.x, at.y - last.y) < 2 * px()) return;
+    stroke.push(at); if (drawing()) pending = null; paint();
+  });
+  const up = safe((e) => {
+    if (e.button !== 0 || (!stroke && e.target !== view)) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    const points = stroke; stroke = null; if (!points) return;
+    void finish(points, e.shiftKey).catch((err) => { console.warn("Animater | drawing a hole", err); if (mine()) stopRegionHole(); });
+  });
+  const key = safe((e) => {
+    if (e.target?.closest?.("input, textarea, select, [contenteditable]")) return;
+    if (e.key === "Escape") stopRegionHole(); else if (e.key === "Enter" && pending && !busy) write(pending); else return;
+    e.preventDefault(); e.stopImmediatePropagation();
+  });
+  const listeners = [["pointerdown", down], ["pointerup", up], ["pointermove", move], ["keydown", key]];
+  for (const [type, fn] of listeners) window.addEventListener(type, fn, true);
+  holeDraw = { doc, g, listeners, repaint: paint };
+  paint();
+  ui.notifications?.info("Animater: press and drag round the hole on the map; it is cut as you let go. Esc gives it up.");
+  void holeSmartHere().then((s) => { if (!s || !mine()) return; smart = s; ui.notifications?.info("Animater: the smart model is ready. A ring you draw is fitted to the thing it goes round (hold Shift to keep it as drawn), and a click on a thing outlines it."); });
+};
+Hooks.on("canvasTearDown", stopRegionHole);
+Hooks.on("canvasPan", () => { if (holeDraw) try { holeDraw.repaint?.(); } catch { /* next move paints */ } });
+Hooks.on("deleteRegion", (doc) => { if (holeDraw?.doc === doc) stopRegionHole(); });
 // The menu stands by the spot it was opened for: when the map moves under it, it goes.
 Hooks.on("canvasPan", () => { regionPanel.close(); });
 Hooks.on("deleteRegion", (doc) => { if (regionPanel.doc === doc) regionPanel.close(); });
