@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.14.0
+
+- **Cut a hole in a region.** A region's panel (right-click the region) has a ring beside the trash can. Press it, then press and drag round the hole on the map (an island in a river, a pier in a lake); it is cut as you let go, and Esc gives it up. Where the smart model is already downloaded (it is never downloaded from here) and the level's map is not moved, scaled or rotated, the ring is fitted to the thing it goes round, and a plain click on a thing outlines it: the outline is shown first, and Enter or a click inside cuts it. Hold Shift to keep a ring exactly as drawn.
+
 ## 4.13.1
 
 - **Earth spells shake dust down where you can see it.** Under a ceiling (an underground scene, or a room under a roof) an earth spell's dust fell once, faintly, at the instant its area was placed, and had settled before the spell's animation was on screen, so it looked as if none fell. It now comes down in rounds, the first the heaviest: at least three, and then for as long as the spell's animation still plays.
