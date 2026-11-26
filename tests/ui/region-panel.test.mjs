@@ -214,6 +214,29 @@ test('the animals size slider saves a number', async () => {
   t.done();
 });
 
+test('the animals pace slider saves a percent', async () => {
+  const t = await setup({ floor: 'grass' }, 'grass');
+  t.openSection('animals');
+  const slider = t.byLabel('Their pace');
+  assert.equal(slider.min, '25'); assert.equal(slider.max, '200'); assert.equal(slider.step, '5'); assert.equal(slider.value, '100');
+  await t.pick(slider, 50);
+  assert.deepEqual(t.saves.at(-1), { regionAnimalPace: 50 });
+  t.done();
+});
+
+test('a region\'s day animals can be kept out in the dark: off until asked for', async () => {
+  const t = await setup({ floor: 'grass' }, 'grass');
+  t.openSection('animals');
+  await t.click(t.byLabel('Out in the dark too'));
+  assert.deepEqual(t.saves.at(-1), { animalHours: 'all' });
+  t.done();
+  const on = await setup({ floor: 'grass', animalHours: 'all' }, 'grass');
+  on.openSection('animals');
+  await on.click(on.byLabel('Out in the dark too'));
+  assert.deepEqual(on.saves.at(-1), { animalHours: '' });
+  on.done();
+});
+
 test('animal sounds and keep out save their flags', async () => {
   const t = await setup({ floor: 'grass' }, 'grass');
   t.openSection('animals');

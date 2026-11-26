@@ -6,7 +6,7 @@
 import { FLOOR_CHOICES } from '../engines/motion/movement-feel.mjs';
 import { floorBody } from '../engines/motion/floor-shadows.mjs';
 import { WATER_DEPTHS, WATER_TOWARD, waterFlows, waterKindFlags, waterKindOf, DOCK_STYLES, OVER_DARK, OVER_SOFT, castsShadow, dockStyleOf, overShadowChoices, overShadowOf, showsPosts, STEP_EDGE, STEP_SCALE, STEP_STRENGTH, STEP_SPEEDS, TEXTURE_STYLES, textureFloor, textureStyleOf, activeStep, changeStep, setStepSpeed, setStepStrength, stepEdge, stepMenu, stepScale, TEXTURE_OPACITY, textureOpacity, CAVE_AMOUNT, CAVE_CHOICES, caveKindFlags, caveMenu, INDOOR_EDGE, indoorEdgeOf } from '../engines/motion/region-steps.mjs';
-import { REGION_ANIMAL_GROUPS, ANIMAL_SIZE, animalSizeOf, MOST_HAWKS, MOST_COUNT, regionAnimalCounts } from '../engines/motion/region-animals.mjs';
+import { REGION_ANIMAL_GROUPS, ANIMAL_SIZE, animalSizeOf, MOST_HAWKS, MOST_COUNT, regionAnimalCounts, outAtAllHours, ANIMAL_PACE, animalPaceOf } from '../engines/motion/region-animals.mjs';
 import { SKY_WINDOWS, skyWindowOf, WINDOW_PATTERN, patternScaleOf } from '../engines/motion/wall-shadows.mjs';
 import { keepsOut } from '../engines/motion/wildlife.mjs';
 import { regionBurns } from '../engines/props/fire-spread.mjs';
@@ -307,7 +307,9 @@ export const SECTIONS = {
     const parts = shown.flatMap(group);
     if (rest.length) parts.push(...c.more('animals-kinds', 'More animals…', () => rest.flatMap(group)));
     parts.push(range('Their size', ANIMAL_SIZE, animalSizeOf(own), percent, (v) => act({ regionAnimalSize: v }), ANIMAL_SIZE.step),
-      toggle('Animal sounds', own.animalSound !== 'off', (on) => act({ animalSound: on ? '' : 'off' })));
+      range('Their pace', ANIMAL_PACE, Math.round(animalPaceOf(own.regionAnimalPace) * 100), (v) => `${v}%`, (v) => act({ regionAnimalPace: v }), ANIMAL_PACE.step, 'How fast the animals here live: how quickly they walk, fly and swim, and how often they do anything. On top of the map\'s own pace (Animals panel).'),
+      toggle('Animal sounds', own.animalSound !== 'off', (on) => act({ animalSound: on ? '' : 'off' })),
+      toggle('Out in the dark too', outAtAllHours(own), (on) => act({ animalHours: on ? 'all' : '' }), 'The day\'s animals here (snakes, insects, deer, rabbits, birds and the rest) stay out at night, in a dark scene and underground, instead of going in as it gets dark: for a dungeon or a cave. The dark still dims them like the rest of the map.'));
     const kept = own.keepOut ?? {}, keeps = (k) => (k === 'all' ? kept.all === true : keepsOut({ ...kept, all: false }, k));
     const named = KEEP_OUT.filter(([k]) => keeps(k)).map(([, label]) => label.toLowerCase());
     parts.push(...c.more('keep', `Keep out: ${named.length ? named.join(', ') : 'none'}`, () => {

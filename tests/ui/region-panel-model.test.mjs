@@ -111,6 +111,14 @@ test('on ground the animals section opens when animals are set, else the ground 
   assert.deepEqual(open({}), ['ground']);
 });
 
+test('a region told to keep its animals out in the dark shows its animals section, whatever its kind', () => {
+  const ids = (own) => panelSections('deck', own).map((s) => s.id);
+  assert.equal(ids({}).includes('animals'), false);
+  assert.equal(ids({ animalHours: 'all' }).includes('animals'), true);
+  assert.equal(ids({ regionAnimalPace: 50 }).includes('animals'), true, 'or a pace of their own');
+  assert.equal(ids({ regionAnimalPace: 100 }).includes('animals'), false, 'the usual pace is nothing set');
+});
+
 test('summaryOf: animals in words', () => {
   assert.match(summaryOf('animals', { regionAnimals: { cows: 'usual', dogs: 'few' } }), /3 cows.*a dog/);
   assert.equal(summaryOf('animals', { regionAnimals: { cows: 'usual', sheep: 'usual', dogs: 'usual' } }), '3 cows, 6 sheep, a dog');

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ANIMAL_GROUPS, BIRD_HEIGHT, MOST_PLACED, animalPreset, animalsPanelHtml, birdBodyOf, birdHeightOf, placedChanges, placedList, withPlaced, withoutPlaced } from '../../scripts/ui/animals-panel.mjs';
+import { ANIMAL_GROUPS, ANIMAL_KEYS, BIRD_HEIGHT, MOST_PLACED, animalPreset, animalsPanelHtml, birdBodyOf, birdHeightOf, placedChanges, placedList, withPlaced, withoutPlaced } from '../../scripts/ui/animals-panel.mjs';
 import { shadowFall } from '../../scripts/engines/motion/movement-feel.mjs';
 import { createSoftShadows, highShadowLook, shadowSoftness } from '../../scripts/engines/motion/soft-shadow.mjs';
 
@@ -50,6 +50,24 @@ test('each screen adds what it lacks and drops what has gone', () => {
   const { add, remove } = placedChanges(new Set(['a', 'old']), [rabbit('a'), rabbit('b')]);
   assert.deepEqual(add.map((p) => p.id), ['b']);
   assert.deepEqual(remove, ['old']);
+});
+
+// J-P (Discord): "Army of rats but only 6 put manually? They reproduce?!?" The wild animals starting over (a wall or a
+// door changed) forgot every animal put down by hand, though only its own three layers had been emptied: the rats, the
+// bats, the town's and the farm's were still there, and were put down again on top of themselves, each time.
+test('the wild animals starting over takes the hand-placed ones out of every layer before forgetting them', () => {
+  const main = readFileSync(new URL('../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.match(main, /const forgetPlaced = \(\) => \{ for \(const id of placedShown\) for \(const layer of placedLayers\(\)\) layer\.removeAdded\(id\); placedShown\.clear\(\); \};/);
+  const rebuild = main.slice(main.indexOf('const rebuildWildlife = '), main.indexOf('const rebuildWildlife = ') + 6000);
+  assert.match(rebuild, /wildlife\.clear\(\); pondLife\.clear\(\); fieldLife\.clear\(\); wildOpen = null; forgetPlaced\(\);/);
+  assert.doesNotMatch(rebuild, /fieldLife\.clear\(\); wildOpen = null; placedShown\.clear\(\);\r?\n/);
+});
+
+test('the animals\' pace is per map, usual until set, above ground and under it, and a level can have its own', () => {
+  assert.ok(/data-size-key="animalPace" min="25" max="200" step="5" value="100"/.test(animalsPanelHtml({ flags: {} })));
+  assert.ok(/data-size-key="animalPace"[^>]*value="50"/.test(animalsPanelHtml({ flags: { animalPace: 50 } })));
+  assert.ok(animalsPanelHtml({ flags: {}, underground: true }).includes('data-size-key="animalPace"'), 'rats and bats too');
+  assert.ok(ANIMAL_KEYS.includes('animalPace'));
 });
 
 test('bird height is per map, usual until set, and only where birds fly', () => {

@@ -323,7 +323,7 @@ import { createRegionPanel } from "./ui/region-panel.mjs";
 import { shownFloorOf, movedShapes } from "./ui/region-panel-model.mjs";
 import { createFarmLife } from "./engines/motion/farm-life.mjs";
 import { loadAnimalArt, restyle as restyleAnimals, litPIXI, setAnimalLight, artFrame } from "./engines/motion/animal-art.mjs";
-import { regionAnimalCounts, regionHasAnimals, regionAnimalSize, townLevelOf, exactCountOf } from "./engines/motion/region-animals.mjs";
+import { regionAnimalCounts, regionHasAnimals, regionAnimalSize, townLevelOf, exactCountOf, regionDay, animalPaceOf, regionPace, pacedSteps } from "./engines/motion/region-animals.mjs";
 import { cleanVariant, cleanVariants, variantLook, variantReaction, variantShake, variantSound, variantEditorHtml } from "./engines/motion/blast-variants.mjs";
 import { mediaForReference } from "./engines/media/media-library-model.mjs";
 import { artworkSize } from "./engines/media/media-preview.mjs";
@@ -5821,6 +5821,9 @@ const placedLayers = () => [wildlife, fieldLife, pondLife, townLife, sceneFarm, 
 const PLACED_IN = { town: ["pigeon", "hen", "dog"], farm: ["cow", "goat", "sheep", "pig", "horse"], pond: ["duck", "heron", "gull", "frog"], dark: ["rat", "bat"] };
 // (Any copy still there is taken away first: put back on top of one, it was there twice.)
 const replacePlaced = (layer) => { if (!canvas?.ready) return; for (const p of placedList(animalFlagsNow().placedAnimals)) if (PLACED_IN[layer].includes(p.kind)) { for (const l of placedLayers()) l.removeAdded(p.id); placedShown.delete(p.id); } syncPlacedAnimals(); };
+// Every one put down by hand taken off the map and forgotten, to be put back (syncPlacedAnimals). Out of every layer:
+// forgotten while still standing in one, it was put down again on top of itself (J-P: "They reproduce?!?").
+const forgetPlaced = () => { for (const id of placedShown) for (const layer of placedLayers()) layer.removeAdded(id); placedShown.clear(); };
 const syncPlacedAnimals = () => {
   if (!canvas?.ready) return;
   // Put down by hand (or ordered from the animal HUD, a region's own animal among them), they are there whenever this
@@ -6863,7 +6866,7 @@ const rebuildWildlife = () => {
   }
   wildKey = all; wildRegions = regions; wildWalls = walls;
   wildCalls.settle();
-  wildlife.clear(); pondLife.clear(); fieldLife.clear(); wildOpen = null; placedShown.clear();
+  wildlife.clear(); pondLife.clear(); fieldLife.clear(); wildOpen = null; forgetPlaced();
   if (!canvas?.ready || !wildHere()) return;
   const grid = canvas.grid.size, area = canvas.dimensions.sceneRect, many = sceneCreatures(), ground = wildGround(grid, area);
   wildOpen = ground;
@@ -6876,6 +6879,8 @@ const rebuildWildlife = () => {
   wildlife.populate({ ...fishOf, spots: many.rabbits > 0 || many.wildBirds > 0 ? (spots.length ? spots : songSpots) : [], rabbits: exactOr(many, "rabbits", wildNumbers(ground, many).rabbits), blocked: wallBlocks, songbirds: songSpots.length ? exactOr(many, "wildBirds", wildNumbers(ground, many).songbirds) : 0, hawk: Math.min(4, exactOr(many, "hawks", many.hawks > 0 && many.wildBirds > 0 && ground.share > 0.4 ? Math.max(1, Math.round(many.hawks)) : 0)), crows: exactOr(many, "crows", many.chosen?.crows ? Math.round(3 * many.crows) : wildNumbers(ground, many).crows), perches: birdPerches(true), grid, area, rabbitSize: many.rabbitsSize, birdSize: many.wildBirdsSize });
 };
 // How much they are out now: by day under an open sky, none at night or in a storm, nor in a scene made dark, whatever its sun.
+// How fast the map's animals live (the Animals panel's Pace): the time each engine is given, longer or shorter.
+const scenePace = () => animalPaceOf(animalFlagsNow().animalPace);
 const wildDay = () => { const s = sunNow; if (!s || s.moon) return 0; if (skyStorm) return 0; const dark = Number(canvas.environment?.darknessLevel) || 0; return Math.min(1, Math.max(0, ((Number(s.strength) || 0) / Math.max(0.1, skyOpen) - 0.12) / 0.2), Math.max(0, 1 - (dark - 0.55) / 0.2)); };
 const wildSeen = (x, y) => canvas.visibility?.testVisibility?.({ x, y }, { tolerance: canvas.grid.size * 0.2 }) !== false;
 // Where an animal may be on some ground (wildGround's): the scene's, or a region's own.
@@ -7006,7 +7011,7 @@ const wildTick = (seconds) => {
   if (wildCover.flush) { wildlife.scare(); fieldLife.scare(); }
   const out = wildCover.out, near = creaturesNow(), day = wildDay(), night = wildNight() * shelter, warm = !(groundOf().now.snow > 0) && !(skyFalling.rain > 0.15), sun = { x: Math.cos(away), y: Math.sin(away) }, view = viewNow(), wind = skyWindAngle ?? 0.6;
   // A low frame rate never makes them crawl: several small steps a frame, down to four frames a second.
-  for (let left = Math.min(seconds, 0.25); left > 0.0001; left -= 0.05) {
+  for (let left = Math.min(seconds, 0.25) * scenePace(); left > 0.0001; left -= 0.05) {
     const step = Math.min(left, 0.05);
     const birdBody = birdBodyOf(animalFlagsNow().birdHeight), liftShadow = highBirdShadow;
     wildlife.setPerches(birdPerches());
@@ -7271,13 +7276,13 @@ const rebuildSceneFarm = () => {
   replacePlaced("farm");
 };
 // (Ground for one put down by hand when the scene asks for no herd: the open ground as the wild animals have it.)
-const tickSceneFarm = (seconds) => { if (sceneFarm.busy) sceneFarm.tick(seconds, { near: creaturesNow(), ok: (kind, x, y) => !!(sceneFarmGround ?? wildOpen ?? placedGround)?.at(x, y) && !keptOut(kind, { x, y }), blocked: wallBlocks, seen: wildSeen, sound: wildVoice, tokenAt: animalTokenAt }); };
+const tickSceneFarm = (seconds) => { if (sceneFarm.busy) for (const step of pacedSteps(seconds, scenePace(), { most: Infinity })) sceneFarm.tick(step, { near: creaturesNow(), ok: (kind, x, y) => !!(sceneFarmGround ?? wildOpen ?? placedGround)?.at(x, y) && !keptOut(kind, { x, y }), blocked: wallBlocks, seen: wildSeen, sound: wildVoice, tokenAt: animalTokenAt }); };
 Hooks.on("canvasTearDown", () => { sceneFarm.clear(); sceneFarmKey = null; sceneFarmGround = null; });
 const tickTown = (seconds) => {
   const near = creaturesNow(), view = viewNow();
   townLife.setPerches(birdPerches());
   // (One put down by hand on a scene with no town asked for goes on the open ground as the wild animals have it.)
-  townLife.tick(Math.min(seconds, 0.1), { near, view, tokenAt: animalTokenAt, ok: (kind, x, y) => (townOpen ? townOpen.ok(x, y) : !!(wildOpen ?? placedGround)?.at(x, y)) && !keptOut(townKept[kind] ?? kind, { x, y }), blocked: wallBlocks, barred: (kind, x, y) => !!townOpen?.closed(x, y) || keptOut(townKept[kind] ?? kind, { x, y }), day: sunNow ? wildDay() : Math.max(0, Math.min(1, 1 - ((Number(canvas.environment?.darknessLevel) || 0) - 0.55) / 0.2)), night: sunNow ? wildNight() : 0, rain: skyFalling.rain, seen: wildSeen, cast: wildCast, sound: wildVoice });
+  for (const step of pacedSteps(seconds, scenePace(), { most: 0.1 })) townLife.tick(step, { near, view, tokenAt: animalTokenAt, ok: (kind, x, y) => (townOpen ? townOpen.ok(x, y) : !!(wildOpen ?? placedGround)?.at(x, y)) && !keptOut(townKept[kind] ?? kind, { x, y }), blocked: wallBlocks, barred: (kind, x, y) => !!townOpen?.closed(x, y) || keptOut(townKept[kind] ?? kind, { x, y }), day: sunNow ? wildDay() : Math.max(0, Math.min(1, 1 - ((Number(canvas.environment?.darknessLevel) || 0) - 0.55) / 0.2)), night: sunNow ? wildNight() : 0, rain: skyFalling.rain, seen: wildSeen, cast: wildCast, sound: wildVoice });
 };
 Hooks.on("canvasTearDown", () => { townLife.clear(); townKey = null; townOpen = null; });
 // Animals of a region's own (engines/motion/region-animals.mjs): each region asking for some has its own layers of them,
@@ -7302,7 +7307,7 @@ const regionLifeOf = (doc, grid) => {
     town: createTownLife({ PIXI: animalPIXI, restyle: animalLook, floor: floorLayer("townLife", 659), sky: lowFlierRoot, high: highSkyOf }),
     rats: createVermin({ PIXI: animalPIXI, restyle: animalLook, root: ratRootOf, batsRoot: birdRootOf }),
     farm: createFarmLife({ PIXI: animalPIXI, restyle: animalLook, floor: floorLayer("farmLife", 661) }) };
-  life.ratBlocked = (a, b) => ratBlocks(a, b) || keepIn(a, b); life.batBlocked = (a, b) => batBlocks(a, b) || keepIn(a, b);
+  life.ratBlocked = (a, b) => ratBlocks(a, b) || keepIn(a, b); life.ratShut = (a, b) => ratShut(a, b) || keepIn(a, b); life.batBlocked = (a, b) => batBlocks(a, b) || keepIn(a, b);
   const fish = waters.filter((p) => !keptOut("fish", p));
   life.wild.populate({ waters: fish, fish: fish.length ? n.fish : 0, fishSize: size, spots, rabbits: spots.length ? n.rabbits : 0, songbirds: spots.length ? n.wildBirds : 0, hawk: n.hawks, crows: n.crows, blocked: life.blocked, grid, area, rabbitSize: size, birdSize: size });
   life.field.populate({ spots, homes: fieldHomes(spots), waters: [], glowWaters: [], trees: wildTrees().filter((tr) => inside(tr.x, tr.y)), squirrels: spots.length ? n.squirrels : 0, squirrelSize: size, snakes: spots.length ? n.snakes : 0, snakeSize: size, wolves: spots.length ? n.wolves : 0, wolfSize: size, blocked: life.blocked, deer: spots.length ? n.deer : 0, foxes: spots.length ? n.foxes : 0, butterflies: spots.length ? n.insects : 0, dragonflies: 0, fireflies: 0, owl: n.owls > 0 && spots.length > 0, grid, area, deerSize: size, foxSize: size, insectSize: size, birdSize: size, batSize: size });
@@ -7342,17 +7347,20 @@ const regionTick = (seconds) => {
   regionCover = takeCover(regionCover, shelter, seconds);
   const out = regionCover.out, near = creaturesNow(), day = wildDay(), night = wildNight() * shelter, warm = !(groundOf().now.snow > 0) && !(skyFalling.rain > 0.15), sun = { x: Math.cos(away), y: Math.sin(away) }, view = viewNow(), wind = skyWindAngle ?? 0.6;
   const birdBody = birdBodyOf(animalFlagsNow().birdHeight), liftShadow = highBirdShadow;
-  for (const life of regionLife.values()) {
+  for (const [id, life] of regionLife) {
+    // The region's own day: all of it where its animals are kept out in the dark (region-animals.mjs regionDay), read
+    // now so the panel's switch shows at once.
+    const own = canvas.scene?.regions?.get(id)?.flags?.[ID], dayHere = regionDay(own, day), pace = regionPace(own, scenePace());
     if (regionCover.flush) { life.wild.scare(); life.field.scare(); }
-    for (let left = Math.min(seconds, 0.25); left > 0.0001; left -= 0.05) {
+    for (let left = Math.min(seconds, 0.25) * pace; left > 0.0001; left -= 0.05) {
       const step = Math.min(left, 0.05);
-      if (life.wild.busy) life.wild.tick(step, { birdBody, liftShadow, near, ok: life.ok, kept: wildKept, blocked: life.blocked, barred: life.barred, indoors: life.indoors, cast: wildCast, seen: wildSeen, day: day * out, sun, wind, view, sound: wildVoice, beneath: (x, y) => waterEngine.holds(x, y) });
-      if (life.pond.busy) life.pond.tick(step, { birdBody, liftShadow, kept: wildKept, air: { angle: skyWindAngle, strength: skyWindNow }, fishing: life.wild, ripple: pondRipple, near, ok: life.ok, blocked: life.blocked, barred: life.barred, indoors: life.indoors, cast: wildCast, seen: wildSeen, day, sun, view, sound: wildVoice });
-      if (life.field.busy) life.field.tick(step, { birdBody, liftShadow, near, ok: life.ok, blocked: life.blocked, kept: wildKept, indoors: life.indoors, canopy: wildCanopy, cast: wildCast, seen: wildSeen, day: day * out, night, warm, sun, view, sound: wildVoice, prey: life.wild, lamps: wildLamps });
+      if (life.wild.busy) life.wild.tick(step, { birdBody, liftShadow, near, ok: life.ok, kept: wildKept, blocked: life.blocked, barred: life.barred, indoors: life.indoors, cast: wildCast, seen: wildSeen, day: dayHere * out, sun, wind, view, sound: wildVoice, beneath: (x, y) => waterEngine.holds(x, y) });
+      if (life.pond.busy) life.pond.tick(step, { birdBody, liftShadow, kept: wildKept, air: { angle: skyWindAngle, strength: skyWindNow }, fishing: life.wild, ripple: pondRipple, near, ok: life.ok, blocked: life.blocked, barred: life.barred, indoors: life.indoors, cast: wildCast, seen: wildSeen, day: dayHere, sun, view, sound: wildVoice });
+      if (life.field.busy) life.field.tick(step, { birdBody, liftShadow, near, ok: life.ok, blocked: life.blocked, kept: wildKept, indoors: life.indoors, canopy: wildCanopy, cast: wildCast, seen: wildSeen, day: dayHere * out, night, warm, sun, view, sound: wildVoice, prey: life.wild, lamps: wildLamps });
     }
-    if (life.town.busy) life.town.tick(Math.min(seconds, 0.1), { near, view, ok: (kind, x, y) => life.inside(x, y) && !life.ground.closed(x, y) && !life.ground.inWater(x, y) && !keptOut(townKept[kind] ?? kind, { x, y }), blocked: life.blocked, barred: (kind, x, y) => !life.inside(x, y) || life.ground.closed(x, y) || keptOut(townKept[kind] ?? kind, { x, y }), day: sunNow ? wildDay() : Math.max(0, Math.min(1, 1 - ((Number(canvas.environment?.darknessLevel) || 0) - 0.55) / 0.2)), night: sunNow ? wildNight() : 0, rain: skyFalling.rain, seen: wildSeen, cast: wildCast, sound: wildVoice });
-    if (life.rats.count) life.rats.tick(seconds, { near, lit: litForRats, blocked: life.ratBlocked, ahead: ratAhead, shut: (a, b) => ratShut(a, b) || keepIn(a, b), batBlocked: life.batBlocked, view, light: nearestLamp, sound: critterSound });
-    if (life.farm.busy) life.farm.tick(seconds, { near, ok: (kind, x, y) => life.inside(x, y) && !!life.ground.at(x, y) && !keptOut(kind, { x, y }), blocked: life.blocked, seen: wildSeen, sound: wildVoice });
+    if (life.town.busy) for (const step of pacedSteps(seconds, pace, { most: 0.1 })) life.town.tick(step, { near, view, ok: (kind, x, y) => life.inside(x, y) && !life.ground.closed(x, y) && !life.ground.inWater(x, y) && !keptOut(townKept[kind] ?? kind, { x, y }), blocked: life.blocked, barred: (kind, x, y) => !life.inside(x, y) || life.ground.closed(x, y) || keptOut(townKept[kind] ?? kind, { x, y }), day: regionDay(own, sunNow ? wildDay() : Math.max(0, Math.min(1, 1 - ((Number(canvas.environment?.darknessLevel) || 0) - 0.55) / 0.2))), night: sunNow ? wildNight() : 0, rain: skyFalling.rain, seen: wildSeen, cast: wildCast, sound: wildVoice });
+    if (life.rats.count) for (const step of pacedSteps(seconds, pace, { most: Infinity })) life.rats.tick(step, { near, lit: litForRats, blocked: life.ratBlocked, ahead: ratAhead, shut: life.ratShut, batBlocked: life.batBlocked, view, light: nearestLamp, sound: critterSound });
+    if (life.farm.busy) for (const step of pacedSteps(seconds, pace, { most: Infinity })) life.farm.tick(step, { near, ok: (kind, x, y) => life.inside(x, y) && !!life.ground.at(x, y) && !keptOut(kind, { x, y }), blocked: life.blocked, seen: wildSeen, sound: wildVoice });
   }
 };
 Hooks.on("canvasTearDown", () => { for (const life of regionLife.values()) dropRegionLife(life); regionLife.clear(); });
@@ -8882,7 +8890,7 @@ function skyTick() {
   skyMark("door bursts");
   if (doorBursts.busy) doorBursts.tick(seconds, { seen: (x, y) => canvas.visibility?.testVisibility?.({ x, y }, { tolerance: canvas.grid.size * 0.2 }) !== false, light: nearestLamp });
   skyMark("rats and bats");
-  if (vermin.count) vermin.tick(seconds, { near: creaturesNow(), lit: litForRats, blocked: ratBlocks, ahead: ratAhead, shut: ratShut, batBlocked: batBlocks, view: viewNow(), light: nearestLamp, sound: critterSound, tokenAt: animalTokenAt });
+  if (vermin.count) for (const step of pacedSteps(seconds, scenePace(), { most: Infinity })) vermin.tick(step, { near: creaturesNow(), lit: litForRats, blocked: ratBlocks, ahead: ratAhead, shut: ratShut, batBlocked: batBlocks, view: viewNow(), light: nearestLamp, sound: critterSound, tokenAt: animalTokenAt });
   skyMark("blood");
   tickFloorBlood(seconds);
   skyMark("water and floors");

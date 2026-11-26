@@ -1,7 +1,7 @@
 // What the region panel (the right-click panel holding every Animater setting of a map region) is made of, apart from how it
 // is drawn: the kinds of region, the sections each kind shows, and the one-line summary on each section's heading.
 import { waterKindOf, stepMenu, caveMenu, caveKindFlags, caveHasMenu, stepFlags, WATER_KINDS, WATER_TOWARD, WATER_DEPTHS, DOCK_STYLES, dockStyleOf, castsShadow } from '../engines/motion/region-steps.mjs';
-import { REGION_ANIMAL_GROUPS, regionAnimalCounts, regionHasAnimals, animalSizeOf } from '../engines/motion/region-animals.mjs';
+import { REGION_ANIMAL_GROUPS, regionAnimalCounts, regionHasAnimals, animalSizeOf, outAtAllHours, animalPaceOf } from '../engines/motion/region-animals.mjs';
 import { weatherLabel } from '../engines/motion/sky-weather.mjs';
 import { readHeight, readRamp, CROSSING_KINDS } from '../engines/regions/heights.mjs';
 import { thinIceOn } from '../engines/regions/thin-ice.mjs';
@@ -94,7 +94,7 @@ const ORDER = {
 // so no setting the region has is ever out of reach.
 const IN_USE = {
   air: (own) => ['regionWeather', 'cold', 'openSky', 'openSides', 'skyWindow', 'skyPattern', 'indoorEdge', 'opensOutside', 'tavern'].some((k) => set(own[k])) || dressed(own),
-  animals: (own) => regionHasAnimals(own) || animalSizeOf(own) !== 1 || own.animalSound === 'off' || set(own.keepOut),
+  animals: (own) => regionHasAnimals(own) || animalSizeOf(own) !== 1 || animalPaceOf(own.regionAnimalPace) !== 1 || own.animalSound === 'off' || outAtAllHours(own) || set(own.keepOut),
   look: (own) => ['texture', 'textureStyles', 'tokenshade', 'stepEdgeOff'].some((k) => set(own[k])) || (own.stepEdge !== undefined && own.stepEdge !== null && own.stepEdge !== ''),
   drips: (own) => ['drips', 'dripPace', 'dripDepth'].some((k) => set(own[k])),
   steps: (own) => !!own.stepsEdited || Number(own.step) > 0 || own.stepHidden === true,

@@ -1,6 +1,6 @@
 import { SIZE_RANGE, sizePercent } from '../engines/motion/vermin.mjs';
 import { scopeBar } from './level-scope.mjs';
-import { exactCountOf, MOST_COUNT, MOST_HAWKS } from '../engines/motion/region-animals.mjs';
+import { exactCountOf, MOST_COUNT, MOST_HAWKS, ANIMAL_PACE, animalPaceOf } from '../engines/motion/region-animals.mjs';
 import { normalizeOrder } from '../engines/motion/animal-orders.mjs';
 
 // The Animals panel (Animater controls): how much life a scene has, quickly. Amounts and sizes are the same scene flags as
@@ -19,7 +19,7 @@ export const ANIMAL_GROUPS = Object.freeze([
 // The kinds that come only when asked for (none until chosen): wolves, and the town's and the farm's animals.
 export const ASKED_FOR = Object.freeze(new Set(['wolves', 'pigeons', 'hens', 'cats', 'dogs', 'cows', 'goats', 'sheep', 'pigs', 'horses']));
 // What a level can have of its own.
-export const ANIMAL_KEYS = Object.freeze([...ANIMAL_GROUPS.flatMap(([, kinds]) => kinds.flatMap(([kind]) => [kind, `${kind}Size`])), 'outdoorLife', 'animalScale', 'birdHeight', 'placedAnimals']);
+export const ANIMAL_KEYS = Object.freeze([...ANIMAL_GROUPS.flatMap(([, kinds]) => kinds.flatMap(([kind]) => [kind, `${kind}Size`])), 'outdoorLife', 'animalScale', 'animalPace', 'birdHeight', 'placedAnimals']);
 const AMOUNTS = [['none', 'None'], ['few', 'Few'], ['', 'Usual'], ['more', 'More'], ['many', 'Many']];
 // Wolves are the GM's to ask for: none until chosen, on any scene.
 const WOLF_AMOUNTS = [['', 'None'], ['few', 'Few'], ['usual', 'Usual'], ['more', 'More'], ['many', 'Many']];
@@ -75,6 +75,7 @@ export function placedChanges(shown, raw) {
 const chip = (action, data, label, { active = false, tip = '', icon = '' } = {}) => `<button type="button" class="${active ? 'is-active' : ''}" data-action="${action}" ${data} aria-pressed="${active}"${tip ? ` data-tooltip="${esc(tip)}"` : ''}>${icon ? `<i class="fa-solid ${icon}" inert></i>` : ''}<span>${esc(label)}</span></button>`;
 const sizeSlider = (key, label, value) => { const percent = sizePercent(value); return `<label class="animater-an-size"><input type="range" data-size-key="${key}" min="${SIZE_RANGE.min}" max="${SIZE_RANGE.max}" step="${SIZE_RANGE.step}" value="${percent}" aria-label="${esc(label)}"><output class="${percent === 100 ? '' : 'is-changed'}">${percent}%</output></label>`; };
 const birdHeightSlider = (value) => { const percent = Math.round(birdHeightOf(value) * 100); return `<label class="animater-an-size"><input type="range" data-size-key="birdHeight" min="${BIRD_HEIGHT.min}" max="${BIRD_HEIGHT.max}" step="${BIRD_HEIGHT.step}" value="${percent}" aria-label="Bird height"><output class="${percent === 100 ? '' : 'is-changed'}">${percent}%</output></label>`; };
+const paceSlider = (value) => { const percent = Math.round(animalPaceOf(value) * 100); return `<label class="animater-an-size"><input type="range" data-size-key="animalPace" min="${ANIMAL_PACE.min}" max="${ANIMAL_PACE.max}" step="${ANIMAL_PACE.step}" value="${percent}" aria-label="All animals on this map: pace"><output class="${percent === 100 ? '' : 'is-changed'}">${percent}%</output></label>`; };
 // A kind's row: how many, counted. A number set is that many; left alone (Auto) it shows how many the scene has of it now,
 // worked out from the map as before; the town's, the farm's and wolves start at none, hawks at one. − and + set the number.
 // Beside it, how many more of the kind live in regions of their own (a region's Animals): the scene's number is only the scene's.
@@ -118,7 +119,7 @@ export function animalsPanelHtml({ flags = {}, count = 0, note = '', aiming = ''
       <div class="animater-wx-chips animater-an-presets">${chip('presetAnimals', 'data-value="few"', 'Quiet', { tip: 'A few of everything outdoors.' })}${chip('presetAnimals', 'data-value=""', 'Usual', { tip: 'The usual number of everything outdoors.' })}${chip('presetAnimals', 'data-value="many"', 'Lively', { tip: 'Many of everything outdoors.' })}${chip('reshuffleAnimals', '', 'Reshuffle', { icon: 'fa-rotate', tip: 'Scatter them afresh, on your screen. Each screen scatters its own.' })}</div>
     </section>`}
     <section class="animater-wx-section"><h3>Place by hand</h3><div class="animater-an-places">${place}</div><p class="animater-an-hint">Kept with the scene, and they start there on every screen. Then each wanders, on each screen, its own way.</p></section>
-    <section class="animater-wx-section"><div class="animater-an-all"><span><strong>All animals on this map</strong><small>For a map drawn at a different scale. Multiplies each size below.</small></span>${sizeSlider('animalScale', 'All animals on this map: size', flags.animalScale)}</div>${underground ? '' : `<div class="animater-an-all"><span><strong>Bird height</strong><small>How high birds fly over this map. Higher, they look bigger, and their shadows land further off, wider, softer and fainter.</small></span>${birdHeightSlider(flags.birdHeight)}</div>`}</section>
+    <section class="animater-wx-section"><div class="animater-an-all"><span><strong>All animals on this map</strong><small>For a map drawn at a different scale. Multiplies each size below.</small></span>${sizeSlider('animalScale', 'All animals on this map: size', flags.animalScale)}</div><div class="animater-an-all"><span><strong>Pace</strong><small>How fast every animal on this map lives: how quickly it walks, flies and swims, and how often it does anything. A region can have its own on top.</small></span>${paceSlider(flags.animalPace)}</div>${underground ? '' : `<div class="animater-an-all"><span><strong>Bird height</strong><small>How high birds fly over this map. Higher, they look bigger, and their shadows land further off, wider, softer and fainter.</small></span>${birdHeightSlider(flags.birdHeight)}</div>`}</section>
     ${ANIMAL_GROUPS.filter(([group]) => (group === 'Dark places' ? underground : !underground && (group !== 'Water' || water))).map(([group, kinds]) => `<section class="animater-wx-section"><h3>${esc(group)}</h3>${kinds.map(([kind, label]) => animalRow(kind, label, flags, live, regions)).join('')}</section>`).join('')}
     <footer class="animater-wx-foot"><span>Kept with the scene, for everyone. To keep them out of an area, use that region's Keep out.</span></footer>
   </div>`;

@@ -46,7 +46,7 @@ test('the map hands the rats both parts, and the look ahead has none of the wall
   const main = readFileSync(new URL('../../../scripts/main.mjs', import.meta.url), 'utf8');
   assert.match(main, /const ratAhead = \(a, b\) => wallOnlyBlocks\(a, b\) \|\| cliffBlocks\(a, b\);/);
   assert.match(main, /const ratShut = \(a, b\) => keptOut\("rats", b\) && !keptOut\("rats", a\);/);
-  assert.match(main, /vermin\.tick\(seconds, \{[^}]*blocked: ratBlocks, ahead: ratAhead, shut: ratShut/);
+  assert.match(main, /vermin\.tick\(step, \{[^}]*blocked: ratBlocks, ahead: ratAhead, shut: ratShut/);
 });
 
 test('what the ticker reads every frame is not looked up afresh every frame', () => {

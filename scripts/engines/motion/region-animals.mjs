@@ -1,6 +1,7 @@
 // Animals of a region's own (Region configuration → Animater → Animals in this region): they live inside it and keep to
 // it, on top of whatever the scene has. The scene's outdoor kinds, the town's four (without turning on town life), farm
-// animals (farm-life.mjs), rats and bats. Kept in the region's flags: regionAnimals { kind: amount }, regionAnimalSize.
+// animals (farm-life.mjs), rats and bats. Kept in the region's flags: regionAnimals { kind: amount }, regionAnimalSize,
+// regionAnimalPace (a percent), animalHours ('all': its day animals stay out in the dark).
 
 export const REGION_ANIMAL_GROUPS = Object.freeze([
   ['Open ground', [['rabbits', 'Rabbits'], ['wildBirds', 'Birds'], ['crows', 'Crows'], ['hawks', 'Hawks'], ['deer', 'Deer'], ['foxes', 'Foxes'], ['wolves', 'Wolves'], ['squirrels', 'Squirrels'], ['snakes', 'Snakes'], ['insects', 'Insects'], ['owls', 'Owls']]],
@@ -50,3 +51,24 @@ export const animalSizeOf = (own) => {
   return Number.isFinite(n) ? Math.min(ANIMAL_SIZE.max, Math.max(ANIMAL_SIZE.min, n)) : 1;
 };
 export const regionAnimalSize = (own = {}) => animalSizeOf(own);
+// How fast the animals live, as a share of the usual (pure), from a slider's percent: unset, as usual. A map has one
+// (the scene's animalPace, the Animals panel) and a region one of its own on top (regionAnimalPace).
+export const ANIMAL_PACE = Object.freeze({ min: 25, max: 200, step: 5 });
+export const animalPaceOf = (percent) => { const n = Number(percent); return percent === null || percent === undefined || percent === '' || !Number.isFinite(n) ? 1 : Math.min(ANIMAL_PACE.max, Math.max(ANIMAL_PACE.min, n)) / 100; };
+export const regionPace = (own, mapPace = 1) => animalPaceOf(own?.regionAnimalPace) * mapPace;
+// The time to give an engine this frame at a pace (pure): `seconds` of it (no more than `most`, what the engine was
+// given before) made longer or shorter, in pieces no longer than `step`, since every engine takes at most that at
+// once and would drop the rest. At the usual pace, the one piece it always had. Never more than ten pieces.
+export function pacedSteps(seconds, pace = 1, { most = 0.25, step = 0.05 } = {}) {
+  const base = Math.min(Number(seconds) || 0, most);
+  if (!(base > 0)) return [];
+  if (pace === 1) return [base];
+  const out = [];
+  for (let left = Math.min(base * pace, step * 10); left > 0.0001; left -= step) out.push(Math.min(left, step));
+  return out;
+}
+// The day's animals go in as it gets dark (main.mjs wildDay: by the scene's darkness, the clock's night, or underground).
+// A region can keep its own out whatever the hour (animalHours 'all'): snakes and insects in a dungeon. Off unless asked for.
+export const outAtAllHours = (own) => own?.animalHours === 'all';
+// How much a region's day animals are out (pure, 0–1): the scene's `day`, or all of it where they are kept out.
+export const regionDay = (own, day) => (outAtAllHours(own) ? 1 : day);
