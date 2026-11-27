@@ -1,5 +1,9 @@
 # Changelog
 
+## 4.14.1
+
+- **Translated games get the Light orb.** In a translated world (French PF2e, for one) the Light spell's effect is called "Lumière", and Animater looked for it by its English name: the creature kept a torch look and the effect icon stayed on its token. Effects are now known by what stays the same in every language (the system's slug, the compendium entry they came from, the spell that made them), the English name only last. The same went for held torches and lanterns, a condition's body motion (Frightened trembling, Grabbed struggling, Prone falling over) and area spells that stay on the map (walls, clouds, fog), which a translated name also missed.
+
 ## 4.14.0
 
 - **Cut a hole in a region.** A region's panel (right-click the region) has a ring beside the trash can. Press it, then press and drag round the hole on the map (an island in a river, a pier in a lake); it is cut as you let go, and Esc gives it up. Where the smart model is already downloaded (it is never downloaded from here) and the level's map is not moved, scaled or rotated, the ring is fitted to the thing it goes round, and a plain click on a thing outlines it: the outline is shown first, and Enter or a click inside cuts it. Hold Shift to keep a ring exactly as drawn.
