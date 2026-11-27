@@ -36,7 +36,17 @@ export function shownTreatment(kinds) {
   for (const kind of kinds) if (best === null || rank(kind) <= rank(best)) best = kind;
   return best && !['stone', 'still'].includes(best) ? best : null;
 }
-export function bodyTreatment(name = '') {
+// `entry`: a condition's name, or the condition itself (an item or ActiveEffect). The condition is known by its English
+// slug (PF2e / SF2e system.slug) or status ids (D&D 5e, core) first, so a translated "Effrayé" still trembles; its name last.
+export function bodyTreatment(entry = '') {
+  if (entry && typeof entry === 'object') {
+    for (const id of [entry.system?.slug, ...(entry.statuses ?? [])]) {
+      const kind = id ? bodyTreatment(String(id).replace(/-/g, ' ')) : null;
+      if (kind) return kind;
+    }
+    return bodyTreatment(entry.name ?? '');
+  }
+  const name = entry;
   const key = String(name).toLowerCase().replace(/^(?:condition|effect)\s*:\s*/, '').replace(/\s+\d+$/, '').trim();
   return BY_NAME[key] ?? null;
 }

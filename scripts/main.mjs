@@ -10010,6 +10010,22 @@ let smokeTicker = null, smokeList = [], smokeListAt = -Infinity;
 const smokeOn = () => {
   try { return bothOn("fireSmoke") && qualityRank(localQuality()) >= 2 && !!canvas?.ready; } catch { return false; }
 };
+// An item or effect as the light-orb engine reads it (light-orb.mjs isOrbEffect): its name, and what names it in any
+// language: its slug (PF2e system.slug, D&D system.identifier), the compendium entry it came from, and the same two for
+// the spell or item it came from (PF2e: system.context.origin.item; an ActiveEffect: its origin), looked up only if asked.
+const docSlug = (d) => d?.system?.slug ?? d?.system?.identifier ?? null;
+const docSource = (d) => d?._stats?.compendiumSource ?? d?.flags?.core?.sourceId ?? null;
+const lightIdentity = (doc) => (doc ? {
+  name: doc.name, slug: docSlug(doc), sourceId: docSource(doc),
+  get origin() {
+    try {
+      const uuid = doc.system?.context?.origin?.item ?? (typeof doc.origin === "string" ? doc.origin : null);
+      const from = uuid ? globalThis.fromUuidSync?.(uuid, { strict: false }) : null;
+      return from && from !== doc && from.documentName !== "Actor" ? { slug: docSlug(from), sourceId: docSource(from) } : null;
+    } catch { return null; }
+  },
+} : null);
+const actorLightEffects = (actor) => [...(actor?.items ?? [])].filter((i) => i.type === "effect" || i.type === "condition").concat([...(actor?.effects ?? [])]).map(lightIdentity);
 // What a token's own light is drawn as: 'torch', 'orb' or null (Token configuration → Animater light shown as; Auto:
 // a fire light is a torch, a Light spell's an orb). "Held on: nothing" draws neither.
 const lightKindOf = (token, data) => {
@@ -10017,17 +10033,16 @@ const lightKindOf = (token, data) => {
   if (!torchSide(flags.torchHand)) return null;
   const actor = token?.actor;
   const items = [...(actor?.items ?? [])];
-  const effects = items.filter((i) => i.type === "effect" || i.type === "condition").map((i) => i.name)
-    .concat([...(actor?.effects ?? [])].map((e) => e.name));
+  const effects = actorLightEffects(actor);
   // What it carries in hand (PF2e: held; D&D and others: equipped).
   // With the light each gives (PF2e's TokenLight rule), so the one lit now is told from one only carried.
   const lightOf = (v) => (v ? { animation: v.animation?.type ?? null, bright: Number.isFinite(v.bright) ? v.bright : null, dim: Number.isFinite(v.dim) ? v.dim : null } : null);
   const held = items.filter((i) => i.system?.equipped?.carryType === "held" || i.system?.equipped === true)
-    .map((i) => ({ name: i.name, light: lightOf([...(i.system?.rules ?? [])].find((r) => r?.key === "TokenLight")?.value) }));
+    .map((i) => ({ name: i.name, slug: docSlug(i), light: lightOf([...(i.system?.rules ?? [])].find((r) => r?.key === "TokenLight")?.value) }));
   return heldLightKind({ choice: flags.lightAs ?? "", fire: isFireLight(data), effects, held, light: lightOf(token?.document?.light ?? data) });
 };
 // How many lights it is: Dancing Lights several wisps circling the creature (its light stays at its middle).
-const wispsOf = (token) => orbCount([...(token?.actor?.items ?? [])].map((i) => i.name).concat([...(token?.actor?.effects ?? [])].map((e) => e.name)));
+const wispsOf = (token) => orbCount([...(token?.actor?.items ?? []), ...(token?.actor?.effects ?? [])].map(lightIdentity));
 const listSmokeFires = () => {
   const stage = canvas.stage, s = stage?.scale?.x || 1, [sw, sh] = canvas.screenDimensions ?? [window.innerWidth, window.innerHeight];
   const grid = canvas.grid?.size ?? 100, margin = grid * 3;
@@ -10166,8 +10181,8 @@ const lightIconsOf = (token) => {
   const actor = token?.actor;
   if (!actor) return null;
   const kind = lightKindOf(token, token.document?.light);
-  const items = [...(actor.items ?? [])].map((i) => ({ name: i.name, type: i.type, img: i.img, rules: i.system?.rules ?? [] }))
-    .concat([...(actor.effects ?? [])].map((e) => ({ name: e.name, type: "effect", img: e.img, rules: [] })));
+  const items = [...(actor.items ?? [])].map((i) => ({ ...lightIdentity(i), type: i.type, img: i.img, rules: i.system?.rules ?? [] }))
+    .concat([...(actor.effects ?? [])].map((e) => ({ ...lightIdentity(e), type: "effect", img: e.img, rules: [] })));
   return drawnLightIcons({ kind, items, torches: holdsTorches(), orbs: orbsOn() });
 };
 // Other modules wrap the same method (PF2e Effects Halo, through libWrapper, on Foundry's Token): wrapped through libWrapper too.
@@ -17489,7 +17504,7 @@ Hooks.once("ready", () => {
       // A state Animater already shows another way steps aside: a Light spell floating as an orb ("Light spells float
       // as orbs") has no catalog marker under it as well.
       valueLooks: () => { try { return hotSetting("conditionValueLooks") !== false; } catch { return true; } },
-      drawnElsewhere: (item, token) => { try { return orbsOn() && isOrbEffect(item?.name) && lightKindOf(token, token?.light?.data ?? {}) === "orb"; } catch { return false; } },
+      drawnElsewhere: (item, token) => { try { return orbsOn() && isOrbEffect(lightIdentity(item)) && lightKindOf(token, token?.light?.data ?? {}) === "orb"; } catch { return false; } },
       catalog: () => runtime.getCatalog(),
       state: (kind) => hotSetting(game.system.id==='sf2e'?sfSettingKey(kind):game.system.id==='dnd5e'?dndSettingKey(kind):game.system.id==='daggerheart'?dhSettingKey(kind):game.system.id==='draw-steel'?dsSettingKey(kind):kind === "condition" ? "conditionCatalog" : "effectCatalog"),
       visibility: () => ({ isGM: game.user.isGM }),

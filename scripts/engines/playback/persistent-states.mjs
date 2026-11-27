@@ -353,7 +353,7 @@ export class PersistentStates{
   if(reach)h.auraField.add(r.name,{token:r.token,feet:reach.auraRadius,look:authored?reachLook(r.recipe,reach):auraLook(r.recipe),soft:r.soft===true,fadeMs:r.fade?fadeLength(r)+offset:0});
   // The creature itself reacts (trembles, sways, turns to stone…) while the state lasts.
   if(r.motion!==false){
-   h.body?.add(r.name,r.token,r.item.animaterBody??bodyTreatment(r.item.name??r.recipe.name),{strength:level.scale});
+   h.body?.add(r.name,r.token,r.item.animaterBody??bodyTreatment(r.item)??bodyTreatment(r.recipe.name),{strength:level.scale});
    // Played once: the creature reacts only while the animation shows.
    if(r.fade)setTimeout(()=>{if(this.active.get(r.key)===r)h.body?.remove?.(r.name);},fadeLength(r)+offset)?.unref?.();
   }
