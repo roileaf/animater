@@ -10019,8 +10019,12 @@ const smokeOn = () => {
 const docSlug = (d) => d?.system?.slug ?? d?.system?.identifier ?? null;
 const docSource = (d) => d?._stats?.compendiumSource ?? d?.flags?.core?.sourceId ?? null;
 const lightSourcesFlame = (doc) => doc?.flags?.["light-sources"]?.light ?? null;
+// An effect that sets the token's light (core's token.light.*, ATE's ATL.light.*): a light its creature carries.
+const changesLight = (doc) => [...(doc?.system?.changes ?? doc?.changes ?? [])].some((c) => /^(?:token|ATL).light./.test(String(c?.key ?? "")));
+// Every effect on an actor, its items' transferred ones too (a lit lamp's effect can live on the lamp).
+const actorEffectsAll = (actor) => { try { if (typeof actor?.allApplicableEffects === "function") return [...actor.allApplicableEffects()]; } catch { /* below */ } return [...(actor?.effects ?? [])]; };
 const lightIdentity = (doc) => (doc ? {
-  name: doc.name, slug: docSlug(doc), sourceId: docSource(doc), givesLight: !!lightSourcesFlame(doc),
+  name: doc.name, slug: docSlug(doc), sourceId: docSource(doc), givesLight: !!lightSourcesFlame(doc) || changesLight(doc),
   get origin() {
     try {
       const flame = lightSourcesFlame(doc)?.sourceId;
@@ -10034,7 +10038,7 @@ const lightIdentity = (doc) => (doc ? {
   },
 } : null);
 const actorLightEffects = (actor) => [...(actor?.items ?? [])].filter((i) => i.type === "effect" || i.type === "condition")
-  .concat([...(actor?.effects ?? [])].filter((e) => !(e.disabled && lightSourcesFlame(e)))).map(lightIdentity);
+  .concat(actorEffectsAll(actor).filter((e) => !(e.disabled && lightSourcesFlame(e)))).map(lightIdentity);
 // What a token's own light is drawn as: 'torch', 'orb' or null (Token configuration → Animater light shown as; Auto:
 // a fire light is a torch, a Light spell's an orb). "Held on: nothing" draws neither.
 const lightKindOf = (token, data) => {
@@ -10046,8 +10050,19 @@ const lightKindOf = (token, data) => {
   // What it carries in hand (PF2e: held; D&D and others: equipped).
   // With the light each gives (PF2e's TokenLight rule), so the one lit now is told from one only carried.
   const lightOf = (v) => (v ? { animation: v.animation?.type ?? null, bright: Number.isFinite(v.bright) ? v.bright : null, dim: Number.isFinite(v.dim) ? v.dim : null } : null);
-  const held = items.filter((i) => i.system?.equipped?.carryType === "held" || i.system?.equipped === true)
-    .map((i) => ({ name: i.name, slug: docSlug(i), light: lightOf([...(i.system?.rules ?? [])].find((r) => r?.key === "TokenLight")?.value) }));
+  // The item a lit effect burns on is in hand and is the token's light, whether or not it is equipped (a D&D Lamp or
+  // Hooded Lantern is a consumable): first, with the token's light, so it is the one lit. A Light Sources flame names its
+  // item (the carried one, else the registered one); an effect that sets the token's light, the item it came from.
+  const lit = lightOf(token?.document?.light ?? data);
+  const flames = actorEffectsAll(actor).filter((e) => !e.disabled && (lightSourcesFlame(e) || changesLight(e))).map((e) => {
+    const flame = lightSourcesFlame(e);
+    if (!flame) { const origin = lightIdentity(e).origin; return origin?.slug ? { name: e.name ?? "", slug: origin.slug, light: lit } : null; }
+    let item = flame.itemId ? actor?.items?.get?.(flame.itemId) : null;
+    try { item ??= typeof flame.sourceId === "string" ? globalThis.fromUuidSync?.(flame.sourceId, { strict: false }) : null; } catch { item = null; }
+    return item ? { name: item.name ?? "", slug: docSlug(item), light: lit } : null;
+  }).filter(Boolean);
+  const held = flames.concat(items.filter((i) => i.system?.equipped?.carryType === "held" || i.system?.equipped === true)
+    .map((i) => ({ name: i.name, slug: docSlug(i), light: lightOf([...(i.system?.rules ?? [])].find((r) => r?.key === "TokenLight")?.value) })));
   return heldLightKind({ choice: flags.lightAs ?? "", fire: isFireLight(data), effects, held, light: lightOf(token?.document?.light ?? data) });
 };
 // How many lights it is: Dancing Lights several wisps circling the creature (its light stays at its middle).
@@ -10191,7 +10206,7 @@ const lightIconsOf = (token) => {
   if (!actor) return null;
   const kind = lightKindOf(token, token.document?.light);
   const items = [...(actor.items ?? [])].map((i) => ({ ...lightIdentity(i), type: i.type, img: i.img, rules: i.system?.rules ?? [] }))
-    .concat([...(actor.effects ?? [])].map((e) => ({ ...lightIdentity(e), type: "effect", img: e.img, rules: [] })));
+    .concat(actorEffectsAll(actor).map((e) => ({ ...lightIdentity(e), type: "effect", img: e.img, rules: [] })));
   return drawnLightIcons({ kind, items, torches: holdsTorches(), orbs: orbsOn() });
 };
 // Other modules wrap the same method (PF2e Effects Halo, through libWrapper, on Foundry's Token): wrapped through libWrapper too.

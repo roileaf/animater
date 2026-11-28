@@ -86,3 +86,47 @@ test('a French Light Sources "Lumière" effect is the Light orb; its "Torche" st
   assert.ok(main.includes('const lightSourcesFlame = (doc) => doc?.flags?.["light-sources"]?.light ?? null;'), 'reads the module\'s own flag');
   assert.ok(main.includes('!(e.disabled && lightSourcesFlame(e))'), 'a covered Light Sources light is no light');
 });
+
+// J-P's French D&D 5e test (SRD 5.2: English identifiers, French names), both ways of lighting. What main.mjs lightKindOf
+// hands heldLightKind: the item a lit effect burns on comes first in `held`, carrying the token's light.
+const flame = { animation: 'torch', bright: 15, dim: 30 };
+const SRD = [
+  // [French name, identifier, look]
+  ['Lampe', 'lamp', 'lantern'],
+  ['Lanterne à capote', 'lantern-hooded', 'lantern'],
+  ['Lanterne à capote', 'hooded-lantern', 'lantern'],
+  ['Lanterne sourde', 'lantern-bullseye', 'lantern'],
+  ['Bougie', 'candle', 'torch'],
+  ['Torche', 'torch', 'torch'],
+];
+test('Light Sources: the lit Lamp, Hooded Lantern, Candle and Torch draw as what they are, by identifier', () => {
+  for (const [name, slug, look] of SRD) {
+    // The flame's item first; a torch equipped in the other hand must not steal a lit lantern's light.
+    const held = [{ name, slug, light: flame }, { name: 'Torche', slug: 'torch', light: null }];
+    assert.equal(heldLightKind({ fire: true, held, light: flame }), look, `${name} (${slug})`);
+  }
+  for (const [name, slug] of [['Lumière', 'light'], ['Flamme éternelle', 'continual-flame'], ['Lumières dansantes', 'dancing-lights']]) {
+    assert.equal(heldLightKind({ fire: true, effects: [{ name, givesLight: true, origin: { slug } }], held: [{ name, slug, light: flame }], light: flame }), 'orb', name);
+  }
+});
+test('from the sheet: the Lamp, Hooded Lantern, Candle and Torch draw as what they are, and their lit effect icon goes', () => {
+  for (const [name, slug, look] of SRD) {
+    // A light-setting effect from the item (origin: the lamp), the item itself in hand.
+    const effect = { name: `${name} allumée`, slug: null, sourceId: null, givesLight: true, origin: { slug }, type: 'effect', img: `${slug}.webp`, rules: [] };
+    const kind = heldLightKind({ fire: true, effects: [effect], held: [{ name: effect.name, slug, light: flame }], light: flame });
+    assert.equal(kind, look, `${name} (${slug})`);
+    assert.deepEqual([...drawnLightIcons({ kind, torches: true, items: [effect] })], [`${slug}.webp`], `${name}: icon hidden`);
+    // An effect that changes no light but came from the lamp still is the lamp's (named by its origin's identifier).
+    assert.deepEqual([...drawnLightIcons({ kind, torches: true, items: [{ ...effect, givesLight: false }] })], [`${slug}.webp`], `${name}: by origin`);
+  }
+  // Unrelated effects keep their icons while a lantern is drawn.
+  assert.deepEqual([...drawnLightIcons({ kind: 'lantern', torches: true, items: [{ name: 'Béni', origin: { slug: 'bless' }, type: 'effect', img: 'bless.webp', rules: [] }] })], []);
+});
+test('main.mjs: lit effects hand their item over first; item effects and light-changing effects count', () => {
+  const main = readFileSync(new URL('../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.ok(main.includes('const held = flames.concat('), 'the lit item comes first');
+  assert.ok(main.includes('(lightSourcesFlame(e) || changesLight(e))'));
+  assert.ok(main.includes('givesLight: !!lightSourcesFlame(doc) || changesLight(doc),'));
+  assert.ok(main.includes('/^(?:token|ATL)\.light\./'), 'core and ATE light changes');
+  assert.ok(main.includes('.concat(actorEffectsAll(actor).map((e) => ({ ...lightIdentity(e), type: "effect"'), 'icons of item-transferred effects too');
+});

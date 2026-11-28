@@ -42,12 +42,15 @@ const WISPS = { slugs: /^(?:spell-effect-)?dancing-lights?$/, sources: /\.(?:CAx
 // decides from what it holds, its light and its effects; 'lantern', 'torch', 'orb' or 'none' force it. `held`: the items
 // it holds or has equipped, as names or { name, light } (`light` the light the item gives, { animation, bright, dim },
 // as PF2e's TokenLight rules say, and its `slug`); `light` the token's light now, the same shape. A torch or lantern is
-// known by its slug ("torch", "lantern-hooded") as well as its name, so a translated "Torche" still is one.
-const LANTERN_WORD = /\blantern\b/i, TORCH_WORD = /\b(?:torch|candle|candlecap)\b/i;
+// known by its slug ("torch", "lantern-hooded") as well as its name, so a translated "Torche" still is one. There is no
+// lamp or candle look: an oil lamp hangs as the lantern (D&D 5e's Lamp, "lamp"), a candle burns as a small torch.
+const LANTERN_WORD = /\b(?:lantern|lamp)\b/i, TORCH_WORD = /\b(?:torch|candle|candlecap)\b/i;
 const itemWords = (i) => `${i.slug ?? ''} ${i.name}`;
 const LANTERN = { test: (i) => LANTERN_WORD.test(itemWords(i)) }, TORCH = { test: (i) => TORCH_WORD.test(itemWords(i)) };
 // An item's light is the token's when its animation is the token's (a plain light is no torch's, however wide) and its
 // reach matches where both give one.
+// An effect named for a held light by its own slug or its origin's (in any language), or its English name.
+const namesHeldLight = (e) => [e.slug, e.origin?.slug, e.name].some((w) => w && (LANTERN_WORD.test(String(w)) || TORCH_WORD.test(String(w))));
 const sameLight = (a, b) => !!a && !!b && (a.animation ?? null) === (b.animation ?? null) && ['bright', 'dim'].every((k) => a[k] == null || b[k] == null || a[k] === b[k]) && (a.animation != null || a.bright != null);
 export function heldLightKind({ choice = '', fire = false, effects = [], held = [], light = null } = {}) {
   if (choice === 'none') return null;
@@ -75,8 +78,9 @@ export function drawnLightIcons({ kind = null, items = [], torches = false, orbs
   for (const item of items) {
     const rules = [...(item?.rules ?? [])], spell = isOrbEffect(item);
     // An orb: the light spell's effect. A torch or lantern: an item giving light that is no light spell (a TokenLight
-    // rule, or `givesLight`: an effect another module lights the token with, as Light Sources does).
-    if (orb ? !spell : spell || !(item?.givesLight || rules.some((r) => r?.key === 'TokenLight'))) continue;
+    // rule; `givesLight`: an effect that lights the token, as Light Sources' does or one changing the token's light; or an
+    // effect that is, or came from, a torch, lantern, lamp or candle by its slug, as a lamp lit from a D&D sheet).
+    if (orb ? !spell : spell || !(item?.givesLight || rules.some((r) => r?.key === 'TokenLight') || (item?.type === 'effect' && namesHeldLight(item)))) continue;
     if (item.type === 'effect' && item.img) out.add(item.img);
     for (const r of rules) if (r?.key === 'TokenEffectIcon' && typeof r.value === 'string' && r.value) out.add(r.value);
   }
