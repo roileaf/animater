@@ -65,3 +65,24 @@ test('a translated standing area spell still stays on the map, by its English sl
   assert.ok(!isLastingArea(spell('Brouillard', null)), 'a translated name alone says nothing');
   assert.ok(isLastingArea(spell('Obscuring Mist', null)), 'the English name is still read');
 });
+
+// The Light Sources module (light-sources) lights a token with a plain ActiveEffect named after the item the GM
+// registered ("Lumière"), with no origin and no slug; its flags["light-sources"].light.sourceId is that item's UUID,
+// which main.mjs lightIdentity hands over as the origin.
+test('a French Light Sources "Lumière" effect is the Light orb; its "Torche" stays a torch', () => {
+  const lumiere = { name: 'Lumière', slug: null, sourceId: null, givesLight: true, origin: { slug: 'light', sourceId: null } };
+  assert.ok(isOrbEffect(lumiere), 'by the registered spell\'s identifier');
+  assert.ok(isOrbEffect({ name: 'Lumière', givesLight: true, origin: { slug: null, sourceId: 'Compendium.dnd5e.spells.Item.Bnn9Nzajixvow9xi' } }), 'by the D&D 5e Light spell (2014)');
+  assert.ok(isOrbEffect({ name: 'Lumière', givesLight: true, origin: { slug: null, sourceId: 'Compendium.dnd5e.spells24.Item.phbsplLight00000' } }), 'and 2024');
+  assert.equal(orbCount([{ name: 'Lumières dansantes', origin: { sourceId: 'Compendium.dnd5e.spells.Item.CAxSzHWizrafT033' } }]), 4);
+  assert.equal(heldLightKind({ effects: [lumiere], fire: true }), 'orb');
+  const torche = { name: 'Torche', slug: null, sourceId: null, givesLight: true, origin: { slug: 'torch', sourceId: 'Compendium.dnd5e.items.Item.TorchIdXXXXXXXXX' } };
+  assert.ok(!isOrbEffect(torche));
+  assert.equal(heldLightKind({ effects: [torche], fire: true }), 'torch', 'a torch light stays a torch');
+  // Hide light icons: the orb's effect icon goes; a drawn torch's Light Sources effect icon goes too.
+  assert.deepEqual([...drawnLightIcons({ kind: 'orb', orbs: true, items: [{ ...lumiere, type: 'effect', img: 'lumiere.webp', rules: [] }] })], ['lumiere.webp']);
+  assert.deepEqual([...drawnLightIcons({ kind: 'torch', torches: true, items: [{ ...torche, type: 'effect', img: 'torche.webp', rules: [] }] })], ['torche.webp']);
+  const main = readFileSync(new URL('../../scripts/main.mjs', import.meta.url), 'utf8');
+  assert.ok(main.includes('const lightSourcesFlame = (doc) => doc?.flags?.["light-sources"]?.light ?? null;'), 'reads the module\'s own flag');
+  assert.ok(main.includes('!(e.disabled && lightSourcesFlame(e))'), 'a covered Light Sources light is no light');
+});

@@ -57,10 +57,21 @@ const STAGES = Object.freeze([null, { count: 1, size: 0.2, drain: 0.3 }, { count
 // Soaked in and old: darker than what it leaves on the floor.
 const soaked = (color) => (Math.round(((color >> 16) & 255) * 0.75) << 16) | (Math.round(((color >> 8) & 255) * 0.75) << 8) | Math.round((color & 255) * 0.75);
 
+// Each creature's own stains (pure): a number 0..1 from its token id, the same on every screen and at every stage, so
+// a room of wounded creatures is not one stain stamped on all of them, and a creature's stains stay put as they grow.
+export function woundSeed(id) {
+  const text = String(id ?? '');
+  if (!text) return null;
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return ((h >>> 0) % 10007) / 10007;
+}
+
 // The look for a stage, made from the built-in 'Wounded' preset (cloned: the library is shared).
 // `color` its blood (else the preset's own); `bleeds` false (a construct): the colour lowers, no
-// blood. `amount` how bloody the game is: 1 as drawn, 0 no look at all, up to 2.
-export function woundedPreset(stage, base, { color = null, bleeds = true, amount = 1 } = {}) {
+// blood. `amount` how bloody the game is: 1 as drawn, 0 no look at all, up to 2. `seed` (woundSeed) where on the art
+// its stains fall and how far they spatter; without one, the preset's own.
+export function woundedPreset(stage, base, { color = null, bleeds = true, amount = 1, seed = null } = {}) {
   const look = STAGES[Math.min(STAGES.length - 1, Math.trunc(stage))];
   const much = Math.max(0, Number.isFinite(Number(amount)) ? Number(amount) : 1);
   if (!base || !look || !(much > 0)) return null;
@@ -72,7 +83,8 @@ export function woundedPreset(stage, base, { color = null, bleeds = true, amount
     if (f.filterType === 'stain') {
       stains += 1;
       if (!bleeds || stains > 1) return [];
-      return [{ ...f, count: Math.min(3, Math.max(1, Math.round(look.count * Math.max(1, much)))), size: look.size * Math.sqrt(much), ...(Number.isFinite(color) ? { color: soaked(color) } : {}) }];
+      const own = Number.isFinite(seed) ? { seed, edge: 0.35 + 0.3 * seed, spatter: 0.4 + 0.4 * ((seed * 7.31) % 1) } : {};
+      return [{ ...f, ...own, count: Math.min(3, Math.max(1, Math.round(look.count * Math.max(1, much)))), size: look.size * Math.sqrt(much), ...(Number.isFinite(color) ? { color: soaked(color) } : {}) }];
     }
     if (f.filterType === 'adjustment') {
       const sat = f.saturation ?? 1, bright = f.brightness ?? 1;
@@ -175,7 +187,7 @@ export class WoundedLooks {
           Object.assign(s, { token: w.token, tier: w.tier, look: w.look });
           this.shown.set(a.id, s);
           if (a.op === 'fx-on') {
-            const preset = woundedPreset(w.stage, this.preset(), { color: w.color, bleeds: w.bleeds, amount: this.amount() }), api = this.fx();
+            const preset = woundedPreset(w.stage, this.preset(), { color: w.color, bleeds: w.bleeds, amount: this.amount(), seed: woundSeed(w.token?.document?.id ?? w.token?.id ?? a.id) }), api = this.fx();
             if (preset && api?.apply) { s.remove = api.apply(w.token, preset, { key: name }); s.fx = true; }
           } else if (a.op === 'body-on') { this.body.add(name, w.token, a.kind); s.kind = a.kind; }
         }

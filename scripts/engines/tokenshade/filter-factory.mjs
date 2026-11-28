@@ -104,7 +104,10 @@ export function fxFilterClass(PIXI) {
       this.animations = compileAnimations(params.animated, this.base);
       this.zOrder = Number.isFinite(params.zOrder) ? params.zOrder : spec.order ?? 500;
       this.fxZoom = 1;
-      this.autoFit = true;
+      // PIXI crops a filter to the screen (autoFit). A filter that draws its art from far off the fragment (`fit: false`:
+      // the tip lays the whole upright art down flat) would find that art cropped away at the screen's edge, a fallen
+      // creature cut off or smeared as it scrolls out of view, so it is given the whole art however much is on screen.
+      this.autoFit = spec.fit !== false;
       this.bindTextures(textures);
       this.writeUniforms();
     }

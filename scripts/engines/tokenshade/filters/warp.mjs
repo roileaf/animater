@@ -213,6 +213,8 @@ void main() {
 // way the token faces. `amount` 0 standing, 1 lying.
 const tip = {
   type: 'tip', order: 950,
+  // Reads the upright art from well above where it lies: never cropped to the screen (filter-factory.mjs autoFit).
+  fit: false,
   defaults: { amount: 0 },
   uniforms: { uTip: ['float', p => clamp(p.amount, 0, 1)] },
   reach: (p, c) => c.size * 0.25 + 8,

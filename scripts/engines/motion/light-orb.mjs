@@ -25,16 +25,17 @@ const said = (e, { slugs, sources = null, names }) => {
   if (origin && (slugs.test(slugOf(origin.slug)) || (sources && typeof origin.sourceId === 'string' && sources.test(origin.sourceId)))) return true;
   return names.test(String(d.name ?? '').trim());
 };
-// Effects that make a creature's light a conjured orb: by slug (with or without "spell-effect-"), by PF2e / SF2e's
-// Spell Effect: Light (cVVZXNbV0nElVOPZ) and Everlight (hpbCDbDOoVyhOmck), by the spell they came from, else by name
-// (with or without "Spell Effect:" / "Effect:").
+// Effects that make a creature's light a conjured orb: by slug (with or without "spell-effect-"), by compendium entry
+// (PF2e / SF2e's Spell Effect: Light cVVZXNbV0nElVOPZ and Everlight hpbCDbDOoVyhOmck; D&D 5e's Light, Continual Flame
+// and Dancing Lights spells, 2014 and 2024), by the spell they came from, else by name (with or without "Spell Effect:" /
+// "Effect:").
 const ORB = {
   slugs: /^(?:spell-effect-)?(?:light|everlight|continual-flame|dancing-lights?|faerie-light|light-orb|glowing-orb)$/,
-  sources: /\.(?:cVVZXNbV0nElVOPZ|hpbCDbDOoVyhOmck)$/,
+  sources: /\.(?:cVVZXNbV0nElVOPZ|hpbCDbDOoVyhOmck|Bnn9Nzajixvow9xi|phbsplLight00000|MK6gpQMeDFo0cP9f|phbsplContinualF|CAxSzHWizrafT033|phbsplDancingLig)$/,
   names: /^(?:(?:spell\s+)?effect\s*:\s*)?(?:light|everlight|continual flame|dancing lights?|faerie light|light orb|glowing orb)$/i,
 };
 export const isOrbEffect = (entry) => said(entry, ORB);
-const WISPS = { slugs: /^(?:spell-effect-)?dancing-lights?$/, names: /dancing lights?/i };
+const WISPS = { slugs: /^(?:spell-effect-)?dancing-lights?$/, sources: /\.(?:CAxSzHWizrafT033|phbsplDancingLig)$/, names: /dancing lights?/i };
 
 // What a creature's own light is drawn as: 'orb' (a light spell), 'lantern' (it holds a lantern), 'torch' (a fire light),
 // or null (left as Foundry draws it). `choice` is the token's own (Token configuration → Animater light shown as): ''
@@ -73,8 +74,9 @@ export function drawnLightIcons({ kind = null, items = [], torches = false, orbs
   if (!held && !orb) return out;
   for (const item of items) {
     const rules = [...(item?.rules ?? [])], spell = isOrbEffect(item);
-    // An orb: the light spell's effect. A torch or lantern: an item giving light that is no light spell.
-    if (orb ? !spell : spell || !rules.some((r) => r?.key === 'TokenLight')) continue;
+    // An orb: the light spell's effect. A torch or lantern: an item giving light that is no light spell (a TokenLight
+    // rule, or `givesLight`: an effect another module lights the token with, as Light Sources does).
+    if (orb ? !spell : spell || !(item?.givesLight || rules.some((r) => r?.key === 'TokenLight'))) continue;
     if (item.type === 'effect' && item.img) out.add(item.img);
     for (const r of rules) if (r?.key === 'TokenEffectIcon' && typeof r.value === 'string' && r.value) out.add(r.value);
   }

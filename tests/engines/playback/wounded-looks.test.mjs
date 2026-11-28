@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hpLeft, woundTier, woundStage, STAGE_LINES, woundedPreset, woundEligible, woundActions, tokenMoving, WoundedLooks } from "../../../scripts/engines/playback/wounded-looks.mjs";
+import { hpLeft, woundTier, woundStage, STAGE_LINES, woundedPreset, woundSeed, woundEligible, woundActions, tokenMoving, WoundedLooks } from "../../../scripts/engines/playback/wounded-looks.mjs";
 
 const BASE = { name: "Wounded", library: "tokenshade", params: [
   { filterType: "stain", color: 0x5a0606, seed: 0.33, count: 1, size: 0.3, edge: 0.5, wet: 0.4, spatter: 0.6 },
@@ -196,4 +196,17 @@ test("a token is moving while Foundry animates it or its drawn spot trails its d
   assert.equal(tokenMoving({ x: 100, y: 100, document: { x: 100, y: 100 }, animationContexts: new Map([["m", {}]]) }), true);
   assert.equal(tokenMoving({ x: 60, y: 100, document: { x: 100, y: 100 } }), true);
   assert.equal(tokenMoving(null), false);
+});
+
+test("each creature's wounded stains fall in their own place, the same at every stage", () => {
+  const seeds = ["tokA1", "tokB2", "tokC3", "tokD4", "tokE5"].map(woundSeed);
+  assert.ok(seeds.every((v) => v >= 0 && v < 1));
+  assert.equal(new Set(seeds).size, seeds.length, "five tokens, five stains");
+  assert.equal(woundSeed("tokA1"), woundSeed("tokA1"), "the same on every screen");
+  assert.equal(woundSeed(""), null);
+  const stainOf = (look) => look.params.find((f) => f.filterType === "stain");
+  const a2 = stainOf(woundedPreset(2, BASE, { seed: seeds[0] })), a4 = stainOf(woundedPreset(4, BASE, { seed: seeds[0] })), b2 = stainOf(woundedPreset(2, BASE, { seed: seeds[1] }));
+  assert.equal(a2.seed, a4.seed, "a creature's stains stay put as they grow");
+  assert.notEqual(a2.seed, b2.seed);
+  assert.equal(stainOf(woundedPreset(2, BASE)).seed, 0.33, "without a seed, the preset's own");
 });

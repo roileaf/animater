@@ -10013,19 +10013,28 @@ const smokeOn = () => {
 // An item or effect as the light-orb engine reads it (light-orb.mjs isOrbEffect): its name, and what names it in any
 // language: its slug (PF2e system.slug, D&D system.identifier), the compendium entry it came from, and the same two for
 // the spell or item it came from (PF2e: system.context.origin.item; an ActiveEffect: its origin), looked up only if asked.
+// The Light Sources module (light-sources) lights a token with an ActiveEffect named after the item the GM registered as
+// the source ("Lumière" in French) and no origin; its flags.light-sources.light.sourceId is that item's UUID, so the item
+// stands in as the origin. Such an effect gives the token its light (givesLight); covered (disabled), it gives none.
 const docSlug = (d) => d?.system?.slug ?? d?.system?.identifier ?? null;
 const docSource = (d) => d?._stats?.compendiumSource ?? d?.flags?.core?.sourceId ?? null;
+const lightSourcesFlame = (doc) => doc?.flags?.["light-sources"]?.light ?? null;
 const lightIdentity = (doc) => (doc ? {
-  name: doc.name, slug: docSlug(doc), sourceId: docSource(doc),
+  name: doc.name, slug: docSlug(doc), sourceId: docSource(doc), givesLight: !!lightSourcesFlame(doc),
   get origin() {
     try {
-      const uuid = doc.system?.context?.origin?.item ?? (typeof doc.origin === "string" ? doc.origin : null);
+      const flame = lightSourcesFlame(doc)?.sourceId;
+      const uuid = (typeof flame === "string" ? flame : null) ?? doc.system?.context?.origin?.item ?? (typeof doc.origin === "string" ? doc.origin : null);
       const from = uuid ? globalThis.fromUuidSync?.(uuid, { strict: false }) : null;
-      return from && from !== doc && from.documentName !== "Actor" ? { slug: docSlug(from), sourceId: docSource(from) } : null;
+      // A compendium entry not loaded yet is still known by its UUID.
+      const pack = uuid?.startsWith("Compendium.") ? uuid : null;
+      if (from && from !== doc && from.documentName !== "Actor") return { slug: docSlug(from), sourceId: docSource(from) ?? pack };
+      return pack ? { slug: null, sourceId: pack } : null;
     } catch { return null; }
   },
 } : null);
-const actorLightEffects = (actor) => [...(actor?.items ?? [])].filter((i) => i.type === "effect" || i.type === "condition").concat([...(actor?.effects ?? [])]).map(lightIdentity);
+const actorLightEffects = (actor) => [...(actor?.items ?? [])].filter((i) => i.type === "effect" || i.type === "condition")
+  .concat([...(actor?.effects ?? [])].filter((e) => !(e.disabled && lightSourcesFlame(e)))).map(lightIdentity);
 // What a token's own light is drawn as: 'torch', 'orb' or null (Token configuration → Animater light shown as; Auto:
 // a fire light is a torch, a Light spell's an orb). "Held on: nothing" draws neither.
 const lightKindOf = (token, data) => {
@@ -15653,7 +15662,7 @@ Hooks.once("init", () => {
   });
   registerSetting("bloodOnPortraits", {
     name: "Blood on portraits",
-    hint: "A hurt creature's picture shows blood, more the more it is hurt and in its own blood colour: on its character sheet, and in the Image Hover module's picture when that is on. Only those who could see the sheet or picture see it, and nothing is saved.",
+    hint: "A hurt creature's portrait shows blood, more the more it is hurt and in its own blood colour: on its character sheet, and in the Image Hover module's picture when that is on. Not its token on the map: blood there is Wounded looks. Only those who could see the sheet or picture see it, and nothing is saved.",
     scope: "world", config: true, type: Boolean, default: false,
     onChange: () => refreshPortraitBlood(),
   });
@@ -15862,7 +15871,7 @@ Hooks.once("init", () => {
     hint: "Turn off to never see the damage lens (blood on the screen) or tunnel vision on this screen. Off at first when this browser asks for reduced motion.",
     scope: "client", config: true, type: Boolean,
     default: !(globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true),
-    onChange: (on) => { if (on === false) { lensBlood.clear(); worldMuffle.restore(); woundReset?.(); } },
+    onChange: (on) => { if (on === false) { lensBlood.clear(); worldMuffle.restore(); woundReset?.(); if (lingerTimer) { clearTimeout(lingerTimer); lingerTimer = null; } try { stopHeartbeat?.(); } catch { /* gone */ } stopHeartbeat = null; } else woundRefresh?.(); },
   });
   registerSetting("lensEffects", {
     name: "Damage type effects",
@@ -15916,9 +15925,9 @@ Hooks.once("init", () => {
   });
   registerSetting("lensHeartbeat", {
     name: "Heartbeat when hurt",
-    hint: "When your creature is hit, a few heavy heartbeats under the tunnel vision, harder hits louder and faster; while it stays at or under a quarter of its HP in combat, a quiet heartbeat that quickens the lower it gets. Played at the Hit sounds volume.",
+    hint: "When your creature is hit, a few heavy heartbeats under the tunnel vision, harder hits louder and faster; while it stays at or under a quarter of its HP in combat, a quiet heartbeat that quickens the lower it gets. Played at the Hit sounds volume. Off also stills the beating of the interface bleed's red edges. Turning off the damage lens on this screen stops it too.",
     scope: "client", config: true, type: Boolean, default: true,
-    onChange: (on) => { if (on === false) { if (lingerTimer) { clearTimeout(lingerTimer); lingerTimer = null; } try { stopHeartbeat?.(); } catch { /* gone */ } stopHeartbeat = null; } },
+    onChange: (on) => { if (on === false) { if (lingerTimer) { clearTimeout(lingerTimer); lingerTimer = null; } try { stopHeartbeat?.(); } catch { /* gone */ } stopHeartbeat = null; } bleedPaint(); },
   });
   registerSetting("lensWounded", {
     name: "Wounded view",
@@ -18114,8 +18123,8 @@ Hooks.once("ready", () => {
     if (soundsOn()) stopHeartbeat = playHeartbeat(ctx, ctx.gainNode ?? ctx.destination, plan, { volume: Number(shakeSetting("surfaceVolume", 1)) });
     heartbeatUntil = Date.now() + (plan.at(-1)?.at ?? 0) + 600;
   };
-  // Paints a splash (tunnel vision only with its switch on) and plays a victim's heartbeat (its own switch, so it
-  // plays with the lens off on this screen too).
+  // Paints a splash (tunnel vision only with its switch on) and plays a victim's heartbeat (its own switch, and only
+  // with the damage lens on for this screen: "Blood and impact" off in Choose your immersion silences it).
   // A heartbeat only for a creature with a heart (engines/motion/blood-colors.mjs HEARTLESS: undead, constructs, oozes...).
   const hasHeart = (token) => { try { return !token?.actor || creatureHasHeart(creatureBloodType({ system: game.system.id, actor: token.actor, name: token.name })); } catch { return true; } };
   const lensShow = (splash, { args, color, seed, variant, heart = true, source = null }) => {
@@ -18128,7 +18137,7 @@ Hooks.once("ready", () => {
     // The hit's damage-type effects, by the same rule as the blood (the showcase past the world switch).
     const fx = lensEffectHit({ ...args, worldOn: args.preview === true || effectsWorldOn(), localOn: effectsLocalOn(), types: args.effectTypes ?? [] });
     if (fx) lensBlood.effects(fx, { seed, duration });
-    if (args.role === "victim" && heart !== false && heartbeatWanted({ isGM: false, on: heartbeatOn(), ...look })) {
+    if (args.role === "victim" && heart !== false && (args.preview === true || lensLocalOn()) && heartbeatWanted({ isGM: false, on: heartbeatOn(), ...look })) {
       const hit = splash ?? lensSplashFor({ ...args, localOn: true });
       if (hit?.tunnel > 0) beat(heartbeatPlan(hit.tunnel, { amount: hit.amount }));
     }
@@ -18147,7 +18156,7 @@ Hooks.once("ready", () => {
     const state = raw ? { ...raw, unconscious: ["unconscious", "dead", "dying"].some((s) => actor.statuses?.has?.(s)) } : null;
     return { state, inCombat: game.combat?.started === true, shown: Boolean(token) && !token.document.hidden, heart: hasHeart(token), look: lensLook() };
   };
-  const lingerBeat = (now) => (now && now.heart !== false && lensWorldOn()
+  const lingerBeat = (now) => (now && now.heart !== false && (lingerPreview || (lensWorldOn() && lensLocalOn()))
     ? heartbeatLinger(now.state, { isGM: false, on: heartbeatOn(), inCombat: now.inCombat, ...now.look, amount: lensAmount(now.look) ?? "subtle" }) : null);
   // The wounded view (engines/camera/lens-wounds.mjs) of the same creature: red edges from half its HP, stains that
   // stay, the world muffled; down (0 HP, dying, unconscious) the dark window, a faint uneven heartbeat, waking and death.
@@ -19417,7 +19426,8 @@ const bleedLooksNow = () => bleedLooks({
   edge: shakeSetting("bleedEdge", BLEED_DEFAULTS.edge),
   glass: shakeSetting("bleedGlass", BLEED_DEFAULTS.glass),
   drain: shakeSetting("bleedDrain", BLEED_DEFAULTS.drain),
-  beat: shakeSetting("bleedBeat", BLEED_DEFAULTS.beat),
+  // The player's own "Heartbeat when hurt" stills this beat too: one switch for the heartbeat, heard or seen.
+  beat: shakeSetting("bleedBeat", BLEED_DEFAULTS.beat) !== false && shakeSetting("lensHeartbeat", true) !== false,
   tunnel: shakeSetting("bleedTunnel", BLEED_DEFAULTS.tunnel),
   shudder: shakeSetting("bleedShudder", BLEED_DEFAULTS.shudder),
 });
