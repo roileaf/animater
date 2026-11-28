@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.14.2
+
+- **Blood and impact turns off the red edges and the heartbeat.** The red edges that close in and beat while a player's own creature is badly hurt (The interface bleeds) were not part of any Choose your immersion feature, so unticking Blood and impact left them on. They now belong to it, and so does the heartbeat you hear: it stops with the damage lens on that screen. A player's own Heartbeat when hurt switch now also stops the beating of those red edges, so the heartbeat can be turned off whether you hear it or see it.
+- **Wounded creatures bleed in their own places.** Every wounded creature showed the same blood stain in the same spot, which looked stamped on when a whole fight was hurt. Each creature now has its own stains, the same on every screen, and they stay where they are as more appear.
+- **Prone creatures near the edge of the screen are drawn whole.** A creature lying prone was cut off at the top when its token came near the top of the screen, because the screen's edge cropped the art it is drawn from. The whole creature now always shows.
+- **Blood on portraits says portrait.** Its description said "picture", which read as if it covered the token on the map too. It now says portrait, and that blood on the token itself comes from Wounded looks.
+- **Light Sources lights in translated games.** A light the Light Sources module puts on a token (its "Lumière" in French) is now known as the Light spell's orb, and a torch from it stays a torch, whatever the language. D&D 5e's Light, Continual Flame and Dancing Lights spells are known by their compendium entries too.
+
 ## 4.14.1
 
 - **Translated games get the Light orb.** In a translated world (French PF2e, for one) the Light spell's effect is called "Lumière", and Animater looked for it by its English name: the creature kept a torch look and the effect icon stayed on its token. Effects are now known by what stays the same in every language (the system's slug, the compendium entry they came from, the spell that made them), the English name only last. The same went for held torches and lanterns, a condition's body motion (Frightened trembling, Grabbed struggling, Prone falling over) and area spells that stay on the map (walls, clouds, fog), which a translated name also missed.
