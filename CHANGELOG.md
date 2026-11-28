@@ -1,5 +1,10 @@
 # Changelog
 
+## 4.14.3
+
+- **Lamps and lanterns are drawn as lanterns, whatever their name.** A D&D Lamp or Hooded Lantern lit through the Light Sources module was drawn as a torch: only items marked as equipped were looked at, and a lamp is a consumable. The item that is actually burning is now taken first, known by its D&D id (lamp, lantern-hooded, candle, torch) in any language, so a French "Lanterne à capote" hangs as a lantern. A Lamp used from the sheet was a torch too ("lamp" was not counted as a lantern); it now hangs as the lantern. There is no separate lamp or candle look: a lamp hangs as the lantern and a candle burns as a small torch flame.
+- **A lit lamp's icon leaves the token.** With Hide light icons on, a torch or lantern's own effect icon stayed on the token unless it came from a Pathfinder light rule or Light Sources. An effect that lights the token, or that came from the torch, lantern, lamp or candle, now leaves its icon off while that light is drawn, effects carried on the item included.
+
 ## 4.14.2
 
 - **Blood and impact turns off the red edges and the heartbeat.** The red edges that close in and beat while a player's own creature is badly hurt (The interface bleeds) were not part of any Choose your immersion feature, so unticking Blood and impact left them on. They now belong to it, and so does the heartbeat you hear: it stops with the damage lens on that screen. A player's own Heartbeat when hurt switch now also stops the beating of those red edges, so the heartbeat can be turned off whether you hear it or see it.
